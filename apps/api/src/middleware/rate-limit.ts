@@ -26,6 +26,7 @@ interface RateLimitOpts {
 export function rateLimit(opts: RateLimitOpts): MiddlewareHandler {
   let limiter: RateLimiterRedis | null = null;
   return async (c, next) => {
+    if (process.env.RATE_LIMIT_DISABLED === "1") return next();
     if (!limiter) {
       try {
         limiter = new RateLimiterRedis({

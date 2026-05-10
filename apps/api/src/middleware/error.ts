@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import type { StatusCode } from "hono/utils/http-status";
 import { AppError } from "../lib/errors.js";
 import { logger } from "../logger.js";
+import { Sentry } from "../sentry.js";
 
 export const onError: ErrorHandler = (err, c: Context) => {
   const requestId = c.get("requestId") as string | undefined;
@@ -31,6 +32,7 @@ export const onError: ErrorHandler = (err, c: Context) => {
     );
   }
   logger.error({ err, requestId }, "unhandled error");
+  Sentry.captureException(err, { extra: { requestId } });
   return c.json(
     {
       error: {

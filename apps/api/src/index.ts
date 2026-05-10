@@ -1,3 +1,6 @@
+import { initSentry } from "./sentry.js";
+initSentry();
+
 import { serve } from "@hono/node-server";
 import { app } from "./test-app.js";
 import { env } from "./env.js";

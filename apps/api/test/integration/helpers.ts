@@ -25,6 +25,7 @@ export async function setupTestDb(): Promise<{
   process.env.PUBLIC_API_URL ??= "http://localhost";
   process.env.PUBLIC_ADMIN_URL ??= "http://localhost";
   process.env.REDIS_URL ??= "redis://localhost:6379";
+  process.env.RATE_LIMIT_DISABLED = "1";
   return { container, url, db: createDbClient(url) };
 }
 
