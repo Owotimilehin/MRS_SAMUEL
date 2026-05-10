@@ -1,0 +1,29 @@
+{
+  "name": "mrs-samuel",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -b",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "dev:api": "pnpm --filter @ms/api dev",
+    "dev:admin": "pnpm --filter @ms/admin dev",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @ms/db migrate",
+    "db:seed": "pnpm --filter @ms/db seed"
+  },
+  "devDependencies": {
+    "typescript": "5.5.4",
+    "eslint": "9.9.0",
+    "@typescript-eslint/parser": "8.0.0",
+    "@typescript-eslint/eslint-plugin": "8.0.0",
+    "prettier": "3.3.3",
+    "vitest": "2.0.5"
+  },
+  "engines": {
+    "node": ">=20.10.0",
+    "pnpm": ">=9.0.0"
+  }
+}
