@@ -9,5 +9,5 @@
     { "path": "../../packages/db" },
     { "path": "../../packages/shared" }
   ],
-  "include": ["src/**/*", "test/**/*"]
+  "include": ["src/**/*"]
 }

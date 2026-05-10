@@ -10,27 +10,28 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@hono/node-server": "1.12.0",
     "@ms/db": "workspace:*",
     "@ms/shared": "workspace:*",
-    "@hono/node-server": "1.12.0",
-    "hono": "4.5.4",
-    "zod": "3.23.8",
+    "@sentry/node": "8.26.0",
     "argon2": "0.40.3",
+    "hono": "4.5.4",
+    "ioredis": "5.4.1",
     "jose": "5.7.0",
     "pino": "9.3.2",
     "pino-pretty": "11.2.2",
-    "@sentry/node": "8.26.0",
+    "rate-limiter-flexible": "5.0.3",
     "uuid": "10.0.0",
-    "ioredis": "5.4.1",
-    "rate-limiter-flexible": "5.0.3"
+    "zod": "3.23.8"
   },
   "devDependencies": {
-    "tsx": "4.17.0",
-    "@types/node": "20.14.14",
-    "vitest": "2.0.5",
-    "testcontainers": "10.10.4",
     "@testcontainers/postgresql": "10.10.4",
+    "@types/node": "20.14.14",
+    "@types/supertest": "6.0.2",
+    "@types/uuid": "10.0.0",
     "supertest": "7.0.0",
-    "@types/supertest": "6.0.2"
+    "testcontainers": "10.10.4",
+    "tsx": "4.17.0",
+    "vitest": "2.0.5"
   }
 }

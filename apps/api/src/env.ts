@@ -15,8 +15,22 @@ const Env = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   PUBLIC_API_URL: z.string().url(),
   PUBLIC_ADMIN_URL: z.string().url(),
-  PORT: z.coerce.number().default(3001)
+  PORT: z.coerce.number().default(3001),
 });
 
-export const env = Env.parse(process.env);
 export type Env = z.infer<typeof Env>;
+
+let cached: Env | null = null;
+
+export function loadEnv(): Env {
+  if (cached) return cached;
+  cached = Env.parse(process.env);
+  return cached;
+}
+
+// Proxy for ergonomic access: `env.PORT` reads through to the lazily-loaded env.
+export const env = new Proxy({} as Env, {
+  get(_t, key) {
+    return loadEnv()[key as keyof Env];
+  },
+});
