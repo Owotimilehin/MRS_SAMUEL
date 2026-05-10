@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { env } from "./env";
-import { logger } from "./logger";
+import { env } from "./env.js";
+import { logger } from "./logger.js";
 
 const app = new Hono();
 
