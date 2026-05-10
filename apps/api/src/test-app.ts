@@ -5,6 +5,7 @@ import { requestIdMiddleware } from "./middleware/request-id.js";
 import { onError } from "./middleware/error.js";
 import { idempotencyMiddleware } from "./middleware/idempotency.js";
 import { authRoutes } from "./auth/routes.js";
+import { healthRoutes } from "./routes/health.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -27,6 +28,7 @@ export function buildApp(): Hono {
   app.use("/v1/*", idempotencyMiddleware(db));
 
   app.route("/v1/auth", authRoutes(db));
+  app.route("/v1/health", healthRoutes(db));
 
   // Temporary echo endpoint used by idempotency integration tests.
   // TODO: remove once a real mutation endpoint exists (Phase 1).
