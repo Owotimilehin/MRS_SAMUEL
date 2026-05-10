@@ -1,9 +1,12 @@
 node_modules
 dist
 .env
-.env.local
+.env.*
+!.env.example
 coverage
 .DS_Store
+Thumbs.db
 *.log
+*.tsbuildinfo
 .vscode
 .idea
