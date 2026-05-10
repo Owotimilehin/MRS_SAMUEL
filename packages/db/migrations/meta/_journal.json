@@ -8,6 +8,20 @@
       "when": 1778441675489,
       "tag": "0000_cynical_the_hunter",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778442080312,
+      "tag": "0001_military_power_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778442200000,
+      "tag": "0002_audit_log_append_only",
+      "breakpoints": true
     }
   ]
 }

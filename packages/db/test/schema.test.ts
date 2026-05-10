@@ -6,4 +6,9 @@ describe("schema exports", () => {
     expect(schema.adminUser).toBeDefined();
     expect(schema.session).toBeDefined();
   });
+
+  it("exports idempotencyKey and auditLog tables", () => {
+    expect(schema.idempotencyKey).toBeDefined();
+    expect(schema.auditLog).toBeDefined();
+  });
 });
