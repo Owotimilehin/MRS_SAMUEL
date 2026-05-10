@@ -14,6 +14,7 @@ import {
   REFRESH_TTL_DAYS,
 } from "./session.js";
 import { BusinessError } from "../lib/errors.js";
+import { writeAudit } from "../middleware/audit.js";
 
 const REFRESH_COOKIE = "ms_refresh";
 
@@ -85,6 +86,12 @@ export function authRoutes(db: DbClient) {
     });
     setCookie(c, ACCESS_COOKIE, access, accessCookieOpts());
     setCookie(c, REFRESH_COOKIE, sess.refreshToken, refreshCookieOpts());
+    await writeAudit(db, c, {
+      action: "auth.login_success",
+      entityType: "admin_user",
+      entityId: user.id,
+      after: { id: user.id, email: user.email, role: user.role },
+    });
     return c.json(
       {
         data: {
