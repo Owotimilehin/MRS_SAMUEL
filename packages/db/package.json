@@ -21,6 +21,7 @@
     "drizzle-kit": "0.24.0",
     "tsx": "4.17.0",
     "@types/uuid": "10.0.0",
-    "@types/node": "20.14.10"
+    "@types/node": "20.14.10",
+    "vitest": "2.0.5"
   }
 }
