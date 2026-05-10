@@ -1,0 +1,87 @@
+import { eq, and, isNull, gte } from "drizzle-orm";
+import crypto from "node:crypto";
+import { v4 as uuid } from "uuid";
+import type { DbClient } from "@ms/db";
+import { session, adminUser } from "@ms/db";
+
+export const REFRESH_TTL_DAYS = 30;
+const REFRESH_BYTES = 48;
+
+export function generateRefreshToken(): { token: string; hash: string } {
+  const token = crypto.randomBytes(REFRESH_BYTES).toString("base64url");
+  const hash = crypto.createHash("sha256").update(token).digest("hex");
+  return { token, hash };
+}
+
+export async function createSession(
+  db: DbClient,
+  opts: {
+    userId: string;
+    deviceId: string;
+    userAgent: string | null;
+    ipAddress: string | null;
+  },
+): Promise<{ refreshToken: string; sessionId: string; expiresAt: Date }> {
+  const { token, hash } = generateRefreshToken();
+  const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 86_400_000);
+  const id = uuid();
+  await db.insert(session).values({
+    id,
+    userId: opts.userId,
+    refreshTokenHash: hash,
+    deviceId: opts.deviceId,
+    userAgent: opts.userAgent,
+    ipAddress: opts.ipAddress,
+    expiresAt,
+  });
+  return { refreshToken: token, sessionId: id, expiresAt };
+}
+
+export async function rotateSession(
+  db: DbClient,
+  oldRefreshToken: string,
+): Promise<
+  | {
+      user: typeof adminUser.$inferSelect;
+      refreshToken: string;
+      sessionId: string;
+      expiresAt: Date;
+    }
+  | null
+> {
+  const oldHash = crypto.createHash("sha256").update(oldRefreshToken).digest("hex");
+  const rows = await db
+    .select()
+    .from(session)
+    .where(
+      and(
+        eq(session.refreshTokenHash, oldHash),
+        isNull(session.revokedAt),
+        gte(session.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+
+  const userRows = await db.select().from(adminUser).where(eq(adminUser.id, row.userId)).limit(1);
+  const user = userRows[0];
+  if (!user || !user.isActive) return null;
+
+  await db.update(session).set({ revokedAt: new Date() }).where(eq(session.id, row.id));
+  const created = await createSession(db, {
+    userId: user.id,
+    deviceId: row.deviceId,
+    userAgent: row.userAgent,
+    ipAddress: row.ipAddress,
+  });
+  return { user, ...created };
+}
+
+export async function revokeSession(db: DbClient, refreshToken: string): Promise<void> {
+  const hash = crypto.createHash("sha256").update(refreshToken).digest("hex");
+  await db
+    .update(session)
+    .set({ revokedAt: new Date() })
+    .where(eq(session.refreshTokenHash, hash));
+}
