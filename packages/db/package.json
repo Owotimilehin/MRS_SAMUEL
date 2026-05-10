@@ -13,15 +13,16 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "argon2": "0.40.3",
     "drizzle-orm": "0.33.0",
     "postgres": "3.4.4",
     "uuid": "10.0.0"
   },
   "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/uuid": "10.0.0",
     "drizzle-kit": "0.24.0",
     "tsx": "4.17.0",
-    "@types/uuid": "10.0.0",
-    "@types/node": "20.14.10",
     "vitest": "2.0.5"
   }
 }
