@@ -15,6 +15,7 @@ import {
 } from "./session.js";
 import { BusinessError } from "../lib/errors.js";
 import { writeAudit } from "../middleware/audit.js";
+import { rateLimit } from "../middleware/rate-limit.js";
 
 const REFRESH_COOKIE = "ms_refresh";
 
@@ -42,7 +43,10 @@ export function authRoutes(db: DbClient) {
   const r = new Hono();
   const ACCESS_COOKIE = process.env.SESSION_COOKIE_NAME ?? "ms_session";
 
-  r.post("/login", async (c) => {
+  r.post(
+    "/login",
+    rateLimit({ points: 10, durationSeconds: 5 * 60, keyPrefix: "login" }),
+    async (c) => {
     const body = AuthSchemas.LoginRequest.parse(await c.req.json());
     const rows = await db
       .select()
@@ -105,7 +109,8 @@ export function authRoutes(db: DbClient) {
       },
       200,
     );
-  });
+  },
+  );
 
   r.post("/refresh", async (c) => {
     const refresh = getCookie(c, REFRESH_COOKIE);
