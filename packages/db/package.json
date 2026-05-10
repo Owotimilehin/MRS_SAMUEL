@@ -1,0 +1,26 @@
+{
+  "name": "@ms/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "generate": "drizzle-kit generate",
+    "migrate": "tsx src/migrate.ts",
+    "studio": "drizzle-kit studio",
+    "seed": "tsx src/seed.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.33.0",
+    "postgres": "3.4.4",
+    "uuid": "10.0.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.24.0",
+    "tsx": "4.17.0",
+    "@types/uuid": "10.0.0",
+    "@types/node": "20.14.10"
+  }
+}
