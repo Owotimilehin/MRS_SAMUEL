@@ -1,8 +1,8 @@
 import { pgTable, uuid, integer, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
-import { factory } from "./factory";
-import { branch } from "./branch";
-import { product } from "./product";
-import { adminUser } from "./admin-user";
+import { factory } from "./factory.js";
+import { branch } from "./branch.js";
+import { product } from "./product.js";
+import { adminUser } from "./admin-user.js";
 
 export const stockTransferStatus = pgEnum("stock_transfer_status", [
   "draft",

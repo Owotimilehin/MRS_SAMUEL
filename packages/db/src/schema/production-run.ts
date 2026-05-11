@@ -1,7 +1,7 @@
 import { pgTable, uuid, integer, text, timestamp, pgEnum, date } from "drizzle-orm/pg-core";
-import { factory } from "./factory";
-import { product } from "./product";
-import { adminUser } from "./admin-user";
+import { factory } from "./factory.js";
+import { product } from "./product.js";
+import { adminUser } from "./admin-user.js";
 
 export const productionRunStatus = pgEnum("production_run_status", [
   "draft",

@@ -1,18 +1,38 @@
-import { Worker } from "bullmq";
-import IORedis from "ioredis";
 import pino from "pino";
+import { createDbClient } from "@ms/db";
+import { drainOutbox } from "./outbox.js";
 
 const logger = pino({ base: { service: "ms-worker" } });
-const url = process.env.REDIS_URL;
-if (!url) throw new Error("REDIS_URL required");
-const connection = new IORedis(url, { maxRetriesPerRequest: null });
 
-new Worker(
-  "ms-default",
-  async (job) => {
-    logger.info({ jobId: job.id, name: job.name }, "processing job");
-  },
-  { connection },
-);
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) throw new Error("DATABASE_URL required");
 
-logger.info("worker started");
+const db = createDbClient(databaseUrl);
+const POLL_MS = 5000;
+
+let stopping = false;
+function shutdown(reason: string): void {
+  if (stopping) return;
+  stopping = true;
+  logger.info({ reason }, "worker shutting down");
+}
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+async function loop(): Promise<void> {
+  while (!stopping) {
+    try {
+      const processed = await drainOutbox(db);
+      if (processed > 0) {
+        logger.info({ processed }, "outbox batch drained");
+      }
+    } catch (err) {
+      logger.error({ err }, "outbox loop error");
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
+}
+
+logger.info({ pollMs: POLL_MS }, "worker started");
+await loop();
+logger.info("worker exited");

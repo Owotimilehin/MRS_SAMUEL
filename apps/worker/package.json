@@ -6,16 +6,20 @@
   "scripts": {
     "dev": "tsx watch --env-file=../../.env src/index.ts",
     "build": "tsc -b",
-    "start": "node --env-file=../../.env dist/index.js"
+    "start": "node --env-file=../../.env dist/index.js",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@ms/db": "workspace:*",
-    "bullmq": "5.12.6",
-    "ioredis": "5.4.1",
+    "drizzle-orm": "0.33.0",
     "pino": "9.3.2"
   },
   "devDependencies": {
+    "@testcontainers/postgresql": "10.10.4",
+    "@types/node": "20.14.14",
+    "postgres": "3.4.4",
+    "testcontainers": "10.10.4",
     "tsx": "4.17.0",
-    "@types/node": "20.14.14"
+    "vitest": "2.0.5"
   }
 }

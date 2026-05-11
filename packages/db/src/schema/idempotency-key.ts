@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, integer, timestamp, jsonb, primaryKey } from "drizzle-orm/pg-core";
-import { adminUser } from "./admin-user";
+import { adminUser } from "./admin-user.js";
 
 export const idempotencyKey = pgTable("idempotency_key", {
   key: uuid("key").notNull(),

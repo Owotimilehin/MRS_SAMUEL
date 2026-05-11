@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, boolean, timestamp, time, jsonb } from "drizzle-orm/pg-core";
-import { adminUser } from "./admin-user";
+import { adminUser } from "./admin-user.js";
 
 export interface DeliveryZone {
   name: string;

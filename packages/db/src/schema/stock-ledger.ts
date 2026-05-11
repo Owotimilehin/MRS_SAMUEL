@@ -1,6 +1,6 @@
 import { pgTable, uuid, integer, text, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
-import { product } from "./product";
-import { adminUser } from "./admin-user";
+import { product } from "./product.js";
+import { adminUser } from "./admin-user.js";
 
 export const ledgerLocationType = pgEnum("ledger_location_type", ["factory", "branch"]);
 
