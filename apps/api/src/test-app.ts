@@ -13,6 +13,8 @@ import { stockRoutes } from "./routes/stock.js";
 import { transferRoutes } from "./routes/transfers.js";
 import { reviewRoutes } from "./routes/review.js";
 import { factoryRoutes } from "./routes/factories.js";
+import { saleRoutes } from "./routes/sales.js";
+import { syncRoutes } from "./routes/sync.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -43,6 +45,9 @@ export function buildApp(): Hono {
   app.route("/v1/transfers", transferRoutes(db));
   app.route("/v1/review", reviewRoutes(db));
   app.route("/v1/factories", factoryRoutes(db));
+  // Nested branch routes: /v1/branches/:branchId/sales/...
+  app.route("/v1/branches/:branchId/sales", saleRoutes(db));
+  app.route("/v1/sync", syncRoutes(db));
 
   // Temporary echo endpoint used by idempotency integration tests.
   // TODO: remove once a real mutation endpoint exists (Phase 1).
