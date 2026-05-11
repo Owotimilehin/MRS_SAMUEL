@@ -50,6 +50,13 @@
       "when": 1778474500000,
       "tag": "0006_stock_ledger_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778474823153,
+      "tag": "0007_unknown_caretaker",
+      "breakpoints": true
     }
   ]
 }
