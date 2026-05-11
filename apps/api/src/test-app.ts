@@ -6,6 +6,7 @@ import { onError } from "./middleware/error.js";
 import { idempotencyMiddleware } from "./middleware/idempotency.js";
 import { authRoutes } from "./auth/routes.js";
 import { healthRoutes } from "./routes/health.js";
+import { productRoutes } from "./routes/products.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -29,6 +30,7 @@ export function buildApp(): Hono {
 
   app.route("/v1/auth", authRoutes(db));
   app.route("/v1/health", healthRoutes(db));
+  app.route("/v1/products", productRoutes(db));
 
   // Temporary echo endpoint used by idempotency integration tests.
   // TODO: remove once a real mutation endpoint exists (Phase 1).
