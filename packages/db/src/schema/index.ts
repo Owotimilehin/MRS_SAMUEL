@@ -10,3 +10,4 @@ export * from "./product-price";
 export * from "./stock-ledger";
 export * from "./production-run";
 export * from "./stock-transfer";
+export * from "./outbox-event";

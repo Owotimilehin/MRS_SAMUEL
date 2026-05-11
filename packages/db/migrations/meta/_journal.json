@@ -71,6 +71,13 @@
       "when": 1778475100000,
       "tag": "0009_stock_transfer_sequence",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778475227009,
+      "tag": "0010_rich_dark_phoenix",
+      "breakpoints": true
     }
   ]
 }
