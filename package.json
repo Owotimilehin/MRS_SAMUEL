@@ -9,6 +9,7 @@
     "build": "pnpm -r build",
     "dev:api": "pnpm --filter @ms/api dev",
     "dev:admin": "pnpm --filter @ms/admin dev",
+    "dev:customer": "pnpm --filter @ms/customer dev",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter @ms/db migrate",

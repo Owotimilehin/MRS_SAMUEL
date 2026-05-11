@@ -1,6 +1,7 @@
 import { eq, asc } from "drizzle-orm";
-import { outboxEvent, type DbClient } from "@ms/db";
+import { outboxEvent, customer, type DbClient } from "@ms/db";
 import { sendMessage, channels } from "./notifiers/telegram.js";
+import { sendEmail } from "./notifiers/email.js";
 import pino from "pino";
 
 const logger = pino({ base: { service: "ms-worker", part: "outbox" } });
@@ -83,6 +84,29 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
           if (chatId) await sendMessage(chatId, text);
         }
       }
+
+      // Customer-facing email for paid online orders
+      if (ev.eventType === "sale.paid_online") {
+        const p = ev.payload as Record<string, string | null>;
+        const customerId = p["customer_id"];
+        if (customerId) {
+          const [cust] = await db.select().from(customer).where(eq(customer.id, customerId));
+          if (cust?.email) {
+            const trackUrl = `${(process.env.PUBLIC_ADMIN_URL ?? "https://www.mrssamueljuice.com").replace("admin.", "www.")}/order/${p["order_number"]}/track`;
+            await sendEmail({
+              to: cust.email,
+              subject: `Order ${p["order_number"]} confirmed — Mrs. Samuel`,
+              text:
+                `Hi ${cust.name ?? "there"},\n\n` +
+                `Thanks for your order. We've received your payment and we're prepping ` +
+                `your bottles now.\n\n` +
+                `Track your order: ${trackUrl}\n\n` +
+                `— Mrs. Samuel Fruit Juice`,
+            });
+          }
+        }
+      }
+
       await db
         .update(outboxEvent)
         .set({ status: "sent", processedAt: new Date() })

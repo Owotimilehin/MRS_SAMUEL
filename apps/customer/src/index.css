@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ms-green-500: #4ea83a;
+  --ms-green-700: #2f7e2a;
+  --ms-orange: #f08a1a;
+  --ms-yellow: #ffc434;
+  --ms-pink: #ff5aa6;
+  --ms-bg: #fbf7ef;
+  --ms-ink: #1e1b16;
+  --ms-ink-2: #4b463d;
+  --ms-ink-3: #8a8576;
+  --ms-border: #e7e1d4;
+  --ms-danger: #c63a2e;
+}
+
+html, body {
+  background: var(--ms-bg);
+  color: var(--ms-ink);
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: "Fraunces", Georgia, serif;
+}

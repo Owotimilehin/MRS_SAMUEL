@@ -164,6 +164,49 @@ importers:
         specifier: 2.0.5
         version: 2.0.5(@types/node@20.14.14)(terser@5.47.1)
 
+  apps/customer:
+    dependencies:
+      '@tanstack/react-router':
+        specifier: 1.49.1
+        version: 1.49.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react:
+        specifier: 18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: 18.3.1
+        version: 18.3.1(react@18.3.1)
+      zod:
+        specifier: 3.23.8
+        version: 3.23.8
+      zustand:
+        specifier: 4.5.4
+        version: 4.5.4(@types/react@18.3.3)(react@18.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: 18.3.3
+        version: 18.3.3
+      '@types/react-dom':
+        specifier: 18.3.0
+        version: 18.3.0
+      '@vitejs/plugin-react':
+        specifier: 4.3.1
+        version: 4.3.1(vite@5.4.1(@types/node@20.14.14)(terser@5.47.1))
+      autoprefixer:
+        specifier: 10.4.20
+        version: 10.4.20(postcss@8.4.41)
+      postcss:
+        specifier: 8.4.41
+        version: 8.4.41
+      tailwindcss:
+        specifier: 3.4.10
+        version: 3.4.10
+      vite:
+        specifier: 5.4.1
+        version: 5.4.1(@types/node@20.14.14)(terser@5.47.1)
+      vitest:
+        specifier: 2.0.5
+        version: 2.0.5(@types/node@20.14.14)(terser@5.47.1)
+
   apps/worker:
     dependencies:
       '@ms/db':

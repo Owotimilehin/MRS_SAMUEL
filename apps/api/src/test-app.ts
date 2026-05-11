@@ -15,6 +15,9 @@ import { reviewRoutes } from "./routes/review.js";
 import { factoryRoutes } from "./routes/factories.js";
 import { saleRoutes } from "./routes/sales.js";
 import { syncRoutes } from "./routes/sync.js";
+import { publicCatalogRoutes } from "./routes/public-catalog.js";
+import { publicOrderRoutes } from "./routes/public-orders.js";
+import { payazaWebhookRoutes } from "./routes/webhooks-payaza.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -48,6 +51,11 @@ export function buildApp(): Hono {
   // Nested branch routes: /v1/branches/:branchId/sales/...
   app.route("/v1/branches/:branchId/sales", saleRoutes(db));
   app.route("/v1/sync", syncRoutes(db));
+
+  // Public (unauthenticated) routes — customer site + webhooks
+  app.route("/v1/public/catalog", publicCatalogRoutes(db));
+  app.route("/v1/public/orders", publicOrderRoutes(db));
+  app.route("/v1/webhooks/payaza", payazaWebhookRoutes(db));
 
   // Temporary echo endpoint used by idempotency integration tests.
   // TODO: remove once a real mutation endpoint exists (Phase 1).
