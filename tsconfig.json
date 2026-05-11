@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/shared" },
     { "path": "./packages/db" },
+    { "path": "./packages/domain" },
     { "path": "./apps/api" },
     { "path": "./apps/worker" }
   ]

@@ -6,9 +6,7 @@
     "composite": true
   },
   "references": [
-    { "path": "../../packages/db" },
-    { "path": "../../packages/domain" },
-    { "path": "../../packages/shared" }
+    { "path": "../db" }
   ],
   "include": ["src/**/*"]
 }
