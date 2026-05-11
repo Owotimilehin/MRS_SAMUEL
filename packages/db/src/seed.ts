@@ -1,7 +1,9 @@
 import { createDbClient } from "./client.js";
-import { adminUser, factory, branch } from "./schema/index.js";
+import { adminUser, factory, branch, product, productPrice } from "./schema/index.js";
 import argon2 from "argon2";
 import { eq } from "drizzle-orm";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required");
@@ -52,10 +54,90 @@ async function seedBranch(): Promise<void> {
   console.warn("branch Ajao Estate seeded");
 }
 
+interface MenuFile {
+  pricing: {
+    regular_330ml: number;
+    regular_650ml: number;
+    specials: number;
+    fruit_punch: number;
+  };
+  items: Array<{
+    id: number;
+    name: string;
+    category: "regular" | "special" | "punch";
+    ingredients: string[];
+  }>;
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function priceFor(category: "regular" | "special" | "punch", menu: MenuFile): number {
+  switch (category) {
+    case "regular": return menu.pricing.regular_330ml;
+    case "special": return menu.pricing.specials;
+    case "punch":   return menu.pricing.fruit_punch;
+  }
+}
+
+async function seedProducts(): Promise<void> {
+  // menu.json lives in the project root: ../../../menu.json relative to this file's
+  // tsx execution cwd (packages/db). We resolve from cwd so seed can be invoked
+  // either via pnpm filter or directly with tsx.
+  const candidates = [
+    resolve(process.cwd(), "../../menu.json"),     // when invoked from packages/db
+    resolve(process.cwd(), "../../../menu.json"),  // when invoked from repo root
+    resolve(process.cwd(), "menu.json"),
+  ];
+  let menuPath: string | undefined;
+  for (const p of candidates) {
+    try {
+      readFileSync(p, "utf8");
+      menuPath = p;
+      break;
+    } catch {
+      /* try next */
+    }
+  }
+  if (!menuPath) {
+    console.warn("menu.json not found, skipping product seed. Checked:", candidates.join(", "));
+    return;
+  }
+  const menu = JSON.parse(readFileSync(menuPath, "utf8")) as MenuFile;
+  console.warn("seeding products from", menuPath);
+
+  let created = 0;
+  for (const item of menu.items) {
+    const slug = slugify(item.name);
+    const existing = await db.select().from(product).where(eq(product.slug, slug));
+    if (existing.length > 0) continue;
+    const [row] = await db
+      .insert(product)
+      .values({
+        name: item.name,
+        slug,
+        category: item.category,
+        ingredients: item.ingredients,
+        sizeMl: 330,
+        displayOrder: item.id,
+      })
+      .returning();
+    if (!row) continue;
+    await db.insert(productPrice).values({
+      productId: row.id,
+      priceNgn: priceFor(item.category, menu),
+    });
+    created++;
+  }
+  console.warn(`products seeded: ${created} new (${menu.items.length} total in menu.json)`);
+}
+
 async function main(): Promise<void> {
   await seedOwner();
   await seedFactory();
   await seedBranch();
+  await seedProducts();
 }
 
 main()
