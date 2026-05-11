@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { secureHeaders } from "hono/secure-headers";
 import { createDbClient } from "@ms/db";
 import type { DbClient } from "@ms/db";
 import { requestIdMiddleware } from "./middleware/request-id.js";
@@ -21,6 +22,7 @@ import { payazaWebhookRoutes } from "./routes/webhooks-payaza.js";
 import { returnRoutes } from "./routes/returns.js";
 import { dailyCloseRoutes } from "./routes/daily-close.js";
 import { reportRoutes } from "./routes/reports.js";
+import { telemetryRoutes } from "./routes/telemetry.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -35,6 +37,23 @@ export function buildApp(): Hono {
   const db = getDb();
   const app = new Hono();
   app.use("*", requestIdMiddleware());
+  app.use(
+    "*",
+    secureHeaders({
+      strictTransportSecurity: "max-age=15552000; includeSubDomains",
+      contentSecurityPolicy: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "https://api.payaza.africa"],
+        frameAncestors: ["'none'"],
+      },
+      xFrameOptions: "DENY",
+      xContentTypeOptions: "nosniff",
+      referrerPolicy: "strict-origin-when-cross-origin",
+    }),
+  );
   app.onError(onError);
 
   app.get("/", (c) => c.json({ service: "ms-api", ok: true }));
@@ -56,6 +75,7 @@ export function buildApp(): Hono {
   app.route("/v1/branches/:branchId/returns", returnRoutes(db));
   app.route("/v1/branches/:branchId/daily-close", dailyCloseRoutes(db));
   app.route("/v1/reports", reportRoutes(db));
+  app.route("/v1/telemetry", telemetryRoutes(db));
   app.route("/v1/sync", syncRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks

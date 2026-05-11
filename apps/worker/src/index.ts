@@ -3,6 +3,7 @@ import { createDbClient } from "@ms/db";
 import { sweepExpiredReservations } from "@ms/domain";
 import { drainOutbox } from "./outbox.js";
 import { checkLateCloses, isLateCloseWindow } from "./late-close.js";
+import { exportAuditLog, isAuditExportWindow } from "./jobs/audit-export.js";
 
 const logger = pino({ base: { service: "ms-worker" } });
 
@@ -25,6 +26,7 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 let lastSweepAt = 0;
 let lastLateCheckAt = 0;
+let lastAuditExportDate: string | null = null;
 
 async function loop(): Promise<void> {
   while (!stopping) {
@@ -47,6 +49,15 @@ async function loop(): Promise<void> {
         const emitted = await checkLateCloses(db);
         if (emitted > 0) logger.info({ emitted }, "late close alerts emitted");
         lastLateCheckAt = now;
+      }
+
+      // Nightly audit-log export to R2. Skips itself if env not configured.
+      if (isAuditExportWindow(lastAuditExportDate)) {
+        const result = await exportAuditLog(db);
+        if (!result.skipped) {
+          logger.info({ key: result.key, bytes: result.bytes }, "audit export uploaded");
+        }
+        lastAuditExportDate = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
       }
     } catch (err) {
       logger.error({ err }, "worker loop error");
