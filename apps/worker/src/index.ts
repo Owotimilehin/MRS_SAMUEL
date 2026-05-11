@@ -2,6 +2,7 @@ import pino from "pino";
 import { createDbClient } from "@ms/db";
 import { sweepExpiredReservations } from "@ms/domain";
 import { drainOutbox } from "./outbox.js";
+import { checkLateCloses, isLateCloseWindow } from "./late-close.js";
 
 const logger = pino({ base: { service: "ms-worker" } });
 
@@ -11,6 +12,7 @@ if (!databaseUrl) throw new Error("DATABASE_URL required");
 const db = createDbClient(databaseUrl);
 const POLL_MS = 5000;
 const SWEEP_INTERVAL_MS = 60_000; // sweep expired reservations every minute
+const LATE_CLOSE_INTERVAL_MS = 60 * 60 * 1000; // check hourly
 
 let stopping = false;
 function shutdown(reason: string): void {
@@ -22,6 +24,7 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 let lastSweepAt = 0;
+let lastLateCheckAt = 0;
 
 async function loop(): Promise<void> {
   while (!stopping) {
@@ -37,6 +40,13 @@ async function loop(): Promise<void> {
         const swept = await sweepExpiredReservations(db);
         if (swept > 0) logger.info({ swept }, "expired reservations swept");
         lastSweepAt = now;
+      }
+
+      // Late-close alerts: hourly, but only during the 23:00–02:00 Lagos window.
+      if (now - lastLateCheckAt > LATE_CLOSE_INTERVAL_MS && isLateCloseWindow()) {
+        const emitted = await checkLateCloses(db);
+        if (emitted > 0) logger.info({ emitted }, "late close alerts emitted");
+        lastLateCheckAt = now;
       }
     } catch (err) {
       logger.error({ err }, "worker loop error");

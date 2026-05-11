@@ -73,6 +73,16 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
           `Reason: ${p["reason"]}\n` +
           `👉 ${ADMIN_URL}/review`,
       };
+    case "daily_close.late":
+      return {
+        chatIds: [channels.owner(), channels.branchAjao()],
+        text:
+          `⏰ *Daily close overdue*\n` +
+          `${p["branch_name"]} hasn't filed for ${p["business_date"]}.\n` +
+          `👉 ${ADMIN_URL}/branch/close`,
+      };
+    case "daily_close.submitted":
+      return { chatIds: [], text: "" };
     default:
       return { chatIds: [], text: "" };
   }

@@ -17,3 +17,4 @@ export * from "./payment.js";
 export * from "./stock-reservation.js";
 export * from "./sale-return.js";
 export * from "./customer-credit.js";
+export * from "./daily-close.js";

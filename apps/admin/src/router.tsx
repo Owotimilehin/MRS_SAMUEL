@@ -16,6 +16,8 @@ import { BranchSalesPage } from "./routes/branch/sales.js";
 import { BranchTransfersPage } from "./routes/branch/transfers.js";
 import { BranchStockPage } from "./routes/branch/stock.js";
 import { BranchReturnsPage } from "./routes/branch/returns.js";
+import { BranchClosePage } from "./routes/branch/close.js";
+import { OwnerClosesPage } from "./routes/owner/closes.js";
 import { useEffect, useState, type ReactNode } from "react";
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
@@ -156,6 +158,16 @@ const branchReturnsRoute = createRoute({
   path: "/branch/returns",
   component: () => <WithBranchId render={(id) => <BranchReturnsPage branchId={id} />} />,
 });
+const branchCloseRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/branch/close",
+  component: () => <WithBranchId render={(id) => <BranchClosePage branchId={id} />} />,
+});
+const ownerClosesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/closes",
+  component: OwnerClosesPage,
+});
 const branchRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/branch",
@@ -182,6 +194,8 @@ const routeTree = rootRoute.addChildren([
   branchTransfersRoute,
   branchStockRoute,
   branchReturnsRoute,
+  branchCloseRoute,
+  ownerClosesRoute,
 ]);
 
 export const router = createRouter({ routeTree });

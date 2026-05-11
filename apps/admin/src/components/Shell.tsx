@@ -14,6 +14,7 @@ const NAV: NavLink[] = [
   { to: "/owner/branches", label: "Branches", icon: "🏪" },
   { to: "/factory/production-runs", label: "Production", icon: "🏭" },
   { to: "/transfers", label: "Transfers", icon: "📦" },
+  { to: "/owner/closes", label: "Daily closes", icon: "🧾" },
 ];
 
 export function Shell({ children, title }: { children: ReactNode; title: string }) {

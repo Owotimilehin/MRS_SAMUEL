@@ -19,6 +19,8 @@ import { publicCatalogRoutes } from "./routes/public-catalog.js";
 import { publicOrderRoutes } from "./routes/public-orders.js";
 import { payazaWebhookRoutes } from "./routes/webhooks-payaza.js";
 import { returnRoutes } from "./routes/returns.js";
+import { dailyCloseRoutes } from "./routes/daily-close.js";
+import { reportRoutes } from "./routes/reports.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -52,6 +54,8 @@ export function buildApp(): Hono {
   // Nested branch routes: /v1/branches/:branchId/sales/...
   app.route("/v1/branches/:branchId/sales", saleRoutes(db));
   app.route("/v1/branches/:branchId/returns", returnRoutes(db));
+  app.route("/v1/branches/:branchId/daily-close", dailyCloseRoutes(db));
+  app.route("/v1/reports", reportRoutes(db));
   app.route("/v1/sync", syncRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
