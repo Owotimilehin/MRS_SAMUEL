@@ -1,3 +1,37 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Brand tokens shared with the editorial mockups (docs/ui-mockups/assets/system.css) */
+:root {
+  --ms-green-900: #1f4a1a;
+  --ms-green-700: #2f7e2a;
+  --ms-green-500: #4ea83a;
+  --ms-green-100: #e8f5e2;
+  --ms-orange: #f08a1a;
+  --ms-yellow: #ffc434;
+  --ms-red: #e64034;
+  --ms-crimson: #a02440;
+  --ms-pink: #ff5aa6;
+  --ms-bg: #fbf7ef;
+  --ms-surface: #ffffff;
+  --ms-surface-alt: #f5efe2;
+  --ms-border: #e7e1d4;
+  --ms-divider: #efe9dc;
+  --ms-ink: #1e1b16;
+  --ms-ink-2: #4b463d;
+  --ms-ink-3: #8a8576;
+  --ms-ok: #2f7e2a;
+  --ms-warn: #c4831b;
+  --ms-danger: #c63a2e;
+}
+
+html, body {
+  background: var(--ms-bg);
+  color: var(--ms-ink);
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+.font-display {
+  font-family: "Fraunces", Georgia, serif;
+}

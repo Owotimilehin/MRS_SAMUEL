@@ -12,6 +12,7 @@ import { productionRunRoutes } from "./routes/production-runs.js";
 import { stockRoutes } from "./routes/stock.js";
 import { transferRoutes } from "./routes/transfers.js";
 import { reviewRoutes } from "./routes/review.js";
+import { factoryRoutes } from "./routes/factories.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -41,6 +42,7 @@ export function buildApp(): Hono {
   app.route("/v1/stock", stockRoutes(db));
   app.route("/v1/transfers", transferRoutes(db));
   app.route("/v1/review", reviewRoutes(db));
+  app.route("/v1/factories", factoryRoutes(db));
 
   // Temporary echo endpoint used by idempotency integration tests.
   // TODO: remove once a real mutation endpoint exists (Phase 1).
