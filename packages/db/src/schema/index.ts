@@ -7,3 +7,4 @@ export * from "./factory";
 export * from "./branch";
 export * from "./product";
 export * from "./product-price";
+export * from "./stock-ledger";

@@ -36,6 +36,20 @@
       "when": 1778474237926,
       "tag": "0004_magical_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778474352554,
+      "tag": "0005_goofy_ricochet",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778474500000,
+      "tag": "0006_stock_ledger_constraints",
+      "breakpoints": true
     }
   ]
 }
