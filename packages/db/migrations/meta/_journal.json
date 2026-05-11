@@ -57,6 +57,20 @@
       "when": 1778474823153,
       "tag": "0007_unknown_caretaker",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778474929911,
+      "tag": "0008_cultured_speed",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778475100000,
+      "tag": "0009_stock_transfer_sequence",
+      "breakpoints": true
     }
   ]
 }
