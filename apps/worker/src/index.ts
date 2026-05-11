@@ -1,5 +1,6 @@
 import pino from "pino";
 import { createDbClient } from "@ms/db";
+import { sweepExpiredReservations } from "@ms/domain";
 import { drainOutbox } from "./outbox.js";
 
 const logger = pino({ base: { service: "ms-worker" } });
@@ -9,6 +10,7 @@ if (!databaseUrl) throw new Error("DATABASE_URL required");
 
 const db = createDbClient(databaseUrl);
 const POLL_MS = 5000;
+const SWEEP_INTERVAL_MS = 60_000; // sweep expired reservations every minute
 
 let stopping = false;
 function shutdown(reason: string): void {
@@ -19,6 +21,8 @@ function shutdown(reason: string): void {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
+let lastSweepAt = 0;
+
 async function loop(): Promise<void> {
   while (!stopping) {
     try {
@@ -26,13 +30,21 @@ async function loop(): Promise<void> {
       if (processed > 0) {
         logger.info({ processed }, "outbox batch drained");
       }
+
+      // Reservation sweeper runs on its own cadence inside the same loop.
+      const now = Date.now();
+      if (now - lastSweepAt > SWEEP_INTERVAL_MS) {
+        const swept = await sweepExpiredReservations(db);
+        if (swept > 0) logger.info({ swept }, "expired reservations swept");
+        lastSweepAt = now;
+      }
     } catch (err) {
-      logger.error({ err }, "outbox loop error");
+      logger.error({ err }, "worker loop error");
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
 }
 
-logger.info({ pollMs: POLL_MS }, "worker started");
+logger.info({ pollMs: POLL_MS, sweepIntervalMs: SWEEP_INTERVAL_MS }, "worker started");
 await loop();
 logger.info("worker exited");

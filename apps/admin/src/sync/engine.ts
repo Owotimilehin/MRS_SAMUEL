@@ -1,0 +1,252 @@
+import { local, type OutboxRow } from "../db/local.js";
+
+/**
+ * Offline-first sync engine.
+ *
+ * Outbound: drains the local outbox FIFO, depends_on aware. Each mutation
+ * carries the row id as its Idempotency-Key so server-side replays are safe.
+ *
+ * Inbound: hits /v1/sync/pull with the last cursor and writes returned rows
+ * into the local mirror tables.
+ */
+
+const POLL_MS = 30_000;
+const BACKOFFS_S = [1, 2, 4, 8, 16, 32, 60, 120, 300, 300] as const;
+
+function backoffMs(attempts: number): number {
+  const idx = Math.min(attempts, BACKOFFS_S.length - 1);
+  const base = BACKOFFS_S[idx] * 1000;
+  const jitter = base * (Math.random() * 0.4 - 0.2);
+  return Math.max(1000, base + jitter);
+}
+
+async function sendOne(row: OutboxRow): Promise<void> {
+  const res = await fetch(row.endpoint, {
+    method: row.method,
+    credentials: "include",
+    headers: {
+      "content-type": "application/json",
+      "idempotency-key": row.id,
+    },
+    body: row.payload === null ? undefined : JSON.stringify(row.payload),
+  });
+
+  if (res.ok) {
+    await local.outbox.update(row.id, {
+      status: "acknowledged",
+      acknowledged_at: Date.now(),
+    });
+    return;
+  }
+
+  // Business rule rejection — don't keep retrying.
+  if ([400, 401, 403, 404, 409, 422].includes(res.status)) {
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: { message?: string };
+    };
+    await local.outbox.update(row.id, {
+      status: "dead",
+      last_error: body.error?.message ?? `HTTP ${res.status}`,
+    });
+    return;
+  }
+
+  // Transient — bump attempt count, schedule next try.
+  const nextAttempts = row.attempt_count + 1;
+  await local.outbox.update(row.id, {
+    attempt_count: nextAttempts,
+    next_attempt_at: Date.now() + backoffMs(nextAttempts),
+    last_error: `HTTP ${res.status}`,
+    status: nextAttempts > 50 ? "dead" : "pending",
+  });
+}
+
+export async function flushOutbox(): Promise<void> {
+  if (!navigator.onLine) return;
+  const now = Date.now();
+
+  const pending = await local.outbox
+    .where("status")
+    .equals("pending")
+    .and((r) => r.next_attempt_at <= now)
+    .sortBy("created_at_local");
+
+  for (const row of pending) {
+    // Dependency-aware: a Pay depends on its Confirm; skip until the dep
+    // is acknowledged.
+    if (row.depends_on) {
+      const dep = await local.outbox.get(row.depends_on);
+      if (!dep || dep.status !== "acknowledged") continue;
+    }
+    await local.outbox.update(row.id, { status: "in_flight" });
+    try {
+      await sendOne({ ...row, status: "in_flight" });
+    } catch (err) {
+      const nextAttempts = row.attempt_count + 1;
+      await local.outbox.update(row.id, {
+        status: "pending",
+        attempt_count: nextAttempts,
+        next_attempt_at: Date.now() + backoffMs(nextAttempts),
+        last_error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+}
+
+interface PullResponse {
+  data: {
+    products: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      category: string;
+      ingredients: string[];
+      isActive: boolean;
+    }>;
+    prices: Array<{
+      id: string;
+      productId: string;
+      priceNgn: number;
+      validFrom: string;
+      validTo: string | null;
+    }>;
+    ledger: Array<{
+      id: string;
+      locationType: string;
+      locationId: string;
+      productId: string;
+      delta: number;
+      sourceType: string;
+      sourceId: string;
+      recordedAt: string;
+    }>;
+    transfers: Array<{
+      id: string;
+      transferNumber: string;
+      status: string;
+      updatedAt: string;
+    }>;
+    sales: Array<{
+      id: string;
+      orderNumber: string;
+      branchId: string;
+      channel: string;
+      status: string;
+      totalNgn: number;
+      paymentMethod: string;
+      createdAtLocal: string;
+      idempotencyKey: string;
+    }>;
+  };
+  next_cursor: string;
+}
+
+export async function pullDeltas(branchId: string): Promise<void> {
+  if (!navigator.onLine) return;
+  const meta = await local.meta.get("default");
+  const since = meta?.last_pull_at ?? new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const url = `/v1/sync/pull?branch_id=${branchId}&since=${encodeURIComponent(since)}`;
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) return;
+  const body = (await res.json()) as PullResponse;
+
+  await local.transaction(
+    "rw",
+    local.products,
+    local.prices,
+    local.ledger,
+    local.transfers,
+    local.sales,
+    local.meta,
+    async () => {
+      for (const p of body.data.products) {
+        await local.products.put({
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          category: p.category,
+          ingredients: p.ingredients,
+          is_active: p.isActive,
+        });
+      }
+      for (const pr of body.data.prices) {
+        await local.prices.put({
+          id: pr.id,
+          product_id: pr.productId,
+          price_ngn: pr.priceNgn,
+          valid_from: pr.validFrom,
+          valid_to: pr.validTo,
+        });
+      }
+      for (const lg of body.data.ledger) {
+        await local.ledger.put({
+          id: lg.id,
+          location_type: lg.locationType,
+          location_id: lg.locationId,
+          product_id: lg.productId,
+          delta: lg.delta,
+          source_type: lg.sourceType,
+          source_id: lg.sourceId,
+          recorded_at: lg.recordedAt,
+        });
+      }
+      for (const t of body.data.transfers) {
+        await local.transfers.put({
+          id: t.id,
+          transfer_number: t.transferNumber,
+          status: t.status,
+          updated_at: t.updatedAt,
+        });
+      }
+      for (const s of body.data.sales) {
+        await local.sales.put({
+          id: s.id,
+          order_number: s.orderNumber,
+          branch_id: s.branchId,
+          channel: s.channel,
+          status: s.status,
+          total_ngn: s.totalNgn,
+          payment_method: s.paymentMethod,
+          created_at_local: s.createdAtLocal,
+          idempotency_key: s.idempotencyKey,
+        });
+      }
+      await local.meta.put({
+        id: "default",
+        last_pull_at: body.next_cursor,
+        branch_id: branchId,
+      });
+    },
+  );
+}
+
+let stopLoop: (() => void) | null = null;
+
+export function startSyncLoop(branchId: string): () => void {
+  if (stopLoop) stopLoop();
+
+  let active = true;
+  const tick = async (): Promise<void> => {
+    if (!active) return;
+    try {
+      await flushOutbox();
+      await pullDeltas(branchId);
+    } catch (err) {
+      console.error("sync tick failed", err);
+    }
+    setTimeout(tick, POLL_MS);
+  };
+
+  const onOnline = (): void => {
+    void flushOutbox();
+  };
+  window.addEventListener("online", onOnline);
+  void tick();
+
+  stopLoop = () => {
+    active = false;
+    window.removeEventListener("online", onOnline);
+    stopLoop = null;
+  };
+  return stopLoop;
+}

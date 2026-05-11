@@ -136,5 +136,30 @@ export function authRoutes(db: DbClient) {
     return c.body(null, 204);
   });
 
+  // GET /v1/auth/me — return the current session's user info so the frontend
+  // can route them to the right shell (owner vs branch) without a separate
+  // /users endpoint. Requires a valid access cookie.
+  r.get("/me", async (c) => {
+    const token = getCookie(c, ACCESS_COOKIE);
+    if (!token) throw new BusinessError("unauthorized", "missing session", 401);
+    const { verifyAccessToken } = await import("./jwt.js");
+    let payload;
+    try {
+      payload = await verifyAccessToken(token);
+    } catch {
+      throw new BusinessError("unauthorized", "invalid session", 401);
+    }
+    const [user] = await db.select().from(adminUser).where(eq(adminUser.id, payload.sub));
+    if (!user) throw new BusinessError("unauthorized", "user missing", 401);
+    return c.json({
+      data: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        branch_id: user.branchId,
+      },
+    });
+  });
+
   return r;
 }

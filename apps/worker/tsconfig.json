@@ -5,6 +5,9 @@
     "outDir": "dist",
     "composite": true
   },
-  "references": [{ "path": "../../packages/db" }],
+  "references": [
+    { "path": "../../packages/db" },
+    { "path": "../../packages/domain" }
+  ],
   "include": ["src/**/*"]
 }

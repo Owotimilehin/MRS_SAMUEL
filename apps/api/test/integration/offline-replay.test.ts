@@ -1,0 +1,211 @@
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { serve } from "@hono/node-server";
+import type { AddressInfo } from "node:net";
+import { v4 as uuid } from "uuid";
+import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+
+/**
+ * Simulates a branch device that buffered 5 sales offline, then drained its
+ * outbox to the server in FIFO order with the same Idempotency-Key each.
+ *
+ * Proves:
+ *   - 5 unique sales land server-side (no merging)
+ *   - each carries the client-generated id
+ *   - replaying the SAME request a second time is a no-op (server returns
+ *     the original row)
+ *   - branch ledger reflects the sum of all 5 sales
+ */
+describe("offline-replay: 5 sales drained from device outbox", () => {
+  let container: StartedPostgreSqlContainer;
+  let baseUrl: string;
+  let cookies: string;
+  let server: ReturnType<typeof serve>;
+  let branchId: string;
+  let productId: string;
+
+  beforeAll(async () => {
+    const tdb = await setupTestDb();
+    container = tdb.container;
+    await seedOwner(tdb.db);
+    const { buildApp } = await import("../../src/test-app.js");
+    server = serve({ fetch: buildApp().fetch, port: 0 });
+    await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+    const addr = server.address() as AddressInfo;
+    baseUrl = `http://localhost:${addr.port}`;
+    cookies = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
+
+    // Set up branch + factory + product, pre-stock branch with 50 bottles.
+    const bRes = await fetch(`${baseUrl}/v1/branches`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: cookies,
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({ name: "Replay Branch", code: "RPLAY" }),
+    });
+    branchId = ((await bRes.json()) as { data: { id: string } }).data.id;
+
+    const { factory } = await import("@ms/db");
+    const [fac] = await tdb.db.insert(factory).values({ name: "Replay Factory" }).returning();
+    if (!fac) throw new Error("factory insert failed");
+    const factoryId = fac.id;
+
+    const pRes = await fetch(`${baseUrl}/v1/products`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: cookies,
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({
+        name: "Replay Juice",
+        slug: "replay-juice",
+        category: "regular",
+        initial_price_ngn: 2500,
+      }),
+    });
+    productId = ((await pRes.json()) as { data: { id: string } }).data.id;
+
+    // Production run + transfer of 50 to the branch
+    const run = await fetch(`${baseUrl}/v1/production-runs`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: cookies,
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({
+        factory_id: factoryId,
+        run_date: "2026-05-11",
+        items: [{ product_id: productId, quantity_produced: 50 }],
+      }),
+    });
+    const runId = ((await run.json()) as { data: { id: string } }).data.id;
+    await fetch(`${baseUrl}/v1/production-runs/${runId}/complete`, {
+      method: "PATCH",
+      headers: { cookie: cookies, "idempotency-key": uuid() },
+    });
+    const xf = await fetch(`${baseUrl}/v1/transfers`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: cookies,
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({
+        factory_id: factoryId,
+        branch_id: branchId,
+        items: [{ product_id: productId, quantity_sent: 50 }],
+      }),
+    });
+    const xfId = ((await xf.json()) as { data: { id: string } }).data.id;
+    await fetch(`${baseUrl}/v1/transfers/${xfId}/dispatch`, {
+      method: "PATCH",
+      headers: { cookie: cookies, "idempotency-key": uuid() },
+    });
+    await fetch(`${baseUrl}/v1/transfers/${xfId}/arrive`, {
+      method: "PATCH",
+      headers: { cookie: cookies, "idempotency-key": uuid() },
+    });
+    const detail = await fetch(`${baseUrl}/v1/transfers/${xfId}`, { headers: { cookie: cookies } });
+    const detailBody = (await detail.json()) as { data: { items: Array<{ id: string }> } };
+    await fetch(`${baseUrl}/v1/transfers/${xfId}/receive`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        cookie: cookies,
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({
+        items: [{ item_id: detailBody.data.items[0]!.id, quantity_received: 50 }],
+      }),
+    });
+  }, 90_000);
+
+  afterAll(async () => {
+    server.close();
+    await container.stop();
+  });
+
+  it("replays 5 offline sales in FIFO order with client-generated ids", async () => {
+    // 5 sales, 1 bottle each. Each has a UUID generated by the simulated device
+    // and a captured timestamp — the real outbox stores the same payload across
+    // retries, so we MUST not regenerate created_at_local per call.
+    const sales = Array.from({ length: 5 }, () => ({
+      id: uuid(),
+      idemKey: uuid(),
+      createdAtLocal: new Date().toISOString(),
+    }));
+
+    const drainOnce = async (
+      sale: (typeof sales)[number],
+    ): Promise<{ status: number; body: { data: { id: string } } }> => {
+      const res = await fetch(`${baseUrl}/v1/branches/${branchId}/sales`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: cookies,
+          "idempotency-key": sale.idemKey,
+        },
+        body: JSON.stringify({
+          id: sale.id,
+          channel: "walkup",
+          items: [{ product_id: productId, quantity: 1 }],
+          payment_method: "cash",
+          created_at_local: sale.createdAtLocal,
+        }),
+      });
+      return { status: res.status, body: (await res.json()) as { data: { id: string } } };
+    };
+
+    // First drain: serial replay (matches the real device — outbox flushes FIFO)
+    const firstDrain: { status: number; body: { data: { id: string } } }[] = [];
+    for (const sale of sales) {
+      firstDrain.push(await drainOnce(sale));
+    }
+    for (let i = 0; i < firstDrain.length; i++) {
+      const r = firstDrain[i]!;
+      if (r.status !== 201) {
+        // Surface the actual server error for easy diagnosis
+        throw new Error(`sale ${i} failed: ${r.status} ${JSON.stringify(r.body)}`);
+      }
+      expect(r.body.data.id).toBe(sales[i]!.id);
+    }
+    expect(new Set(firstDrain.map((r) => r.body.data.id)).size).toBe(5);
+
+    // Second drain (the "I retried because connectivity flapped" scenario):
+    // SAME idempotency keys + SAME payload → no new rows, same data echoed.
+    const secondDrain: { status: number; body: unknown }[] = [];
+    for (const sale of sales) {
+      secondDrain.push(await drainOnce(sale));
+    }
+    for (let i = 0; i < sales.length; i++) {
+      // Surface raw shape if the assertion is about to fail
+      const r = secondDrain[i]!;
+      const ok = (r.body as { data?: { id?: string } })?.data?.id === sales[i]!.id;
+      if (!ok) {
+        throw new Error(
+          `replay ${i} returned ${r.status}: ${JSON.stringify(r.body)}`,
+        );
+      }
+    }
+
+    // Pay all 5 (reservation → ledger decrement).
+    for (const sale of sales) {
+      const r = await fetch(`${baseUrl}/v1/branches/${branchId}/sales/${sale.id}/pay`, {
+        method: "PATCH",
+        headers: { cookie: cookies, "idempotency-key": uuid() },
+      });
+      expect(r.status).toBe(200);
+    }
+
+    // Branch ledger: 50 in, 5 out → 45 left
+    const stock = await fetch(`${baseUrl}/v1/stock/branch/${branchId}`, {
+      headers: { cookie: cookies },
+    });
+    const stockBody = (await stock.json()) as { data: Record<string, number> };
+    expect(stockBody.data[productId]).toBe(45);
+  });
+});

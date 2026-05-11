@@ -1,7 +1,45 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: "prompt",
+      // Don't precache imagery the user might not visit; keep cache lean.
+      includeAssets: ["favicon.ico"],
+      manifest: {
+        name: "Mrs. Samuel Admin",
+        short_name: "MS Admin",
+        description: "Branch POS, factory dispatch, and admin tools for Mrs. Samuel Fruit Juice.",
+        theme_color: "#4ea83a",
+        background_color: "#fbf7ef",
+        display: "standalone",
+        start_url: "/branch",
+        icons: [],
+      },
+      workbox: {
+        navigateFallback: "/index.html",
+        runtimeCaching: [
+          {
+            urlPattern: /\/v1\/sync\/pull/,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "sync-pull",
+              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 5 },
+            },
+          },
+          {
+            urlPattern: /\/v1\/products(\/[^/]+)?$/,
+            handler: "StaleWhileRevalidate",
+            options: { cacheName: "products" },
+          },
+        ],
+      },
+      devOptions: { enabled: false },
+    }),
+  ],
   server: { port: 3000, proxy: { "/v1": "http://localhost:3001" } },
 });
