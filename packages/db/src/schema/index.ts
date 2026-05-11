@@ -15,3 +15,5 @@ export * from "./customer.js";
 export * from "./sale-order.js";
 export * from "./payment.js";
 export * from "./stock-reservation.js";
+export * from "./sale-return.js";
+export * from "./customer-credit.js";
