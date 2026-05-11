@@ -15,6 +15,7 @@ import { SellPage } from "./routes/branch/sell.js";
 import { BranchSalesPage } from "./routes/branch/sales.js";
 import { BranchTransfersPage } from "./routes/branch/transfers.js";
 import { BranchStockPage } from "./routes/branch/stock.js";
+import { BranchReturnsPage } from "./routes/branch/returns.js";
 import { useEffect, useState, type ReactNode } from "react";
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
@@ -150,6 +151,11 @@ const branchStockRoute = createRoute({
   path: "/branch/stock",
   component: () => <WithBranchId render={(id) => <BranchStockPage branchId={id} />} />,
 });
+const branchReturnsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/branch/returns",
+  component: () => <WithBranchId render={(id) => <BranchReturnsPage branchId={id} />} />,
+});
 const branchRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/branch",
@@ -175,6 +181,7 @@ const routeTree = rootRoute.addChildren([
   branchSalesRoute,
   branchTransfersRoute,
   branchStockRoute,
+  branchReturnsRoute,
 ]);
 
 export const router = createRouter({ routeTree });

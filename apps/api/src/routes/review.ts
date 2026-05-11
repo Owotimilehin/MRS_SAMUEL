@@ -1,12 +1,14 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { stockTransfer, type DbClient } from "@ms/db";
+import { stockTransfer, saleReturn, type DbClient } from "@ms/db";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
 /**
- * Owner-only "Needs review" inbox. Right now it only lists transfers in the
- * received_with_variance state — Phase 4+ will add SaleReturn pending_approval
- * rows and RECONCILE_NEEDED sale flags to the same payload.
+ * Owner-only "Needs review" inbox. Aggregates everything that needs the
+ * owner's eye:
+ *   - stock transfers in received_with_variance
+ *   - sale returns pending_approval
+ *   - (future) sale orders in reconcile_needed
  */
 export function reviewRoutes(db: DbClient) {
   const r = new Hono();
@@ -17,9 +19,16 @@ export function reviewRoutes(db: DbClient) {
       .select()
       .from(stockTransfer)
       .where(eq(stockTransfer.status, "received_with_variance"));
+
+    const returnApprovals = await db
+      .select()
+      .from(saleReturn)
+      .where(eq(saleReturn.status, "pending_approval"));
+
     return c.json({
       data: {
         transfer_variances: transferVariances,
+        return_approvals: returnApprovals,
       },
     });
   });

@@ -1,7 +1,15 @@
 import { eq, asc } from "drizzle-orm";
-import { outboxEvent, customer, type DbClient } from "@ms/db";
+import {
+  outboxEvent,
+  customer,
+  payment,
+  saleReturn,
+  saleOrder,
+  type DbClient,
+} from "@ms/db";
 import { sendMessage, channels } from "./notifiers/telegram.js";
 import { sendEmail } from "./notifiers/email.js";
+import { refundPayaza } from "./payments/payaza-refund.js";
 import pino from "pino";
 
 const logger = pino({ base: { service: "ms-worker", part: "outbox" } });
@@ -56,6 +64,15 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
           `Reason: ${p["reason"]}\n` +
           `👉 ${ADMIN_URL}/transfers/${p["transfer_id"]}`,
       };
+    case "sale_return.pending_approval":
+      return {
+        chatIds: [channels.owner()],
+        text:
+          `↩️ *Return pending review*\n` +
+          `${p["return_number"]} · ₦${p["refund_amount_ngn"]}\n` +
+          `Reason: ${p["reason"]}\n` +
+          `👉 ${ADMIN_URL}/review`,
+      };
     default:
       return { chatIds: [], text: "" };
   }
@@ -82,6 +99,54 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
       if (text) {
         for (const chatId of chatIds) {
           if (chatId) await sendMessage(chatId, text);
+        }
+      }
+
+      // Card refund: hit Payaza, flip payment.status to refunded,
+      // optionally email the customer the receipt.
+      if (ev.eventType === "payment.refund_request") {
+        const p = ev.payload as Record<string, string | number | null>;
+        const processorReference = p["processor_reference"];
+        const amountNgn = p["amount_ngn"];
+        const paymentId = p["payment_id"];
+        const saleReturnId = p["sale_return_id"];
+        if (typeof processorReference === "string" && typeof amountNgn === "number" && typeof paymentId === "string") {
+          const refund = await refundPayaza({
+            processorReference,
+            amountNgn,
+          });
+          await db
+            .update(payment)
+            .set({ status: "refunded", processorReference: refund.refund_reference })
+            .where(eq(payment.id, paymentId));
+
+          // Email the customer if we know who they are.
+          if (typeof saleReturnId === "string") {
+            const [ret] = await db.select().from(saleReturn).where(eq(saleReturn.id, saleReturnId));
+            if (ret) {
+              const [origOrder] = await db
+                .select()
+                .from(saleOrder)
+                .where(eq(saleOrder.id, ret.originalSaleOrderId));
+              if (origOrder?.customerId) {
+                const [cust] = await db
+                  .select()
+                  .from(customer)
+                  .where(eq(customer.id, origOrder.customerId));
+                if (cust?.email) {
+                  await sendEmail({
+                    to: cust.email,
+                    subject: `Refund processed for order ${origOrder.orderNumber}`,
+                    text:
+                      `Hi ${cust.name ?? "there"},\n\n` +
+                      `Your refund of ₦${amountNgn.toLocaleString()} for return ` +
+                      `${ret.returnNumber} has been sent to your card. It should ` +
+                      `reflect in 1-3 working days.\n\n— Mrs. Samuel Fruit Juice`,
+                  });
+                }
+              }
+            }
+          }
         }
       }
 

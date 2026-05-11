@@ -15,6 +15,7 @@ const NAV = [
   { to: "/branch/sales", label: "Today's sales", icon: "🧾" },
   { to: "/branch/transfers", label: "Incoming", icon: "📦" },
   { to: "/branch/stock", label: "Stock", icon: "📊" },
+  { to: "/branch/returns", label: "Returns", icon: "↩️" },
 ];
 
 export function BranchShell({ branchId, title, children }: BranchShellProps): JSX.Element {
