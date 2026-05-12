@@ -1,12 +1,12 @@
 import { sql } from "drizzle-orm";
-import type { DbClient } from "@ms/db";
+import type { DbExecutor } from "@ms/db";
 
 /**
  * Expected cash for a branch on a given business date:
  *   sum(paid cash sales) − sum(cash refunds completed that day)
  */
 export async function expectedCashForDay(
-  db: DbClient,
+  db: DbExecutor,
   branchId: string,
   businessDate: Date,
 ): Promise<number> {
@@ -38,7 +38,7 @@ export async function expectedCashForDay(
  * Current expected stock balance per product at a branch (ledger sum).
  */
 export async function expectedStockForDay(
-  db: DbClient,
+  db: DbExecutor,
   branchId: string,
 ): Promise<Record<string, number>> {
   const rows = await db.execute<{ product_id: string; balance: number | string }>(sql`

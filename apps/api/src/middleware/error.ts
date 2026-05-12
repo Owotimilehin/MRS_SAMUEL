@@ -1,6 +1,6 @@
 import type { Context, ErrorHandler } from "hono";
 import { ZodError } from "zod";
-import type { StatusCode } from "hono/utils/http-status";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { AppError } from "../lib/errors.js";
 import { logger } from "../logger.js";
 import { Sentry } from "../sentry.js";
@@ -16,7 +16,7 @@ export const onError: ErrorHandler = (err, c: Context) => {
           details: { ...err.details, request_id: requestId },
         },
       },
-      err.status as StatusCode,
+      err.status as ContentfulStatusCode,
     );
   }
   if (err instanceof ZodError) {

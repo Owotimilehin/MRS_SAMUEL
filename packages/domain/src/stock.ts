@@ -1,5 +1,5 @@
 import { sql, and, eq } from "drizzle-orm";
-import { stockLedger, type DbClient } from "@ms/db";
+import { stockLedger, type DbExecutor } from "@ms/db";
 
 /**
  * Compute the current stock balance for every product at a location by
@@ -11,7 +11,7 @@ import { stockLedger, type DbClient } from "@ms/db";
  * no ledger rows at this location are absent from the map (treat as 0).
  */
 export async function balanceAt(
-  db: DbClient,
+  db: DbExecutor,
   opts: { locationType: "factory" | "branch"; locationId: string; productId?: string },
 ): Promise<Record<string, number>> {
   const where = [
@@ -40,7 +40,7 @@ export async function balanceAt(
  * dispatch ledger rows — otherwise a concurrent dispatch could race.
  */
 export async function checkFactoryStockAvailable(
-  db: DbClient,
+  db: DbExecutor,
   factoryId: string,
   items: { productId: string; quantity: number }[],
 ): Promise<
@@ -68,7 +68,7 @@ export async function checkFactoryStockAvailable(
  * Must be called inside the dispatch transaction so the number is bound
  * to the same row that uses it.
  */
-export async function nextTransferNumber(db: DbClient): Promise<string> {
+export async function nextTransferNumber(db: DbExecutor): Promise<string> {
   const rows = await db.execute<{ nextval: string | number }>(
     sql`SELECT nextval('stock_transfer_seq') AS nextval`,
   );

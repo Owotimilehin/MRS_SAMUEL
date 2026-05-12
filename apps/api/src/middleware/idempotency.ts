@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import type { StatusCode } from "hono/utils/http-status";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { idempotencyKey } from "@ms/db";
@@ -54,7 +54,7 @@ export function idempotencyMiddleware(db: DbClient): MiddlewareHandler {
       }
       return c.json(
         (existing.responseBody ?? {}) as Record<string, unknown>,
-        (existing.responseStatus ?? 200) as StatusCode,
+        (existing.responseStatus ?? 200) as ContentfulStatusCode,
       );
     }
 

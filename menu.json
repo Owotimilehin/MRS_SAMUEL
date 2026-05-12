@@ -1,0 +1,32 @@
+{
+  "brand": "Mrs. Samuel Fruit Juice",
+  "tagline": "100% Natural · Good Health in a Bottle",
+  "handle": "@healthy_drink_in_lagos",
+  "phone": "0706 722 0914",
+  "currency": "NGN",
+  "pricing": {
+    "regular_330ml": 2500,
+    "regular_650ml": 3500,
+    "specials": 4500,
+    "fruit_punch": 2000
+  },
+  "items": [
+    { "id":  1, "name": "Sunrise Blend",            "category": "regular",  "ingredients": ["Carrot", "Pawpaw", "Orange", "Pineapple"] },
+    { "id":  2, "name": "Crimson Garden Glow",      "category": "regular",  "ingredients": ["Apple", "Beetroot", "Celery", "Carrot", "Pineapple"] },
+    { "id":  3, "name": "Tropical Swirl",           "category": "regular",  "ingredients": ["Pineapple", "Banana"] },
+    { "id":  4, "name": "Crimson Elixir",           "category": "regular",  "ingredients": ["Beetroot", "Pineapple", "Watermelon"] },
+    { "id":  5, "name": "Immune Booster",           "category": "regular",  "ingredients": ["Pineapple", "Tumeric", "Ginger", "Lemon"] },
+    { "id":  6, "name": "Ultimate Detox",           "category": "regular",  "ingredients": ["Cucumber", "Apple", "Pineapple", "Ginger"] },
+    { "id":  7, "name": "Crimson Cooler",           "category": "regular",  "ingredients": ["Watermelon", "Beetroot", "Carrot"] },
+    { "id":  8, "name": "Ginger Spark",             "category": "regular",  "ingredients": ["Watermelon", "Pineapple", "Ginger"] },
+    { "id":  9, "name": "Ginger Fireball",          "category": "regular",  "ingredients": ["Pineapple", "Ginger"] },
+    { "id": 10, "name": "Orange Juice",             "category": "regular",  "ingredients": ["Orange"] },
+    { "id": 11, "name": "Pineapple Juice",          "category": "regular",  "ingredients": ["Pineapple"] },
+    { "id": 12, "name": "Watermelon Juice",         "category": "regular",  "ingredients": ["Watermelon"] },
+    { "id": 13, "name": "Pinecado Bliss",           "category": "regular",  "ingredients": ["Avocado", "Pineapple"] },
+    { "id": 14, "name": "Blood Booster",            "category": "regular",  "ingredients": ["Mint Leaf", "Celery", "Pineapple", "Ginger"] },
+    { "id": 15, "name": "Pink Paradise",            "category": "special",  "ingredients": ["Strawberry", "Pineapple"] },
+    { "id": 16, "name": "Guyabano Delight",         "category": "special",  "ingredients": ["Strawberry", "Soursop", "Pineapple"] },
+    { "id": 17, "name": "Mrs. Samuel Fruit Punch",  "category": "punch",    "ingredients": ["House blend"] }
+  ]
+}

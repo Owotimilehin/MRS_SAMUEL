@@ -12,6 +12,7 @@ import {
   outboxEvent,
   customerCredit,
   type DbClient,
+  type DbExecutor,
 } from "@ms/db";
 import {
   isWithinReturnWindow,
@@ -316,7 +317,7 @@ export function returnRoutes(db: DbClient) {
  * Caller must already hold a transaction.
  */
 async function applyReturnEffects(
-  tx: DbClient,
+  tx: DbExecutor,
   returnId: string,
   userId: string,
 ): Promise<void> {

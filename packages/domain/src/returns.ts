@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import type { DbClient } from "@ms/db";
+import type { DbExecutor } from "@ms/db";
 
 export const REFUND_APPROVAL_THRESHOLD_NGN = 5_000;
 
@@ -61,7 +61,7 @@ export function isWithinReturnWindow(input: {
   return { ok: true };
 }
 
-export async function nextReturnNumber(db: DbClient): Promise<string> {
+export async function nextReturnNumber(db: DbExecutor): Promise<string> {
   const rows = await db.execute<{ nextval: string | number }>(
     sql`SELECT nextval('sale_return_seq') AS nextval`,
   );

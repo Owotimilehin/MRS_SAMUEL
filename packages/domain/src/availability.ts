@@ -1,5 +1,5 @@
 import { sql, eq, and, gt, lte } from "drizzle-orm";
-import { stockLedger, stockReservation, type DbClient } from "@ms/db";
+import { stockLedger, stockReservation, type DbExecutor } from "@ms/db";
 
 /**
  * Stock available to a NEW sale at a branch right now.
@@ -12,7 +12,7 @@ import { stockLedger, stockReservation, type DbClient } from "@ms/db";
  * between sweep and check doesn't over-sell.
  */
 export async function availableAtBranch(
-  db: DbClient,
+  db: DbExecutor,
   opts: { branchId: string; productId: string },
 ): Promise<number> {
   const [bal] = await db
@@ -46,7 +46,7 @@ export async function availableAtBranch(
  * Delete every reservation whose expires_at is in the past. Returns the count
  * removed. Called on a 60-second cron from the worker.
  */
-export async function sweepExpiredReservations(db: DbClient): Promise<number> {
+export async function sweepExpiredReservations(db: DbExecutor): Promise<number> {
   const result = await db
     .delete(stockReservation)
     .where(lte(stockReservation.expiresAt, new Date()))
@@ -58,7 +58,7 @@ export async function sweepExpiredReservations(db: DbClient): Promise<number> {
  * Mint the next sale order number. Format: SO-{YYYY}-{NNNNN}
  * Must be called inside the confirm transaction.
  */
-export async function nextOrderNumber(db: DbClient): Promise<string> {
+export async function nextOrderNumber(db: DbExecutor): Promise<string> {
   const rows = await db.execute<{ nextval: string | number }>(
     sql`SELECT nextval('sale_order_seq') AS nextval`,
   );

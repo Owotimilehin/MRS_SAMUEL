@@ -25,5 +25,83 @@ services:
       timeout: 2s
       retries: 20
 
+  migrator:
+    build:
+      context: .
+      dockerfile: packages/db/Dockerfile
+    environment:
+      DATABASE_URL: postgres://ms:ms@postgres:5432/ms_dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://ms:ms@postgres:5432/ms_dev
+      DATABASE_URL_REPLICA: postgres://ms:ms@postgres:5432/ms_dev
+      REDIS_URL: redis://redis:6379
+      JWT_SIGNING_KEY: dev-only-jwt-key-padding-padding-padding-XXX
+      SESSION_COOKIE_NAME: ms_session
+      LOG_LEVEL: info
+      PUBLIC_API_URL: http://localhost:3001
+      PUBLIC_ADMIN_URL: http://localhost:3000
+      PORT: "3001"
+      RATE_LIMIT_DISABLED: "0"
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://ms:ms@postgres:5432/ms_dev
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+    ports:
+      - "3010:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  customer:
+    build:
+      context: .
+      dockerfile: apps/customer/Dockerfile
+    ports:
+      - "3002:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   pgdata:
