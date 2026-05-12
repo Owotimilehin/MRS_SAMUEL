@@ -37,6 +37,15 @@ interface VarianceRow {
   business_date: string;
   variance_ngn: number;
 }
+interface DeviceRow {
+  device_id: string;
+  branch_id: string | null;
+  app_version: string | null;
+  queue_depth: number;
+  last_sync_at: string | null;
+  reported_at: string;
+  age_seconds: number;
+}
 
 export function DashboardPage(): JSX.Element {
   const today = new Date().toISOString().slice(0, 10);
@@ -49,12 +58,13 @@ export function DashboardPage(): JSX.Element {
   const [top, setTop] = useState<TopProductRow[]>([]);
   const [stock, setStock] = useState<BranchStockRow[]>([]);
   const [variances, setVariances] = useState<VarianceRow[]>([]);
+  const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       try {
-        const [b, p, t, w, tp, st, v] = await Promise.all([
+        const [b, p, t, w, tp, st, v, d] = await Promise.all([
           api<{ data: Branch[] }>("/branches"),
           api<{ data: Product[] }>("/products"),
           api<{ data: RevenueRow[] }>(`/reports/revenue?from=${today}&to=${today}`),
@@ -62,6 +72,7 @@ export function DashboardPage(): JSX.Element {
           api<{ data: TopProductRow[] }>(`/reports/top-products?limit=5&from=${sevenAgo}&to=${today}`),
           api<{ data: BranchStockRow[] }>("/reports/branch-stock"),
           api<{ data: VarianceRow[] }>(`/reports/variances?from=${sevenAgo}`),
+          api<{ data: DeviceRow[] }>("/telemetry/devices"),
         ]);
         setBranches(b.data);
         setProducts(p.data);
@@ -70,6 +81,7 @@ export function DashboardPage(): JSX.Element {
         setTop(tp.data);
         setStock(st.data);
         setVariances(v.data);
+        setDevices(d.data);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -202,6 +214,64 @@ export function DashboardPage(): JSX.Element {
             )}
           </section>
         </div>
+
+        <section
+          className="rounded-xl p-5 flex flex-col gap-3"
+          style={{ background: "var(--ms-surface)", border: "1px solid var(--ms-border)" }}
+        >
+          <h2 className="font-display text-lg font-bold">Branch devices</h2>
+          {devices.length === 0 ? (
+            <p className="text-sm" style={{ color: "var(--ms-ink-3)" }}>
+              No devices have reported yet.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead style={{ background: "var(--ms-surface-alt)" }}>
+                <tr>
+                  <th className="text-left px-3 py-2 text-xs">Branch</th>
+                  <th className="text-left px-3 py-2 text-xs">Device</th>
+                  <th className="text-right px-3 py-2 text-xs">Queue</th>
+                  <th className="text-left px-3 py-2 text-xs">Version</th>
+                  <th className="text-right px-3 py-2 text-xs">Last seen</th>
+                  <th className="text-right px-3 py-2 text-xs">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {devices.map((dev) => {
+                  const stale = dev.age_seconds > 15 * 60;
+                  const veryStale = dev.age_seconds > 60 * 60;
+                  const queueBad = dev.queue_depth >= 10;
+                  const tone = veryStale || queueBad ? "bad" : stale ? "warn" : "good";
+                  const label = tone === "bad" ? "🔴" : tone === "warn" ? "🟡" : "🟢";
+                  const ageMin = Math.round(dev.age_seconds / 60);
+                  return (
+                    <tr key={dev.device_id} style={{ borderTop: "1px solid var(--ms-divider)" }}>
+                      <td className="px-3 py-2">
+                        {dev.branch_id ? branchName(dev.branch_id) : "—"}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {dev.device_id.slice(0, 8)}
+                      </td>
+                      <td
+                        className="px-3 py-2 text-right tabular-nums"
+                        style={{ color: queueBad ? "var(--ms-danger)" : "var(--ms-ink-2)" }}
+                      >
+                        {dev.queue_depth}
+                      </td>
+                      <td className="px-3 py-2 text-xs" style={{ color: "var(--ms-ink-3)" }}>
+                        {dev.app_version ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs" style={{ color: "var(--ms-ink-3)" }}>
+                        {ageMin < 1 ? "just now" : `${ageMin}m ago`}
+                      </td>
+                      <td className="px-3 py-2 text-right">{label}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </section>
 
         <section
           className="rounded-xl p-5 flex flex-col gap-3"

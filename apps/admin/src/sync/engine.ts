@@ -11,7 +11,42 @@ import { local, type OutboxRow } from "../db/local.js";
  */
 
 const POLL_MS = 30_000;
+const TELEMETRY_MS = 5 * 60_000;
+const APP_VERSION = (import.meta as { env?: { VITE_APP_VERSION?: string } }).env?.VITE_APP_VERSION ?? "dev";
 const BACKOFFS_S = [1, 2, 4, 8, 16, 32, 60, 120, 300, 300] as const;
+
+function getDeviceId(): string {
+  let id = localStorage.getItem("ms-device-id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("ms-device-id", id);
+  }
+  return id;
+}
+
+async function reportTelemetry(): Promise<void> {
+  if (!navigator.onLine) return;
+  const queue = await local.outbox.where("status").anyOf("pending", "in_flight").count();
+  const meta = await local.meta.get("default");
+  try {
+    await fetch("/v1/telemetry/sync", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+      },
+      body: JSON.stringify({
+        device_id: getDeviceId(),
+        app_version: APP_VERSION,
+        queue_depth: queue,
+        last_sync_at: meta?.last_pull_at ?? null,
+      }),
+    });
+  } catch {
+    // Telemetry is best-effort.
+  }
+}
 
 function backoffMs(attempts: number): number {
   const idx = Math.min(attempts, BACKOFFS_S.length - 1);
@@ -243,8 +278,13 @@ export function startSyncLoop(branchId: string): () => void {
   window.addEventListener("online", onOnline);
   void tick();
 
+  // Fire-and-forget telemetry tick.
+  void reportTelemetry();
+  const telemetryHandle = setInterval(() => void reportTelemetry(), TELEMETRY_MS);
+
   stopLoop = () => {
     active = false;
+    clearInterval(telemetryHandle);
     window.removeEventListener("online", onOnline);
     stopLoop = null;
   };
