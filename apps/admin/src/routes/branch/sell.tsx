@@ -1,321 +1,357 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
-import { local, type ProductRow, localAvailableForProduct } from "../../db/local.js";
+import { local, localAvailableForProduct, type ProductRow } from "../../db/local.js";
 import { createLocalSale } from "../../sync/local-sale.js";
 import { ngn } from "../../lib/format.js";
 
-interface SellPageProps {
-  branchId: string;
-}
-
-interface CartItem {
-  productId: string;
-  name: string;
-  unitPriceNgn: number;
-  quantity: number;
-  available: number;
-}
-
+type Channel = "walkup" | "whatsapp" | "chowdeck_pickup";
 type PaymentMethod = "cash" | "card" | "transfer";
 
-export function SellPage({ branchId }: SellPageProps): JSX.Element {
-  const products = useLiveQuery(() => local.products.toArray(), []);
-  const prices = useLiveQuery(() => local.prices.toArray(), []);
-  const [cart, setCart] = useState<Map<string, CartItem>>(new Map());
-  const [payment, setPayment] = useState<PaymentMethod>("cash");
-  const [lastOrder, setLastOrder] = useState<string | null>(null);
+interface CartLine {
+  product_id: string;
+  quantity: number;
+  unit_price_ngn: number;
+}
+
+export function SellPage({ branchId }: { branchId: string }): JSX.Element {
+  const products = useLiveQuery(() => local.products.toArray(), [], [] as ProductRow[]);
+  const prices = useLiveQuery(() => local.prices.toArray(), [], []);
+
+  const [search, setSearch] = useState("");
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [channel, setChannel] = useState<Channel>("walkup");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [submitting, setSubmitting] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Build a price index: latest valid_to=null per product.
-  const currentPriceFor = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const p of prices ?? []) {
-      if (p.valid_to === null) map.set(p.product_id, p.price_ngn);
-    }
-    return map;
-  }, [prices]);
+  const priceFor = (productId: string): number => {
+    const ps = prices
+      .filter((p) => p.product_id === productId && !p.valid_to)
+      .sort((a, b) => (a.valid_from > b.valid_from ? -1 : 1));
+    return ps[0]?.price_ngn ?? 0;
+  };
 
-  // Refresh "available" for cart items whenever the cart changes.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const next = new Map(cart);
-      for (const item of next.values()) {
-        const avail = await localAvailableForProduct(branchId, item.productId);
-        if (!cancelled) item.available = avail;
+  const filtered = useMemo(() => {
+    const list = products.filter((p) => p.is_active);
+    if (!search) return list;
+    const q = search.toLowerCase();
+    return list.filter((p) => p.name.toLowerCase().includes(q) || p.slug.includes(q));
+  }, [products, search]);
+
+  function addToCart(p: ProductRow): void {
+    const price = priceFor(p.id);
+    setCart((c) => {
+      const existing = c.find((l) => l.product_id === p.id);
+      if (existing) {
+        return c.map((l) =>
+          l.product_id === p.id ? { ...l, quantity: l.quantity + 1 } : l,
+        );
       }
-      if (!cancelled) setCart(next);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // We don't depend on cart contents directly here to avoid render loop;
-    // we recompute available on add/remove via the addToCart handler instead.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchId]);
-
-  const subtotal = Array.from(cart.values()).reduce(
-    (sum, c) => sum + c.unitPriceNgn * c.quantity,
-    0,
-  );
-  const itemCount = Array.from(cart.values()).reduce((sum, c) => sum + c.quantity, 0);
-
-  async function addToCart(product: ProductRow): Promise<void> {
-    const price = currentPriceFor.get(product.id);
-    if (!price) {
-      setError(`No price for ${product.name}`);
-      return;
-    }
-    const avail = await localAvailableForProduct(branchId, product.id);
-    const existing = cart.get(product.id);
-    const newQty = (existing?.quantity ?? 0) + 1;
-    if (avail < newQty) {
-      setError(`${product.name}: only ${avail} available`);
-      return;
-    }
-    setError(null);
-    const next = new Map(cart);
-    next.set(product.id, {
-      productId: product.id,
-      name: product.name,
-      unitPriceNgn: price,
-      quantity: newQty,
-      available: avail,
+      return [...c, { product_id: p.id, quantity: 1, unit_price_ngn: price }];
     });
-    setCart(next);
+  }
+  function updateQty(productId: string, qty: number): void {
+    setCart((c) =>
+      qty <= 0
+        ? c.filter((l) => l.product_id !== productId)
+        : c.map((l) => (l.product_id === productId ? { ...l, quantity: qty } : l)),
+    );
+  }
+  function removeLine(productId: string): void {
+    setCart((c) => c.filter((l) => l.product_id !== productId));
+  }
+  function clearCart(): void {
+    setCart([]);
   }
 
-  function updateQuantity(productId: string, delta: number): void {
-    const next = new Map(cart);
-    const item = next.get(productId);
-    if (!item) return;
-    const newQty = item.quantity + delta;
-    if (newQty <= 0) {
-      next.delete(productId);
-    } else if (newQty > item.available) {
-      setError(`Only ${item.available} available`);
-      return;
-    } else {
-      next.set(productId, { ...item, quantity: newQty });
-    }
+  const total = cart.reduce((sum, l) => sum + l.quantity * l.unit_price_ngn, 0);
+
+  async function checkout(): Promise<void> {
+    if (cart.length === 0 || submitting) return;
+    setSubmitting(true);
     setError(null);
-    setCart(next);
-  }
-
-  async function charge(): Promise<void> {
-    if (cart.size === 0) return;
     try {
-      const items = Array.from(cart.values()).map((c) => ({
-        product_id: c.productId,
-        quantity: c.quantity,
-        unit_price_ngn: c.unitPriceNgn,
-      }));
-      const result = await createLocalSale({
+      // Pre-flight: check local availability for every line
+      for (const l of cart) {
+        const have = await localAvailableForProduct(branchId, l.product_id);
+        if (have < l.quantity) {
+          const p = products.find((x) => x.id === l.product_id);
+          throw new Error(`Insufficient stock for ${p?.name ?? l.product_id} (${have} available)`);
+        }
+      }
+      const sale = await createLocalSale({
         branchId,
-        items,
-        payment_method: payment,
-        channel: "walkup",
+        channel,
+        items: cart,
+        payment_method: paymentMethod,
       });
-      setLastOrder(result.orderNumber);
-      setCart(new Map());
-      setError(null);
+      setFlash(`Sold · ${sale.orderNumber} · ${ngn(sale.subtotal)}`);
+      setCart([]);
+      setTimeout(() => setFlash(null), 4000);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
     }
   }
-
-  const sortedProducts = useMemo(() => {
-    return (products ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
-  }, [products]);
 
   return (
     <BranchShell branchId={branchId} title="Sell">
-      <div className="grid gap-6" style={{ gridTemplateColumns: "1fr 380px" }}>
-        {/* Product grid */}
-        <div>
-          {lastOrder && (
-            <div
-              className="mb-4 p-3 rounded-md text-sm"
-              style={{ background: "var(--ms-green-100)", color: "var(--ms-green-900)" }}
-            >
-              ✓ Sale recorded ({lastOrder}). It'll sync to the server when online.
-            </div>
-          )}
-          {error && (
-            <div
-              className="mb-4 p-3 rounded-md text-sm"
-              style={{ background: "#ffe1de", color: "#8a2018" }}
-            >
-              {error}
-            </div>
-          )}
-
-          <div
-            className="grid gap-3"
-            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
-          >
-            {sortedProducts.map((p) => {
-              const price = currentPriceFor.get(p.id);
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => void addToCart(p)}
-                  disabled={!price}
-                  className="text-left p-4 rounded-xl transition disabled:opacity-50"
-                  style={{
-                    background: "var(--ms-surface)",
-                    border: "1px solid var(--ms-border)",
-                  }}
-                >
-                  <div className="font-display text-base font-bold mb-1">{p.name}</div>
-                  <div
-                    className="text-xs mb-3 line-clamp-2"
-                    style={{ color: "var(--ms-ink-3)" }}
-                  >
-                    {p.ingredients.slice(0, 3).join(" · ")}
-                  </div>
-                  <div className="font-display text-lg font-bold">
-                    {price ? ngn(price) : "—"}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Cart */}
-        <aside
-          className="rounded-xl flex flex-col"
+      {flash && (
+        <div
+          className="card"
           style={{
-            background: "var(--ms-surface)",
-            border: "1px solid var(--ms-border)",
-            position: "sticky",
-            top: 80,
-            alignSelf: "start",
+            background: "rgba(16,185,129,0.10)",
+            borderColor: "rgba(16,185,129,0.25)",
+            color: "#047857",
+            marginBottom: 16,
           }}
         >
-          <div
-            className="px-4 py-3 flex items-center justify-between"
-            style={{ borderBottom: "1px solid var(--ms-divider)" }}
-          >
-            <h2 className="font-display text-lg font-bold">
-              Order {itemCount > 0 ? `· ${itemCount}` : ""}
-            </h2>
-            {cart.size > 0 && (
+          {flash}
+        </div>
+      )}
+      {error && (
+        <div
+          className="card"
+          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
+        >
+          {error}
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: 18 }}>
+        <section>
+          <input
+            className="input"
+            placeholder="Search products…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ marginBottom: 14 }}
+          />
+          {filtered.length === 0 ? (
+            <div className="empty">
+              <div className="empty__title">No products in catalog</div>
+              Open while online to sync products from the API.
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
+                gap: 12,
+              }}
+            >
+              {filtered.map((p) => (
+                <ProductTile
+                  key={p.id}
+                  product={p}
+                  branchId={branchId}
+                  price={priceFor(p.id)}
+                  onPick={() => addToCart(p)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <aside
+          className="card"
+          style={{ position: "sticky", top: 96, alignSelf: "start" }}
+        >
+          <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+            <h2 className="t-h2">Cart</h2>
+            {cart.length > 0 && (
               <button
-                onClick={() => setCart(new Map())}
-                className="text-xs"
-                style={{ color: "var(--ms-ink-3)" }}
+                type="button"
+                onClick={clearCart}
+                style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 13, color: "var(--ink-soft)" }}
               >
                 Clear
               </button>
             )}
-          </div>
+          </header>
 
-          <div className="px-4 py-3 flex-1 overflow-y-auto">
-            {cart.size === 0 ? (
-              <p
-                className="text-sm text-center py-8"
-                style={{ color: "var(--ms-ink-3)" }}
-              >
-                Tap a juice to start the order.
-              </p>
-            ) : (
-              Array.from(cart.values()).map((item) => (
-                <div
-                  key={item.productId}
-                  className="flex items-center gap-2 py-2"
-                  style={{ borderBottom: "1px solid var(--ms-divider)" }}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate">{item.name}</div>
-                    <div className="text-xs" style={{ color: "var(--ms-ink-3)" }}>
-                      {ngn(item.unitPriceNgn)} each
-                    </div>
-                  </div>
-                  <div
-                    className="flex items-center gap-2 rounded-full px-1"
-                    style={{ background: "var(--ms-surface-alt)" }}
+          {cart.length === 0 ? (
+            <div className="empty" style={{ padding: 20 }}>
+              Tap a product to add it.
+            </div>
+          ) : (
+            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+              {cart.map((l) => {
+                const p = products.find((x) => x.id === l.product_id);
+                return (
+                  <li
+                    key={l.product_id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto",
+                      gap: 6,
+                      padding: 10,
+                      background: "var(--surface-soft)",
+                      borderRadius: 12,
+                    }}
                   >
-                    <button
-                      onClick={() => updateQuantity(item.productId, -1)}
-                      className="w-7 h-7 grid place-items-center rounded-full bg-white"
-                    >
-                      −
-                    </button>
-                    <span className="w-5 text-center text-sm font-semibold tabular-nums">
-                      {item.quantity}
-                    </span>
-                    <button
-                      onClick={() => updateQuantity(item.productId, 1)}
-                      className="w-7 h-7 grid place-items-center rounded-full bg-white"
-                    >
-                      +
-                    </button>
-                  </div>
-                  <div className="w-20 text-right text-sm font-semibold tabular-nums">
-                    {ngn(item.unitPriceNgn * item.quantity)}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {p?.name ?? l.product_id.slice(0, 8)}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+                        {ngn(l.unit_price_ngn)} × {l.quantity}
+                      </div>
+                    </div>
+                    <div className="tabular-nums" style={{ fontWeight: 700, textAlign: "right" }}>
+                      {ngn(l.unit_price_ngn * l.quantity)}
+                    </div>
+                    <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                      <button
+                        type="button"
+                        className="btn btn--subtle btn--sm"
+                        style={{ width: 30, padding: 0, height: 28 }}
+                        onClick={() => updateQty(l.product_id, l.quantity - 1)}
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        className="input"
+                        style={{ width: 56, height: 28, textAlign: "center" }}
+                        value={l.quantity}
+                        onChange={(e) => updateQty(l.product_id, Number(e.target.value))}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--subtle btn--sm"
+                        style={{ width: 30, padding: 0, height: 28 }}
+                        onClick={() => updateQty(l.product_id, l.quantity + 1)}
+                      >
+                        +
+                      </button>
+                      <div style={{ flex: 1 }} />
+                      <button
+                        type="button"
+                        onClick={() => removeLine(l.product_id)}
+                        style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--ink-soft)", fontSize: 18 }}
+                        aria-label="Remove"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
 
-          <div
-            className="px-4 py-3"
-            style={{
-              background: "var(--ms-surface-alt)",
-              borderTop: "1px solid var(--ms-divider)",
-            }}
-          >
-            <div className="flex justify-between text-sm mb-1">
-              <span style={{ color: "var(--ms-ink-3)" }}>Subtotal</span>
-              <span className="tabular-nums">{ngn(subtotal)}</span>
-            </div>
-            <div className="flex justify-between font-display text-2xl font-bold mt-2 pt-2 border-t border-dashed">
-              <span>Total</span>
-              <span className="tabular-nums">{ngn(subtotal)}</span>
-            </div>
-          </div>
-
-          <div
-            className="grid grid-cols-3 gap-1.5 px-4 py-3"
-            style={{ borderTop: "1px solid var(--ms-divider)" }}
-          >
-            {(["cash", "card", "transfer"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setPayment(m)}
-                className="p-2 rounded-md text-sm font-semibold capitalize"
-                style={{
-                  background:
-                    payment === m ? "var(--ms-green-100)" : "var(--ms-surface-alt)",
-                  color:
-                    payment === m ? "var(--ms-green-900)" : "var(--ms-ink-2)",
-                  border:
-                    payment === m
-                      ? "1px solid var(--ms-green-500)"
-                      : "1px solid var(--ms-border)",
-                }}
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="field">
+              <label className="field__label">Channel</label>
+              <select
+                className="select"
+                value={channel}
+                onChange={(e) => setChannel(e.target.value as Channel)}
               >
-                {m === "cash" ? "💵" : m === "card" ? "💳" : "📱"} {m}
-              </button>
-            ))}
-          </div>
-
-          <div className="px-4 py-3">
-            <button
-              onClick={() => void charge()}
-              disabled={cart.size === 0}
-              className="w-full py-4 rounded-full text-white font-bold disabled:opacity-50"
-              style={{ background: "var(--ms-green-500)" }}
+                <option value="walkup">Walk-up</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="chowdeck_pickup">Chowdeck pickup</option>
+              </select>
+            </div>
+            <div className="field">
+              <label className="field__label">Payment</label>
+              <select
+                className="select"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+              >
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="transfer">Transfer</option>
+              </select>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                padding: "10px 0",
+                borderTop: "1px solid var(--line)",
+              }}
             >
-              Charge {ngn(subtotal)} →
+              <span style={{ fontWeight: 600 }}>Total</span>
+              <span className="tabular-nums" style={{ fontWeight: 800, fontSize: 22 }}>
+                {ngn(total)}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn--primary btn--block btn--lg"
+              disabled={submitting || cart.length === 0}
+              onClick={() => void checkout()}
+            >
+              {submitting ? "Recording…" : `Charge ${ngn(total)}`}
             </button>
+            <p style={{ fontSize: 11, color: "var(--ink-soft)", textAlign: "center", margin: 0 }}>
+              Saved locally — syncs to the server when online.
+            </p>
           </div>
         </aside>
       </div>
     </BranchShell>
+  );
+}
+
+function ProductTile({
+  product,
+  branchId,
+  price,
+  onPick,
+}: {
+  product: ProductRow;
+  branchId: string;
+  price: number;
+  onPick: () => void;
+}): JSX.Element {
+  const available = useLiveQuery(
+    () => localAvailableForProduct(branchId, product.id),
+    [branchId, product.id],
+    null as number | null,
+  );
+  const oos = available !== null && available <= 0;
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      disabled={oos}
+      className="card card--hoverable"
+      style={{
+        textAlign: "left",
+        cursor: oos ? "not-allowed" : "pointer",
+        opacity: oos ? 0.55 : 1,
+        padding: 14,
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        borderRadius: 14,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.25 }}>{product.name}</span>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>
+        {product.category}
+        {available !== null && (
+          <>
+            {" · "}
+            <span style={{ color: oos ? "var(--danger)" : "var(--ink-soft)" }}>
+              {oos ? "Out of stock" : `${available} in stock`}
+            </span>
+          </>
+        )}
+      </div>
+      <div className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 18, marginTop: 4 }}>
+        {ngn(price)}
+      </div>
+    </button>
   );
 }

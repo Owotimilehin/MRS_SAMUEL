@@ -16,6 +16,8 @@ const CreateBranch = z.object({
   code: z.string().regex(/^[A-Z0-9_-]+$/),
   address: z.string().optional(),
   phone: z.string().optional(),
+  lat: z.number().min(-90).max(90).nullable().optional(),
+  lng: z.number().min(-180).max(180).nullable().optional(),
   manager_user_id: z.string().uuid().nullable().optional(),
   delivery_zones: z.array(DeliveryZone).default([]),
   opens_at: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
@@ -76,6 +78,8 @@ export function branchRoutes(db: DbClient) {
     if (body.name !== undefined) patch["name"] = body.name;
     if (body.address !== undefined) patch["address"] = body.address;
     if (body.phone !== undefined) patch["phone"] = body.phone;
+    if (body.lat !== undefined) patch["lat"] = body.lat === null ? null : String(body.lat);
+    if (body.lng !== undefined) patch["lng"] = body.lng === null ? null : String(body.lng);
     if (body.manager_user_id !== undefined) patch["managerUserId"] = body.manager_user_id;
     if (body.delivery_zones !== undefined) patch["deliveryZones"] = body.delivery_zones;
     if (body.opens_at !== undefined) patch["opensAt"] = body.opens_at;

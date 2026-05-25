@@ -95,6 +95,12 @@ export function authRoutes(db: DbClient) {
       entityType: "admin_user",
       entityId: user.id,
       after: { id: user.id, email: user.email, role: user.role },
+      actor: {
+        userId: user.id,
+        role: user.role,
+        branchId: user.branchId,
+        deviceId,
+      },
     });
     return c.json(
       {

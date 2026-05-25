@@ -1,5 +1,6 @@
 import { pgTable, uuid, integer, text, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
 import { product } from "./product.js";
+import { productVariant } from "./product-variant.js";
 import { adminUser } from "./admin-user.js";
 
 export const ledgerLocationType = pgEnum("ledger_location_type", ["factory", "branch"]);
@@ -36,6 +37,7 @@ export const stockLedger = pgTable(
     locationType: ledgerLocationType("location_type").notNull(),
     locationId: uuid("location_id").notNull(),
     productId: uuid("product_id").notNull().references(() => product.id, { onDelete: "restrict" }),
+    variantId: uuid("variant_id").references(() => productVariant.id, { onDelete: "restrict" }),
     delta: integer("delta").notNull(),
     sourceType: ledgerSourceType("source_type").notNull(),
     sourceId: uuid("source_id").notNull(),
@@ -47,5 +49,6 @@ export const stockLedger = pgTable(
   (t) => ({
     idxLocProduct: index("idx_ledger_loc_product").on(t.locationType, t.locationId, t.productId),
     idxOccurred: index("idx_ledger_occurred").on(t.occurredAt),
+    idxVariant: index("idx_ledger_variant").on(t.variantId),
   }),
 );

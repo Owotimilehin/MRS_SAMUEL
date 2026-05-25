@@ -1,17 +1,12 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { Stat } from "../../components/Stat.js";
 import { api } from "../../lib/api.js";
-import { ngn, formatDate } from "../../lib/format.js";
+import { ngn } from "../../lib/format.js";
+import { downloadCsv } from "../../lib/csv.js";
+import { InlineLoader } from "../../components/Spinner.js";
 
-interface Branch {
-  id: string;
-  name: string;
-}
-interface Product {
-  id: string;
-  name: string;
-}
 interface RevenueRow {
   branch_id: string;
   channel: string;
@@ -26,292 +21,332 @@ interface TopProductRow {
   quantity: number;
   revenue_ngn: number;
 }
-interface BranchStockRow {
-  branch_id: string;
-  product_id: string;
-  balance: number;
-}
 interface VarianceRow {
   daily_close_id: string;
   branch_id: string;
   business_date: string;
   variance_ngn: number;
 }
-interface DeviceRow {
-  device_id: string;
-  branch_id: string | null;
-  app_version: string | null;
-  queue_depth: number;
-  last_sync_at: string | null;
-  reported_at: string;
-  age_seconds: number;
+interface BranchRow {
+  id: string;
+  name: string;
+  code: string;
+}
+interface ReviewBody {
+  data: {
+    transfer_variances: Array<{ id: string }>;
+    return_approvals: Array<{ id: string }>;
+  };
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+function nDaysAgo(n: number): string {
+  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 }
 
 export function DashboardPage(): JSX.Element {
-  const today = new Date().toISOString().slice(0, 10);
-  const sevenAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
-
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [todayRev, setTodayRev] = useState<RevenueRow[]>([]);
-  const [weekRev, setWeekRev] = useState<RevenueRow[]>([]);
-  const [top, setTop] = useState<TopProductRow[]>([]);
-  const [stock, setStock] = useState<BranchStockRow[]>([]);
+  const [from, setFrom] = useState(nDaysAgo(7));
+  const [to, setTo] = useState(today());
+  const [revenue, setRevenue] = useState<RevenueRow[]>([]);
+  const [topProducts, setTopProducts] = useState<TopProductRow[]>([]);
   const [variances, setVariances] = useState<VarianceRow[]>([]);
-  const [devices, setDevices] = useState<DeviceRow[]>([]);
+  const [branches, setBranches] = useState<BranchRow[]>([]);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
     void (async () => {
       try {
-        const [b, p, t, w, tp, st, v, d] = await Promise.all([
-          api<{ data: Branch[] }>("/branches"),
-          api<{ data: Product[] }>("/products"),
-          api<{ data: RevenueRow[] }>(`/reports/revenue?from=${today}&to=${today}`),
-          api<{ data: RevenueRow[] }>(`/reports/revenue?from=${sevenAgo}&to=${today}`),
-          api<{ data: TopProductRow[] }>(`/reports/top-products?limit=5&from=${sevenAgo}&to=${today}`),
-          api<{ data: BranchStockRow[] }>("/reports/branch-stock"),
-          api<{ data: VarianceRow[] }>(`/reports/variances?from=${sevenAgo}`),
-          api<{ data: DeviceRow[] }>("/telemetry/devices"),
+        const [rev, top, vari, br, rev2] = await Promise.all([
+          api<{ data: RevenueRow[] }>(`/reports/revenue?from=${from}&to=${to}`),
+          api<{ data: TopProductRow[] }>(`/reports/top-products?from=${from}&to=${to}&limit=5`),
+          api<{ data: VarianceRow[] }>(`/reports/variances?from=${nDaysAgo(30)}`),
+          api<{ data: BranchRow[] }>(`/branches`),
+          api<ReviewBody>(`/review`),
         ]);
-        setBranches(b.data);
-        setProducts(p.data);
-        setTodayRev(t.data);
-        setWeekRev(w.data);
-        setTop(tp.data);
-        setStock(st.data);
-        setVariances(v.data);
-        setDevices(d.data);
+        if (cancelled) return;
+        setRevenue(rev.data);
+        setTopProducts(top.data);
+        setVariances(vari.data);
+        setBranches(br.data);
+        setReviewCount(
+          rev2.data.transfer_variances.length + rev2.data.return_approvals.length,
+        );
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, [today, sevenAgo]);
+    return () => {
+      cancelled = true;
+    };
+  }, [from, to]);
 
-  const todayGross = todayRev.reduce((s, r) => s + r.gross_ngn, 0);
-  const todayNet = todayRev.reduce((s, r) => s + r.net_ngn, 0);
-  const todayOrders = todayRev.reduce((s, r) => s + r.orders, 0);
-  const weekNet = weekRev.reduce((s, r) => s + r.net_ngn, 0);
+  const branchName = (id: string): string => branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);
 
-  const branchName = (id: string): string =>
-    branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);
-  const productName = (id: string): string =>
-    products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
+  const totals = revenue.reduce(
+    (acc, r) => ({
+      gross: acc.gross + r.gross_ngn,
+      refunds: acc.refunds + r.refunds_ngn,
+      net: acc.net + r.net_ngn,
+      orders: acc.orders + r.orders,
+    }),
+    { gross: 0, refunds: 0, net: 0, orders: 0 },
+  );
+
+  const byBranch = new Map<string, { gross: number; net: number; orders: number }>();
+  for (const r of revenue) {
+    const cur = byBranch.get(r.branch_id) ?? { gross: 0, net: 0, orders: 0 };
+    cur.gross += r.gross_ngn;
+    cur.net += r.net_ngn;
+    cur.orders += r.orders;
+    byBranch.set(r.branch_id, cur);
+  }
 
   return (
-    <Shell title="Dashboard">
-      <div className="flex flex-col gap-6">
-        {error && (
-          <div
-            className="p-3 rounded-md text-sm"
-            style={{ background: "rgba(198,58,46,0.12)", color: "var(--ms-danger)" }}
-          >
-            {error}
-          </div>
-        )}
-
-        <div className="grid grid-cols-4 gap-4">
-          <Stat label="Today gross" value={ngn(todayGross)} tone="good" />
-          <Stat label="Today net" value={ngn(todayNet)} hint="after refunds" />
-          <Stat label="Orders today" value={String(todayOrders)} />
-          <Stat label="Week net" value={ngn(weekNet)} hint={`since ${formatDate(sevenAgo)}`} />
+    <Shell
+      title="Dashboard"
+      actions={
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <label className="t-eyebrow" style={{ color: "var(--ink-soft)" }}>
+            From
+          </label>
+          <input
+            type="date"
+            className="input"
+            style={{ width: 150, height: 36 }}
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+          <label className="t-eyebrow" style={{ color: "var(--ink-soft)" }}>
+            To
+          </label>
+          <input
+            type="date"
+            className="input"
+            style={{ width: 150, height: 36 }}
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
         </div>
-
-        <section
-          className="rounded-xl p-5 flex flex-col gap-3"
-          style={{ background: "var(--ms-surface)", border: "1px solid var(--ms-border)" }}
+      }
+    >
+      {error && (
+        <div
+          className="card"
+          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
         >
-          <h2 className="font-display text-lg font-bold">Revenue by branch × channel (today)</h2>
-          {todayRev.length === 0 ? (
-            <p className="text-sm" style={{ color: "var(--ms-ink-3)" }}>No sales yet today.</p>
+          {error}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: 14,
+          marginBottom: 24,
+        }}
+      >
+        <Stat label="Net revenue" value={ngn(totals.net)} hint={`${from} → ${to}`} tone="accent" />
+        <Stat label="Gross" value={ngn(totals.gross)} hint={`${totals.orders} orders`} />
+        <Stat label="Refunds" value={ngn(totals.refunds)} tone={totals.refunds > 0 ? "warn" : "default"} />
+        <Stat
+          label="Needs review"
+          value={String(reviewCount)}
+          tone={reviewCount > 0 ? "warn" : "good"}
+          hint={reviewCount > 0 ? "Open the inbox" : "All clear"}
+        />
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.4fr 1fr",
+          gap: 18,
+          marginBottom: 18,
+        }}
+      >
+        <section className="card">
+          <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+            <h2 className="t-h2">Branch performance</h2>
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <button
+                type="button"
+                className="btn btn--subtle btn--sm"
+                disabled={revenue.length === 0}
+                onClick={() =>
+                  downloadCsv(
+                    `revenue-${from}-to-${to}`,
+                    revenue.map((r) => ({
+                      branch: branchName(r.branch_id),
+                      channel: r.channel,
+                      gross_ngn: r.gross_ngn,
+                      refunds_ngn: r.refunds_ngn,
+                      net_ngn: r.net_ngn,
+                      orders: r.orders,
+                    })),
+                  )
+                }
+              >
+                Export CSV
+              </button>
+              <Link to="/owner/branches" style={{ fontSize: 13, color: "var(--accent)", fontWeight: 600 }}>
+                Manage branches →
+              </Link>
+            </div>
+          </header>
+          {loading ? (
+            <InlineLoader />
+          ) : byBranch.size === 0 ? (
+            <div className="empty">
+              <div className="empty__title">No sales in this range</div>
+              Try widening the date range.
+            </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead style={{ background: "var(--ms-surface-alt)" }}>
+            <div className="table-wrap" style={{ border: 0 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Branch</th>
+                    <th className="table__num">Gross</th>
+                    <th className="table__num">Net</th>
+                    <th className="table__num">Orders</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from(byBranch.entries())
+                    .sort((a, b) => b[1].net - a[1].net)
+                    .map(([id, v]) => (
+                      <tr key={id}>
+                        <td>{branchName(id)}</td>
+                        <td className="table__num">{ngn(v.gross)}</td>
+                        <td className="table__num" style={{ fontWeight: 700 }}>
+                          {ngn(v.net)}
+                        </td>
+                        <td className="table__num">{v.orders}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="card">
+          <h2 className="t-h2" style={{ marginBottom: 12 }}>Top products</h2>
+          {loading ? (
+            <InlineLoader />
+          ) : topProducts.length === 0 ? (
+            <div className="empty">No sales yet.</div>
+          ) : (
+            <ol style={{ display: "flex", flexDirection: "column", gap: 10, margin: 0, padding: 0, listStyle: "none" }}>
+              {topProducts.map((p, idx) => (
+                <li
+                  key={p.product_id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "28px 1fr auto",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 0",
+                    borderBottom: idx === topProducts.length - 1 ? "none" : "1px solid var(--line)",
+                  }}
+                >
+                  <span className="pill pill--grad" style={{ width: 28, height: 28, padding: 0, justifyContent: "center" }}>
+                    {idx + 1}
+                  </span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{p.product_name}</div>
+                    <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{p.quantity} sold</div>
+                  </div>
+                  <div className="tabular-nums" style={{ fontWeight: 700 }}>
+                    {ngn(p.revenue_ngn)}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+      </div>
+
+      <section className="card">
+        <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+          <h2 className="t-h2">Recent variances</h2>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <button
+              type="button"
+              className="btn btn--subtle btn--sm"
+              disabled={variances.length === 0}
+              onClick={() =>
+                downloadCsv(
+                  `variances-${from}-to-${to}`,
+                  variances.map((v) => ({
+                    business_date: v.business_date,
+                    branch: branchName(v.branch_id),
+                    variance_ngn: v.variance_ngn,
+                  })),
+                )
+              }
+            >
+              Export CSV
+            </button>
+            <Link to="/owner/closes" style={{ fontSize: 13, color: "var(--accent)", fontWeight: 600 }}>
+              All closes →
+            </Link>
+          </div>
+        </header>
+        {loading ? (
+          <InlineLoader />
+        ) : variances.length === 0 ? (
+          <div className="empty">No variances in the last 30 days. Clean books.</div>
+        ) : (
+          <div className="table-wrap" style={{ border: 0 }}>
+            <table className="table">
+              <thead>
                 <tr>
-                  <th className="text-left px-3 py-2 text-xs">Branch</th>
-                  <th className="text-left px-3 py-2 text-xs">Channel</th>
-                  <th className="text-right px-3 py-2 text-xs">Orders</th>
-                  <th className="text-right px-3 py-2 text-xs">Gross</th>
-                  <th className="text-right px-3 py-2 text-xs">Refunds</th>
-                  <th className="text-right px-3 py-2 text-xs">Net</th>
+                  <th>Date</th>
+                  <th>Branch</th>
+                  <th className="table__num">Variance</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
-                {todayRev.map((r, i) => (
-                  <tr key={i} style={{ borderTop: "1px solid var(--ms-divider)" }}>
-                    <td className="px-3 py-2">{branchName(r.branch_id)}</td>
-                    <td className="px-3 py-2 text-xs">{r.channel}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.orders}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{ngn(r.gross_ngn)}</td>
+                {variances.slice(0, 8).map((v) => (
+                  <tr key={v.daily_close_id}>
+                    <td>{v.business_date}</td>
+                    <td>{branchName(v.branch_id)}</td>
                     <td
-                      className="px-3 py-2 text-right tabular-nums"
-                      style={{ color: r.refunds_ngn > 0 ? "var(--ms-danger)" : "var(--ms-ink-3)" }}
+                      className="table__num"
+                      style={{
+                        fontWeight: 700,
+                        color: v.variance_ngn < 0 ? "var(--danger)" : v.variance_ngn > 0 ? "var(--warning)" : "var(--ink-soft)",
+                      }}
                     >
-                      {ngn(r.refunds_ngn)}
+                      {v.variance_ngn > 0 ? "+" : ""}
+                      {ngn(v.variance_ngn)}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                      {ngn(r.net_ngn)}
+                    <td className="table__num">
+                      <Link to="/owner/closes" className="pill pill--ink">
+                        Review
+                      </Link>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </section>
-
-        <div className="grid grid-cols-2 gap-6">
-          <section
-            className="rounded-xl p-5 flex flex-col gap-3"
-            style={{ background: "var(--ms-surface)", border: "1px solid var(--ms-border)" }}
-          >
-            <h2 className="font-display text-lg font-bold">Top products (7d)</h2>
-            {top.length === 0 ? (
-              <p className="text-sm" style={{ color: "var(--ms-ink-3)" }}>No sales yet.</p>
-            ) : (
-              <ol className="flex flex-col gap-2 text-sm">
-                {top.map((p, i) => (
-                  <li key={p.product_id} className="flex items-baseline justify-between">
-                    <span>
-                      <span style={{ color: "var(--ms-ink-3)" }}>{i + 1}.</span> {p.product_name}
-                    </span>
-                    <span className="tabular-nums">
-                      {p.quantity} · <strong>{ngn(p.revenue_ngn)}</strong>
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
-
-          <section
-            className="rounded-xl p-5 flex flex-col gap-3"
-            style={{ background: "var(--ms-surface)", border: "1px solid var(--ms-border)" }}
-          >
-            <h2 className="font-display text-lg font-bold">Cash variances (7d)</h2>
-            {variances.length === 0 ? (
-              <p className="text-sm" style={{ color: "var(--ms-ink-3)" }}>No closes filed.</p>
-            ) : (
-              <ul className="flex flex-col gap-2 text-sm">
-                {variances.slice(0, 8).map((v) => (
-                  <li key={v.daily_close_id} className="flex items-baseline justify-between">
-                    <span>
-                      {branchName(v.branch_id)} · {formatDate(v.business_date)}
-                    </span>
-                    <span
-                      className="tabular-nums"
-                      style={{
-                        color:
-                          v.variance_ngn === 0
-                            ? "var(--ms-green-900)"
-                            : "var(--ms-danger)",
-                      }}
-                    >
-                      {ngn(v.variance_ngn)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-
-        <section
-          className="rounded-xl p-5 flex flex-col gap-3"
-          style={{ background: "var(--ms-surface)", border: "1px solid var(--ms-border)" }}
-        >
-          <h2 className="font-display text-lg font-bold">Branch devices</h2>
-          {devices.length === 0 ? (
-            <p className="text-sm" style={{ color: "var(--ms-ink-3)" }}>
-              No devices have reported yet.
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead style={{ background: "var(--ms-surface-alt)" }}>
-                <tr>
-                  <th className="text-left px-3 py-2 text-xs">Branch</th>
-                  <th className="text-left px-3 py-2 text-xs">Device</th>
-                  <th className="text-right px-3 py-2 text-xs">Queue</th>
-                  <th className="text-left px-3 py-2 text-xs">Version</th>
-                  <th className="text-right px-3 py-2 text-xs">Last seen</th>
-                  <th className="text-right px-3 py-2 text-xs">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {devices.map((dev) => {
-                  const stale = dev.age_seconds > 15 * 60;
-                  const veryStale = dev.age_seconds > 60 * 60;
-                  const queueBad = dev.queue_depth >= 10;
-                  const tone = veryStale || queueBad ? "bad" : stale ? "warn" : "good";
-                  const label = tone === "bad" ? "🔴" : tone === "warn" ? "🟡" : "🟢";
-                  const ageMin = Math.round(dev.age_seconds / 60);
-                  return (
-                    <tr key={dev.device_id} style={{ borderTop: "1px solid var(--ms-divider)" }}>
-                      <td className="px-3 py-2">
-                        {dev.branch_id ? branchName(dev.branch_id) : "—"}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs">
-                        {dev.device_id.slice(0, 8)}
-                      </td>
-                      <td
-                        className="px-3 py-2 text-right tabular-nums"
-                        style={{ color: queueBad ? "var(--ms-danger)" : "var(--ms-ink-2)" }}
-                      >
-                        {dev.queue_depth}
-                      </td>
-                      <td className="px-3 py-2 text-xs" style={{ color: "var(--ms-ink-3)" }}>
-                        {dev.app_version ?? "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right text-xs" style={{ color: "var(--ms-ink-3)" }}>
-                        {ageMin < 1 ? "just now" : `${ageMin}m ago`}
-                      </td>
-                      <td className="px-3 py-2 text-right">{label}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </section>
-
-        <section
-          className="rounded-xl p-5 flex flex-col gap-3"
-          style={{ background: "var(--ms-surface)", border: "1px solid var(--ms-border)" }}
-        >
-          <h2 className="font-display text-lg font-bold">Branch stock</h2>
-          {stock.length === 0 ? (
-            <p className="text-sm" style={{ color: "var(--ms-ink-3)" }}>No stock movements yet.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead style={{ background: "var(--ms-surface-alt)" }}>
-                <tr>
-                  <th className="text-left px-3 py-2 text-xs">Branch</th>
-                  <th className="text-left px-3 py-2 text-xs">Product</th>
-                  <th className="text-right px-3 py-2 text-xs">Balance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stock
-                  .filter((s) => s.balance > 0)
-                  .map((s, i) => (
-                    <tr
-                      key={`${s.branch_id}-${s.product_id}-${i}`}
-                      style={{ borderTop: "1px solid var(--ms-divider)" }}
-                    >
-                      <td className="px-3 py-2">{branchName(s.branch_id)}</td>
-                      <td className="px-3 py-2">{productName(s.product_id)}</td>
-                      <td
-                        className="px-3 py-2 text-right tabular-nums"
-                        style={{ color: s.balance < 5 ? "var(--ms-danger)" : "var(--ms-ink-2)" }}
-                      >
-                        {s.balance}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      </div>
+          </div>
+        )}
+      </section>
     </Shell>
   );
 }

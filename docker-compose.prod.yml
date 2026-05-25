@@ -1,0 +1,117 @@
+# Production overlay. Layer on top of the base compose:
+#   docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from dev:
+#   * No published ports on postgres/redis/api/admin/customer — Caddy is the
+#     only ingress, listening on :80 + :443.
+#   * Real secrets come from .env.production (NOT committed).
+#   * Caddy fronts all three subdomains, issues Let's Encrypt certs.
+#   * Restart policy = unless-stopped on every long-lived service.
+
+services:
+  postgres:
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports: []
+    restart: unless-stopped
+
+  redis:
+    ports: []
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+  migrator:
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+
+  api:
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL_REPLICA: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+      JWT_SIGNING_KEY_PREVIOUS: ${JWT_SIGNING_KEY_PREVIOUS:-}
+      SESSION_COOKIE_NAME: ms_session
+      LOG_LEVEL: info
+      PUBLIC_API_URL: ${PUBLIC_API_URL}
+      PUBLIC_ADMIN_URL: ${PUBLIC_ADMIN_URL}
+      PUBLIC_CUSTOMER_URL: ${PUBLIC_CUSTOMER_URL}
+      PORT: "3001"
+      RATE_LIMIT_DISABLED: "0"
+      # Payaza (NGN card / transfer collection)
+      PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY}
+      PAYAZA_WEBHOOK_SECRET: ${PAYAZA_WEBHOOK_SECRET}
+      PAYAZA_API_BASE: ${PAYAZA_API_BASE:-https://api.payaza.africa/v1}
+      # Bolt Send (last-mile delivery)
+      BOLT_PROVIDER: ${BOLT_PROVIDER:-live}
+      BOLT_API_KEY: ${BOLT_API_KEY}
+      BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET}
+      BOLT_API_BASE: ${BOLT_API_BASE:-https://api.bolt.eu}
+      # Notifications
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
+      TELEGRAM_BRANCH_AJAO_CHAT: ${TELEGRAM_BRANCH_AJAO_CHAT:-}
+      TELEGRAM_FACTORY_CHAT: ${TELEGRAM_FACTORY_CHAT:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-Mrs. Samuel <noreply@mrssamueljuice.com>}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    ports: []
+    restart: unless-stopped
+
+  worker:
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: info
+      PUBLIC_ADMIN_URL: ${PUBLIC_ADMIN_URL}
+      PUBLIC_CUSTOMER_URL: ${PUBLIC_CUSTOMER_URL}
+      BOLT_PROVIDER: ${BOLT_PROVIDER:-live}
+      BOLT_API_KEY: ${BOLT_API_KEY}
+      BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET}
+      BOLT_API_BASE: ${BOLT_API_BASE:-https://api.bolt.eu}
+      PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY}
+      PAYAZA_API_BASE: ${PAYAZA_API_BASE:-https://api.payaza.africa/v1}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
+      TELEGRAM_BRANCH_AJAO_CHAT: ${TELEGRAM_BRANCH_AJAO_CHAT:-}
+      TELEGRAM_FACTORY_CHAT: ${TELEGRAM_FACTORY_CHAT:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-Mrs. Samuel <noreply@mrssamueljuice.com>}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      # R2 nightly DB backup target (used by scripts/backup.sh on the host)
+    restart: unless-stopped
+
+  admin:
+    ports: []
+    restart: unless-stopped
+
+  customer:
+    ports: []
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - admin
+      - customer
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:

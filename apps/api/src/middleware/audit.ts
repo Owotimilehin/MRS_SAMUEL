@@ -8,16 +8,28 @@ export interface AuditContext {
   entityId: string;
   before?: unknown;
   after?: unknown;
+  /**
+   * Override the actor when the request has no auth context yet — e.g. the
+   * login endpoint, which is reached anonymously but knows exactly which user
+   * just authenticated successfully.
+   */
+  actor?: {
+    userId: string;
+    role: string;
+    branchId: string | null;
+    deviceId?: string | null;
+  };
 }
 
 export async function writeAudit(db: DbClient, c: Context, ctx: AuditContext): Promise<void> {
   const auth = c.get("auth") as
     | { userId: string; role: string; branchId: string | null; deviceId: string }
     | undefined;
+  const actor = ctx.actor ?? auth ?? undefined;
   await db.insert(auditLog).values({
-    actorUserId: auth?.userId ?? null,
-    actorRole: auth?.role ?? null,
-    actorBranchId: auth?.branchId ?? null,
+    actorUserId: actor?.userId ?? null,
+    actorRole: actor?.role ?? null,
+    actorBranchId: actor?.branchId ?? null,
     action: ctx.action,
     entityType: ctx.entityType,
     entityId: ctx.entityId,
@@ -25,7 +37,7 @@ export async function writeAudit(db: DbClient, c: Context, ctx: AuditContext): P
     afterJson: (ctx.after as Record<string, unknown>) ?? null,
     ipAddress: c.req.header("x-forwarded-for") ?? null,
     userAgent: c.req.header("user-agent") ?? null,
-    deviceId: auth?.deviceId ?? null,
+    deviceId: actor?.deviceId ?? null,
     idempotencyKey: c.req.header("idempotency-key") ?? null,
   });
 }

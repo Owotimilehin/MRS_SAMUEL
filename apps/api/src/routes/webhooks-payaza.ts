@@ -47,6 +47,29 @@ export function payazaWebhookRoutes(db: DbClient) {
       if (!o) return;
       if (o.status !== "confirmed") return; // already processed or invalid
 
+      // Reject a webhook whose amount disagrees with our recorded total —
+      // could be a partial capture, currency drift, or a replayed test event.
+      // Better to leave the order in 'confirmed' (reservation will sweep) and
+      // surface for manual review than to ledger out stock for less than paid.
+      const reported = body.data?.amount;
+      if (typeof reported === "number" && reported !== o.totalNgn) {
+        await tx
+          .update(saleOrder)
+          .set({ status: "reconcile_needed", updatedAt: new Date() })
+          .where(eq(saleOrder.id, o.id));
+        await tx.insert(outboxEvent).values({
+          eventType: "sale.amount_mismatch",
+          payload: {
+            sale_order_id: o.id,
+            order_number: o.orderNumber,
+            expected_ngn: o.totalNgn,
+            reported_ngn: reported,
+            payaza_reference: body.data?.payaza_reference ?? null,
+          },
+        });
+        return;
+      }
+
       const items = await tx
         .select()
         .from(saleOrderItem)
@@ -56,6 +79,7 @@ export function payazaWebhookRoutes(db: DbClient) {
           locationType: "branch",
           locationId: o.branchId,
           productId: it.productId,
+          variantId: it.variantId ?? null,
           delta: -it.quantity,
           sourceType: "sale",
           sourceId: o.id,
@@ -83,6 +107,18 @@ export function payazaWebhookRoutes(db: DbClient) {
           order_number: o.orderNumber,
           branch_id: o.branchId,
           customer_id: o.customerId,
+        },
+      });
+      // Kick off the delivery request via the worker outbox. The worker
+      // calls Bolt, persists a delivery_order row, and surfaces the result.
+      // Doing it from the worker (rather than inline) lets us retry without
+      // re-running the payment-completion code path.
+      await tx.insert(outboxEvent).values({
+        eventType: "delivery.request",
+        payload: {
+          sale_order_id: o.id,
+          order_number: o.orderNumber,
+          branch_id: o.branchId,
         },
       });
     });

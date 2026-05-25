@@ -1,523 +1,437 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+﻿import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
 import { Shell } from "../components/Shell.js";
 import { api } from "../lib/api.js";
 import { formatDateTime } from "../lib/format.js";
+import { InlineLoader } from "../components/Spinner.js";
+
+type TransferStatus =
+  | "dispatched"
+  | "in_transit"
+  | "arrived"
+  | "received"
+  | "received_with_variance"
+  | "rejected"
+  | "completed"
+  | "cancelled";
 
 interface Transfer {
   id: string;
   transferNumber: string;
-  status:
-    | "draft"
-    | "dispatched"
-    | "in_transit"
-    | "arrived"
-    | "received"
-    | "received_with_variance"
-    | "rejected"
-    | "completed"
-    | "cancelled";
   factoryId: string;
   branchId: string;
+  status: TransferStatus;
+  vehicleInfo: string | null;
+  driverName: string | null;
+  createdAt: string;
   dispatchedAt: string | null;
   receivedAt: string | null;
-  createdAt: string;
-  items?: Array<{
-    id: string;
-    productId: string;
-    quantitySent: number;
-    quantityReceived: number | null;
-    varianceReason: string | null;
-  }>;
 }
-interface Product { id: string; name: string }
-interface Branch { id: string; name: string }
-interface Factory { id: string; name: string }
+interface Factory {
+  id: string;
+  name: string;
+}
+interface Branch {
+  id: string;
+  name: string;
+}
+interface Product {
+  id: string;
+  name: string;
+}
 
-const STATUS_LABEL: Record<Transfer["status"], { label: string; tone: string }> = {
-  draft: { label: "Draft", tone: "var(--ms-ink-3)" },
-  dispatched: { label: "Dispatched", tone: "var(--ms-orange)" },
-  in_transit: { label: "In transit", tone: "var(--ms-orange)" },
-  arrived: { label: "Arrived", tone: "var(--ms-warn)" },
-  received: { label: "Received", tone: "var(--ms-green-700)" },
-  received_with_variance: { label: "Variance review", tone: "var(--ms-danger)" },
-  rejected: { label: "Rejected", tone: "var(--ms-danger)" },
-  completed: { label: "Completed", tone: "var(--ms-green-700)" },
-  cancelled: { label: "Cancelled", tone: "var(--ms-ink-3)" },
-};
+interface DraftItem {
+  product_id: string;
+  quantity_sent: number;
+  unit_cost_ngn: number;
+}
 
-export function TransfersPage() {
-  const qc = useQueryClient();
-  const transfers = useQuery({
-    queryKey: ["transfers"],
-    queryFn: () => api<{ data: Transfer[] }>("/transfers").then((r) => r.data),
-  });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+function statusPill(s: TransferStatus): JSX.Element {
+  const map: Record<TransferStatus, [string, string]> = {
+    dispatched: ["pill pill--accent", "Dispatched"],
+    in_transit: ["pill pill--accent", "In transit"],
+    arrived: ["pill pill--warning", "Arrived"],
+    received: ["pill pill--success", "Received"],
+    received_with_variance: ["pill pill--warning", "Variance"],
+    rejected: ["pill pill--danger", "Rejected"],
+    completed: ["pill pill--success", "Completed"],
+    cancelled: ["pill pill--ink", "Cancelled"],
+  };
+  const [cls, label] = map[s];
+  return <span className={cls}>{label}</span>;
+}
+
+export function TransfersPage(): JSX.Element {
+  const [rows, setRows] = useState<Transfer[]>([]);
+  const [factories, setFactories] = useState<Factory[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [filter, setFilter] = useState<TransferStatus | "">("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+
+  async function load(): Promise<void> {
+    setLoading(true);
+    try {
+      const qs = filter ? `?status=${filter}` : "";
+      const [t, f, b, p] = await Promise.all([
+        api<{ data: Transfer[] }>(`/transfers${qs}`),
+        api<{ data: Factory[] }>(`/factories`),
+        api<{ data: Branch[] }>(`/branches`),
+        api<{ data: Product[] }>(`/products`),
+      ]);
+      setRows(t.data);
+      setFactories(f.data);
+      setBranches(b.data);
+      setProducts(p.data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
+
+  const factoryName = (id: string): string =>
+    factories.find((f) => f.id === id)?.name ?? id.slice(0, 8);
+  const branchName = (id: string): string =>
+    branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);
 
   return (
-    <Shell title="Stock transfers">
-      <div className="flex justify-between items-end mb-6">
-        <p style={{ color: "var(--ms-ink-3)" }}>
-          {transfers.data?.length ?? 0} transfers
-        </p>
-        <button
-          onClick={() => setCreating(true)}
-          className="px-4 py-2 rounded-full text-white text-sm font-semibold"
-          style={{ background: "var(--ms-ink)" }}
+    <Shell
+      title="Transfers"
+      actions={
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select
+            className="select"
+            style={{ width: 180, height: 36 }}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as TransferStatus | "")}
+          >
+            <option value="">All statuses</option>
+            <option value="dispatched">Dispatched</option>
+            <option value="arrived">Arrived</option>
+            <option value="received_with_variance">Variance</option>
+            <option value="completed">Completed</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <button type="button" className="btn btn--primary btn--sm" onClick={() => setShowCreate(true)}>
+            + Send transfer
+          </button>
+        </div>
+      }
+    >
+      {error && (
+        <div
+          className="card"
+          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
         >
-          + New transfer
-        </button>
-      </div>
-
-      {creating && (
-        <CreateForm
-          onClose={() => setCreating(false)}
-          onCreated={() => {
-            qc.invalidateQueries({ queryKey: ["transfers"] });
-            setCreating(false);
-          }}
-        />
+          {error}
+        </div>
       )}
 
-      <div
-        className="overflow-hidden mb-6"
-        style={{
-          background: "var(--ms-surface)",
-          border: "1px solid var(--ms-border)",
-          borderRadius: 14,
-        }}
-      >
-        <table className="w-full text-sm">
-          <thead style={{ background: "var(--ms-surface-alt)" }}>
-            <tr>
-              <th className="text-left px-4 py-2 text-xs uppercase tracking-wide font-semibold">Number</th>
-              <th className="text-left px-4 py-2 text-xs uppercase tracking-wide font-semibold">Status</th>
-              <th className="text-left px-4 py-2 text-xs uppercase tracking-wide font-semibold">Dispatched</th>
-              <th className="text-left px-4 py-2 text-xs uppercase tracking-wide font-semibold">Received</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {transfers.data?.map((t) => (
-              <tr key={t.id} style={{ borderTop: "1px solid var(--ms-divider)" }}>
-                <td className="px-4 py-3 font-mono text-xs">{t.transferNumber}</td>
-                <td className="px-4 py-3">
-                  <span
-                    className="text-xs font-semibold px-2 py-1 rounded-full"
-                    style={{
-                      background: "var(--ms-surface-alt)",
-                      color: STATUS_LABEL[t.status].tone,
-                    }}
-                  >
-                    {STATUS_LABEL[t.status].label}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-xs" style={{ color: "var(--ms-ink-2)" }}>
-                  {formatDateTime(t.dispatchedAt)}
-                </td>
-                <td className="px-4 py-3 text-xs" style={{ color: "var(--ms-ink-2)" }}>
-                  {formatDateTime(t.receivedAt)}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={() => setSelectedId(t.id)}
-                    className="text-xs"
-                    style={{ color: "var(--ms-green-700)" }}
-                  >
-                    Open →
-                  </button>
-                </td>
+      {loading ? (
+        <InlineLoader />
+      ) : rows.length === 0 ? (
+        <div className="empty">
+          <div className="empty__title">No transfers in view</div>
+          Adjust the status filter or create a new transfer.
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Number</th>
+                <th>Factory → Branch</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((t) => (
+                <tr key={t.id}>
+                  <td>
+                    <Link
+                      to="/transfers/$transferId"
+                      params={{ transferId: t.id }}
+                      style={{ fontWeight: 600, color: "var(--ink)" }}
+                    >
+                      {t.transferNumber}
+                    </Link>
+                  </td>
+                  <td>
+                    <span>{factoryName(t.factoryId)}</span>
+                    <span style={{ color: "var(--ink-soft)" }}> → </span>
+                    <span>{branchName(t.branchId)}</span>
+                  </td>
+                  <td>{statusPill(t.status)}</td>
+                  <td>{formatDateTime(t.createdAt)}</td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <Link
+                      to="/transfers/$transferId"
+                      params={{ transferId: t.id }}
+                      className="btn btn--subtle btn--sm"
+                    >
+                      Open
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      {selectedId && (
-        <TransferDetail
-          id={selectedId}
-          onClose={() => setSelectedId(null)}
-          onUpdated={() => qc.invalidateQueries({ queryKey: ["transfers"] })}
+      {showCreate && (
+        <CreateTransferModal
+          factories={factories}
+          branches={branches}
+          products={products}
+          onClose={() => setShowCreate(false)}
+          onSaved={() => {
+            setShowCreate(false);
+            void load();
+          }}
         />
       )}
     </Shell>
   );
 }
 
-function CreateForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const products = useQuery({
-    queryKey: ["products"],
-    queryFn: () => api<{ data: Product[] }>("/products").then((r) => r.data),
-  });
-  const factories = useQuery({
-    queryKey: ["factories"],
-    queryFn: () => api<{ data: Factory[] }>("/factories").then((r) => r.data),
-  });
-  const branches = useQuery({
-    queryKey: ["branches"],
-    queryFn: () => api<{ data: Branch[] }>("/branches").then((r) => r.data),
-  });
-
-  const [factoryId, setFactoryId] = useState("");
-  const [branchId, setBranchId] = useState("");
-  const [counts, setCounts] = useState<Record<string, number>>({});
+function CreateTransferModal({
+  factories,
+  branches,
+  products,
+  onClose,
+  onSaved,
+}: {
+  factories: Factory[];
+  branches: Branch[];
+  products: Product[];
+  onClose: () => void;
+  onSaved: () => void;
+}): JSX.Element {
+  const [factoryId, setFactoryId] = useState(factories[0]?.id ?? "");
+  const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [vehicle, setVehicle] = useState("");
   const [driver, setDriver] = useState("");
+  const [items, setItems] = useState<DraftItem[]>([]);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createAndDispatch = useMutation({
-    mutationFn: async () => {
-      setError(null);
-      const items = Object.entries(counts)
-        .filter(([, q]) => q > 0)
-        .map(([product_id, quantity_sent]) => ({ product_id, quantity_sent }));
-      if (items.length === 0) throw new Error("Enter at least one quantity");
-      if (!factoryId || !branchId) throw new Error("Pick factory and branch");
+  function addItem(): void {
+    const used = new Set(items.map((i) => i.product_id));
+    const next = products.find((p) => !used.has(p.id));
+    if (!next) return;
+    setItems((it) => [...it, { product_id: next.id, quantity_sent: 50, unit_cost_ngn: 0 }]);
+  }
+  function updateItem(idx: number, patch: Partial<DraftItem>): void {
+    setItems((it) => it.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
+  }
+  function removeItem(idx: number): void {
+    setItems((it) => it.filter((_, i) => i !== idx));
+  }
 
-      const created = await api<{ data: Transfer }>("/transfers", {
+  async function submit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (items.length === 0 || !factoryId || !branchId) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api(`/transfers`, {
         method: "POST",
         body: JSON.stringify({
           factory_id: factoryId,
           branch_id: branchId,
           vehicle_info: vehicle || undefined,
           driver_name: driver || undefined,
-          items,
+          items: items.map((it) => ({
+            product_id: it.product_id,
+            quantity_sent: Number(it.quantity_sent),
+            unit_cost_ngn: it.unit_cost_ngn ? Number(it.unit_cost_ngn) : undefined,
+          })),
         }),
       });
-      await api(`/transfers/${created.data.id}/dispatch`, { method: "PATCH" });
-    },
-    onSuccess: onCreated,
-    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
-  });
-
-  // Default factory/branch on first load
-  if (!factoryId && factories.data?.[0]) setFactoryId(factories.data[0].id);
-  if (!branchId && branches.data?.[0]) setBranchId(branches.data[0].id);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div
-      className="mb-6 p-5"
+      role="dialog"
+      aria-modal
       style={{
-        background: "var(--ms-surface)",
-        border: "1px solid var(--ms-border)",
-        borderRadius: 14,
+        position: "fixed",
+        inset: 0,
+        background: "rgba(20,24,31,0.45)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 50,
+        padding: 16,
       }}
+      onClick={onClose}
     >
-      <h3 className="font-display text-lg font-bold mb-4">New transfer</h3>
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <Field label="Factory">
-          <select
-            value={factoryId}
-            onChange={(e) => setFactoryId(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md"
-            style={{ borderColor: "var(--ms-border)" }}
+      <div
+        className="card"
+        style={{ width: "100%", maxWidth: 640, boxShadow: "var(--shadow-float)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
+          <h2 className="t-h2">Send transfer</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: "transparent", border: 0, fontSize: 22, cursor: "pointer", color: "var(--ink-soft)" }}
           >
-            {factories.data?.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Destination branch">
-          <select
-            value={branchId}
-            onChange={(e) => setBranchId(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md"
-            style={{ borderColor: "var(--ms-border)" }}
-          >
-            {branches.data?.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Vehicle">
-          <input
-            value={vehicle}
-            onChange={(e) => setVehicle(e.target.value)}
-            placeholder="e.g. KJA-348-EL"
-            className="w-full px-3 py-2 border rounded-md"
-            style={{ borderColor: "var(--ms-border)" }}
-          />
-        </Field>
-        <Field label="Driver">
-          <input
-            value={driver}
-            onChange={(e) => setDriver(e.target.value)}
-            placeholder="Driver name"
-            className="w-full px-3 py-2 border rounded-md"
-            style={{ borderColor: "var(--ms-border)" }}
-          />
-        </Field>
-      </div>
-
-      <div className="text-xs uppercase tracking-wide font-semibold mb-2" style={{ color: "var(--ms-ink-3)" }}>
-        Bottles to send
-      </div>
-      <div className="grid grid-cols-2 gap-2 mb-4">
-        {products.data?.map((p) => (
-          <div
-            key={p.id}
-            className="flex items-center justify-between p-2 rounded-md"
-            style={{ background: "var(--ms-surface-alt)" }}
-          >
-            <span className="text-sm">{p.name}</span>
-            <input
-              type="number"
-              min={0}
-              value={counts[p.id] ?? 0}
-              onChange={(e) =>
-                setCounts({ ...counts, [p.id]: Math.max(0, Number(e.target.value)) })
-              }
-              className="w-20 px-2 py-1 text-right border rounded tabular-nums"
-              style={{ borderColor: "var(--ms-border)" }}
-            />
+            ×
+          </button>
+        </header>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="field">
+              <label className="field__label">Factory</label>
+              <select className="select" value={factoryId} onChange={(e) => setFactoryId(e.target.value)}>
+                {factories.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label className="field__label">Branch</label>
+              <select className="select" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-        ))}
-      </div>
 
-      {error && (
-        <p className="text-sm mb-3" style={{ color: "var(--ms-danger)" }}>
-          {error}
-        </p>
-      )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="field">
+              <label className="field__label">Vehicle</label>
+              <input
+                className="input"
+                value={vehicle}
+                onChange={(e) => setVehicle(e.target.value)}
+                placeholder="optional"
+              />
+            </div>
+            <div className="field">
+              <label className="field__label">Driver</label>
+              <input
+                className="input"
+                value={driver}
+                onChange={(e) => setDriver(e.target.value)}
+                placeholder="optional"
+              />
+            </div>
+          </div>
 
-      <div className="flex gap-2 justify-end">
-        <button
-          onClick={onClose}
-          className="px-3 py-2 border rounded-full text-sm"
-          style={{ borderColor: "var(--ms-border)" }}
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => createAndDispatch.mutate()}
-          disabled={createAndDispatch.isPending}
-          className="px-4 py-2 rounded-full text-white text-sm font-semibold"
-          style={{ background: "var(--ms-green-500)" }}
-        >
-          {createAndDispatch.isPending ? "Dispatching..." : "Save & dispatch →"}
-        </button>
+          <div className="field">
+            <label className="field__label">Items</label>
+            {items.length === 0 ? (
+              <div className="empty" style={{ padding: 18 }}>
+                <button type="button" className="btn btn--subtle btn--sm" onClick={addItem}>
+                  + Add product
+                </button>
+              </div>
+            ) : (
+              <div className="table-wrap" style={{ border: 0 }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th className="table__num">Quantity</th>
+                      <th className="table__num">Unit cost (₦)</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((it, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          <select
+                            className="select"
+                            value={it.product_id}
+                            onChange={(e) => updateItem(idx, { product_id: e.target.value })}
+                          >
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            className="input"
+                            type="number"
+                            style={{ textAlign: "right" }}
+                            value={it.quantity_sent}
+                            onChange={(e) =>
+                              updateItem(idx, { quantity_sent: Number(e.target.value) })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className="input"
+                            type="number"
+                            style={{ textAlign: "right" }}
+                            value={it.unit_cost_ngn}
+                            onChange={(e) =>
+                              updateItem(idx, { unit_cost_ngn: Number(e.target.value) })
+                            }
+                          />
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(idx)}
+                            style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--ink-soft)", fontSize: 18 }}
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ padding: 10, borderTop: "1px solid var(--line)" }}>
+                  <button
+                    type="button"
+                    className="btn btn--subtle btn--sm"
+                    onClick={addItem}
+                    disabled={items.length >= products.length}
+                  >
+                    + Add product
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {error && <div className="field__error">{error}</div>}
+          <button type="submit" className="btn btn--primary btn--block" disabled={submitting || items.length === 0}>
+            {submitting ? "Sending…" : "Send transfer"}
+          </button>
+        </form>
       </div>
     </div>
-  );
-}
-
-function TransferDetail({
-  id,
-  onClose,
-  onUpdated,
-}: {
-  id: string;
-  onClose: () => void;
-  onUpdated: () => void;
-}) {
-  const detail = useQuery({
-    queryKey: ["transfer", id],
-    queryFn: () => api<{ data: Transfer }>(`/transfers/${id}`).then((r) => r.data),
-  });
-  const products = useQuery({
-    queryKey: ["products"],
-    queryFn: () => api<{ data: Product[] }>("/products").then((r) => r.data),
-  });
-  const productName = (productId: string) =>
-    products.data?.find((p) => p.id === productId)?.name ?? productId.slice(0, 8);
-
-  const [receiveCounts, setReceiveCounts] = useState<Record<string, number>>({});
-  const [reasons, setReasons] = useState<Record<string, string>>({});
-
-  const arrive = useMutation({
-    mutationFn: () => api(`/transfers/${id}/arrive`, { method: "PATCH" }),
-    onSuccess: () => {
-      detail.refetch();
-      onUpdated();
-    },
-  });
-  const receive = useMutation({
-    mutationFn: () => {
-      const items = (detail.data?.items ?? []).map((it) => ({
-        item_id: it.id,
-        quantity_received: receiveCounts[it.id] ?? it.quantitySent,
-        variance_reason: reasons[it.id] || undefined,
-      }));
-      return api(`/transfers/${id}/receive`, {
-        method: "PATCH",
-        body: JSON.stringify({ items }),
-      });
-    },
-    onSuccess: () => {
-      detail.refetch();
-      onUpdated();
-    },
-  });
-  const approve = useMutation({
-    mutationFn: () => api(`/transfers/${id}/approve`, { method: "PATCH" }),
-    onSuccess: () => {
-      detail.refetch();
-      onUpdated();
-    },
-  });
-
-  if (!detail.data) return null;
-  const t = detail.data;
-  const status = STATUS_LABEL[t.status];
-
-  return (
-    <div
-      className="p-5"
-      style={{
-        background: "var(--ms-surface)",
-        border: "1px solid var(--ms-border)",
-        borderRadius: 14,
-      }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <div className="font-display text-xl font-bold">{t.transferNumber}</div>
-          <div className="text-xs" style={{ color: "var(--ms-ink-3)" }}>
-            <span style={{ color: status.tone, fontWeight: 600 }}>{status.label}</span>
-            {" · created "}{formatDateTime(t.createdAt)}
-          </div>
-        </div>
-        <button onClick={onClose} className="text-xs" style={{ color: "var(--ms-ink-3)" }}>
-          ✕ Close
-        </button>
-      </div>
-
-      <table className="w-full text-sm mb-4">
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--ms-divider)" }}>
-            <th className="text-left py-2 text-xs uppercase tracking-wide" style={{ color: "var(--ms-ink-3)" }}>
-              Item
-            </th>
-            <th className="text-right py-2 text-xs uppercase tracking-wide" style={{ color: "var(--ms-ink-3)" }}>
-              Sent
-            </th>
-            {t.status === "arrived" && (
-              <>
-                <th className="text-right py-2 text-xs uppercase tracking-wide" style={{ color: "var(--ms-ink-3)" }}>
-                  Received
-                </th>
-                <th className="text-left pl-3 py-2 text-xs uppercase tracking-wide" style={{ color: "var(--ms-ink-3)" }}>
-                  Variance reason (if any)
-                </th>
-              </>
-            )}
-            {(t.status === "received" ||
-              t.status === "received_with_variance" ||
-              t.status === "completed") && (
-              <th className="text-right py-2 text-xs uppercase tracking-wide" style={{ color: "var(--ms-ink-3)" }}>
-                Received
-              </th>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {t.items?.map((it) => (
-            <tr key={it.id} style={{ borderBottom: "1px solid var(--ms-divider)" }}>
-              <td className="py-3">{productName(it.productId)}</td>
-              <td className="py-3 text-right tabular-nums">{it.quantitySent}</td>
-              {t.status === "arrived" && (
-                <>
-                  <td className="py-3 text-right">
-                    <input
-                      type="number"
-                      min={0}
-                      defaultValue={it.quantitySent}
-                      onChange={(e) =>
-                        setReceiveCounts({
-                          ...receiveCounts,
-                          [it.id]: Math.max(0, Number(e.target.value)),
-                        })
-                      }
-                      className="w-20 px-2 py-1 text-right border rounded tabular-nums"
-                      style={{ borderColor: "var(--ms-border)" }}
-                    />
-                  </td>
-                  <td className="py-3 pl-3">
-                    <select
-                      value={reasons[it.id] ?? ""}
-                      onChange={(e) => setReasons({ ...reasons, [it.id]: e.target.value })}
-                      className="px-2 py-1 border rounded text-xs"
-                      style={{ borderColor: "var(--ms-border)" }}
-                    >
-                      <option value="">—</option>
-                      <option value="short_shipped">Short shipped</option>
-                      <option value="damaged_in_transit">Damaged in transit</option>
-                      <option value="wrong_item">Wrong item</option>
-                      <option value="extra_received">Extra received</option>
-                      <option value="count_error_at_branch">Count error at branch</option>
-                      <option value="other_with_note">Other (note)</option>
-                    </select>
-                  </td>
-                </>
-              )}
-              {(t.status === "received" ||
-                t.status === "received_with_variance" ||
-                t.status === "completed") && (
-                <td className="py-3 text-right tabular-nums">
-                  {it.quantityReceived ?? "—"}
-                  {it.varianceReason && (
-                    <span
-                      className="text-xs ml-2"
-                      style={{ color: "var(--ms-warn)" }}
-                    >
-                      {it.varianceReason}
-                    </span>
-                  )}
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="flex gap-2 justify-end">
-        {(t.status === "dispatched" || t.status === "in_transit") && (
-          <button
-            onClick={() => arrive.mutate()}
-            disabled={arrive.isPending}
-            className="px-4 py-2 rounded-full text-white text-sm font-semibold"
-            style={{ background: "var(--ms-orange)" }}
-          >
-            Mark arrived
-          </button>
-        )}
-        {t.status === "arrived" && (
-          <button
-            onClick={() => receive.mutate()}
-            disabled={receive.isPending}
-            className="px-4 py-2 rounded-full text-white text-sm font-semibold"
-            style={{ background: "var(--ms-green-500)" }}
-          >
-            {receive.isPending ? "Submitting..." : "Submit counts →"}
-          </button>
-        )}
-        {t.status === "received_with_variance" && (
-          <button
-            onClick={() => approve.mutate()}
-            disabled={approve.isPending}
-            className="px-4 py-2 rounded-full text-white text-sm font-semibold"
-            style={{ background: "var(--ms-green-500)" }}
-          >
-            Approve variance
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-xs font-semibold mb-1" style={{ color: "var(--ms-ink-2)" }}>
-        {label}
-      </span>
-      {children}
-    </label>
   );
 }

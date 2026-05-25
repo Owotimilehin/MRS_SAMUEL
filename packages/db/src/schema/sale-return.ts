@@ -27,7 +27,6 @@ export const returnRefundMethod = pgEnum("return_refund_method", [
   "transfer",
   "store_credit",
   "replacement",
-  "glovo_external",
   "chowdeck_external",
   "none",
 ]);

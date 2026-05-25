@@ -1,241 +1,527 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { cart as cartApi } from "../store/cart.js";
 import { Link } from "@tanstack/react-router";
 import { useCart } from "../store/cart.js";
 import { api, ngn } from "../lib/api.js";
+import { BRAND } from "../data/menu.js";
+import { Button, Eyebrow } from "../components/ui/index.js";
 
-interface Zone {
+interface DeliveryZone {
   branch_id: string;
   branch_name: string;
   name: string;
   fee_ngn: number;
 }
-
-interface OrderResponse {
+interface CreateOrderResp {
   data: {
+    id: string;
     order_number: string;
     total_ngn: number;
-    payment: { authorization_url: string };
+    payment: {
+      authorization_url: string;
+      reference: string;
+    };
   };
 }
 
+
 export function CheckoutPage(): JSX.Element {
-  const cart = useCart();
-  const [zones, setZones] = useState<Zone[] | null>(null);
-  const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "" });
+  // Re-fetch the cart on mount so a refresh / direct visit shows live state.
+  useEffect(() => {
+    void cartApi.refresh().catch(() => undefined);
+  }, []);
+
+  const items = useCart((s) => s.items);
+  const subtotal = useCart((s) => s.subtotal());
+  const clear = useCart((s) => s.clear);
+
+  const [zones, setZones] = useState<DeliveryZone[]>([]);
+  const [loadingRef, setLoadingRef] = useState(true);
+  const [refError, setRefError] = useState<string | null>(null);
+
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [address, setAddress] = useState("");
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  const [selectedZone, setSelectedZone] = useState<string>("");
+  const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Live delivery quote (Bolt). Refreshed when address or coords change.
+  const [quote, setQuote] = useState<{
+    provider: string;
+    provider_quote_id: string | null;
+    fee_ngn: number;
+    eta_minutes: number;
+    notice?: string;
+  } | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+
   useEffect(() => {
-    void api<{ data: Zone[] }>("/catalog/zones").then((r) => {
-      setZones(r.data);
-      if (r.data[0]) setSelectedZone(r.data[0]);
-    });
+    let cancelled = false;
+    setLoadingRef(true);
+    void (async () => {
+      try {
+        const z = await api<{ data: DeliveryZone[] }>("/catalog/zones");
+        if (cancelled) return;
+        setZones(z.data);
+        if (z.data[0]) setSelectedZone(`${z.data[0].branch_id}|${z.data[0].name}`);
+      } catch (err) {
+        if (!cancelled) {
+          setRefError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) setLoadingRef(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const subtotal = cart.subtotal();
-  const delivery = selectedZone?.fee_ngn ?? 0;
-  const total = subtotal + delivery;
+  // Server cart already exposes variant UUIDs — no slug-matching needed.
+  // Order submit reads from the cookie-keyed cart on the server, so we don't
+  // even need to send items[]; the API resolves them from the cart row.
+  const unmatched: { name: string }[] = [];
+  const zone = zones.find((z) => `${z.branch_id}|${z.name}` === selectedZone);
 
-  async function submit(e: React.FormEvent): Promise<void> {
+  // Live delivery-fee quote. Refreshes when address text is stable for 800ms
+  // OR coords change. Requires a branch + an address. Aborts on stale calls.
+  useEffect(() => {
+    if (!zone || !address || address.trim().length < 4) {
+      setQuote(null);
+      return;
+    }
+    setQuoteLoading(true);
+    const abort = new AbortController();
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const body: Record<string, unknown> = {
+            branch_id: zone.branch_id,
+            dropoff_address: address,
+          };
+          if (coords) {
+            body["dropoff_lat"] = coords.lat;
+            body["dropoff_lng"] = coords.lng;
+          }
+          const res = await fetch("/v1/public/orders/quote", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+            signal: abort.signal,
+          });
+          if (!res.ok) throw new Error(`quote ${res.status}`);
+          const data = (await res.json()) as {
+            data: {
+              provider: string;
+              provider_quote_id: string | null;
+              fee_ngn: number;
+              eta_minutes: number;
+              notice?: string;
+            };
+          };
+          if (!abort.signal.aborted) setQuote(data.data);
+        } catch (err) {
+          if (!abort.signal.aborted) {
+            // Quote failed entirely — fall back silently to the static zone fee.
+            setQuote(null);
+            console.warn("delivery quote failed", err);
+          }
+        } finally {
+          if (!abort.signal.aborted) setQuoteLoading(false);
+        }
+      })();
+    }, 800);
+    return () => {
+      window.clearTimeout(handle);
+      abort.abort();
+    };
+  }, [zone?.branch_id, address, coords?.lat, coords?.lng]);
+
+  function useMyLocation(): void {
+    if (!navigator.geolocation) {
+      setGeoError("Your browser doesn't support location.");
+      return;
+    }
+    setGeoLoading(true);
+    setGeoError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setGeoLoading(false);
+      },
+      (err) => {
+        setGeoError(
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission denied. Type your address instead."
+            : "Couldn't get your location. Type your address instead.",
+        );
+        setGeoLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }
+  // Prefer the live quote when present; fall back to the static zone fee.
+  const deliveryFee = quote?.fee_ngn ?? zone?.fee_ngn ?? 0;
+  const total = subtotal + deliveryFee;
+
+  async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!selectedZone) return;
+    if (submitting || !zone) return;
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api<OrderResponse>("/orders", {
+      // No items[] payload — the server reads the cart from the ms_cart cookie.
+      const res = await api<CreateOrderResp>("/orders", {
         method: "POST",
         body: JSON.stringify({
-          branch_id: selectedZone.branch_id,
-          zone_name: selectedZone.name,
-          delivery_fee_ngn: selectedZone.fee_ngn,
+          branch_id: zone.branch_id,
+          zone_name: zone.name,
+          delivery_fee_ngn: deliveryFee,
+          ...(quote?.provider_quote_id
+            ? { delivery_quote_id: quote.provider_quote_id }
+            : {}),
           customer: {
-            name: form.name,
-            phone: form.phone,
-            email: form.email || undefined,
-            address: form.address,
+            name,
+            phone,
+            email: email || undefined,
+            address,
+            ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
           },
-          items: cart.items.map((i) => ({
-            product_id: i.product_id,
-            quantity: i.quantity,
-          })),
+          notes: notes || undefined,
         }),
       });
-      cart.clear();
-      // Stash the phone so the tracking page can use it without asking again
-      sessionStorage.setItem(
-        `track:${res.data.order_number}`,
-        form.phone,
-      );
+      // Stash details for the tracking page
+      try {
+        sessionStorage.setItem(
+          `ms_order_phone_${res.data.order_number}`,
+          phone,
+        );
+      } catch {
+        /* private mode — fine, the user can re-enter */
+      }
+      clear();
       window.location.href = res.data.payment.authorization_url;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
       setSubmitting(false);
     }
   }
 
-  if (cart.items.length === 0) {
+  if (items.length === 0) {
     return (
-      <main className="max-w-2xl mx-auto py-20 px-6 text-center">
-        <p className="mb-4" style={{ color: "var(--ms-ink-3)" }}>Your cart is empty.</p>
-        <Link
-          to="/"
-          className="inline-block px-6 py-3 rounded-full text-white font-bold no-underline"
-          style={{ background: "var(--ms-green-500)" }}
-        >
-          Back to menu
-        </Link>
-      </main>
+      <div className="ms-shell">
+        <div className="ms-container">
+          <CheckoutHeader />
+          <main className="ms-checkout">
+            <div className="ms-cart__empty">
+              <Eyebrow>Checkout</Eyebrow>
+              <h1 className="ms-section-title">Your basket is empty.</h1>
+              <p className="ms-section-sub">Add a bottle first, then come back to check out.</p>
+              <Link to="/" className="btn btn--primary">
+                Browse the menu
+              </Link>
+            </div>
+          </main>
+        </div>
+      </div>
     );
   }
 
   return (
-    <main className="max-w-2xl mx-auto py-12 px-6">
-      <Link
-        to="/cart"
-        className="text-sm no-underline mb-6 inline-block"
-        style={{ color: "var(--ms-ink-3)" }}
-      >
-        ← Back to cart
-      </Link>
-      <h1 className="font-display text-3xl font-bold mb-6">Checkout</h1>
+    <div className="ms-shell">
+      <div className="ms-container">
+        <CheckoutHeader />
+        <main className="ms-checkout">
+          <header style={{ marginBottom: 22 }}>
+            <Eyebrow>Checkout</Eyebrow>
+            <h1 className="ms-section-title">Where should we deliver?</h1>
+            <p className="ms-section-sub">
+              We'll take a deposit now and dispatch within the hour. Pay with card or transfer on the next screen.
+            </p>
+          </header>
 
-      <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
-        <Field label="Full name">
-          <input
-            required
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full px-3 py-2 border rounded-md"
-            style={{ borderColor: "var(--ms-border)" }}
-          />
-        </Field>
-        <Field label="Phone (for delivery)">
-          <input
-            required
-            type="tel"
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            placeholder="+234 …"
-            className="w-full px-3 py-2 border rounded-md"
-            style={{ borderColor: "var(--ms-border)" }}
-          />
-        </Field>
-        <Field label="Email (for receipt — optional)">
-          <input
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            className="w-full px-3 py-2 border rounded-md"
-            style={{ borderColor: "var(--ms-border)" }}
-          />
-        </Field>
-        <Field label="Delivery address">
-          <input
-            required
-            value={form.address}
-            onChange={(e) => setForm({ ...form, address: e.target.value })}
-            className="w-full px-3 py-2 border rounded-md"
-            style={{ borderColor: "var(--ms-border)" }}
-          />
-        </Field>
-
-        <Field label="Delivery zone">
-          {!zones ? (
-            <p style={{ color: "var(--ms-ink-3)" }}>Loading…</p>
-          ) : (
-            <div className="grid gap-2">
-              {zones.map((z) => (
-                <label
-                  key={`${z.branch_id}-${z.name}`}
-                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer"
-                  style={{
-                    background:
-                      selectedZone?.name === z.name && selectedZone?.branch_id === z.branch_id
-                        ? "var(--ms-bg)"
-                        : "white",
-                    border:
-                      selectedZone?.name === z.name && selectedZone?.branch_id === z.branch_id
-                        ? "1px solid var(--ms-green-500)"
-                        : "1px solid var(--ms-border)",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="zone"
-                    checked={selectedZone?.name === z.name && selectedZone?.branch_id === z.branch_id}
-                    onChange={() => setSelectedZone(z)}
-                  />
-                  <div className="flex-1">
-                    <div className="font-semibold">{z.name}</div>
-                    <div className="text-xs" style={{ color: "var(--ms-ink-3)" }}>
-                      from {z.branch_name}
-                    </div>
-                  </div>
-                  <div className="font-display font-bold tabular-nums">{ngn(z.fee_ngn)}</div>
-                </label>
-              ))}
+          {refError && (
+            <div className="ms-checkout__error" role="alert">
+              Couldn't load delivery zones — {refError}
             </div>
           )}
-        </Field>
 
-        <div
-          className="rounded-xl p-4"
-          style={{ background: "white", border: "1px solid var(--ms-border)" }}
-        >
-          <div className="flex justify-between text-sm mb-1">
-            <span style={{ color: "var(--ms-ink-3)" }}>Subtotal</span>
-            <span className="tabular-nums">{ngn(subtotal)}</span>
-          </div>
-          <div className="flex justify-between text-sm mb-2">
-            <span style={{ color: "var(--ms-ink-3)" }}>Delivery</span>
-            <span className="tabular-nums">{ngn(delivery)}</span>
-          </div>
-          <div
-            className="flex justify-between font-display text-xl font-bold pt-2"
-            style={{ borderTop: "1px dashed var(--ms-border)" }}
-          >
-            <span>Total</span>
-            <span className="tabular-nums">{ngn(total)}</span>
-          </div>
-        </div>
+          <form onSubmit={submit} className="ms-checkout__grid">
+            <section className="ms-checkout__form">
+              <h2 className="ms-checkout__h2">Your details</h2>
+              <div className="ms-checkout__row">
+                <Field label="Full name" required>
+                  <input
+                    className="ms-checkout__input"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    autoComplete="name"
+                  />
+                </Field>
+                <Field label="Phone" required>
+                  <input
+                    className="ms-checkout__input"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    required
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="+234…"
+                  />
+                </Field>
+              </div>
+              <Field label="Email (optional)">
+                <input
+                  className="ms-checkout__input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                />
+              </Field>
 
-        {error && (
-          <p
-            className="p-3 rounded-md text-sm"
-            style={{ background: "#ffe1de", color: "#8a2018" }}
-          >
-            {error}
-          </p>
-        )}
+              <h2 className="ms-checkout__h2" style={{ marginTop: 22 }}>
+                Delivery
+              </h2>
+              <Field label="Address" required>
+                <textarea
+                  className="ms-checkout__input"
+                  rows={2}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  required
+                  autoComplete="street-address"
+                />
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginTop: 6,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="btn btn--subtle btn--sm"
+                    onClick={useMyLocation}
+                    disabled={geoLoading}
+                    style={{ fontSize: 12 }}
+                  >
+                    {geoLoading
+                      ? "Locating…"
+                      : coords
+                        ? "✓ Using my location"
+                        : "📍 Use my location"}
+                  </button>
+                  {geoError && (
+                    <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>{geoError}</span>
+                  )}
+                  {coords && (
+                    <button
+                      type="button"
+                      onClick={() => setCoords(null)}
+                      style={{
+                        background: "transparent",
+                        border: 0,
+                        color: "var(--ink-soft)",
+                        fontSize: 12,
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </Field>
+              <Field label="Delivery zone" required>
+                {loadingRef ? (
+                  <div className="ms-checkout__hint">Loading zones…</div>
+                ) : zones.length === 0 ? (
+                  <div className="ms-checkout__hint">No zones configured. Order on WhatsApp instead.</div>
+                ) : (
+                  <select
+                    className="ms-checkout__input"
+                    value={selectedZone}
+                    onChange={(e) => setSelectedZone(e.target.value)}
+                    required
+                  >
+                    {zones.map((z) => (
+                      <option
+                        key={`${z.branch_id}|${z.name}`}
+                        value={`${z.branch_id}|${z.name}`}
+                      >
+                        {z.name} · {ngn(z.fee_ngn)} · from {z.branch_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Field label="Notes for the rider (optional)">
+                <textarea
+                  className="ms-checkout__input"
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Gate code, landmark, etc."
+                />
+              </Field>
+            </section>
 
-        <button
-          type="submit"
-          disabled={submitting || !selectedZone}
-          className="w-full py-4 rounded-full text-white font-bold disabled:opacity-50"
-          style={{ background: "var(--ms-ink)" }}
-        >
-          {submitting ? "Redirecting to Payaza…" : `Pay ${ngn(total)} →`}
-        </button>
+            <aside className="ms-checkout__summary">
+              <h2 className="ms-cart__summary-title">Order</h2>
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+                {items.map((it) => (
+                  <li key={it.product_id} className="ms-checkout__sumline">
+                    <span>
+                      {it.name} <span style={{ color: "var(--ink-soft)" }}>× {it.quantity}</span>
+                    </span>
+                    <span className="tabular-nums">{ngn(it.unit_price_ngn * it.quantity)}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="ms-cart__divider" />
+              <div className="ms-cart__row">
+                <span>Subtotal</span>
+                <span className="tabular-nums">{ngn(subtotal)}</span>
+              </div>
+              <div className="ms-cart__row">
+                <span>
+                  Delivery
+                  {quote?.provider === "bolt" && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: "var(--accent)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                      }}
+                    >
+                      · Bolt
+                    </span>
+                  )}
+                  {quoteLoading && (
+                    <span style={{ marginLeft: 6, fontSize: 12, color: "var(--ink-soft)" }}>
+                      updating…
+                    </span>
+                  )}
+                </span>
+                <span className="tabular-nums">{zone ? ngn(deliveryFee) : "—"}</span>
+              </div>
+              {quote?.eta_minutes && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--ink-soft)",
+                    marginTop: -4,
+                    marginBottom: 6,
+                  }}
+                >
+                  ETA ~{quote.eta_minutes} min from confirmation
+                </div>
+              )}
+              {quote?.notice && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--warning)",
+                    marginTop: -4,
+                    marginBottom: 6,
+                  }}
+                >
+                  {quote.notice}
+                </div>
+              )}
+              <div className="ms-cart__divider" />
+              <div className="ms-cart__row">
+                <span style={{ fontWeight: 700 }}>Total</span>
+                <span className="tabular-nums" style={{ fontWeight: 800, fontSize: 22 }}>
+                  {ngn(total)}
+                </span>
+              </div>
 
-        <p className="text-xs text-center" style={{ color: "var(--ms-ink-3)" }}>
-          You'll be redirected to Payaza to complete payment. We'll text you when the bottles are
-          on their way.
-        </p>
-      </form>
-    </main>
+              {error && (
+                <div className="ms-checkout__error" style={{ marginTop: 12 }}>
+                  {error}
+                </div>
+              )}
+
+              <Button
+                variant="primary"
+                className="ms-cart__cta"
+                style={{ marginTop: 16 }}
+                disabled={
+                  submitting ||
+                  loadingRef ||
+                  !zone ||
+                  !name ||
+                  !phone ||
+                  !address
+                }
+                {...({ type: "submit" } as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+              >
+                {submitting ? "Creating order…" : `Pay ${ngn(total)}`}
+              </Button>
+              <p className="ms-cart__fineprint">
+                You'll be taken to a secure Payaza page. Prefer WhatsApp?{" "}
+                <a
+                  href={`https://wa.me/${BRAND.whatsapp}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--accent)", fontWeight: 600 }}
+                >
+                  Order there instead
+                </a>
+                .
+              </p>
+            </aside>
+          </form>
+        </main>
+      </div>
+    </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function CheckoutHeader(): JSX.Element {
   return (
-    <label className="block">
-      <span
-        className="block text-xs font-semibold mb-1"
-        style={{ color: "var(--ms-ink-2)" }}
-      >
+    <nav className="ms-nav">
+      <Link to="/" className="ms-brand">
+        <span className="ms-brand__logo">
+          <img src="/assets/brand-logo.png" alt={BRAND.name} />
+        </span>
+      </Link>
+      <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-soft)" }}>
+        Checkout
+      </span>
+      <div />
+    </nav>
+  );
+}
+
+function Field({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <label className="ms-checkout__field">
+      <span className="ms-checkout__label">
         {label}
+        {required && <span style={{ color: "var(--accent)" }}> *</span>}
       </span>
       {children}
     </label>

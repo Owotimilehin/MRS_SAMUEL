@@ -4,6 +4,8 @@ import { sweepExpiredReservations } from "@ms/domain";
 import { drainOutbox } from "./outbox.js";
 import { checkLateCloses, isLateCloseWindow } from "./late-close.js";
 import { exportAuditLog, isAuditExportWindow } from "./jobs/audit-export.js";
+import { queuePaymentReminders } from "./jobs/unpaid-reminder.js";
+import { runDeliveryWatchdog } from "./jobs/delivery-watchdog.js";
 
 const logger = pino({ base: { service: "ms-worker" } });
 
@@ -14,6 +16,8 @@ const db = createDbClient(databaseUrl);
 const POLL_MS = 5000;
 const SWEEP_INTERVAL_MS = 60_000; // sweep expired reservations every minute
 const LATE_CLOSE_INTERVAL_MS = 60 * 60 * 1000; // check hourly
+const REMINDER_INTERVAL_MS = 5 * 60_000; // check for unpaid orders every 5 minutes
+const DELIVERY_WATCHDOG_MS = 60_000; // delivery retry/escalation every minute
 
 let stopping = false;
 function shutdown(reason: string): void {
@@ -26,6 +30,8 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 let lastSweepAt = 0;
 let lastLateCheckAt = 0;
+let lastReminderAt = 0;
+let lastDeliveryWatchdogAt = 0;
 let lastAuditExportDate: string | null = null;
 
 async function loop(): Promise<void> {
@@ -49,6 +55,20 @@ async function loop(): Promise<void> {
         const emitted = await checkLateCloses(db);
         if (emitted > 0) logger.info({ emitted }, "late close alerts emitted");
         lastLateCheckAt = now;
+      }
+
+      // Unpaid-online-order reminders: every 5 minutes.
+      if (now - lastReminderAt > REMINDER_INTERVAL_MS) {
+        const queued = await queuePaymentReminders(db);
+        if (queued > 0) logger.info({ queued }, "payment reminders queued");
+        lastReminderAt = now;
+      }
+
+      // Delivery watchdog: retry or escalate stuck Bolt deliveries every min.
+      if (now - lastDeliveryWatchdogAt > DELIVERY_WATCHDOG_MS) {
+        const actions = await runDeliveryWatchdog(db);
+        if (actions > 0) logger.info({ actions }, "delivery watchdog took action");
+        lastDeliveryWatchdogAt = now;
       }
 
       // Nightly audit-log export to R2. Skips itself if env not configured.

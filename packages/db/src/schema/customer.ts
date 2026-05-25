@@ -4,7 +4,7 @@ export const customerSource = pgEnum("customer_source", [
   "walkup_anonymous",
   "online",
   "phone",
-  "glovo",
+  "whatsapp",
   "chowdeck",
 ]);
 

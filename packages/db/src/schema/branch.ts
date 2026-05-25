@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, timestamp, time, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, boolean, timestamp, time, jsonb, numeric } from "drizzle-orm/pg-core";
 import { adminUser } from "./admin-user.js";
 
 export interface DeliveryZone {
@@ -12,6 +12,11 @@ export const branch = pgTable("branch", {
   code: text("code").notNull().unique(),
   address: text("address"),
   phone: text("phone"),
+  /** Branch coordinates used for pickup when requesting delivery from
+   *  third-party providers (Bolt, etc). Optional — if null, the provider
+   *  geocodes the address text instead (lower accuracy). */
+  lat: numeric("lat", { precision: 10, scale: 6 }),
+  lng: numeric("lng", { precision: 10, scale: 6 }),
   managerUserId: uuid("manager_user_id").references(() => adminUser.id, { onDelete: "set null" }),
   deliveryZones: jsonb("delivery_zones").$type<DeliveryZone[]>().notNull().default([]),
   opensAt: time("opens_at"),

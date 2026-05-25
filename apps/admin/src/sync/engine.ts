@@ -50,21 +50,22 @@ async function reportTelemetry(): Promise<void> {
 
 function backoffMs(attempts: number): number {
   const idx = Math.min(attempts, BACKOFFS_S.length - 1);
-  const base = BACKOFFS_S[idx] * 1000;
+  const base = (BACKOFFS_S[idx] ?? BACKOFFS_S[BACKOFFS_S.length - 1] ?? 1) * 1000;
   const jitter = base * (Math.random() * 0.4 - 0.2);
   return Math.max(1000, base + jitter);
 }
 
 async function sendOne(row: OutboxRow): Promise<void> {
-  const res = await fetch(row.endpoint, {
+  const init: RequestInit = {
     method: row.method,
     credentials: "include",
     headers: {
       "content-type": "application/json",
       "idempotency-key": row.id,
     },
-    body: row.payload === null ? undefined : JSON.stringify(row.payload),
-  });
+  };
+  if (row.payload !== null) init.body = JSON.stringify(row.payload);
+  const res = await fetch(row.endpoint, init);
 
   if (res.ok) {
     await local.outbox.update(row.id, {
@@ -187,12 +188,7 @@ export async function pullDeltas(branchId: string): Promise<void> {
 
   await local.transaction(
     "rw",
-    local.products,
-    local.prices,
-    local.ledger,
-    local.transfers,
-    local.sales,
-    local.meta,
+    [local.products, local.prices, local.ledger, local.transfers, local.sales, local.meta],
     async () => {
       for (const p of body.data.products) {
         await local.products.put({

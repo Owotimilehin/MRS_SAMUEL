@@ -1,31 +1,36 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
-import { local, localAvailableForProduct, type ProductRow } from "../../db/local.js";
+import { local } from "../../db/local.js";
+import { api } from "../../lib/api.js";
+import { InlineLoader } from "../../components/Spinner.js";
 
-interface BranchStockPageProps {
-  branchId: string;
+interface Product {
+  id: string;
+  name: string;
+  category: string;
 }
 
-interface StockRow {
-  product: ProductRow;
-  available: number;
-}
-
-export function BranchStockPage({ branchId }: BranchStockPageProps): JSX.Element {
-  const [rows, setRows] = useState<StockRow[]>([]);
+export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element {
+  const products = useLiveQuery(() => local.products.toArray(), [], []);
+  const [serverBalances, setServerBalances] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     void (async () => {
-      const products = await local.products.toArray();
-      const enriched = await Promise.all(
-        products.map(async (p) => ({
-          product: p,
-          available: await localAvailableForProduct(branchId, p.id),
-        })),
-      );
-      if (!cancelled) {
-        setRows(enriched.sort((a, b) => a.product.name.localeCompare(b.product.name)));
+      try {
+        const res = await api<{ data: Record<string, number> }>(`/stock/branch/${branchId}`);
+        if (!cancelled) {
+          setServerBalances(res.data);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
@@ -33,58 +38,113 @@ export function BranchStockPage({ branchId }: BranchStockPageProps): JSX.Element
     };
   }, [branchId]);
 
+  // Local available (server ledger projected + local reservations)
+  const localAvailable = useLiveQuery(
+    async () => {
+      const rows = await local.ledger
+        .where("[location_type+location_id+product_id]")
+        .between(["branch", branchId, ""], ["branch", branchId, "￿"])
+        .toArray();
+      const reservations = await local.reservations.toArray();
+      const now = Date.now();
+      const balances: Record<string, number> = {};
+      for (const r of rows) balances[r.product_id] = (balances[r.product_id] ?? 0) + r.delta;
+      for (const r of reservations.filter((x) => x.expires_at > now)) {
+        balances[r.product_id] = (balances[r.product_id] ?? 0) - r.quantity;
+      }
+      return balances;
+    },
+    [branchId],
+    {} as Record<string, number>,
+  );
+
+  const rows = (products as Product[]).map((p) => {
+    const server = serverBalances[p.id] ?? 0;
+    const local = localAvailable[p.id] ?? server;
+    return { ...p, server, local };
+  });
+  rows.sort((a, b) => a.local - b.local);
+
+  const lowCount = rows.filter((r) => r.local <= 5 && r.local > 0).length;
+  const oosCount = rows.filter((r) => r.local <= 0).length;
+
   return (
-    <BranchShell branchId={branchId} title="Stock on hand">
-      <p className="mb-4" style={{ color: "var(--ms-ink-3)" }}>
-        Based on your branch's local copy of the ledger. Updates after every sale.
-      </p>
-      <div
-        className="overflow-hidden"
-        style={{
-          background: "var(--ms-surface)",
-          border: "1px solid var(--ms-border)",
-          borderRadius: 14,
-        }}
-      >
-        <table className="w-full text-sm">
-          <thead style={{ background: "var(--ms-surface-alt)" }}>
-            <tr>
-              <th className="text-left px-4 py-2 text-xs uppercase tracking-wide font-semibold">
-                Flavor
-              </th>
-              <th className="text-left px-4 py-2 text-xs uppercase tracking-wide font-semibold">
-                Category
-              </th>
-              <th className="text-right px-4 py-2 text-xs uppercase tracking-wide font-semibold">
-                Bottles available
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ product, available }) => (
-              <tr key={product.id} style={{ borderTop: "1px solid var(--ms-divider)" }}>
-                <td className="px-4 py-3 font-semibold">{product.name}</td>
-                <td className="px-4 py-3 text-xs" style={{ color: "var(--ms-ink-3)" }}>
-                  {product.category}
-                </td>
-                <td
-                  className="px-4 py-3 text-right tabular-nums font-semibold"
-                  style={{
-                    color:
-                      available <= 0
-                        ? "var(--ms-danger)"
-                        : available < 5
-                          ? "var(--ms-warn)"
-                          : "var(--ms-ink)",
-                  }}
-                >
-                  {available}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <BranchShell branchId={branchId} title="Stock">
+      {error && (
+        <div
+          className="card"
+          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
+        >
+          {error}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+        <span className={oosCount > 0 ? "pill pill--danger" : "pill"}>Out of stock · {oosCount}</span>
+        <span className={lowCount > 0 ? "pill pill--warning" : "pill"}>Low · {lowCount}</span>
+        <span className="pill">{rows.length} products</span>
       </div>
+
+      {loading ? (
+        <InlineLoader />
+      ) : rows.length === 0 ? (
+        <div className="empty">No products synced yet. Connect to the network to pull the catalog.</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Category</th>
+                <th className="table__num">Available now</th>
+                <th className="table__num">Server balance</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const tone =
+                  r.local <= 0 ? "danger" : r.local <= 5 ? "warning" : r.local <= 15 ? "default" : "success";
+                return (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>{r.name}</td>
+                    <td style={{ color: "var(--ink-soft)", textTransform: "capitalize" }}>{r.category}</td>
+                    <td
+                      className="table__num"
+                      style={{
+                        fontWeight: 800,
+                        color:
+                          tone === "danger"
+                            ? "var(--danger)"
+                            : tone === "warning"
+                              ? "var(--warning)"
+                              : tone === "success"
+                                ? "var(--success)"
+                                : "var(--ink)",
+                      }}
+                    >
+                      {r.local}
+                    </td>
+                    <td className="table__num" style={{ color: "var(--ink-soft)" }}>
+                      {r.server}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {tone === "danger" ? (
+                        <span className="pill pill--danger">OOS</span>
+                      ) : tone === "warning" ? (
+                        <span className="pill pill--warning">Low</span>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 14 }}>
+        “Available now” reflects unsynced reservations so the till can refuse out-of-stock sales offline.
+        “Server balance” is the last value pulled from the ledger.
+      </p>
     </BranchShell>
   );
 }

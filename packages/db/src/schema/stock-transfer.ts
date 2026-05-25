@@ -5,7 +5,6 @@ import { product } from "./product.js";
 import { adminUser } from "./admin-user.js";
 
 export const stockTransferStatus = pgEnum("stock_transfer_status", [
-  "draft",
   "dispatched",
   "in_transit",
   "arrived",
@@ -38,7 +37,7 @@ export const stockTransfer = pgTable("stock_transfer", {
   transferNumber: text("transfer_number").notNull().unique(),
   factoryId: uuid("factory_id").notNull().references(() => factory.id, { onDelete: "restrict" }),
   branchId: uuid("branch_id").notNull().references(() => branch.id, { onDelete: "restrict" }),
-  status: stockTransferStatus("status").notNull().default("draft"),
+  status: stockTransferStatus("status").notNull().default("dispatched"),
   dispatchedByUserId: uuid("dispatched_by_user_id").references(() => adminUser.id),
   dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
   receivedByUserId: uuid("received_by_user_id").references(() => adminUser.id),

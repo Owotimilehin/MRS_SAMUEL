@@ -8,7 +8,7 @@ interface CreateLocalSaleInput {
     unit_price_ngn: number;
   }>;
   payment_method: "cash" | "card" | "transfer";
-  channel: "walkup" | "glovo_pickup" | "chowdeck_pickup";
+  channel: "walkup" | "whatsapp" | "chowdeck_pickup";
   external_reference?: string;
 }
 

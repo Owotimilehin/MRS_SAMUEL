@@ -112,17 +112,15 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
     expect(after.body.data[product.id]).toBe(50);
   });
 
-  it("clean receive: dispatch 20, branch counts 20, transfer auto-completes", async () => {
+  it("clean receive: send 20, branch counts 20, transfer auto-completes", async () => {
     const create = await call<{ data: Transfer }>("POST", "/v1/transfers", {
       factory_id: factory.id,
       branch_id: branch.id,
       items: [{ product_id: product.id, quantity_sent: 20 }],
     });
     expect(create.status).toBe(201);
+    expect(create.body.data.status).toBe("dispatched");
     const id = create.body.data.id;
-
-    const dispatch = await call<{ data: Transfer }>("PATCH", `/v1/transfers/${id}/dispatch`);
-    expect(dispatch.body.data.status).toBe("dispatched");
 
     // Factory stock should be 30 (50 produced - 20 dispatched)
     const factoryStock = await call<{ data: Record<string, number> }>(
@@ -157,7 +155,6 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
       items: [{ product_id: product.id, quantity_sent: 10 }],
     });
     const id = create.body.data.id;
-    await call("PATCH", `/v1/transfers/${id}/dispatch`);
     await call("PATCH", `/v1/transfers/${id}/arrive`);
 
     const detail = await call<{ data: TransferDetail }>("GET", `/v1/transfers/${id}`);
@@ -207,7 +204,6 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
       items: [{ product_id: product.id, quantity_sent: 5 }],
     });
     const id = create.body.data.id;
-    await call("PATCH", `/v1/transfers/${id}/dispatch`);
     await call("PATCH", `/v1/transfers/${id}/arrive`);
 
     const after = await call<{ data: Record<string, number> }>(
@@ -228,20 +224,18 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
     expect(final.body.data[product.id]).toBe(beforeBalance);
   });
 
-  it("dispatch blocked when factory stock insufficient", async () => {
-    const create = await call<{ data: Transfer }>("POST", "/v1/transfers", {
-      factory_id: factory.id,
-      branch_id: branch.id,
-      items: [{ product_id: product.id, quantity_sent: 999_999 }],
-    });
-    const id = create.body.data.id;
-
-    const dispatch = await call<{ error?: { code: string; details?: { insufficient: unknown[] } } }>(
-      "PATCH",
-      `/v1/transfers/${id}/dispatch`,
+  it("send blocked when factory stock insufficient", async () => {
+    const create = await call<{ error?: { code: string; details?: { insufficient: unknown[] } } }>(
+      "POST",
+      "/v1/transfers",
+      {
+        factory_id: factory.id,
+        branch_id: branch.id,
+        items: [{ product_id: product.id, quantity_sent: 999_999 }],
+      },
     );
-    expect(dispatch.status).toBe(422);
-    expect(dispatch.body.error?.code).toBe("conflict");
-    expect(dispatch.body.error?.details?.insufficient?.length).toBeGreaterThan(0);
+    expect(create.status).toBe(422);
+    expect(create.body.error?.code).toBe("conflict");
+    expect(create.body.error?.details?.insufficient?.length).toBeGreaterThan(0);
   });
 });

@@ -18,11 +18,18 @@ import { saleRoutes } from "./routes/sales.js";
 import { syncRoutes } from "./routes/sync.js";
 import { publicCatalogRoutes } from "./routes/public-catalog.js";
 import { publicOrderRoutes } from "./routes/public-orders.js";
+import { publicCartRoutes } from "./routes/public-cart.js";
+import { publicInstagramRoutes } from "./routes/public-instagram.js";
 import { payazaWebhookRoutes } from "./routes/webhooks-payaza.js";
 import { returnRoutes } from "./routes/returns.js";
 import { dailyCloseRoutes } from "./routes/daily-close.js";
 import { reportRoutes } from "./routes/reports.js";
 import { telemetryRoutes } from "./routes/telemetry.js";
+import { adminUserRoutes } from "./routes/admin-users.js";
+import { auditLogRoutes } from "./routes/audit-log.js";
+import { blogRoutes } from "./routes/blog.js";
+import { publicBlogRoutes } from "./routes/public-blog.js";
+import { boltWebhookRoutes } from "./routes/webhooks-bolt.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -77,11 +84,19 @@ export function buildApp(): Hono {
   app.route("/v1/reports", reportRoutes(db));
   app.route("/v1/telemetry", telemetryRoutes(db));
   app.route("/v1/sync", syncRoutes(db));
+  app.route("/v1/admin/users", adminUserRoutes(db));
+  app.route("/v1/audit-log", auditLogRoutes(db));
+  app.route("/v1/blog", blogRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));
+  app.route("/v1/public/cart", publicCartRoutes(db));
   app.route("/v1/public/orders", publicOrderRoutes(db));
+  app.route("/v1/public/instagram", publicInstagramRoutes());
+  app.route("/v1/public/blog", publicBlogRoutes(db));
+  app.route("/v1/public/telemetry", telemetryRoutes(db));
   app.route("/v1/webhooks/payaza", payazaWebhookRoutes(db));
+  app.route("/v1/webhooks/bolt", boltWebhookRoutes(db));
 
   // Temporary echo endpoint used by idempotency integration tests.
   // TODO: remove once a real mutation endpoint exists (Phase 1).

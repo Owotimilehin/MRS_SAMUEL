@@ -148,7 +148,7 @@ describe("Phase 3 customer-site online order flow", () => {
       };
     };
     expect(orderBody.data.total_ngn).toBe(2500 * 3 + 1500);
-    expect(orderBody.data.payment.authorization_url).toContain("track");
+    expect(orderBody.data.payment.authorization_url).toContain("paid=1");
 
     // Simulate the Payaza webhook landing on success (no signature in dev)
     const webhook = await fetch(`${baseUrl}/v1/webhooks/payaza`, {

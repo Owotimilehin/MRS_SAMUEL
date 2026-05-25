@@ -1,104 +1,116 @@
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useSyncState } from "../sync/state.js";
 import { startSyncLoop } from "../sync/engine.js";
+import { useAuthUser } from "../lib/auth.js";
 
 interface BranchShellProps {
   branchId: string;
   title: string;
+  actions?: ReactNode;
   children: ReactNode;
 }
 
 const NAV = [
+  { to: "/branch", label: "Today", icon: "🏠" },
   { to: "/branch/sell", label: "Sell", icon: "🥤" },
   { to: "/branch/sales", label: "Today's sales", icon: "🧾" },
   { to: "/branch/transfers", label: "Incoming", icon: "📦" },
   { to: "/branch/stock", label: "Stock", icon: "📊" },
   { to: "/branch/returns", label: "Returns", icon: "↩️" },
-  { to: "/branch/close", label: "Daily close", icon: "🧾" },
+  { to: "/branch/close", label: "Daily close", icon: "📋" },
+  { to: "/branch/closes", label: "Close history", icon: "📚" },
+  { to: "/branch/queue", label: "Sync queue", icon: "🔄" },
+  { to: "/branch/device", label: "Device", icon: "📱" },
 ];
 
-export function BranchShell({ branchId, title, children }: BranchShellProps): JSX.Element {
+export function BranchShell({
+  branchId,
+  title,
+  actions,
+  children,
+}: BranchShellProps): JSX.Element {
   const sync = useSyncState();
+  const user = useAuthUser();
+  const [branchName, setBranchName] = useState<string | null>(null);
 
   useEffect(() => {
     return startSyncLoop(branchId);
   }, [branchId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/v1/branches", { credentials: "include" });
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          data: Array<{ id: string; name: string }>;
+        };
+        const match = body.data.find((b) => b.id === branchId);
+        if (!cancelled && match) setBranchName(match.name);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
+
   return (
-    <div className="grid min-h-screen" style={{ gridTemplateColumns: "200px 1fr" }}>
-      <aside
-        className="p-5 flex flex-col gap-6"
-        style={{
-          background: "var(--ms-surface-alt)",
-          borderRight: "1px solid var(--ms-border)",
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className="grid place-items-center rounded-full font-display font-bold text-white"
-            style={{ width: 36, height: 36, background: "var(--ms-green-500)" }}
-          >
-            S
+    <div className="app-shell">
+      <aside className="app-side">
+        <div className="app-brand">
+          <div className="app-brand__mark">
+            <img src="/brand-logo.png" alt="Mrs. Samuel" />
           </div>
           <div>
-            <div className="font-display text-lg font-bold">SMUEL</div>
-            <div className="text-xs" style={{ color: "var(--ms-ink-3)" }}>
-              Ajao Estate
-            </div>
+            <div className="app-brand__name">{branchName ?? "Branch"}</div>
+            <div className="app-brand__role">Point of sale</div>
           </div>
         </div>
 
-        <nav className="flex flex-col gap-1">
+        <nav className="app-nav">
           {NAV.map((item) => (
             <Link
               key={item.to}
               to={item.to}
-              className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium"
-              style={{ color: "var(--ms-ink-2)" }}
-              activeProps={{
-                style: {
-                  background: "var(--ms-green-100)",
-                  color: "var(--ms-green-900)",
-                },
-              }}
+              className="app-nav__link"
+              activeProps={{ className: "app-nav__link is-active" }}
             >
-              <span>{item.icon}</span>
+              <span className="app-nav__icon">{item.icon}</span>
               <span>{item.label}</span>
             </Link>
           ))}
         </nav>
 
-        <div className="mt-auto">
-          <a
-            href="/v1/auth/logout"
-            onClick={async (e) => {
-              e.preventDefault();
+        <div className="app-foot">
+          <div className="app-foot__email" title={user.email}>
+            {user.email}
+          </div>
+          <button
+            type="button"
+            className="app-foot__signout"
+            onClick={async () => {
               await fetch("/v1/auth/logout", { method: "POST", credentials: "include" });
               window.location.href = "/login";
             }}
-            className="text-sm"
-            style={{ color: "var(--ms-ink-3)" }}
           >
             Sign out
-          </a>
+          </button>
         </div>
       </aside>
 
-      <main className="flex flex-col min-w-0">
-        <header
-          className="flex items-center gap-4 px-6 py-4"
-          style={{
-            background: "var(--ms-surface)",
-            borderBottom: "1px solid var(--ms-border)",
-          }}
-        >
-          <h1 className="font-display text-xl font-bold">{title}</h1>
-          <div className="flex-1" />
+      <main className="app-main">
+        <header className="app-head">
+          <h1 className="app-head__title">{title}</h1>
+          <div style={{ flex: 1 }} />
           <SyncBadge online={sync.online} queued={sync.queued} dead={sync.dead} />
+          {actions}
         </header>
-        <div className="p-6">{children}</div>
+        <div className="app-body">{children}</div>
       </main>
     </div>
   );
@@ -113,37 +125,30 @@ function SyncBadge({
   queued: number;
   dead: number;
 }): JSX.Element {
-  let label = "🟢 Synced";
-  let title = "All sales synced";
-  let bg = "var(--ms-green-100)";
-  let fg = "var(--ms-green-900)";
-
   if (dead > 0) {
-    label = `🔴 Sync errors (${dead})`;
-    title = "Some mutations failed — see /v1/health or contact support.";
-    bg = "rgba(198,58,46,0.15)";
-    fg = "var(--ms-danger)";
-  } else if (!online) {
-    label = `🟠 Offline (${queued} queued)`;
-    title = "No network — sales saved locally, will sync when online.";
-    bg = "rgba(240,138,26,0.18)";
-    fg = "#8b5a0f";
-  } else if (queued > 0) {
-    label = `🟡 Syncing… (${queued})`;
-    title = `${queued} mutations pending`;
-    bg = "rgba(255,196,52,0.22)";
-    fg = "#7a5a0a";
+    return (
+      <span className="pill pill--danger" title="Some mutations failed — see /v1/health or contact support.">
+        ● Sync errors ({dead})
+      </span>
+    );
   }
-
-  if (queued >= 10) label = `⚠️ ${label}`;
-
+  if (!online) {
+    return (
+      <span className="pill pill--warning" title="No network — sales saved locally, will sync when online.">
+        ● Offline · {queued} queued
+      </span>
+    );
+  }
+  if (queued > 0) {
+    return (
+      <span className="pill pill--warning" title={`${queued} mutations pending`}>
+        ● Syncing… ({queued})
+      </span>
+    );
+  }
   return (
-    <span
-      title={title}
-      className="text-xs font-semibold px-3 py-1.5 rounded-full"
-      style={{ background: bg, color: fg }}
-    >
-      {label}
+    <span className="pill pill--success" title="All sales synced">
+      ● Synced
     </span>
   );
 }

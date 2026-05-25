@@ -3,10 +3,17 @@ dist
 .env
 .env.*
 !.env.example
+!.env.production.example
 coverage
+test-results/
+playwright-report/
+apps/_*.png
+apps/**/_*.mjs
 .DS_Store
 Thumbs.db
 *.log
 *.tsbuildinfo
 .vscode
 .idea
+
+login.txt

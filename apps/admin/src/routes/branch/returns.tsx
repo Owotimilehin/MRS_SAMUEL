@@ -1,339 +1,463 @@
-import { useState } from "react";
+﻿import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
-import { api, ApiError } from "../../lib/api.js";
-import { ngn } from "../../lib/format.js";
+import { api } from "../../lib/api.js";
+import { ngn, formatDateTime } from "../../lib/format.js";
+import { InlineLoader } from "../../components/Spinner.js";
 
-interface BranchReturnsPageProps {
-  branchId: string;
-}
-
-interface SaleLine {
+interface ReturnRow {
   id: string;
-  productId: string;
-  quantity: number;
-  unitPriceNgn: number;
+  returnNumber: string;
+  originalSaleOrderId: string;
+  status: "draft" | "pending_approval" | "completed" | "cancelled";
+  reasonCategory: string;
+  refundMethod: string;
+  refundAmountNgn: number;
+  createdAt: string;
 }
-interface Sale {
+interface SaleDetail {
   id: string;
   orderNumber: string;
+  channel: string;
   status: string;
   totalNgn: number;
-  items: SaleLine[];
+  createdAtLocal: string;
+  items: Array<{
+    id: string;
+    productId: string;
+    quantity: number;
+    unitPriceNgn: number;
+    lineTotalNgn: number;
+  }>;
+}
+interface Product {
+  id: string;
+  name: string;
 }
 
-interface SelectedLine {
-  qty: number;
-  disposition: "restocked" | "wasted" | "replaced";
+const REASONS = [
+  { value: "changed_mind", label: "Changed mind" },
+  { value: "wrong_flavor", label: "Wrong flavor" },
+  { value: "wrong_item", label: "Wrong item delivered" },
+  { value: "quality_issue", label: "Quality issue" },
+  { value: "damaged_on_arrival", label: "Damaged on arrival" },
+  { value: "delivery_failed", label: "Delivery failed" },
+  { value: "other_with_note", label: "Other" },
+];
+const REFUND_METHODS = [
+  { value: "cash", label: "Cash" },
+  { value: "transfer", label: "Bank transfer" },
+  { value: "card_reversal", label: "Card reversal" },
+  { value: "store_credit", label: "Store credit" },
+  { value: "replacement", label: "Replacement" },
+  { value: "none", label: "No refund" },
+];
+
+function statusPill(s: ReturnRow["status"]): JSX.Element {
+  if (s === "completed") return <span className="pill pill--success">Completed</span>;
+  if (s === "pending_approval") return <span className="pill pill--warning">Awaiting owner</span>;
+  if (s === "cancelled") return <span className="pill pill--ink">Cancelled</span>;
+  return <span className="pill">{s}</span>;
 }
 
-type Reason =
-  | "changed_mind"
-  | "wrong_flavor"
-  | "wrong_item"
-  | "quality_issue"
-  | "damaged_on_arrival"
-  | "delivery_failed"
-  | "other_with_note";
-
-type RefundMethod =
-  | "cash"
-  | "card_reversal"
-  | "transfer"
-  | "store_credit"
-  | "replacement"
-  | "glovo_external"
-  | "chowdeck_external"
-  | "none";
-
-export function BranchReturnsPage({ branchId }: BranchReturnsPageProps): JSX.Element {
-  const [orderNumber, setOrderNumber] = useState("");
-  const [sale, setSale] = useState<Sale | null>(null);
-  const [selected, setSelected] = useState<Record<string, SelectedLine>>({});
-  const [reason, setReason] = useState<Reason>("wrong_flavor");
-  const [refundMethod, setRefundMethod] = useState<RefundMethod>("cash");
-  const [note, setNote] = useState("");
+export function BranchReturnsPage({ branchId }: { branchId: string }): JSX.Element {
+  const [rows, setRows] = useState<ReturnRow[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ status: string; returnNumber: string } | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
-  async function lookup(): Promise<void> {
-    setError(null);
-    setSale(null);
-    setSelected({});
-    setResult(null);
+  async function load(): Promise<void> {
+    setLoading(true);
     try {
-      const list = await api<{ data: Array<Sale & { order_number?: string }> }>(
-        `/branches/${branchId}/sales`,
-      );
-      const hit = list.data.find(
-        (s) => s.orderNumber === orderNumber || s.order_number === orderNumber,
-      );
-      if (!hit) throw new Error(`No sale with number ${orderNumber}`);
-      const detail = await api<{ data: Sale }>(
-        `/branches/${branchId}/sales/${hit.id}`,
-      );
-      setSale(detail.data);
+      const [r, p] = await Promise.all([
+        api<{ data: ReturnRow[] }>(`/branches/${branchId}/returns`),
+        api<{ data: Product[] }>(`/products`),
+      ]);
+      setRows(r.data);
+      setProducts(p.data);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
     }
   }
 
-  function toggleLine(line: SaleLine): void {
-    setSelected((prev) => {
-      if (prev[line.id]) {
-        const { [line.id]: _, ...rest } = prev;
-        return rest;
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId]);
+
+  return (
+    <BranchShell
+      branchId={branchId}
+      title="Returns"
+      actions={
+        <button type="button" className="btn btn--primary btn--sm" onClick={() => setShowCreate(true)}>
+          + Record return
+        </button>
       }
-      return { ...prev, [line.id]: { qty: line.quantity, disposition: "restocked" } };
-    });
+    >
+      {error && (
+        <div
+          className="card"
+          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
+        >
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <InlineLoader />
+      ) : rows.length === 0 ? (
+        <div className="empty">
+          <div className="empty__title">No returns yet</div>
+          Record a return when a customer brings a bottle back.
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Number</th>
+                <th>Original order</th>
+                <th>Reason</th>
+                <th>Refund</th>
+                <th>Status</th>
+                <th className="table__num">Amount</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td>
+                    <Link
+                      to="/branch/returns/$returnId"
+                      params={{ returnId: r.id }}
+                      style={{ fontWeight: 600, color: "var(--ink)" }}
+                    >
+                      {r.returnNumber}
+                    </Link>
+                  </td>
+                  <td style={{ fontFamily: "monospace", fontSize: 13 }}>
+                    {r.originalSaleOrderId.slice(0, 8)}
+                  </td>
+                  <td style={{ textTransform: "capitalize" }}>
+                    {r.reasonCategory.replace(/_/g, " ")}
+                  </td>
+                  <td style={{ textTransform: "capitalize" }}>{r.refundMethod.replace(/_/g, " ")}</td>
+                  <td>{statusPill(r.status)}</td>
+                  <td className="table__num" style={{ fontWeight: 700 }}>
+                    {ngn(r.refundAmountNgn)}
+                  </td>
+                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                    {formatDateTime(r.createdAt)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showCreate && (
+        <CreateReturn
+          branchId={branchId}
+          products={products}
+          onClose={() => setShowCreate(false)}
+          onSaved={() => {
+            setShowCreate(false);
+            void load();
+          }}
+        />
+      )}
+    </BranchShell>
+  );
+}
+
+function CreateReturn({
+  branchId,
+  products,
+  onClose,
+  onSaved,
+}: {
+  branchId: string;
+  products: Product[];
+  onClose: () => void;
+  onSaved: () => void;
+}): JSX.Element {
+  const [orderNumber, setOrderNumber] = useState("");
+  const [sale, setSale] = useState<SaleDetail | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchErr, setSearchErr] = useState<string | null>(null);
+  const [reason, setReason] = useState("quality_issue");
+  const [reasonNote, setReasonNote] = useState("");
+  const [refundMethod, setRefundMethod] = useState("cash");
+  const [lines, setLines] = useState<
+    Record<string, { qty: number; disposition: "restocked" | "wasted" | "replaced" }>
+  >({});
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
+
+  async function findSale(): Promise<void> {
+    setSearching(true);
+    setSearchErr(null);
+    setSale(null);
+    try {
+      const list = await api<{ data: Array<{ id: string; orderNumber: string }> }>(
+        `/branches/${branchId}/sales`,
+      );
+      const match = list.data.find(
+        (s) => s.orderNumber === orderNumber || s.orderNumber === orderNumber.toUpperCase(),
+      );
+      if (!match) {
+        setSearchErr("No order with that number found in this branch.");
+        return;
+      }
+      const detail = await api<{ data: SaleDetail }>(
+        `/branches/${branchId}/sales/${match.id}`,
+      );
+      setSale(detail.data);
+      const init: typeof lines = {};
+      for (const item of detail.data.items) {
+        init[item.id] = { qty: 0, disposition: "restocked" };
+      }
+      setLines(init);
+    } catch (err) {
+      setSearchErr(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSearching(false);
+    }
   }
 
-  function updateLine(id: string, patch: Partial<SelectedLine>): void {
-    setSelected((prev) => ({ ...prev, [id]: { ...prev[id]!, ...patch } }));
+  function setLine(id: string, patch: Partial<{ qty: number; disposition: "restocked" | "wasted" | "replaced" }>): void {
+    setLines((l) => ({ ...l, [id]: { ...l[id]!, ...patch } }));
   }
 
-  const refundTotal = sale
-    ? sale.items.reduce((sum, line) => {
-        const sel = selected[line.id];
-        return sel ? sum + line.unitPriceNgn * sel.qty : sum;
-      }, 0)
+  const refundAmount = sale
+    ? sale.items.reduce((sum, it) => sum + it.unitPriceNgn * (lines[it.id]?.qty ?? 0), 0)
     : 0;
 
-  async function submit(): Promise<void> {
+  async function submit(e: FormEvent): Promise<void> {
+    e.preventDefault();
     if (!sale) return;
-    setBusy(true);
+    const items = sale.items
+      .filter((it) => (lines[it.id]?.qty ?? 0) > 0)
+      .map((it) => ({
+        sale_order_item_id: it.id,
+        quantity_returned: lines[it.id]!.qty,
+        disposition: lines[it.id]!.disposition,
+      }));
+    if (items.length === 0) {
+      setError("Pick at least one line to return.");
+      return;
+    }
+    setSubmitting(true);
     setError(null);
     try {
-      const items = Object.entries(selected).map(([id, sel]) => ({
-        sale_order_item_id: id,
-        quantity_returned: sel.qty,
-        disposition: sel.disposition,
-      }));
-      if (items.length === 0) throw new Error("Pick at least one item");
-      const res = await api<{ data: { status: string; returnNumber: string } }>(
-        `/branches/${branchId}/returns`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            original_sale_order_id: sale.id,
-            reason_category: reason,
-            reason_note: note || undefined,
-            refund_method: refundMethod,
-            items,
-          }),
-        },
-      );
-      setResult(res.data);
-      setSale(null);
-      setSelected({});
-      setOrderNumber("");
-      setNote("");
+      await api(`/branches/${branchId}/returns`, {
+        method: "POST",
+        body: JSON.stringify({
+          original_sale_order_id: sale.id,
+          reason_category: reason,
+          reason_note: reasonNote || undefined,
+          refund_method: refundMethod,
+          items,
+          photo_urls: [],
+        }),
+      });
+      onSaved();
     } catch (err) {
-      if (err instanceof ApiError) setError(`${err.code}: ${err.message}`);
-      else setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
+      setError(err instanceof Error ? err.message : String(err));
+      setSubmitting(false);
     }
   }
 
   return (
-    <BranchShell branchId={branchId} title="Process a return">
-      <div className="max-w-2xl flex flex-col gap-6">
-        <section
-          className="p-5 rounded-xl flex flex-col gap-3"
-          style={{ background: "var(--ms-surface)", border: "1px solid var(--ms-border)" }}
-        >
-          <label className="text-sm font-semibold">Order number</label>
-          <div className="flex gap-2">
-            <input
-              value={orderNumber}
-              onChange={(e) => setOrderNumber(e.target.value)}
-              placeholder="SO-2026-00042"
-              className="flex-1 px-3 py-2 rounded-md border text-sm font-mono"
-              style={{ borderColor: "var(--ms-border)" }}
-            />
-            <button
-              type="button"
-              onClick={() => void lookup()}
-              className="px-4 py-2 rounded-md text-sm font-semibold"
-              style={{ background: "var(--ms-green-500)", color: "white" }}
-            >
-              Look up
-            </button>
-          </div>
-        </section>
-
-        {error && (
-          <div
-            className="p-3 rounded-md text-sm"
-            style={{ background: "rgba(198,58,46,0.12)", color: "var(--ms-danger)" }}
+    <div
+      role="dialog"
+      aria-modal
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(20,24,31,0.45)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 50,
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="card"
+        style={{
+          width: "100%",
+          maxWidth: 720,
+          maxHeight: "calc(100vh - 32px)",
+          overflow: "auto",
+          boxShadow: "var(--shadow-float)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
+          <h2 className="t-h2">Record return</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: "transparent", border: 0, fontSize: 22, cursor: "pointer", color: "var(--ink-soft)" }}
           >
-            {error}
-          </div>
-        )}
+            ×
+          </button>
+        </header>
 
-        {result && (
-          <div
-            className="p-4 rounded-md text-sm"
-            style={{
-              background:
-                result.status === "completed"
-                  ? "var(--ms-green-100)"
-                  : "rgba(255,196,52,0.22)",
-              color:
-                result.status === "completed" ? "var(--ms-green-900)" : "#7a5a0a",
-            }}
-          >
-            <strong>{result.returnNumber}</strong> ·{" "}
-            {result.status === "completed"
-              ? "Auto-approved and processed."
-              : "Sent to owner for review."}
-          </div>
-        )}
-
-        {sale && (
-          <section
-            className="p-5 rounded-xl flex flex-col gap-4"
-            style={{ background: "var(--ms-surface)", border: "1px solid var(--ms-border)" }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-mono text-sm">{sale.orderNumber}</div>
-                <div className="text-xs" style={{ color: "var(--ms-ink-3)" }}>
-                  {sale.status} · {ngn(sale.totalNgn)}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              {sale.items.map((line) => {
-                const sel = selected[line.id];
-                return (
-                  <div
-                    key={line.id}
-                    className="p-3 rounded-md"
-                    style={{ border: "1px solid var(--ms-border)" }}
-                  >
-                    <label className="flex items-center gap-3 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={!!sel}
-                        onChange={() => toggleLine(line)}
-                      />
-                      <span className="flex-1">
-                        {line.quantity} × {ngn(line.unitPriceNgn)}
-                      </span>
-                      <span className="text-xs font-mono" style={{ color: "var(--ms-ink-3)" }}>
-                        {line.productId.slice(0, 8)}
-                      </span>
-                    </label>
-                    {sel && (
-                      <div className="mt-3 flex gap-3 items-center pl-7">
-                        <label className="text-xs flex items-center gap-2">
-                          Qty:
-                          <input
-                            type="number"
-                            min={1}
-                            max={line.quantity}
-                            value={sel.qty}
-                            onChange={(e) =>
-                              updateLine(line.id, { qty: Number(e.target.value) })
-                            }
-                            className="w-16 px-2 py-1 rounded border text-sm"
-                            style={{ borderColor: "var(--ms-border)" }}
-                          />
-                        </label>
-                        <label className="text-xs flex items-center gap-2">
-                          Disposition:
-                          <select
-                            value={sel.disposition}
-                            onChange={(e) =>
-                              updateLine(line.id, {
-                                disposition: e.target.value as SelectedLine["disposition"],
-                              })
-                            }
-                            className="px-2 py-1 rounded border text-sm"
-                            style={{ borderColor: "var(--ms-border)" }}
-                          >
-                            <option value="restocked">Restock</option>
-                            <option value="wasted">Waste</option>
-                            <option value="replaced">Replace</option>
-                          </select>
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="text-xs flex flex-col gap-1">
-                Reason
-                <select
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value as Reason)}
-                  className="px-3 py-2 rounded-md border text-sm"
-                  style={{ borderColor: "var(--ms-border)" }}
-                >
-                  <option value="changed_mind">Changed mind</option>
-                  <option value="wrong_flavor">Wrong flavor</option>
-                  <option value="wrong_item">Wrong item</option>
-                  <option value="quality_issue">Quality issue</option>
-                  <option value="damaged_on_arrival">Damaged on arrival</option>
-                  <option value="delivery_failed">Delivery failed</option>
-                  <option value="other_with_note">Other</option>
-                </select>
-              </label>
-              <label className="text-xs flex flex-col gap-1">
-                Refund method
-                <select
-                  value={refundMethod}
-                  onChange={(e) => setRefundMethod(e.target.value as RefundMethod)}
-                  className="px-3 py-2 rounded-md border text-sm"
-                  style={{ borderColor: "var(--ms-border)" }}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card_reversal">Card reversal</option>
-                  <option value="transfer">Bank transfer</option>
-                  <option value="store_credit">Store credit</option>
-                  <option value="replacement">Replacement (free re-send)</option>
-                  <option value="glovo_external">Glovo (external)</option>
-                  <option value="chowdeck_external">Chowdeck (external)</option>
-                  <option value="none">None</option>
-                </select>
-              </label>
-            </div>
-
-            <label className="text-xs flex flex-col gap-1">
-              Note (optional)
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={3}
-                className="px-3 py-2 rounded-md border text-sm"
-                style={{ borderColor: "var(--ms-border)" }}
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="field">
+            <label className="field__label">Original order number</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="input"
+                placeholder="ORD-…"
+                value={orderNumber}
+                onChange={(e) => setOrderNumber(e.target.value.trim())}
               />
-            </label>
-
-            <div className="flex items-center justify-between pt-2">
-              <div className="text-sm">
-                Refund total:{" "}
-                <strong className="tabular-nums">{ngn(refundTotal)}</strong>
-              </div>
               <button
                 type="button"
-                disabled={busy || Object.keys(selected).length === 0}
-                onClick={() => void submit()}
-                className="px-5 py-2 rounded-md text-sm font-semibold disabled:opacity-50"
-                style={{ background: "var(--ms-green-500)", color: "white" }}
+                className="btn btn--subtle"
+                onClick={() => void findSale()}
+                disabled={!orderNumber || searching}
               >
-                {busy ? "Submitting…" : "Process return"}
+                {searching ? "Looking…" : "Find"}
               </button>
             </div>
-          </section>
-        )}
+            {searchErr && <div className="field__error">{searchErr}</div>}
+          </div>
+
+          {sale && (
+            <>
+              <div className="card card--soft" style={{ padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontWeight: 700 }}>{sale.orderNumber}</span>
+                  <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                    {formatDateTime(sale.createdAtLocal)} · {sale.channel}
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>
+                  Total {ngn(sale.totalNgn)} · {sale.items.length} lines
+                </div>
+              </div>
+
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th className="table__num">Sold</th>
+                      <th className="table__num">Return qty</th>
+                      <th>Disposition</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sale.items.map((it) => (
+                      <tr key={it.id}>
+                        <td>{productName(it.productId)}</td>
+                        <td className="table__num">{it.quantity}</td>
+                        <td>
+                          <input
+                            className="input"
+                            type="number"
+                            min={0}
+                            max={it.quantity}
+                            style={{ width: 80, textAlign: "right" }}
+                            value={lines[it.id]?.qty ?? 0}
+                            onChange={(e) => setLine(it.id, { qty: Number(e.target.value) })}
+                          />
+                        </td>
+                        <td>
+                          <select
+                            className="select"
+                            value={lines[it.id]?.disposition ?? "restocked"}
+                            onChange={(e) =>
+                              setLine(it.id, {
+                                disposition: e.target.value as "restocked" | "wasted" | "replaced",
+                              })
+                            }
+                          >
+                            <option value="restocked">Restocked</option>
+                            <option value="wasted">Wasted</option>
+                            <option value="replaced">Replaced</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div className="field">
+                  <label className="field__label">Reason</label>
+                  <select className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
+                    {REASONS.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field__label">Refund method</label>
+                  <select
+                    className="select"
+                    value={refundMethod}
+                    onChange={(e) => setRefundMethod(e.target.value)}
+                  >
+                    {REFUND_METHODS.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {reason === "other_with_note" && (
+                <div className="field">
+                  <label className="field__label">Note</label>
+                  <textarea
+                    className="textarea"
+                    rows={2}
+                    value={reasonNote}
+                    onChange={(e) => setReasonNote(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "10px 0",
+                  borderTop: "1px solid var(--line)",
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>Refund amount</span>
+                <span className="tabular-nums" style={{ fontWeight: 800, fontSize: 20 }}>
+                  {ngn(refundAmount)}
+                </span>
+              </div>
+
+              {error && <div className="field__error">{error}</div>}
+              <button type="submit" className="btn btn--primary btn--block" disabled={submitting}>
+                {submitting ? "Recording…" : `Record return · ${ngn(refundAmount)}`}
+              </button>
+            </>
+          )}
+        </form>
       </div>
-    </BranchShell>
+    </div>
   );
 }

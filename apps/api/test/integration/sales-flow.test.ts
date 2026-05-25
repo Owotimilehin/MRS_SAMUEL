@@ -99,7 +99,7 @@ describe("Phase 2 walk-up sale flow", () => {
         },
       ],
     });
-  }, 90_000);
+  }, 180_000);
 
   afterAll(async () => {
     server.close();

@@ -42,7 +42,6 @@ const RefundMethodEnum = z.enum([
   "transfer",
   "store_credit",
   "replacement",
-  "glovo_external",
   "chowdeck_external",
   "none",
 ]);
@@ -461,5 +460,5 @@ async function applyReturnEffects(
       }
     }
   }
-  // cash, transfer, none, glovo_external, chowdeck_external: no extra ledger writes
+  // cash, transfer, none, chowdeck_external: no extra ledger writes
 }

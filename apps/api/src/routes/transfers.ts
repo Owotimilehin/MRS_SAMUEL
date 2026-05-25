@@ -59,7 +59,6 @@ const RejectBody = z.object({ reason: z.string().min(1) });
 const ListQuery = z.object({
   status: z
     .enum([
-      "draft",
       "dispatched",
       "in_transit",
       "arrived",
@@ -123,25 +122,45 @@ export function transferRoutes(db: DbClient) {
     return c.json({ data: { ...t, items } });
   });
 
-  // ============ Create draft (factory) ============
+  // ============ Send (factory) ============
+  // Single-step create + dispatch: the row is inserted already in `dispatched`,
+  // factory stock is debited, and the branch is notified atomically.
   r.post("/", requireFactoryRole(), async (c) => {
     const body = CreateDraft.parse(await c.req.json());
+    const auth = c.get("auth");
 
     const created = await db.transaction(async (tx) => {
+      // Verify factory has enough stock before reserving a transfer number
+      // (so failed attempts don't burn sequence values).
+      const check = await checkFactoryStockAvailable(
+        tx,
+        body.factory_id,
+        body.items.map((i) => ({ productId: i.product_id, quantity: i.quantity_sent })),
+      );
+      if (!check.ok) {
+        throw new BusinessError("conflict", "insufficient factory stock", 422, {
+          insufficient: check.insufficient,
+        });
+      }
+
       const number = await nextTransferNumber(tx);
+      const now = new Date();
       const [t] = await tx
         .insert(stockTransfer)
         .values({
           transferNumber: number,
           factoryId: body.factory_id,
           branchId: body.branch_id,
-          status: "draft",
+          status: "dispatched",
+          dispatchedAt: now,
+          dispatchedByUserId: auth.userId,
           vehicleInfo: body.vehicle_info ?? null,
           driverName: body.driver_name ?? null,
           notes: body.notes ?? null,
         })
         .returning();
       if (!t) throw new BusinessError("internal_error", "insert returned no rows", 500);
+
       for (const it of body.items) {
         await tx.insert(stockTransferItem).values({
           stockTransferId: t.id,
@@ -150,92 +169,38 @@ export function transferRoutes(db: DbClient) {
           unitCostNgn: it.unit_cost_ngn ?? null,
           notes: it.notes ?? null,
         });
-      }
-      return t;
-    });
-
-    await writeAudit(db, c, {
-      action: "stock_transfer.create_draft",
-      entityType: "stock_transfer",
-      entityId: created.id,
-      after: created,
-    });
-    return c.json({ data: created }, 201);
-  });
-
-  // ============ Dispatch (factory) ============
-  r.patch("/:id/dispatch", requireFactoryRole(), async (c) => {
-    const id = c.req.param("id");
-    const auth = c.get("auth");
-
-    const dispatched = await db.transaction(async (tx) => {
-      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id));
-      if (!t) throw new BusinessError("not_found", "transfer not found", 404);
-      if (t.status !== "draft") {
-        throw new BusinessError("conflict", `cannot dispatch from status ${t.status}`, 409);
-      }
-
-      const items = await tx
-        .select()
-        .from(stockTransferItem)
-        .where(eq(stockTransferItem.stockTransferId, id));
-
-      const check = await checkFactoryStockAvailable(
-        tx,
-        t.factoryId,
-        items.map((i) => ({ productId: i.productId, quantity: i.quantitySent })),
-      );
-      if (!check.ok) {
-        throw new BusinessError("conflict", "insufficient factory stock", 422, {
-          insufficient: check.insufficient,
-        });
-      }
-
-      for (const it of items) {
         await tx.insert(stockLedger).values({
           locationType: "factory",
           locationId: t.factoryId,
-          productId: it.productId,
-          delta: -it.quantitySent,
+          productId: it.product_id,
+          delta: -it.quantity_sent,
           sourceType: "transfer_dispatch",
-          sourceId: id,
+          sourceId: t.id,
           recordedByUserId: auth.userId,
           note: `Dispatch ${t.transferNumber}`,
         });
       }
 
-      const [updated] = await tx
-        .update(stockTransfer)
-        .set({
-          status: "dispatched",
-          dispatchedAt: new Date(),
-          dispatchedByUserId: auth.userId,
-          updatedAt: new Date(),
-        })
-        .where(eq(stockTransfer.id, id))
-        .returning();
-      if (!updated) throw new BusinessError("internal_error", "update returned no rows", 500);
-
       await tx.insert(outboxEvent).values({
         eventType: "stock_transfer.dispatched",
         payload: {
-          transfer_id: id,
+          transfer_id: t.id,
           transfer_number: t.transferNumber,
           branch_id: t.branchId,
           factory_id: t.factoryId,
         },
       });
 
-      return updated;
+      return t;
     });
 
     await writeAudit(db, c, {
       action: "stock_transfer.dispatch",
       entityType: "stock_transfer",
-      entityId: id,
-      after: dispatched,
+      entityId: created.id,
+      after: created,
     });
-    return c.json({ data: dispatched });
+    return c.json({ data: created }, 201);
   });
 
   // ============ Arrive (branch) ============

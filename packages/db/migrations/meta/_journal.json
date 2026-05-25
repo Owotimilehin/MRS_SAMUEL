@@ -120,6 +120,55 @@
       "when": 1778523641539,
       "tag": "0016_perfect_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779017600000,
+      "tag": "0017_drop_glovo_enum_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779200000000,
+      "tag": "0019_blog_post",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1779300000000,
+      "tag": "0020_delivery_order_and_out_for_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1779310000000,
+      "tag": "0021_branch_lat_lng",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1779528000000,
+      "tag": "0022_collapse_transfer_draft",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1779700000000,
+      "tag": "0023_product_variants",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1779900000000,
+      "tag": "0024_server_cart",
+      "breakpoints": true
     }
   ]
 }

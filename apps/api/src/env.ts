@@ -15,6 +15,7 @@ const Env = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   PUBLIC_API_URL: z.string().url(),
   PUBLIC_ADMIN_URL: z.string().url(),
+  PUBLIC_CUSTOMER_URL: z.preprocess(emptyToUndef, z.string().url().optional()),
   PORT: z.coerce.number().default(3001),
 });
 

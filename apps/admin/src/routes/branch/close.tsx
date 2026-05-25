@@ -1,283 +1,325 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
-import { api, ApiError } from "../../lib/api.js";
+import { local } from "../../db/local.js";
+import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
+import { InlineLoader } from "../../components/Spinner.js";
 
-interface BranchClosePageProps {
-  branchId: string;
+interface PreviewBody {
+  data: {
+    expected_cash_ngn: number;
+    expected_stock: Record<string, number>;
+  };
 }
 
-interface Preview {
-  expected_cash_ngn: number;
-  expected_stock: Record<string, number>;
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
-interface ProductRow {
-  id: string;
-  name: string;
-}
-
-interface CountedRow {
-  productId: string;
-  counted: number;
-  reason: string;
-}
-
-interface CloseRow {
-  id: string;
-  status: string;
-  varianceNgn: number;
-  businessDate: string;
-}
-
-export function BranchClosePage({ branchId }: BranchClosePageProps): JSX.Element {
-  const today = new Date().toISOString().slice(0, 10);
-  const [preview, setPreview] = useState<Preview | null>(null);
-  const [products, setProducts] = useState<ProductRow[]>([]);
-  const [counts, setCounts] = useState<Record<string, CountedRow>>({});
-  const [cashCounted, setCashCounted] = useState(0);
-  const [transfersCounted, setTransfersCounted] = useState(0);
+export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element {
+  const products = useLiveQuery(() => local.products.toArray(), [], []);
+  const [businessDate, setBusinessDate] = useState(today());
+  const [preview, setPreview] = useState<PreviewBody["data"] | null>(null);
+  const [cash, setCash] = useState("");
+  const [transfers, setTransfers] = useState("");
+  const [counts, setCounts] = useState<Record<string, string>>({});
+  const [reasons, setReasons] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState<CloseRow | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
     void (async () => {
       try {
-        const [prevRes, prodRes] = await Promise.all([
-          api<{ data: Preview }>(`/branches/${branchId}/daily-close/preview?date=${today}`),
-          api<{ data: ProductRow[] }>("/products"),
-        ]);
-        setPreview(prevRes.data);
-        setProducts(prodRes.data);
-        const seeded: Record<string, CountedRow> = {};
-        for (const p of prodRes.data) {
-          seeded[p.id] = {
-            productId: p.id,
-            counted: prevRes.data.expected_stock[p.id] ?? 0,
-            reason: "",
-          };
+        const res = await api<PreviewBody>(
+          `/branches/${branchId}/daily-close/preview?date=${businessDate}`,
+        );
+        if (!cancelled) {
+          setPreview(res.data);
+          const init: Record<string, string> = {};
+          for (const [pid, qty] of Object.entries(res.data.expected_stock)) {
+            init[pid] = String(qty);
+          }
+          setCounts(init);
         }
-        setCounts(seeded);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, [branchId, today]);
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId, businessDate]);
 
-  const variance =
-    preview === null ? 0 : cashCounted + transfersCounted - preview.expected_cash_ngn;
+  const productName = (id: string): string =>
+    (products as Array<{ id: string; name: string }>).find((p) => p.id === id)?.name ??
+    id.slice(0, 8);
+
+  const expectedCash = preview?.expected_cash_ngn ?? 0;
+  const counted = (Number(cash) || 0) + (Number(transfers) || 0);
+  const variance = counted - expectedCash;
+
+  const stockRows = useMemo(() => {
+    if (!preview) return [];
+    return Object.keys(preview.expected_stock).map((pid) => {
+      const expected = preview.expected_stock[pid] ?? 0;
+      const got = Number(counts[pid] ?? "0");
+      return {
+        product_id: pid,
+        name: productName(pid),
+        expected,
+        counted: got,
+        variance: got - expected,
+        reason: reasons[pid] ?? "",
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, counts, reasons, products]);
 
   async function submit(): Promise<void> {
-    setBusy(true);
+    if (!preview) return;
+    setSubmitting(true);
     setError(null);
     try {
-      const stockCounts = Object.values(counts).map((c) => ({
-        product_id: c.productId,
-        counted_quantity: c.counted,
-        variance_reason: c.reason || undefined,
-      }));
-      const res = await api<{ data: CloseRow }>(
-        `/branches/${branchId}/daily-close`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            business_date: today,
-            cash_counted_ngn: cashCounted,
-            transfers_counted_ngn: transfersCounted,
-            notes: notes || undefined,
-            stock_counts: stockCounts,
-          }),
-        },
-      );
-      setSubmitted(res.data);
+      // Server requires variance_reason on lines that don't match
+      const missing = stockRows.find((r) => r.variance !== 0 && !r.reason);
+      if (missing) {
+        throw new Error(`Pick a reason for ${missing.name}.`);
+      }
+      await api(`/branches/${branchId}/daily-close`, {
+        method: "POST",
+        body: JSON.stringify({
+          business_date: businessDate,
+          cash_counted_ngn: Number(cash) || 0,
+          transfers_counted_ngn: Number(transfers) || 0,
+          notes: notes || undefined,
+          stock_counts: stockRows.map((r) => ({
+            product_id: r.product_id,
+            counted_quantity: r.counted,
+            variance_reason: r.variance !== 0 ? r.reason : undefined,
+          })),
+        }),
+      });
+      setFlash("Daily close submitted. Awaiting owner approval.");
+      setCash("");
+      setTransfers("");
+      setNotes("");
     } catch (err) {
-      if (err instanceof ApiError) setError(`${err.code}: ${err.message}`);
-      else setError(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(false);
+      setSubmitting(false);
     }
   }
 
   return (
-    <BranchShell branchId={branchId} title={`Daily close · ${today}`}>
-      <div className="max-w-3xl flex flex-col gap-6">
-        {error && (
-          <div
-            className="p-3 rounded-md text-sm"
-            style={{ background: "rgba(198,58,46,0.12)", color: "var(--ms-danger)" }}
-          >
-            {error}
-          </div>
-        )}
-
-        {submitted && (
-          <div
-            className="p-4 rounded-md text-sm"
-            style={{ background: "var(--ms-green-100)", color: "var(--ms-green-900)" }}
-          >
-            <strong>Submitted for owner review.</strong> Variance:{" "}
-            <span className="tabular-nums">{ngn(submitted.varianceNgn)}</span>
-          </div>
-        )}
-
-        <section
-          className="p-5 rounded-xl flex flex-col gap-4"
-          style={{ background: "var(--ms-surface)", border: "1px solid var(--ms-border)" }}
+    <BranchShell branchId={branchId} title="Daily close">
+      {flash && (
+        <div
+          className="card"
+          style={{
+            background: "rgba(16,185,129,0.10)",
+            borderColor: "rgba(16,185,129,0.25)",
+            color: "#047857",
+            marginBottom: 16,
+          }}
         >
-          <h2 className="font-display text-lg font-bold">Cash up</h2>
-          {preview && (
-            <div className="text-sm" style={{ color: "var(--ms-ink-2)" }}>
-              System expects{" "}
-              <strong className="tabular-nums">{ngn(preview.expected_cash_ngn)}</strong> in
-              cash today.
+          {flash}
+        </div>
+      )}
+      {error && (
+        <div
+          className="card"
+          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
+        >
+          {error}
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
+        <section className="card">
+          <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+            <h2 className="t-h2">Stock count</h2>
+            <div className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <label className="field__label" style={{ marginBottom: 0 }}>Date</label>
+              <input
+                className="input"
+                type="date"
+                style={{ width: 160 }}
+                value={businessDate}
+                onChange={(e) => setBusinessDate(e.target.value)}
+              />
+            </div>
+          </header>
+          {loading ? (
+            <InlineLoader />
+          ) : stockRows.length === 0 ? (
+            <div className="empty">No products in scope.</div>
+          ) : (
+            <div className="table-wrap" style={{ border: 0 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th className="table__num">Expected</th>
+                    <th className="table__num">Counted</th>
+                    <th className="table__num">Variance</th>
+                    <th>Reason (if variance)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stockRows.map((r) => (
+                    <tr key={r.product_id}>
+                      <td>{r.name}</td>
+                      <td className="table__num">{r.expected}</td>
+                      <td>
+                        <input
+                          className="input"
+                          type="number"
+                          min={0}
+                          style={{ width: 80, textAlign: "right" }}
+                          value={counts[r.product_id] ?? ""}
+                          onChange={(e) =>
+                            setCounts((s) => ({ ...s, [r.product_id]: e.target.value }))
+                          }
+                        />
+                      </td>
+                      <td
+                        className="table__num"
+                        style={{
+                          fontWeight: 700,
+                          color:
+                            r.variance < 0
+                              ? "var(--danger)"
+                              : r.variance > 0
+                                ? "var(--warning)"
+                                : "var(--ink-soft)",
+                        }}
+                      >
+                        {r.variance > 0 ? "+" : ""}
+                        {r.variance}
+                      </td>
+                      <td>
+                        {r.variance !== 0 ? (
+                          <input
+                            className="input"
+                            placeholder="Required"
+                            value={r.reason}
+                            onChange={(e) =>
+                              setReasons((s) => ({ ...s, [r.product_id]: e.target.value }))
+                            }
+                          />
+                        ) : (
+                          <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-xs flex flex-col gap-1">
-              Cash counted (₦)
-              <input
-                type="number"
-                value={cashCounted}
-                onChange={(e) => setCashCounted(Number(e.target.value))}
-                className="px-3 py-2 rounded-md border text-sm tabular-nums"
-                style={{ borderColor: "var(--ms-border)" }}
-              />
-            </label>
-            <label className="text-xs flex flex-col gap-1">
-              Transfers counted (₦)
-              <input
-                type="number"
-                value={transfersCounted}
-                onChange={(e) => setTransfersCounted(Number(e.target.value))}
-                className="px-3 py-2 rounded-md border text-sm tabular-nums"
-                style={{ borderColor: "var(--ms-border)" }}
-              />
-            </label>
-          </div>
-          <div className="text-sm">
-            Variance:{" "}
-            <strong
-              className="tabular-nums"
-              style={{
-                color:
-                  variance === 0
-                    ? "var(--ms-green-900)"
-                    : Math.abs(variance) < 200
-                      ? "#7a5a0a"
-                      : "var(--ms-danger)",
-              }}
-            >
-              {ngn(variance)}
-            </strong>
-          </div>
         </section>
 
-        <section
-          className="p-5 rounded-xl flex flex-col gap-4"
-          style={{ background: "var(--ms-surface)", border: "1px solid var(--ms-border)" }}
-        >
-          <h2 className="font-display text-lg font-bold">Stock count</h2>
-          <table className="w-full text-sm">
-            <thead style={{ background: "var(--ms-surface-alt)" }}>
-              <tr>
-                <th className="text-left px-3 py-2 text-xs uppercase tracking-wide font-semibold">
-                  Product
-                </th>
-                <th className="text-right px-3 py-2 text-xs uppercase tracking-wide font-semibold">
-                  Expected
-                </th>
-                <th className="text-right px-3 py-2 text-xs uppercase tracking-wide font-semibold">
-                  Counted
-                </th>
-                <th className="text-right px-3 py-2 text-xs uppercase tracking-wide font-semibold">
-                  Variance
-                </th>
-                <th className="text-left px-3 py-2 text-xs uppercase tracking-wide font-semibold">
-                  Reason
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((p) => {
-                const expected = preview?.expected_stock[p.id] ?? 0;
-                const c = counts[p.id];
-                if (!c) return null;
-                const v = c.counted - expected;
-                return (
-                  <tr key={p.id} style={{ borderTop: "1px solid var(--ms-divider)" }}>
-                    <td className="px-3 py-2">{p.name}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{expected}</td>
-                    <td className="px-3 py-2 text-right">
-                      <input
-                        type="number"
-                        value={c.counted}
-                        onChange={(e) =>
-                          setCounts((prev) => ({
-                            ...prev,
-                            [p.id]: { ...c, counted: Number(e.target.value) },
-                          }))
-                        }
-                        className="w-20 px-2 py-1 rounded border text-sm text-right tabular-nums"
-                        style={{ borderColor: "var(--ms-border)" }}
-                      />
-                    </td>
-                    <td
-                      className="px-3 py-2 text-right tabular-nums"
-                      style={{
-                        color: v === 0 ? "var(--ms-ink-2)" : "var(--ms-danger)",
-                      }}
-                    >
-                      {v > 0 ? `+${v}` : v}
-                    </td>
-                    <td className="px-3 py-2">
-                      {v !== 0 && (
-                        <input
-                          type="text"
-                          value={c.reason}
-                          onChange={(e) =>
-                            setCounts((prev) => ({
-                              ...prev,
-                              [p.id]: { ...c, reason: e.target.value },
-                            }))
-                          }
-                          placeholder="Why?"
-                          className="w-full px-2 py-1 rounded border text-xs"
-                          style={{ borderColor: "var(--ms-border)" }}
-                        />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </section>
+        <aside className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <h2 className="t-h2">Cash reconcile</h2>
+          <div className="field">
+            <label className="field__label">Cash on hand (₦)</label>
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              value={cash}
+              onChange={(e) => setCash(e.target.value)}
+              placeholder="0"
+            />
+          </div>
+          <div className="field">
+            <label className="field__label">Bank transfers counted (₦)</label>
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              value={transfers}
+              onChange={(e) => setTransfers(e.target.value)}
+              placeholder="0"
+            />
+          </div>
 
-        <label className="text-xs flex flex-col gap-1">
-          Manager notes (optional)
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="px-3 py-2 rounded-md border text-sm"
-            style={{ borderColor: "var(--ms-border)" }}
-          />
-        </label>
+          <div className="card card--soft" style={{ padding: 12 }}>
+            <Row label="System expected" value={ngn(expectedCash)} />
+            <Row label="You counted" value={ngn(counted)} />
+            <Row
+              label="Variance"
+              value={`${variance > 0 ? "+" : ""}${ngn(variance)}`}
+              emphasis
+              tone={variance < 0 ? "danger" : variance > 0 ? "warning" : "default"}
+            />
+          </div>
 
-        <div className="flex justify-end">
+          <div className="field">
+            <label className="field__label">Notes</label>
+            <textarea
+              className="textarea"
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Anything the owner should see"
+            />
+          </div>
+
           <button
             type="button"
-            disabled={busy || !preview}
+            className="btn btn--primary btn--block btn--lg"
+            disabled={submitting || loading || !preview}
             onClick={() => void submit()}
-            className="px-6 py-2 rounded-md text-sm font-semibold disabled:opacity-50"
-            style={{ background: "var(--ms-green-500)", color: "white" }}
           >
-            {busy ? "Submitting…" : "Submit for review"}
+            {submitting ? "Submitting…" : "Submit close for approval"}
           </button>
-        </div>
+        </aside>
       </div>
     </BranchShell>
+  );
+}
+
+function Row({
+  label,
+  value,
+  emphasis,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+  tone?: "default" | "warning" | "danger";
+}): JSX.Element {
+  const color =
+    tone === "danger" ? "var(--danger)" : tone === "warning" ? "var(--warning)" : "var(--ink)";
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        padding: "5px 0",
+        borderTop: emphasis ? "1px solid var(--line)" : "none",
+        marginTop: emphasis ? 4 : 0,
+      }}
+    >
+      <span style={{ fontSize: 13, color: "var(--ink-soft)" }}>{label}</span>
+      <span
+        className="tabular-nums"
+        style={{ fontWeight: emphasis ? 800 : 700, color, fontSize: emphasis ? 18 : 15 }}
+      >
+        {value}
+      </span>
+    </div>
   );
 }

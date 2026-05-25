@@ -2,6 +2,7 @@ import { pgTable, uuid, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-
 import { branch } from "./branch.js";
 import { customer } from "./customer.js";
 import { product } from "./product.js";
+import { productVariant } from "./product-variant.js";
 import { productPrice } from "./product-price.js";
 import { adminUser } from "./admin-user.js";
 
@@ -9,7 +10,7 @@ export const saleChannel = pgEnum("sale_channel", [
   "walkup",
   "online",
   "phone",
-  "glovo_pickup",
+  "whatsapp",
   "chowdeck_pickup",
 ]);
 
@@ -18,6 +19,7 @@ export const saleStatus = pgEnum("sale_status", [
   "confirmed",
   "paid",
   "handed_over",
+  "out_for_delivery",
   "delivered",
   "failed",
   "cancelled",
@@ -28,7 +30,6 @@ export const paymentMethod = pgEnum("payment_method", [
   "cash",
   "card",
   "transfer",
-  "glovo_external",
   "chowdeck_external",
   "replacement",
 ]);
@@ -65,6 +66,8 @@ export const saleOrder = pgTable("sale_order", {
   cancelReason: text("cancel_reason"),
   cancelledByUserId: uuid("cancelled_by_user_id").references(() => adminUser.id),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  outForDeliveryAt: timestamp("out_for_delivery_at", { withTimezone: true }),
+  deliveryProviderRef: text("delivery_provider_ref"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -75,6 +78,7 @@ export const saleOrderItem = pgTable("sale_order_item", {
     .notNull()
     .references(() => saleOrder.id, { onDelete: "cascade" }),
   productId: uuid("product_id").notNull().references(() => product.id),
+  variantId: uuid("variant_id").references(() => productVariant.id),
   productPriceId: uuid("product_price_id").notNull().references(() => productPrice.id),
   quantity: integer("quantity").notNull(),
   unitPriceNgn: integer("unit_price_ngn").notNull(),

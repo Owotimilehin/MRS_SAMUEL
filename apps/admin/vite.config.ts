@@ -41,5 +41,10 @@ export default defineConfig({
       devOptions: { enabled: false },
     }),
   ],
-  server: { port: 3000, proxy: { "/v1": "http://localhost:3001" } },
+  server: {
+    port: 3000,
+    host: true,
+    allowedHosts: [".ngrok-free.app", ".ngrok.app", ".ngrok.io", ".ngrok.dev", ".ngrok-free.dev"],
+    proxy: { "/v1": "http://localhost:3001" },
+  },
 });

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
   saleOrder,
@@ -8,6 +8,7 @@ import {
   stockReservation,
   stockLedger,
   productPrice,
+  productVariant,
   customer,
   type DbClient,
 } from "@ms/db";
@@ -21,20 +22,26 @@ const ConfirmSale = z.object({
   // Optional client-supplied UUID. The branch PWA generates this offline so the
   // local reference and the eventual server row stay linked across sync retries.
   id: z.string().uuid().optional(),
-  channel: z.enum(["walkup", "online", "phone", "glovo_pickup", "chowdeck_pickup"]),
+  channel: z.enum(["walkup", "online", "phone", "whatsapp", "chowdeck_pickup"]),
   items: z
     .array(
-      z.object({
-        product_id: z.string().uuid(),
-        quantity: z.number().int().positive(),
-      }),
+      z
+        .object({
+          // Preferred: pin the exact can size being purchased.
+          variant_id: z.string().uuid().optional(),
+          // Legacy: product-level reference. Resolves to the smallest variant.
+          product_id: z.string().uuid().optional(),
+          quantity: z.number().int().positive(),
+        })
+        .refine((v) => v.variant_id != null || v.product_id != null, {
+          message: "each item needs variant_id or product_id",
+        }),
     )
     .min(1),
   payment_method: z.enum([
     "cash",
     "card",
     "transfer",
-    "glovo_external",
     "chowdeck_external",
   ]),
   customer: z
@@ -65,7 +72,7 @@ const CancelBody = z.object({
 
 const RESERVATION_TIMEOUT_MS: Record<string, number> = {
   walkup: 5 * 60_000,
-  glovo_pickup: 30 * 60_000,
+  whatsapp: 30 * 60_000,
   chowdeck_pickup: 30 * 60_000,
   phone: 30 * 60_000,
   online: 30 * 60_000,
@@ -104,8 +111,8 @@ export function saleRoutes(db: DbClient) {
                   ? "online"
                   : body.channel === "phone"
                     ? "phone"
-                    : body.channel === "glovo_pickup"
-                      ? "glovo"
+                    : body.channel === "whatsapp"
+                      ? "whatsapp"
                       : "chowdeck",
           })
           .returning();
@@ -116,34 +123,73 @@ export function saleRoutes(db: DbClient) {
       let subtotal = 0;
       const lines: {
         productId: string;
+        variantId: string;
         priceId: string;
         quantity: number;
         unitPriceNgn: number;
       }[] = [];
 
       for (const it of body.items) {
+        // Resolve to a concrete variant (explicit variant_id wins; legacy
+        // callers can still send product_id which maps to the smallest can).
+        let variantId: string | undefined = it.variant_id;
+        let productId: string;
+        if (variantId) {
+          const [v] = await tx
+            .select()
+            .from(productVariant)
+            .where(and(eq(productVariant.id, variantId), isNull(productVariant.deletedAt)));
+          if (!v) {
+            throw new BusinessError("not_found", `variant ${variantId} not found`, 404);
+          }
+          productId = v.productId;
+          if (it.product_id && it.product_id !== v.productId) {
+            throw new BusinessError(
+              "validation_failed",
+              "variant_id does not belong to product_id",
+              422,
+            );
+          }
+        } else {
+          productId = it.product_id!;
+          const [v] = await tx
+            .select()
+            .from(productVariant)
+            .where(
+              and(eq(productVariant.productId, productId), isNull(productVariant.deletedAt)),
+            )
+            .orderBy(asc(productVariant.sizeMl))
+            .limit(1);
+          if (!v) {
+            throw new BusinessError("not_found", `no variant for product ${productId}`, 404);
+          }
+          variantId = v.id;
+        }
+
         const [price] = await tx
           .select()
           .from(productPrice)
-          .where(eq(productPrice.productId, it.product_id))
+          .where(and(eq(productPrice.variantId, variantId), isNull(productPrice.validTo)))
           .orderBy(desc(productPrice.validFrom))
           .limit(1);
         if (!price) {
-          throw new BusinessError("not_found", `no price for product ${it.product_id}`, 404);
+          throw new BusinessError("not_found", `no price for variant ${variantId}`, 404);
         }
         const available = await availableAtBranch(tx, {
           branchId,
-          productId: it.product_id,
+          productId,
         });
         if (available < it.quantity) {
           throw new BusinessError("conflict", "insufficient stock", 422, {
-            product_id: it.product_id,
+            product_id: productId,
+            variant_id: variantId,
             available,
             requested: it.quantity,
           });
         }
         lines.push({
-          productId: it.product_id,
+          productId,
+          variantId,
           priceId: price.id,
           quantity: it.quantity,
           unitPriceNgn: price.priceNgn,
@@ -181,6 +227,7 @@ export function saleRoutes(db: DbClient) {
         await tx.insert(saleOrderItem).values({
           saleOrderId: order.id,
           productId: l.productId,
+          variantId: l.variantId,
           productPriceId: l.priceId,
           quantity: l.quantity,
           unitPriceNgn: l.unitPriceNgn,
@@ -190,6 +237,7 @@ export function saleRoutes(db: DbClient) {
           saleOrderId: order.id,
           branchId,
           productId: l.productId,
+          variantId: l.variantId,
           quantity: l.quantity,
           expiresAt,
         });
@@ -231,6 +279,7 @@ export function saleRoutes(db: DbClient) {
           locationType: "branch",
           locationId: o.branchId,
           productId: it.productId,
+          variantId: it.variantId ?? null,
           delta: -it.quantity,
           sourceType: "sale",
           sourceId: id,
@@ -266,7 +315,7 @@ export function saleRoutes(db: DbClient) {
     return c.json({ data: updated });
   });
 
-  // ============ Hand over (PAID→HANDED_OVER for walkup/glovo/chowdeck) ============
+  // ============ Hand over (PAID→HANDED_OVER for walkup/whatsapp/chowdeck) ============
   r.patch("/:id/hand-over", async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
@@ -276,7 +325,7 @@ export function saleRoutes(db: DbClient) {
       if (o.status !== "paid") {
         throw new BusinessError("conflict", `cannot hand over from ${o.status}`, 409);
       }
-      if (!["walkup", "glovo_pickup", "chowdeck_pickup"].includes(o.channel)) {
+      if (!["walkup", "whatsapp", "chowdeck_pickup"].includes(o.channel)) {
         throw new BusinessError("conflict", `wrong channel: ${o.channel}`, 409);
       }
       const [u] = await tx
@@ -406,7 +455,16 @@ export function saleRoutes(db: DbClient) {
       .select()
       .from(saleOrderItem)
       .where(eq(saleOrderItem.saleOrderId, id));
-    return c.json({ data: { ...o, items } });
+    // Latest delivery_order if any (single source of truth for rider info).
+    const { deliveryOrder } = await import("@ms/db");
+    const { desc: descFn } = await import("drizzle-orm");
+    const [delivery] = await db
+      .select()
+      .from(deliveryOrder)
+      .where(eq(deliveryOrder.saleOrderId, id))
+      .orderBy(descFn(deliveryOrder.requestedAt))
+      .limit(1);
+    return c.json({ data: { ...o, items, delivery: delivery ?? null } });
   });
 
   return r;

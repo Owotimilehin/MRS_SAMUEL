@@ -1,0 +1,472 @@
+﻿import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
+import { Shell } from "../components/Shell.js";
+import { api } from "../lib/api.js";
+import { ngn, formatDateTime } from "../lib/format.js";
+import { useAuthUser } from "../lib/auth.js";
+import { InlineLoader } from "../components/Spinner.js";
+
+type TransferStatus =
+  | "dispatched"
+  | "in_transit"
+  | "arrived"
+  | "received"
+  | "received_with_variance"
+  | "rejected"
+  | "completed"
+  | "cancelled";
+
+interface TransferItem {
+  id: string;
+  productId: string;
+  quantitySent: number;
+  quantityReceived: number | null;
+  varianceReason: string | null;
+  unitCostNgn: number | null;
+  notes: string | null;
+}
+interface TransferDetail {
+  id: string;
+  transferNumber: string;
+  factoryId: string;
+  branchId: string;
+  status: TransferStatus;
+  dispatchedAt: string | null;
+  receivedAt: string | null;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  rejectReason: string | null;
+  vehicleInfo: string | null;
+  driverName: string | null;
+  notes: string | null;
+  createdAt: string;
+  items: TransferItem[];
+}
+interface Branch {
+  id: string;
+  name: string;
+}
+interface Factory {
+  id: string;
+  name: string;
+}
+interface Product {
+  id: string;
+  name: string;
+}
+
+const VARIANCE_REASONS = [
+  { value: "short_shipped", label: "Short shipped" },
+  { value: "damaged_in_transit", label: "Damaged in transit" },
+  { value: "wrong_item", label: "Wrong item" },
+  { value: "extra_received", label: "Extra received" },
+  { value: "count_error_at_branch", label: "Count error" },
+  { value: "other_with_note", label: "Other" },
+];
+
+function statusPill(s: TransferStatus): JSX.Element {
+  const map: Record<TransferStatus, [string, string]> = {
+    dispatched: ["pill pill--accent", "Dispatched"],
+    in_transit: ["pill pill--accent", "In transit"],
+    arrived: ["pill pill--warning", "Arrived"],
+    received: ["pill pill--success", "Received"],
+    received_with_variance: ["pill pill--warning", "Received with variance"],
+    rejected: ["pill pill--danger", "Rejected"],
+    completed: ["pill pill--success", "Completed"],
+    cancelled: ["pill pill--ink", "Cancelled"],
+  };
+  const [cls, label] = map[s];
+  return <span className={cls}>{label}</span>;
+}
+
+const STAGES: Array<{ key: TransferStatus; label: string }> = [
+  { key: "dispatched", label: "Sent" },
+  { key: "arrived", label: "Arrived" },
+  { key: "received", label: "Received" },
+  { key: "completed", label: "Completed" },
+];
+
+export function TransferDetailPage({ transferId }: { transferId: string }): JSX.Element {
+  const user = useAuthUser();
+  const [data, setData] = useState<TransferDetail | null>(null);
+  const [factories, setFactories] = useState<Factory[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [acting, setActing] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+  const [receiving, setReceiving] = useState(false);
+  const [receipt, setReceipt] = useState<Array<{ item_id: string; quantity_received: number; variance_reason: string; sent: number }>>([]);
+
+  async function load(): Promise<void> {
+    setLoading(true);
+    try {
+      const [t, f, b, p] = await Promise.all([
+        api<{ data: TransferDetail }>(`/transfers/${transferId}`),
+        api<{ data: Factory[] }>(`/factories`),
+        api<{ data: Branch[] }>(`/branches`),
+        api<{ data: Product[] }>(`/products`),
+      ]);
+      setData(t.data);
+      setFactories(f.data);
+      setBranches(b.data);
+      setProducts(p.data);
+      setReceipt(
+        t.data.items.map((i) => ({
+          item_id: i.id,
+          quantity_received: i.quantityReceived ?? i.quantitySent,
+          variance_reason: i.varianceReason ?? "",
+          sent: i.quantitySent,
+        })),
+      );
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transferId]);
+
+  async function action(path: string, body?: unknown): Promise<void> {
+    setActing(true);
+    setError(null);
+    try {
+      const init: RequestInit = { method: "PATCH" };
+      if (body !== undefined) init.body = JSON.stringify(body);
+      await api(path, init);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function submitReceipt(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    const missingReason = receipt.find((d) => d.quantity_received !== d.sent && !d.variance_reason);
+    if (missingReason) {
+      setError("Pick a variance reason for every line that doesn't match");
+      return;
+    }
+    setActing(true);
+    setError(null);
+    try {
+      await api(`/transfers/${transferId}/receive`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          items: receipt.map((d) => ({
+            item_id: d.item_id,
+            quantity_received: Number(d.quantity_received),
+            variance_reason: d.quantity_received === d.sent ? undefined : d.variance_reason,
+          })),
+        }),
+      });
+      setFlash("Receipt recorded");
+      setReceiving(false);
+      setTimeout(() => setFlash(null), 2500);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function reject(): Promise<void> {
+    const reason = window.prompt("Reason for rejection?");
+    if (!reason) return;
+    await action(`/transfers/${transferId}/reject`, { reason });
+  }
+
+  const factoryName = (id: string): string => factories.find((f) => f.id === id)?.name ?? id.slice(0, 8);
+  const branchName = (id: string): string => branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);
+  const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
+
+  // Action availability
+  const canArrive = data && (data.status === "dispatched" || data.status === "in_transit");
+  const canReceive = data?.status === "arrived";
+  const canApprove = data?.status === "received_with_variance" && user.role === "owner";
+
+  // Stage progress (STAGES indices: 0 Sent, 1 Arrived, 2 Received, 3 Completed)
+  const stageIndex = (() => {
+    if (!data) return -1;
+    if (data.status === "completed" || data.status === "received") return 3;
+    if (data.status === "received_with_variance") return 2.5;
+    if (data.status === "arrived") return 1;
+    if (data.status === "dispatched" || data.status === "in_transit") return 0;
+    return -1;
+  })();
+
+  return (
+    <Shell
+      title={data?.transferNumber ?? "Transfer"}
+      actions={
+        <Link to="/transfers" className="btn btn--subtle btn--sm">
+          ← All transfers
+        </Link>
+      }
+    >
+      {error && (
+        <div
+          className="card"
+          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
+        >
+          {error}
+        </div>
+      )}
+      {flash && (
+        <div
+          className="card"
+          style={{
+            background: "rgba(16,185,129,0.10)",
+            borderColor: "rgba(16,185,129,0.25)",
+            color: "#047857",
+            marginBottom: 16,
+          }}
+        >
+          {flash}
+        </div>
+      )}
+
+      {loading || !data ? (
+        <InlineLoader />
+      ) : (
+        <>
+          <section className="card" style={{ marginBottom: 18 }}>
+            <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+              <div>
+                <h2 className="t-h2">{factoryName(data.factoryId)} → {branchName(data.branchId)}</h2>
+                <div style={{ color: "var(--ink-soft)", fontSize: 13, marginTop: 4 }}>
+                  Created {formatDateTime(data.createdAt)}
+                </div>
+              </div>
+              {statusPill(data.status)}
+            </header>
+
+            {/* Stage progress */}
+            <ol
+              style={{
+                listStyle: "none",
+                margin: "0 0 18px",
+                padding: 0,
+                display: "grid",
+                gridTemplateColumns: `repeat(${STAGES.length}, 1fr)`,
+                gap: 6,
+              }}
+            >
+              {STAGES.map((stage, idx) => {
+                const done = idx <= Math.floor(stageIndex);
+                const current = Math.floor(stageIndex) === idx;
+                return (
+                  <li
+                    key={stage.key}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      background: done ? "var(--surface-soft)" : "transparent",
+                      border: current ? "1.5px solid var(--accent)" : "1px solid var(--line)",
+                      color: done ? "var(--ink)" : "var(--ink-soft)",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: done ? "var(--accent)" : "var(--ink-soft)" }}>
+                      Step {idx + 1}
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginTop: 2 }}>{stage.label}</div>
+                  </li>
+                );
+              })}
+            </ol>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+              <Field label="Driver" value={data.driverName ?? "—"} />
+              <Field label="Vehicle" value={data.vehicleInfo ?? "—"} />
+              <Field label="Dispatched" value={data.dispatchedAt ? formatDateTime(data.dispatchedAt) : "—"} />
+              <Field label="Received" value={data.receivedAt ? formatDateTime(data.receivedAt) : "—"} />
+            </div>
+
+            {data.rejectReason && (
+              <div
+                className="card"
+                style={{
+                  marginTop: 14,
+                  background: "rgba(220,38,38,0.06)",
+                  borderColor: "rgba(220,38,38,0.25)",
+                  color: "var(--danger)",
+                }}
+              >
+                <strong>Rejected:</strong> {data.rejectReason}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14, flexWrap: "wrap" }}>
+              {canArrive && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn--subtle"
+                    disabled={acting}
+                    onClick={() => void reject()}
+                  >
+                    Reject
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    disabled={acting}
+                    onClick={() => void action(`/transfers/${transferId}/arrive`)}
+                  >
+                    Mark arrived
+                  </button>
+                </>
+              )}
+              {canReceive && !receiving && (
+                <button type="button" className="btn btn--primary" onClick={() => setReceiving(true)}>
+                  Open receipt form
+                </button>
+              )}
+              {canApprove && (
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  disabled={acting}
+                  onClick={() => void action(`/transfers/${transferId}/approve`)}
+                >
+                  Approve variance
+                </button>
+              )}
+            </div>
+          </section>
+
+          <section className="card">
+            <h2 className="t-h2" style={{ marginBottom: 12 }}>Items</h2>
+            <div className="table-wrap" style={{ border: 0 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th className="table__num">Sent</th>
+                    <th className="table__num">Received</th>
+                    <th className="table__num">Unit cost</th>
+                    <th>Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receiving
+                    ? receipt.map((d, idx) => (
+                        <tr key={d.item_id}>
+                          <td>{productName(data.items[idx]?.productId ?? "")}</td>
+                          <td className="table__num">{d.sent}</td>
+                          <td>
+                            <input
+                              className="input"
+                              type="number"
+                              min={0}
+                              style={{ width: 100, textAlign: "right" }}
+                              value={d.quantity_received}
+                              onChange={(e) =>
+                                setReceipt((s) =>
+                                  s.map((row, i) =>
+                                    i === idx
+                                      ? { ...row, quantity_received: Number(e.target.value) }
+                                      : row,
+                                  ),
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="table__num">
+                            {data.items[idx]?.unitCostNgn != null ? ngn(data.items[idx]!.unitCostNgn!) : "—"}
+                          </td>
+                          <td>
+                            {d.quantity_received !== d.sent ? (
+                              <select
+                                className="select"
+                                value={d.variance_reason}
+                                onChange={(e) =>
+                                  setReceipt((s) =>
+                                    s.map((row, i) =>
+                                      i === idx ? { ...row, variance_reason: e.target.value } : row,
+                                    ),
+                                  )
+                                }
+                              >
+                                <option value="">Pick reason…</option>
+                                {VARIANCE_REASONS.map((r) => (
+                                  <option key={r.value} value={r.value}>
+                                    {r.label}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>matches</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    : data.items.map((it) => (
+                        <tr key={it.id}>
+                          <td>{productName(it.productId)}</td>
+                          <td className="table__num">{it.quantitySent}</td>
+                          <td className="table__num" style={{ fontWeight: 700 }}>
+                            {it.quantityReceived ?? "—"}
+                          </td>
+                          <td className="table__num">
+                            {it.unitCostNgn != null ? ngn(it.unitCostNgn) : "—"}
+                          </td>
+                          <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                            {it.varianceReason ?? (it.quantityReceived != null ? "matches" : "—")}
+                          </td>
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
+            </div>
+
+            {receiving && (
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+                <button type="button" className="btn btn--subtle" onClick={() => setReceiving(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  disabled={acting}
+                  onClick={(e) => void submitReceipt(e as unknown as FormEvent)}
+                >
+                  {acting ? "Submitting…" : "Submit receipt"}
+                </button>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </Shell>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div className="card card--soft" style={{ padding: 12 }}>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          color: "var(--ink-soft)",
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>{value}</div>
+    </div>
+  );
+}

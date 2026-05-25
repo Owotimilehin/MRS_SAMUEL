@@ -3,6 +3,8 @@ import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { deviceStatus, type DbClient } from "@ms/db";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+import { logger } from "../logger.js";
+import { rateLimit } from "../middleware/rate-limit.js";
 
 const Telemetry = z.object({
   device_id: z.string().min(1),
@@ -11,9 +13,53 @@ const Telemetry = z.object({
   last_sync_at: z.string().datetime().nullable().optional(),
 });
 
+const ClientError = z.object({
+  message: z.string().max(2000),
+  stack: z.string().max(8000).optional(),
+  url: z.string().max(2000).optional(),
+  line: z.number().int().optional(),
+  col: z.number().int().optional(),
+  ts: z.string().datetime().optional(),
+  ua: z.string().max(500).optional(),
+  app: z.enum(["customer", "admin"]),
+});
+
 export function telemetryRoutes(db: DbClient) {
   const r = new Hono();
-  r.use("*", requireAuth());
+
+  // Frontend error reporting — accepts admin auth OR no auth, rate-limited.
+  // We log to structured logs (captured by Render/Sentry/etc); a future
+  // migration could persist to a client_error table if useful.
+  r.post(
+    "/error",
+    rateLimit({ points: 60, durationSeconds: 60, keyPrefix: "telemetry-error" }),
+    async (c) => {
+      try {
+        const body = ClientError.parse(await c.req.json());
+        logger.error(
+          {
+            kind: "client_error",
+            app: body.app,
+            message: body.message,
+            stack: body.stack,
+            url: body.url,
+            line: body.line,
+            col: body.col,
+            ua: body.ua,
+            ts: body.ts,
+            ip: c.req.header("x-forwarded-for") ?? null,
+          },
+          "frontend error report",
+        );
+      } catch {
+        /* swallow malformed reports */
+      }
+      return c.body(null, 204);
+    },
+  );
+
+  r.use("/sync", requireAuth());
+  r.use("/devices", requireAuth());
 
   r.post("/sync", async (c) => {
     const body = Telemetry.parse(await c.req.json());
