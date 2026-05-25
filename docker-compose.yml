@@ -1,36 +1,42 @@
+# One compose file for dev AND prod. Dev uses the defaults; prod overrides via
+# .env on the host (see DEPLOY.md). HOST_BIND defaults to 0.0.0.0 so devs can
+# hit localhost:3001 from a browser. In prod, set HOST_BIND=127.0.0.1 so only
+# Cloudflare Tunnel (running on the host) can reach the published ports.
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ms
-      POSTGRES_PASSWORD: ms
-      POSTGRES_DB: ms_dev
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-ms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ms}
+      POSTGRES_DB: ${POSTGRES_DB:-ms_dev}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ms -d ms_dev"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ms} -d ${POSTGRES_DB:-ms_dev}"]
       interval: 2s
       timeout: 2s
       retries: 20
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
       timeout: 2s
       retries: 20
+    restart: unless-stopped
 
   migrator:
     build:
       context: .
       dockerfile: packages/db/Dockerfile
     environment:
-      DATABASE_URL: postgres://ms:ms@postgres:5432/ms_dev
+      DATABASE_URL: ${DATABASE_URL:-postgres://ms:ms@postgres:5432/ms_dev}
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,20 +47,27 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     environment:
-      NODE_ENV: production
-      DATABASE_URL: postgres://ms:ms@postgres:5432/ms_dev
-      DATABASE_URL_REPLICA: postgres://ms:ms@postgres:5432/ms_dev
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:-postgres://ms:ms@postgres:5432/ms_dev}
+      DATABASE_URL_REPLICA: ${DATABASE_URL:-postgres://ms:ms@postgres:5432/ms_dev}
       REDIS_URL: redis://redis:6379
-      JWT_SIGNING_KEY: dev-only-jwt-key-padding-padding-padding-XXX
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-only-jwt-key-padding-padding-padding-XXX}
       SESSION_COOKIE_NAME: ms_session
-      LOG_LEVEL: info
-      PUBLIC_API_URL: http://localhost:3001
-      PUBLIC_ADMIN_URL: http://localhost:3010
-      PUBLIC_CUSTOMER_URL: http://localhost:3002
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3001}
+      PUBLIC_ADMIN_URL: ${PUBLIC_ADMIN_URL:-http://localhost:3010}
+      PUBLIC_CUSTOMER_URL: ${PUBLIC_CUSTOMER_URL:-http://localhost:3002}
       PORT: "3001"
       RATE_LIMIT_DISABLED: "0"
+      PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}
+      PAYAZA_WEBHOOK_SECRET: ${PAYAZA_WEBHOOK_SECRET:-}
+      BOLT_PROVIDER: ${BOLT_PROVIDER:-mock}
+      BOLT_API_KEY: ${BOLT_API_KEY:-}
+      BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
-      - "3001:3001"
+      - "${HOST_BIND:-0.0.0.0}:3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,15 +81,25 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
+    restart: unless-stopped
 
   worker:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
     environment:
-      NODE_ENV: production
-      DATABASE_URL: postgres://ms:ms@postgres:5432/ms_dev
-      LOG_LEVEL: info
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:-postgres://ms:ms@postgres:5432/ms_dev}
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_ADMIN_URL: ${PUBLIC_ADMIN_URL:-http://localhost:3010}
+      PUBLIC_CUSTOMER_URL: ${PUBLIC_CUSTOMER_URL:-http://localhost:3002}
+      BOLT_PROVIDER: ${BOLT_PROVIDER:-mock}
+      BOLT_API_KEY: ${BOLT_API_KEY:-}
+      BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET:-}
+      PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,20 +112,23 @@ services:
       context: .
       dockerfile: apps/admin/Dockerfile
     ports:
-      - "3010:80"
+      - "${HOST_BIND:-0.0.0.0}:3010:80"
     depends_on:
       api:
         condition: service_healthy
+    restart: unless-stopped
 
   customer:
     build:
       context: .
       dockerfile: apps/customer/Dockerfile
     ports:
-      - "3002:80"
+      - "${HOST_BIND:-0.0.0.0}:3002:80"
     depends_on:
       api:
         condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:
+  redisdata:
