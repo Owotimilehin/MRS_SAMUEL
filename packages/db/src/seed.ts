@@ -197,7 +197,7 @@ const BLOG_POSTS: BlogSeed[] = [
     title: "Why cold-pressed beats centrifugal every time",
     excerpt:
       "Heat kills nutrients. Our hydraulic press crushes fruit slowly so the juice that lands in the bottle is the same juice that was in the fruit ten minutes earlier.",
-    coverUrl: "/assets/blog/cold-pressed.jpg",
+    coverUrl: null,
     bodyMd: `# Why cold-pressed beats centrifugal every time
 
 When you cut a pineapple and bite into it, you're tasting roughly 100% of what the fruit has to offer — natural enzymes, vitamins, and that bright tropical sweetness. The moment you process it, you start losing things. The question is how much.
@@ -226,7 +226,7 @@ If you ever get a bottle from us that tastes "off" or fizzy, it's past its windo
     title: "What actually goes into our Ultimate Detox",
     excerpt:
       "Cucumber, apple, pineapple, and ginger — in that order. Here's why each one matters and why we kept this recipe so simple.",
-    coverUrl: "/assets/blog/ultimate-detox.jpg",
+    coverUrl: null,
     bodyMd: `# What actually goes into our Ultimate Detox
 
 \"Detox juice\" usually means something with more marketing than ingredients. Ours has four:
@@ -257,7 +257,7 @@ A juice is not a detox. Your liver and kidneys do that, 24/7, for free. What goo
     title: "Why we deliver same-day in Lagos (and why it matters)",
     excerpt:
       "Cold-pressed juice has a 48-hour shelf life. Lagos traffic eats an hour minimum. Here's how we keep the maths working.",
-    coverUrl: "/assets/blog/lagos-delivery.jpg",
+    coverUrl: null,
     bodyMd: `# Why we deliver same-day in Lagos (and why it matters)
 
 A bottle of cold-pressed juice has roughly 48 hours of useful life from the moment we press it. If a courier holds it for 24 of those, you're getting half a bottle.
@@ -290,7 +290,7 @@ Once we have the routing dialled in for Lagos, we'll look at Abuja. Other cities
     title: "Where our fruit comes from",
     excerpt:
       "Mile 12, Mushin, and a small farm in Ogun for the strawberries. We name names because the supply chain matters.",
-    coverUrl: "/assets/blog/sourcing.jpg",
+    coverUrl: null,
     bodyMd: `# Where our fruit comes from
 
 Most juice brands are vague about sourcing on purpose. We're going to be specific because if you're paying for premium juice, you should know what you're getting.
@@ -324,7 +324,7 @@ We host kitchen visits on the last Saturday of the month. WhatsApp us if you wan
     title: "Behind Mrs. Samuel Fruit Punch (the one everyone asks about)",
     excerpt:
       "Our most popular bottle is also the one we're most cagey about. Here's as much as we'll share.",
-    coverUrl: "/assets/blog/punch.jpg",
+    coverUrl: null,
     bodyMd: `# Behind Mrs. Samuel Fruit Punch (the one everyone asks about)
 
 Every week someone messages us asking for the recipe. We'll tell you most of it.

@@ -2228,9 +2228,9 @@ button { font: inherit; }
 .ms-track-lookup__field span { font-size: 13px; font-weight: 600; }
 .ms-track-lookup__form .btn--primary { align-self: flex-start; margin-top: 8px; }
 
-/* ─────────────────────── Shop (C2) ─────────────────────── */
-.ms-shop { padding: clamp(40px, 5vw, 72px) 0; }
-.ms-shop__head { text-align: center; margin-bottom: 28px; }
+/* /shop now redirects to /#menu — see apps/customer/src/routes/shop.tsx.
+ * Keeping no styles for it since the redirect renders nothing.
+ */
 
 /* ─────────────────────── Legal pages ─────────────────────── */
 .ms-legal { padding: clamp(40px, 5vw, 72px) 0; max-width: 720px; margin: 0 auto; }

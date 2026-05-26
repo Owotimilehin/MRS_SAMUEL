@@ -14,9 +14,9 @@ interface LoginResponse {
 }
 
 function defaultDestination(role: string, branchId: string | null): string {
-  if (role === "owner" || role === "manager") return "/owner/dashboard";
+  if (role === "owner") return "/owner/dashboard";
   if (role === "factory") return "/factory/production-runs";
-  if (branchId || role === "staff") return "/branch/sell";
+  if (role === "manager" || role === "staff" || branchId) return "/branch";
   return "/owner/dashboard";
 }
 

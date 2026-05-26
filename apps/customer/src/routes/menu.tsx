@@ -176,10 +176,15 @@ export function MenuPage(): JSX.Element {
     >
       <div className="ms-container"><Hero /></div>
       <div className="ms-container"><TrustStrip /></div>
+      <div className="ms-container"><FreshnessTicker /></div>
       <div className="ms-container"><HowItWorks /></div>
+      <div className="ms-container"><Bestsellers /></div>
       <div className="ms-container"><FullMenu /></div>
+      <div className="ms-container"><DeliveryZones /></div>
       <div className="ms-container"><Testimonials /></div>
+      <div className="ms-container"><PressStrip /></div>
       <div className="ms-container"><About /></div>
+      <div className="ms-container"><FAQ /></div>
       <div className="ms-container"><InstagramFeed /></div>
       <div className="ms-container"><Newsletter /></div>
     </SiteLayout>
@@ -861,6 +866,31 @@ function About(): JSX.Element {
           One kitchen.<br />Seventeen juices.<br />
           <span className="text-grad">Zero shortcuts.</span>
         </h2>
+        <figure
+          style={{
+            margin: "20px 0",
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+          }}
+        >
+          <img
+            src="/assets/founder.jpg"
+            alt="Mrs. Samuel, founder"
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: "50%",
+              objectFit: "cover",
+              boxShadow: "0 6px 16px rgba(0,0,0,0.12)",
+              border: "3px solid white",
+            }}
+          />
+          <figcaption style={{ fontSize: 14, color: "var(--ink-soft)" }}>
+            <strong style={{ color: "var(--ink)", fontWeight: 700 }}>Mrs. Samuel</strong>
+            <br />Founder · Cold-pressing since 2021
+          </figcaption>
+        </figure>
         <p className="ms-section-sub">
           Every bottle starts at our kitchen in Ajao Estate before sunrise. We wash, peel, and
           cold-press real fruit — the same kind you'd buy at the market — and bottle it
@@ -878,6 +908,344 @@ function About(): JSX.Element {
             <div className="ms-stat__n text-grad">{s.n}</div>
             <div className="ms-stat__label">{s.label}</div>
           </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ────────────────────────── Freshness ticker ───────────────────── */
+function FreshnessTicker(): JSX.Element {
+  // 11:00 Lagos = 10:00 UTC. Show a clear "order before 11am" countdown that
+  // resets after the cutoff so we never lie about same-day availability.
+  const [now, setNow] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const lagos = new Date(now.getTime() + 60 * 60_000); // UTC+1
+  const cutoffH = 11;
+  const cutoff = new Date(lagos);
+  cutoff.setUTCHours(cutoffH, 0, 0, 0);
+  const beforeCutoff = lagos < cutoff;
+  const msLeft = cutoff.getTime() - lagos.getTime();
+  const hLeft = Math.max(0, Math.floor(msLeft / 3_600_000));
+  const mLeft = Math.max(0, Math.floor((msLeft % 3_600_000) / 60_000));
+
+  return (
+    <section
+      className="scroll-enter"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 18,
+        flexWrap: "wrap",
+        background: "var(--surface-soft, #fff7ed)",
+        border: "1px solid var(--line, #fde6c8)",
+        borderRadius: 16,
+        padding: "14px 22px",
+        margin: "16px 0",
+        fontSize: 14,
+      }}
+    >
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: "#16a34a",
+            boxShadow: "0 0 0 4px rgba(22,163,74,0.18)",
+          }}
+        />
+        <strong>Bottled this morning</strong>
+      </span>
+      <span style={{ color: "var(--ink-soft)" }}>·</span>
+      {beforeCutoff ? (
+        <span>
+          Order in the next <strong className="tabular-nums">{hLeft}h {mLeft}m</strong> for
+          today's delivery
+        </span>
+      ) : (
+        <span>
+          Cutoff passed — orders now go out <strong>tomorrow before noon</strong>
+        </span>
+      )}
+    </section>
+  );
+}
+
+/* ────────────────────────── Bestsellers ────────────────────────── */
+function Bestsellers(): JSX.Element {
+  const variantFor = useCatalog((s) => s.variantFor);
+  const ensureCatalog = useCatalog((s) => s.load);
+  const addToCart = useCart((s) => s.add);
+  const picks = MENU.filter((m) => FEATURED.includes(m.name));
+  return (
+    <section className="scroll-enter" style={{ margin: "32px 0" }}>
+      <header className="ms-how__head">
+        <div className="ms-label eyebrow">Bestsellers</div>
+        <h2 className="ms-section-title">Start here if it's your first bottle</h2>
+        <p className="ms-section-sub" style={{ maxWidth: 540, margin: "0 auto" }}>
+          The four flavours that get re-ordered most. Tap any to add a 650ml to your basket.
+        </p>
+      </header>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 16,
+          marginTop: 24,
+        }}
+      >
+        {picks.map((item) => (
+          <article
+            key={item.id}
+            style={{
+              background: "white",
+              borderRadius: 18,
+              padding: 18,
+              border: "1px solid var(--line)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+              gap: 10,
+            }}
+          >
+            <img
+              src={bottleFor(item)}
+              alt={item.name}
+              style={{ width: 120, height: 160, objectFit: "contain" }}
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (img.src.endsWith("/assets/bottle-hero.png")) return;
+                img.src = "/assets/bottle-hero.png";
+              }}
+            />
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{item.name}</h3>
+            <p style={{ fontSize: 12, color: "var(--ink-soft)", margin: 0 }}>
+              {item.ingredients.slice(0, 3).join(" · ")}
+            </p>
+            <button
+              type="button"
+              className="btn btn--primary btn--sm"
+              onClick={async () => {
+                await ensureCatalog();
+                const live = variantFor(item.name, 650);
+                if (!live) return;
+                addToCart({
+                  product_id: live.id,
+                  variant_id: live.id,
+                  name: `${item.name} (650ml)`,
+                  unit_price_ngn: live.price_ngn,
+                });
+              }}
+              style={{ marginTop: 4 }}
+            >
+              Add 650ml
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ────────────────────────── Delivery zones ─────────────────────── */
+function DeliveryZones(): JSX.Element {
+  const zones = [
+    { name: "Ajao Estate · Surulere · Yaba", time: "Within 2 hrs" },
+    { name: "Ikeja · GRA · Magodo", time: "Same day · 2-4 hrs" },
+    { name: "Lekki · VI · Ikoyi", time: "Same day · 3-5 hrs" },
+    { name: "Ajah · Sangotedo · Lakowe", time: "Same day · 4-6 hrs" },
+    { name: "Festac · Apapa · Amuwo", time: "Same day · 3-5 hrs" },
+    { name: "Other Lagos mainland", time: "Next day" },
+  ];
+  return (
+    <section className="scroll-enter" style={{ margin: "32px 0" }}>
+      <header className="ms-how__head">
+        <div className="ms-label eyebrow">Where we deliver</div>
+        <h2 className="ms-section-title">Across Lagos, every day</h2>
+        <p className="ms-section-sub" style={{ maxWidth: 540, margin: "0 auto" }}>
+          Order by 11am for same-day delivery in the mainland and island zones below. Other
+          areas go out the next morning.
+        </p>
+      </header>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: 12,
+          marginTop: 24,
+        }}
+      >
+        {zones.map((z) => (
+          <div
+            key={z.name}
+            style={{
+              background: "white",
+              border: "1px solid var(--line)",
+              borderRadius: 14,
+              padding: "16px 18px",
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{z.name}</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>{z.time}</div>
+          </div>
+        ))}
+      </div>
+      <p
+        style={{
+          fontSize: 13,
+          color: "var(--ink-soft)",
+          textAlign: "center",
+          marginTop: 16,
+        }}
+      >
+        Not on this list? Chat with us on{" "}
+        <a
+          href={WHATSAPP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--accent)", fontWeight: 600 }}
+        >
+          WhatsApp
+        </a>{" "}
+        — we cover most of Lagos.
+      </p>
+    </section>
+  );
+}
+
+/* ────────────────────────── Press / mentions ───────────────────── */
+function PressStrip(): JSX.Element {
+  // Placeholder — replace these with real mentions when you get press.
+  const mentions = [
+    "Featured in The Guardian Life",
+    "Pulse.ng food picks",
+    "BellaNaija Wellness",
+    "Lagos Eater",
+  ];
+  return (
+    <section
+      className="scroll-enter"
+      style={{
+        background: "var(--surface-soft, #fafaf7)",
+        borderRadius: 18,
+        padding: "22px 24px",
+        margin: "32px 0",
+        textAlign: "center",
+      }}
+    >
+      <div
+        className="ms-label eyebrow"
+        style={{ marginBottom: 14 }}
+      >
+        As featured in
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 24,
+          justifyContent: "center",
+          color: "var(--ink-soft)",
+          fontSize: 14,
+          fontStyle: "italic",
+        }}
+      >
+        {mentions.map((m) => (
+          <span key={m}>{m}</span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ────────────────────────── FAQ ────────────────────────────────── */
+function FAQ(): JSX.Element {
+  const faqs = [
+    {
+      q: "How long does a bottle stay fresh?",
+      a: "48 hours from the press date stamped on every bottle. Cold-pressed juice has no preservatives, so we make small batches every morning and you drink it within two days. Keep refrigerated at all times.",
+    },
+    {
+      q: "Is it pasteurized?",
+      a: "No. Heat kills the live enzymes and vitamins we work so hard to keep in the bottle. We rely on cold pressing, refrigeration, and a short 48-hour shelf life instead.",
+    },
+    {
+      q: "When's the cutoff for same-day delivery?",
+      a: "11:00am Lagos time. Order before then and your juice arrives the same day. After 11am we batch you into the next morning's delivery.",
+    },
+    {
+      q: "What if I don't like a flavour?",
+      a: "Tell us within 24 hours via WhatsApp and we'll replace it on your next order or refund the bottle, your choice. We'd rather keep you than keep your ₦3,500.",
+    },
+    {
+      q: "Are these safe during pregnancy?",
+      a: "Most of our juices are pregnancy-friendly — Sunrise Blend, Tropical Swirl, Pineapple, Watermelon, Orange. Avoid the ginger-heavy ones (Ginger Fireball, Ginger Spark, Immune Booster) in the first trimester. Talk to your doctor for anything specific.",
+    },
+    {
+      q: "Any allergens?",
+      a: "Each bottle's ingredients are listed on the label and on the menu page. Common triggers: pineapple (bromelain), citrus, strawberry. No nuts or dairy in any flavour.",
+    },
+    {
+      q: "Can I order on WhatsApp instead?",
+      a: `Yes — message us at ${BRAND.phone}. We'll take your order, confirm delivery, and collect payment via transfer or card on delivery.`,
+    },
+    {
+      q: "Do you do bulk / corporate / events?",
+      a: "Yes. WhatsApp us with your headcount and date — we do office wellness Fridays, baby showers, weddings, and gym partnerships. Custom labels available for orders above 100 bottles.",
+    },
+  ];
+  return (
+    <section className="scroll-enter" style={{ margin: "40px 0" }}>
+      <header className="ms-how__head">
+        <div className="ms-label eyebrow">Frequently asked</div>
+        <h2 className="ms-section-title">Before you order</h2>
+      </header>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 14,
+          marginTop: 22,
+        }}
+      >
+        {faqs.map((f) => (
+          <details
+            key={f.q}
+            style={{
+              background: "white",
+              border: "1px solid var(--line)",
+              borderRadius: 14,
+              padding: "16px 20px",
+            }}
+          >
+            <summary
+              style={{
+                fontWeight: 700,
+                cursor: "pointer",
+                listStyle: "none",
+                fontSize: 15,
+              }}
+            >
+              {f.q}
+            </summary>
+            <p
+              style={{
+                margin: "10px 0 0",
+                color: "var(--ink-soft)",
+                fontSize: 14,
+                lineHeight: 1.55,
+              }}
+            >
+              {f.a}
+            </p>
+          </details>
         ))}
       </div>
     </section>

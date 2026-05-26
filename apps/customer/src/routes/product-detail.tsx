@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import {
   bottleFor,
   findMenuItemById,
@@ -42,9 +41,9 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
         <main className="ms-pdp ms-container">
           <Eyebrow>Product</Eyebrow>
           <h1 className="ms-section-title">We couldn't find that juice.</h1>
-          <Link to="/shop" className="btn btn--primary">
+          <a href="/#menu" className="btn btn--primary">
             Back to the menu
-          </Link>
+          </a>
         </main>
       </SiteLayout>
     );
@@ -77,7 +76,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
     >
       <main className="ms-pdp ms-container">
         <nav className="ms-pdp__crumbs">
-          <Link to="/shop">← All juices</Link>
+          <a href="/#menu">← All juices</a>
         </nav>
 
         <div className="ms-pdp__grid">
