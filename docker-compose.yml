@@ -59,6 +59,10 @@ services:
       PUBLIC_CUSTOMER_URL: ${PUBLIC_CUSTOMER_URL:-http://localhost:3002}
       PORT: "3001"
       RATE_LIMIT_DISABLED: "0"
+      # Set to "1" in .env when serving on plain HTTP (raw-IP demo). Forces
+      # session cookies to drop the Secure flag so the browser actually sends
+      # them back. Production behind Cloudflare Tunnel = HTTPS, leave unset.
+      COOKIE_INSECURE: ${COOKIE_INSECURE:-0}
       PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}
       PAYAZA_WEBHOOK_SECRET: ${PAYAZA_WEBHOOK_SECRET:-}
       BOLT_PROVIDER: ${BOLT_PROVIDER:-mock}

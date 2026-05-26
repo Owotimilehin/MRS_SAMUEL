@@ -19,11 +19,23 @@ import { rateLimit } from "../middleware/rate-limit.js";
 
 const REFRESH_COOKIE = "ms_refresh";
 
+/** `Secure` cookies are dropped on plain HTTP. Production is HTTPS so we want
+ *  Secure on. For plain-HTTP previews on a raw IP, set COOKIE_INSECURE=1 in
+ *  the .env to flip Secure off and SameSite to Lax (Strict drops cross-port). */
+function isSecureCookies(): boolean {
+  if (process.env.COOKIE_INSECURE === "1") return false;
+  return (process.env.NODE_ENV ?? "development") === "production";
+}
+
+function cookieSameSite(): "Strict" | "Lax" {
+  return process.env.COOKIE_INSECURE === "1" ? "Lax" : "Strict";
+}
+
 function accessCookieOpts() {
   return {
     httpOnly: true,
-    secure: (process.env.NODE_ENV ?? "development") === "production",
-    sameSite: "Strict" as const,
+    secure: isSecureCookies(),
+    sameSite: cookieSameSite(),
     path: "/",
     maxAge: 60 * 15,
   };
@@ -32,8 +44,8 @@ function accessCookieOpts() {
 function refreshCookieOpts() {
   return {
     httpOnly: true,
-    secure: (process.env.NODE_ENV ?? "development") === "production",
-    sameSite: "Strict" as const,
+    secure: isSecureCookies(),
+    sameSite: cookieSameSite(),
     path: "/v1/auth",
     maxAge: 60 * 60 * 24 * REFRESH_TTL_DAYS,
   };
