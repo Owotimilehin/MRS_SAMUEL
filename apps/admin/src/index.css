@@ -337,6 +337,8 @@ button { font: inherit; }
   width: 100%;
   height: 100%;
   object-fit: contain;
+  /* Brand asset is white-on-transparent; sidebar is white. Collapse to ink. */
+  filter: brightness(0);
 }
 .app-brand__name {
   font-weight: 800;
@@ -718,6 +720,8 @@ button { font: inherit; }
   width: 78%;
   height: 78%;
   object-fit: contain;
+  /* White brand asset on a white card — darken so it's actually visible. */
+  filter: brightness(0);
 }
 .login__form-title {
   font-size: 30px;
