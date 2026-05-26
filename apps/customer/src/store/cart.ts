@@ -58,14 +58,16 @@ interface CartResp {
 }
 
 async function fetchCart(method: string, path: string, body?: unknown): Promise<CartView> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers["content-type"] = "application/json";
+  if (method !== "GET" && method !== "HEAD") {
+    headers["idempotency-key"] = crypto.randomUUID();
+  }
   const init: RequestInit = {
     method,
     credentials: "same-origin",
-    headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+    headers,
   };
-  if (method !== "GET" && method !== "HEAD") {
-    init.headers = { ...(init.headers ?? {}), "idempotency-key": crypto.randomUUID() };
-  }
   if (body !== undefined) init.body = JSON.stringify(body);
   // Hono doesn't match a trailing slash on the mount root, so collapse "/" to "".
   const suffix = path === "/" ? "" : path;

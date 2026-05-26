@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
   BRAND,
-  FRUITS,
   FRUIT_NUTRITION,
   MENU,
   bottleFor,
   ingredientToFruit,
   priceFor,
   type Category,
-  type Fruit,
   type MenuItem,
   type Size,
 } from "../data/menu.js";
@@ -57,7 +55,8 @@ interface Theme {
   textGrad: string;
 }
 
-const THEMES: Record<string, Theme> = {
+type ThemeName = "orange" | "crimson" | "green" | "pink" | "yellow";
+const THEMES: Record<ThemeName, Theme> = {
   orange: {
     color: "#F15A24",
     glow1: "rgba(252, 191, 73, 0.55)",
@@ -178,7 +177,6 @@ export function MenuPage(): JSX.Element {
       <div className="ms-container"><Hero /></div>
       <div className="ms-container"><TrustStrip /></div>
       <div className="ms-container"><HowItWorks /></div>
-      <div className="ms-container"><FlavourMixer /></div>
       <div className="ms-container"><FullMenu /></div>
       <div className="ms-container"><Testimonials /></div>
       <div className="ms-container"><About /></div>
@@ -499,130 +497,6 @@ function HeroScene({
   );
 }
 
-/* ────────────────────────── Flavour Explorer Mixer ─────────────────────────── */
-function FlavourMixer(): JSX.Element {
-  const [selected, setSelected] = useState<Fruit[]>([]);
-
-  const toggleFruit = (fruit: Fruit) => {
-    setSelected((prev) =>
-      prev.includes(fruit)
-        ? prev.filter((f) => f !== fruit)
-        : [...prev, fruit]
-    );
-  };
-
-  const clearMixer = () => setSelected([]);
-
-  // Find matching juices
-  const matchingJuices = useMemo(() => {
-    if (selected.length === 0) return [];
-    return MENU.filter((juice) => {
-      // Check if juice has ALL of the selected fruits
-      return selected.every((selFruit) =>
-        juice.ingredients.some((ing) => ingredientToFruit(ing) === selFruit)
-      );
-    });
-  }, [selected]);
-
-  // If no exact match (all selected), let's find juices matching ANY of the selected
-  const partialMatchingJuices = useMemo(() => {
-    if (selected.length === 0 || matchingJuices.length > 0) return [];
-    return MENU.filter((juice) => {
-      return selected.some((selFruit) =>
-        juice.ingredients.some((ing) => ingredientToFruit(ing) === selFruit)
-      );
-    });
-  }, [selected, matchingJuices]);
-
-  // Gather unique health benefits
-  const activeBenefits = useMemo(() => {
-    const benefitsSet = new Set<string>();
-    selected.forEach((fruit) => {
-      FRUIT_NUTRITION[fruit]?.benefits.forEach((b) => benefitsSet.add(b));
-    });
-    return Array.from(benefitsSet);
-  }, [selected]);
-
-  const displayedJuices = matchingJuices.length > 0 ? matchingJuices : partialMatchingJuices;
-  const isExact = matchingJuices.length > 0;
-  const addToCart = useCart((s) => s.add);
-
-  return (
-    <section className="ms-mixer scroll-enter">
-      <div className="ms-label eyebrow">Flavour Explorer</div>
-      <h2 className="ms-section-title">Mix Your Vibe</h2>
-      <p className="ms-section-sub" style={{ margin: "0 auto 24px" }}>
-        Select ingredients to see which of our 17 cold-pressed juices match, along with their health benefits.
-      </p>
-
-      <div className="ms-mixer__grid">
-        {FRUITS.map((fruit) => {
-          const isActive = selected.includes(fruit);
-          const name = FRUIT_NUTRITION[fruit]?.name || fruit;
-          return (
-            <button
-              key={fruit}
-              type="button"
-              className={`ms-mixer__fruit-btn ${isActive ? "is-active" : ""}`}
-              onClick={() => toggleFruit(fruit)}
-            >
-              <img src={`/assets/fruits/${fruit}-cutout.png`} alt={name} />
-              {name}
-            </button>
-          );
-        })}
-      </div>
-
-      {selected.length > 0 && (
-        <div className="ms-mixer__results">
-          {activeBenefits.length > 0 && (
-            <div style={{ marginBottom: "24px" }}>
-              <div className="ms-mixer__benefit-label">Health Benefits</div>
-              <div className="ms-mixer__benefits">
-                {activeBenefits.map((b) => (
-                  <span key={b} className="ms-mixer__benefit-pill">
-                    {b}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <div className="ms-mixer__benefit-label">
-              {isExact
-                ? `Perfect Matches (${matchingJuices.length})`
-                : displayedJuices.length > 0
-                ? `Blends containing some of your picks (${displayedJuices.length})`
-                : "No matching blends"}
-            </div>
-
-            {displayedJuices.length > 0 ? (
-              <div className="ms-mixer__juices-grid">
-                {displayedJuices.map((juice) => (
-                  <MenuCard key={juice.id} item={juice} onAdd={addToCart} />
-                ))}
-              </div>
-            ) : (
-              <p className="ms-section-sub" style={{ margin: 0 }}>
-                We don't have a blend with this exact combination yet. Try selecting a different mix!
-              </p>
-            )}
-          </div>
-          
-          <button 
-            type="button" 
-            className="btn btn--ghost" 
-            onClick={clearMixer}
-            style={{ marginTop: "24px", padding: "8px 20px", fontSize: "11px" }}
-          >
-            Reset Mixer
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
 
 
 function CarouselNav({
@@ -873,7 +747,7 @@ function FullMenu(): JSX.Element {
   const addToCart = useCart((s) => s.add);
 
   return (
-    <section id="full-menu" className="ms-full scroll-enter">
+    <section id="menu" className="ms-full scroll-enter">
       <header className="ms-full__head">
         <div className="ms-label eyebrow">The full menu</div>
         <h2 className="ms-section-title">17 cold-pressed juices</h2>
