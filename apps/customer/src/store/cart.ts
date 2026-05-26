@@ -1,5 +1,17 @@
 import { useSyncExternalStore } from "react";
 
+/** crypto.randomUUID requires a secure context — fall back on plain HTTP. */
+function makeIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 /**
  * Server-side cart. Lines live in Postgres, keyed by the `ms_cart` cookie set
  * by the API. The client keeps an in-memory mirror of the latest GET response
@@ -61,7 +73,7 @@ async function fetchCart(method: string, path: string, body?: unknown): Promise<
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["content-type"] = "application/json";
   if (method !== "GET" && method !== "HEAD") {
-    headers["idempotency-key"] = crypto.randomUUID();
+    headers["idempotency-key"] = makeIdempotencyKey();
   }
   const init: RequestInit = {
     method,

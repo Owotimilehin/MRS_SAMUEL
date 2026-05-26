@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
   BRAND,
+  FRUITS,
   FRUIT_NUTRITION,
   MENU,
   bottleFor,
   ingredientToFruit,
   priceFor,
   type Category,
+  type Fruit,
   type MenuItem,
   type Size,
 } from "../data/menu.js";
