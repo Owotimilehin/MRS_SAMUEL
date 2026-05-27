@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { LoginPage } from "./routes/login.js";
 import { NotFound } from "./components/NotFound.js";
+import { InlineLoader, PageLoader } from "./components/Spinner.js";
 import { RequireAuth, useAuthUser } from "./lib/auth.js";
 import {
   lazy,
@@ -36,12 +37,8 @@ function lazyNamed<P = Record<string, never>>(
   ) as unknown as ComponentType<P>;
 }
 
-const LoadingFallback = (): JSX.Element => (
-  <main style={{ padding: 24, color: "var(--ink-soft)" }}>Loading…</main>
-);
-
 function L({ children }: { children: ReactNode }): JSX.Element {
-  return <Suspense fallback={<LoadingFallback />}>{children}</Suspense>;
+  return <Suspense fallback={<PageLoader />}>{children}</Suspense>;
 }
 
 // ───── Lazy route components ─────
@@ -202,9 +199,7 @@ function RootRedirect(): JSX.Element {
       cancelled = true;
     };
   }, []);
-  return (
-    <main style={{ padding: 24, color: "var(--ink-soft)" }}>Redirecting…</main>
-  );
+  return <PageLoader label="Redirecting…" />;
 }
 
 const indexRoute = createRoute({
@@ -260,11 +255,7 @@ function WithBranchId({
     );
   }
   if (!branchId) {
-    return (
-      <main style={{ padding: 24 }}>
-        <p style={{ color: "var(--ink-soft)" }}>Loading branch…</p>
-      </main>
-    );
+    return <InlineLoader label="Finding your branch…" />;
   }
   return <>{render(branchId)}</>;
 }

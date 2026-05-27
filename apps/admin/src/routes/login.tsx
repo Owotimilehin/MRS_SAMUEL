@@ -171,7 +171,7 @@ export function LoginPage(): JSX.Element {
           </form>
 
           <div className="login__footer">
-            v1 · Built in Lagos
+            Built in Lagos
           </div>
         </div>
       </section>

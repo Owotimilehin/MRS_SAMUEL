@@ -213,8 +213,11 @@ export function CustomersPage(): JSX.Element {
         )}
 
         <p style={{ color: "var(--ink-soft)", fontSize: 12, marginTop: 14 }}>
-          Note: customer names and phone numbers come from individual order records — drill into
-          an order from <a href="/owner/orders">Orders</a> to see contact details.
+          For contact details on any customer, open one of their orders from{" "}
+          <a href="/owner/orders" style={{ color: "var(--accent)", fontWeight: 600 }}>
+            Orders
+          </a>
+          .
         </p>
       </section>
     </Shell>

@@ -5,6 +5,7 @@ import { api, ngn } from "../lib/api.js";
 import { BRAND, bottleFor, MENU, type MenuItem } from "../data/menu.js";
 import { useCart } from "../store/cart.js";
 import { Button, Eyebrow } from "../components/ui/index.js";
+import { InlineLoader } from "../components/Spinner.js";
 
 interface CatalogProduct {
   id: string;
@@ -102,9 +103,7 @@ export function SpecialsPage(): JSX.Element {
         )}
 
         {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: "var(--ink-soft)" }}>
-            Loading specials…
-          </div>
+          <InlineLoader label="Loading specials…" />
         ) : products.length === 0 ? (
           <div className="ms-specials__empty">
             <Eyebrow>Coming back soon</Eyebrow>

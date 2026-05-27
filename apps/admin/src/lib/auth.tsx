@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { PageLoader } from "../components/Spinner.js";
 
 export interface AuthUser {
   id: string;
@@ -47,19 +48,7 @@ export function RequireAuth({ children }: { children: ReactNode }): JSX.Element 
   }, []);
 
   if (state.kind === "loading") {
-    return (
-      <main
-        style={{
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          color: "var(--ms-ink-3)",
-          fontFamily: "system-ui, sans-serif",
-        }}
-      >
-        Loading…
-      </main>
-    );
+    return <PageLoader />;
   }
 
   if (state.kind === "anon") {

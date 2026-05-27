@@ -190,7 +190,8 @@ export function SettingsPage(): JSX.Element {
               Refunds & approvals
             </h2>
             <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 16 }}>
-              Refunds above this amount are flagged for your approval before they're processed.
+              Refunds above this amount need your approval before they're processed at the
+              branch.
             </p>
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
               <input
@@ -200,15 +201,8 @@ export function SettingsPage(): JSX.Element {
                 disabled
                 style={{ maxWidth: 160 }}
               />
-              <span
-                className="pill"
-                style={{
-                  background: "var(--surface-soft)",
-                  color: "var(--ink-soft)",
-                  fontSize: 11,
-                }}
-              >
-                Hard-coded · DB migration to make editable
+              <span style={{ color: "var(--ink-soft)", fontSize: 12 }}>
+                Naira · contact support to change this threshold
               </span>
             </div>
           </section>
@@ -218,12 +212,15 @@ export function SettingsPage(): JSX.Element {
               Payments & delivery
             </h2>
             <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 16 }}>
-              Set via environment variables. Reach out to dev to rotate keys.
+              Active integrations for accepting payments and dispatching riders.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14 }}>
-              <ReadRow label="Payaza secret" value="PAYAZA_SECRET_KEY (env)" />
-              <ReadRow label="Bolt API key" value="BOLT_API_KEY (env)" />
-              <ReadRow label="Bank transfer details" value="Configured on /checkout" />
+              <ReadRow label="Card payments" value="Payaza · live" />
+              <ReadRow label="Delivery partner" value="Bolt · live" />
+              <ReadRow
+                label="Bank transfer"
+                value="Account details shown to customers at checkout"
+              />
             </div>
           </section>
 
@@ -232,15 +229,12 @@ export function SettingsPage(): JSX.Element {
               Notifications
             </h2>
             <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 16 }}>
-              Owner + branch Telegram channels and Resend "from" address.
+              Order alerts go to the owner channel; branch alerts go to each branch's channel.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14 }}>
-              <ReadRow
-                label="Owner Telegram channel"
-                value="TELEGRAM_OWNER_CHAT_ID (env)"
-              />
-              <ReadRow label="Branch Telegram channel" value="TELEGRAM_BRANCH_CHAT_ID (env)" />
-              <ReadRow label="Email from" value="RESEND_FROM (env)" />
+              <ReadRow label="Owner Telegram channel" value="Configured" />
+              <ReadRow label="Branch Telegram channels" value="Configured" />
+              <ReadRow label="Order receipts (email)" value="Sent automatically" />
             </div>
           </section>
 
@@ -249,12 +243,11 @@ export function SettingsPage(): JSX.Element {
               Brand
             </h2>
             <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 16 }}>
-              WhatsApp number shown to customers across the site.
+              Contact details shown to customers on the public site.
             </p>
-            <ReadRow
-              label="WhatsApp Business number"
-              value="2347067220914 (hard-coded in apps/customer/src/data/menu.ts → BRAND.whatsapp)"
-            />
+            <ReadRow label="WhatsApp Business number" value="+234 706 722 0914" />
+            <ReadRow label="Phone (calls)" value="+234 706 722 0914" />
+            <ReadRow label="Instagram" value="@mrs_samuelfruitjuice" />
           </section>
         </div>
       )}
@@ -267,23 +260,14 @@ function ReadRow({ label, value }: { label: string; value: string }): JSX.Elemen
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "200px 1fr",
+        gridTemplateColumns: "220px 1fr",
         gap: 12,
         alignItems: "center",
+        padding: "6px 0",
       }}
     >
       <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>{label}</span>
-      <code
-        style={{
-          background: "var(--surface-soft)",
-          padding: "6px 10px",
-          borderRadius: 8,
-          fontSize: 12,
-          color: "var(--ink)",
-        }}
-      >
-        {value}
-      </code>
+      <span style={{ fontSize: 14, color: "var(--ink)" }}>{value}</span>
     </div>
   );
 }

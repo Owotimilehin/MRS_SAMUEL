@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { api, ngn } from "../lib/api.js";
 import { BRAND } from "../data/menu.js";
 import { SiteLayout } from "../components/SiteLayout.js";
+import { InlineLoader } from "../components/Spinner.js";
 import { Eyebrow, StatusPill, type Status } from "../components/ui/index.js";
 
 interface DeliveryInfo {
@@ -128,7 +129,7 @@ export function OrderPage({ orderNumber }: { orderNumber: string }): JSX.Element
     return (
       <SiteLayout meta={{ title: `Order ${orderNumber} · Mrs. Samuel` }}>
         <main className="ms-order ms-container">
-          <p className="ms-section-sub">Loading order…</p>
+          <InlineLoader label="Finding your order…" />
         </main>
       </SiteLayout>
     );

@@ -4,6 +4,7 @@ import { SiteLayout } from "../components/SiteLayout.js";
 import { api, ngn } from "../lib/api.js";
 import { BRAND } from "../data/menu.js";
 import { Eyebrow } from "../components/ui/index.js";
+import { InlineLoader } from "../components/Spinner.js";
 
 interface DeliveryZone {
   name: string;
@@ -84,9 +85,7 @@ export function LocationsPage(): JSX.Element {
         )}
 
         {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: "var(--ink-soft)" }}>
-            Loading locations…
-          </div>
+          <InlineLoader label="Loading locations…" />
         ) : branches.length === 0 ? (
           <div className="ms-specials__empty">
             <Eyebrow>Opening soon</Eyebrow>

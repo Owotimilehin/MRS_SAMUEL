@@ -4,6 +4,7 @@ import { SiteLayout } from "../components/SiteLayout.js";
 import { api } from "../lib/api.js";
 import { BRAND } from "../data/menu.js";
 import { Eyebrow } from "../components/ui/index.js";
+import { InlineLoader } from "../components/Spinner.js";
 import { Markdown } from "../lib/markdown.js";
 
 interface Post {
@@ -72,9 +73,7 @@ export function BlogDetailPage({ slug }: { slug: string }): JSX.Element {
     >
       <article className="ms-container ms-blog__article">
         {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: "var(--ink-soft)" }}>
-            Loading…
-          </div>
+          <InlineLoader label="Loading post…" />
         ) : notFound ? (
           <div className="ms-specials__empty">
             <Eyebrow>Not found</Eyebrow>

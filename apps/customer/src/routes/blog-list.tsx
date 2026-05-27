@@ -4,6 +4,7 @@ import { SiteLayout } from "../components/SiteLayout.js";
 import { api } from "../lib/api.js";
 import { BRAND } from "../data/menu.js";
 import { Eyebrow } from "../components/ui/index.js";
+import { InlineLoader } from "../components/Spinner.js";
 
 interface PostSummary {
   id: string;
@@ -73,9 +74,7 @@ export function BlogListPage(): JSX.Element {
         )}
 
         {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: "var(--ink-soft)" }}>
-            Loading…
-          </div>
+          <InlineLoader label="Loading posts…" />
         ) : posts.length === 0 ? (
           <div className="ms-specials__empty">
             <Eyebrow>First post coming soon</Eyebrow>

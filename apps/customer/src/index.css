@@ -489,22 +489,25 @@ button { font: inherit; }
   display: inline-flex;
   padding: 3px;
   background: var(--surface-soft);
+  border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   gap: 2px;
 }
 .ms-size-toggle button {
   border: 0;
   background: transparent;
-  padding: 4px 10px;
-  font-size: 11px;
+  padding: 5px 12px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: -0.005em;
-  color: var(--ink-soft);
+  /* Was --ink-soft → near-invisible on --surface-soft. Use full ink for the
+   * inactive label so 330ml / 650ml is readable. */
+  color: var(--ink);
   border-radius: var(--radius-pill);
   cursor: pointer;
   transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease;
 }
-.ms-size-toggle button:hover { color: var(--ink); }
+.ms-size-toggle button:hover { color: var(--accent); }
 .ms-size-toggle button.is-active {
   background: var(--grad);
   color: #fff;
@@ -2020,8 +2023,10 @@ button { font: inherit; }
   transition: color 0.6s ease;
 }
 
-/* Size toggle active background */
-.ms-size-toggle button.is-active {
+/* Size toggle active background — only theme-tinted inside the hero (where
+ * --theme-color is defined per current juice). On the menu cards we keep the
+ * default sunrise gradient (see .ms-size-toggle button.is-active above). */
+.ms-hero .ms-size-toggle button.is-active {
   background: var(--theme-color) !important;
   transition: background 0.3s ease;
 }
