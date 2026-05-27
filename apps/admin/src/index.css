@@ -318,6 +318,10 @@ button { font: inherit; }
   position: sticky;
   top: 0;
   height: 100vh;
+  /* Brand sits at top, foot pins to bottom, nav fills + scrolls between them.
+   * Without overflow: hidden, the long nav (~20 items) spills past the white
+   * sidebar background onto the gray frame. */
+  overflow: hidden;
 }
 .app-brand {
   display: flex;
@@ -352,7 +356,19 @@ button { font: inherit; }
   color: var(--ink-soft);
   text-transform: capitalize;
 }
-.app-nav { display: flex; flex-direction: column; gap: 2px; }
+.app-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Take the leftover space between brand and foot; scroll internally so the
+   * sidebar background always fills the viewport, no matter how many links. */
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  /* Slight inner padding so the focus ring doesn't get clipped by overflow. */
+  padding: 2px;
+  margin: -2px;
+}
 .app-nav__section {
   font-size: 10px;
   font-weight: 700;
@@ -435,9 +451,15 @@ button { font: inherit; }
 }
 .empty__title { color: var(--ink); font-weight: 700; font-size: 16px; margin-bottom: 4px; }
 
-/* Scrollbar polish for the side nav on desktop */
-.app-side::-webkit-scrollbar { width: 6px; }
-.app-side::-webkit-scrollbar-thumb { background: rgba(20,24,31,0.15); border-radius: 999px; }
+/* Scrollbar polish for the side nav on desktop. Targets .app-nav because the
+ * sidebar itself has overflow: hidden — only the nav region scrolls. */
+.app-nav::-webkit-scrollbar { width: 6px; }
+.app-nav::-webkit-scrollbar-thumb {
+  background: rgba(20, 24, 31, 0.15);
+  border-radius: 999px;
+}
+.app-nav::-webkit-scrollbar-thumb:hover { background: rgba(20, 24, 31, 0.25); }
+.app-nav { scrollbar-width: thin; scrollbar-color: rgba(20,24,31,0.15) transparent; }
 
 /* ─────────────────────── Spinner (xs ring) ──────────────────────── */
 .ms-spinner--xs {
