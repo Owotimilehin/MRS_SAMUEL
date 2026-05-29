@@ -68,8 +68,8 @@ const BRANCH_ROUTES = [
 /** Sign in once before each test. */
 async function signIn(page: Page): Promise<void> {
   await page.goto("/login");
-  await page.getByPlaceholder(/email/i).fill("owner@example.com");
-  await page.getByPlaceholder(/password/i).fill("ChangeMe!Owner-1234");
+  await page.getByLabel(/email/i).fill("owner@example.com");
+  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/owner|\/branch|\/factory|\/$/, { timeout: 8_000 });
 }

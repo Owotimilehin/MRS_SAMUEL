@@ -15,7 +15,7 @@ export default defineConfig({
   fullyParallel: false,
   reporter: "list",
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3010",
     trace: "on-first-retry",
     actionTimeout: 10_000,
     navigationTimeout: 15_000,

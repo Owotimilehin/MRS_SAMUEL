@@ -9,8 +9,8 @@ import { test, expect } from "@playwright/test";
 
 test("login takes owner to the dashboard, products page loads", async ({ page }) => {
   await page.goto("/login");
-  await page.getByPlaceholder(/email/i).fill("owner@example.com");
-  await page.getByPlaceholder(/password/i).fill("ChangeMe!Owner-1234");
+  await page.getByLabel(/email/i).fill("owner@example.com");
+  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
   await page.getByRole("button", { name: /sign in/i }).click();
 
   await page.waitForURL(/\/owner\/dashboard|\/$/, { timeout: 5_000 });
@@ -22,8 +22,8 @@ test("login takes owner to the dashboard, products page loads", async ({ page })
 
 test("transfers page lists transfers (may be empty)", async ({ page }) => {
   await page.goto("/login");
-  await page.getByPlaceholder(/email/i).fill("owner@example.com");
-  await page.getByPlaceholder(/password/i).fill("ChangeMe!Owner-1234");
+  await page.getByLabel(/email/i).fill("owner@example.com");
+  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/owner|\/$/, { timeout: 5_000 });
 
