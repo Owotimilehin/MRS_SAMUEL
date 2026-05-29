@@ -24,15 +24,21 @@ interface FormattedMessage {
 
 /**
  * Map an outbox event onto the channels that care and the message body to
- * send. Returns chatIds: [] when the event type is unknown (or noisy) so
- * the worker can mark it sent without dispatching anything.
+ * send. The owner channel is wired into EVERY event so the owner sees
+ * everything that happens in the app. Other channels (branch, factory) are
+ * still included where they're directly relevant.
+ *
+ * Returns chatIds: [] only for events that are processed inline elsewhere
+ * (refund requests, delivery requests, payment reminders) so the worker
+ * marks them sent without double-dispatching.
  */
 function format(event: { eventType: string; payload: Record<string, unknown> }): FormattedMessage {
   const p = event.payload as Record<string, string>;
+  const owner = channels.owner();
   switch (event.eventType) {
     case "stock_transfer.dispatched":
       return {
-        chatIds: [channels.branchAjao(), channels.owner()],
+        chatIds: [channels.branchAjao(), owner],
         text:
           `🚚 *Transfer dispatched*\n` +
           `${p["transfer_number"]}\n` +
@@ -41,7 +47,7 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
       };
     case "stock_transfer.arrived":
       return {
-        chatIds: [channels.factory()],
+        chatIds: [channels.factory(), owner],
         text:
           `📦 *Transfer arrived*\n` +
           `${p["transfer_number"]}\n` +
@@ -50,7 +56,7 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
       };
     case "stock_transfer.variance_review":
       return {
-        chatIds: [channels.owner()],
+        chatIds: [owner],
         text:
           `⚠️ *Variance for review*\n` +
           `${p["transfer_number"]}\n` +
@@ -59,7 +65,7 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
       };
     case "stock_transfer.rejected":
       return {
-        chatIds: [channels.factory(), channels.owner()],
+        chatIds: [channels.factory(), owner],
         text:
           `❌ *Transfer rejected*\n` +
           `${p["transfer_number"]}\n` +
@@ -68,7 +74,7 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
       };
     case "sale_return.pending_approval":
       return {
-        chatIds: [channels.owner()],
+        chatIds: [owner],
         text:
           `↩️ *Return pending review*\n` +
           `${p["return_number"]} · ₦${p["refund_amount_ngn"]}\n` +
@@ -77,25 +83,79 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
       };
     case "daily_close.late":
       return {
-        chatIds: [channels.owner(), channels.branchAjao()],
+        chatIds: [owner, channels.branchAjao()],
         text:
           `⏰ *Daily close overdue*\n` +
           `${p["branch_name"]} hasn't filed for ${p["business_date"]}.\n` +
           `👉 ${ADMIN_URL}/branch/close`,
       };
     case "daily_close.submitted":
-      return { chatIds: [], text: "" };
+      return {
+        chatIds: [owner],
+        text:
+          `📋 *Daily close filed*\n` +
+          `${p["business_date"]}\n` +
+          `Cash: ₦${p["cash_ngn"] ?? "?"} · Transfers: ₦${p["transfer_ngn"] ?? "?"} · Variance: ₦${p["variance_ngn"] ?? "0"}\n` +
+          `👉 ${ADMIN_URL}/owner/closes`,
+      };
+    case "sale.online_placed":
+      return {
+        chatIds: [owner],
+        text:
+          `🆕 *New online order*\n` +
+          `${p["order_number"]} · ₦${p["total_ngn"]}\n` +
+          `${p["customer_name"]} · ${p["customer_phone"]}\n` +
+          `Waiting on payment.\n` +
+          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
+      };
+    case "sale.paid_online":
+      return {
+        chatIds: [owner],
+        text:
+          `💰 *Online order paid*\n` +
+          `${p["order_number"]} · ₦${p["total_ngn"] ?? "?"}\n` +
+          `Stock decremented; delivery dispatch queued.\n` +
+          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
+      };
+    case "sale.branch_sold":
+      return {
+        chatIds: [owner],
+        text:
+          `🛒 *Branch sale*\n` +
+          `${p["order_number"]} · ₦${p["total_ngn"]} · ${p["channel"]}\n` +
+          `👉 ${ADMIN_URL}/branch/sales/${p["sale_order_id"]}`,
+      };
+    case "payment.refund_request":
+      return {
+        chatIds: [owner],
+        text:
+          `💸 *Refund initiated*\n` +
+          `Return ${p["return_number"] ?? "?"} · ₦${p["amount_ngn"]}\n` +
+          `Calling Payaza now.`,
+      };
     case "sale.payment_reminder":
-      // No telegram channel — handled inline below as an email reminder.
-      return { chatIds: [], text: "" };
+      // Email reminder handled inline; ping owner so they know one was sent.
+      return {
+        chatIds: [owner],
+        text:
+          `⏳ *Payment reminder sent*\n` +
+          `${p["order_number"]} · ₦${p["total_ngn"]}\n` +
+          `Customer hasn't paid yet; reservation will sweep if they don't.`,
+      };
     case "delivery.request":
       // Handled inline below — calls Bolt + persists delivery_order.
       return { chatIds: [], text: "" };
     case "delivery.completed":
-      return { chatIds: [], text: "" };
+      return {
+        chatIds: [owner],
+        text:
+          `✅ *Delivered*\n` +
+          `${p["order_number"]} — customer received their order.\n` +
+          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
+      };
     case "delivery.failed":
       return {
-        chatIds: [channels.branchAjao(), channels.owner()],
+        chatIds: [channels.branchAjao(), owner],
         text:
           `❌ *Delivery failed*\n` +
           `${p["order_number"]}\n` +
@@ -104,7 +164,7 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
       };
     case "delivery.no_rider":
       return {
-        chatIds: [channels.branchAjao(), channels.owner()],
+        chatIds: [channels.branchAjao(), owner],
         text:
           `⏰ *No Bolt rider found*\n` +
           `${p["order_number"]} — customer is waiting.\n` +
@@ -113,15 +173,27 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
       };
     case "sale.amount_mismatch":
       return {
-        chatIds: [channels.owner()],
+        chatIds: [owner],
         text:
           `🚨 *Payment amount mismatch*\n` +
           `${p["order_number"]} expected ₦${p["expected_ngn"]} but Payaza reported ₦${p["reported_ngn"]}.\n` +
           `Order parked for reconciliation.\n` +
           `👉 ${ADMIN_URL}/branch/sales/${p["sale_order_id"]}`,
       };
+    case "production_run.completed":
+      return {
+        chatIds: [owner, channels.factory()],
+        text:
+          `🥤 *Production run complete*\n` +
+          `${p["run_date"]} · ${p["bottle_count"] ?? "?"} bottles\n` +
+          `👉 ${ADMIN_URL}/factory/production-runs/${p["production_run_id"]}`,
+      };
     default:
-      return { chatIds: [], text: "" };
+      // Unknown event — tell the owner so we never silently drop something new.
+      return {
+        chatIds: [owner],
+        text: `ℹ️ *${event.eventType}*\n${JSON.stringify(event.payload).slice(0, 240)}`,
+      };
   }
 }
 

@@ -4,6 +4,7 @@ import { eq, and, desc, asc, isNull } from "drizzle-orm";
 import {
   saleOrder,
   saleOrderItem,
+  outboxEvent,
   productPrice,
   productVariant,
   customer,
@@ -346,6 +347,18 @@ export function publicOrderRoutes(db: DbClient) {
           expiresAt,
         });
       }
+      // Tell the owner (and anyone else subscribed) that a new online order
+      // just landed and is waiting on payment.
+      await tx.insert(outboxEvent).values({
+        eventType: "sale.online_placed",
+        payload: {
+          sale_order_id: o.id,
+          order_number: o.orderNumber,
+          total_ngn: total,
+          customer_name: cust.name,
+          customer_phone: cust.phone,
+        },
+      });
       return { order: o, customerEmail: cust.email };
     });
 

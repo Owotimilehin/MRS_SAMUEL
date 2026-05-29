@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { productionRun, productionRunItem, stockLedger, type DbClient } from "@ms/db";
+import { productionRun, productionRunItem, stockLedger, outboxEvent, type DbClient } from "@ms/db";
 import { requireAuth } from "../middleware/auth.js";
 import { requireFactoryRole } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
@@ -96,6 +96,15 @@ export function productionRunRoutes(db: DbClient) {
         .where(eq(productionRun.id, id))
         .returning();
       if (!updated) throw new BusinessError("internal_error", "update returned no rows", 500);
+      const bottleCount = items.reduce((sum, it) => sum + it.quantityProduced, 0);
+      await tx.insert(outboxEvent).values({
+        eventType: "production_run.completed",
+        payload: {
+          production_run_id: updated.id,
+          run_date: updated.runDate,
+          bottle_count: bottleCount,
+        },
+      });
       return updated;
     });
 

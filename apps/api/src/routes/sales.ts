@@ -10,6 +10,7 @@ import {
   productPrice,
   productVariant,
   customer,
+  outboxEvent,
   type DbClient,
 } from "@ms/db";
 import { availableAtBranch, nextOrderNumber } from "@ms/domain";
@@ -303,6 +304,16 @@ export function saleRoutes(db: DbClient) {
         .where(eq(saleOrder.id, id))
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
+      // Branch sale completed — owner wants to see this.
+      await tx.insert(outboxEvent).values({
+        eventType: "sale.branch_sold",
+        payload: {
+          sale_order_id: u.id,
+          order_number: u.orderNumber,
+          total_ngn: u.totalNgn,
+          channel: u.channel,
+        },
+      });
       return u;
     });
 

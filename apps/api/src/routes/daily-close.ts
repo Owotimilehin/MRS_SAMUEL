@@ -96,6 +96,9 @@ export function dailyCloseRoutes(db: DbClient) {
         payload: {
           daily_close_id: close.id,
           branch_id: branchId,
+          business_date: body.business_date,
+          cash_ngn: body.cash_counted_ngn,
+          transfer_ngn: body.transfers_counted_ngn,
           variance_ngn: variance,
         },
       });
