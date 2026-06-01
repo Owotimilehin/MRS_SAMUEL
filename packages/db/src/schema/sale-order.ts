@@ -67,6 +67,11 @@ export const saleOrder = pgTable("sale_order", {
   cancelledByUserId: uuid("cancelled_by_user_id").references(() => adminUser.id),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   outForDeliveryAt: timestamp("out_for_delivery_at", { withTimezone: true }),
+  // When set, the customer asked for a future delivery time.
+  scheduledDeliveryAt: timestamp("scheduled_delivery_at", { withTimezone: true }),
+  // Destination state. NULL or "Lagos" = in-area (Bolt dispatch). Any other
+  // value = outside Lagos: automated dispatch is bypassed and delivery is ₦0.
+  deliveryState: text("delivery_state"),
   deliveryProviderRef: text("delivery_provider_ref"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
