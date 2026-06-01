@@ -484,6 +484,10 @@ export function publicOrderRoutes(db: DbClient) {
         delivery_fee_ngn: o.deliveryFeeNgn,
         channel: o.channel,
         created_at: o.createdAt,
+        scheduled_delivery_at: o.scheduledDeliveryAt
+          ? o.scheduledDeliveryAt.toISOString()
+          : null,
+        delivery_state: o.deliveryState ?? null,
         delivery: delivery
           ? {
               status: delivery.status,

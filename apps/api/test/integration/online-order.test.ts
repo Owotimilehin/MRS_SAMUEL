@@ -289,6 +289,34 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(track.status).toBe(404);
   });
 
+  it("tracking returns scheduled_delivery_at and delivery_state", async () => {
+    const future = new Date(Date.now() + 12 * 60 * 60_000).toISOString();
+    const phone = "+2348025550005";
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Outside Lagos",
+        delivery_fee_ngn: 0,
+        scheduled_delivery_at: future,
+        delivery_state: "Abuja (FCT)",
+        customer: { name: "Track Sched", phone, address: "5 Track Street" },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    const orderBody = (await orderRes.json()) as { data: { order_number: string } };
+
+    const track = await fetch(
+      `${baseUrl}/v1/public/orders/${orderBody.data.order_number}?phone=${encodeURIComponent(phone)}`,
+    );
+    const t = (await track.json()) as {
+      data: { scheduled_delivery_at: string | null; delivery_state: string | null };
+    };
+    expect(new Date(t.data.scheduled_delivery_at!).toISOString()).toBe(future);
+    expect(t.data.delivery_state).toBe("Abuja (FCT)");
+  });
+
   async function eventsForOrder(orderId: string) {
     const { outboxEvent } = await import("@ms/db");
     const all = await db.select().from(outboxEvent);
