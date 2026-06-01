@@ -11,6 +11,7 @@ import {
 } from "@ms/db";
 import { verifyWebhookSignature } from "../payments/payaza.js";
 import { BusinessError } from "../lib/errors.js";
+import { isOutsideLagos } from "@ms/shared";
 
 /**
  * Payaza webhook receiver. We don't trust the redirect URL — only signed
@@ -117,7 +118,7 @@ export function payazaWebhookRoutes(db: DbClient) {
       // Bypass: scheduled (future) OR outside-Lagos orders skip automated Bolt
       // dispatch entirely; the owner fulfils them out-of-band. Only immediate,
       // in-Lagos orders request a ride.
-      const outsideLagos = o.deliveryState != null && o.deliveryState !== "Lagos";
+      const outsideLagos = isOutsideLagos(o.deliveryState);
       const bypass = o.scheduledDeliveryAt != null || outsideLagos;
       if (!bypass) {
         // Kick off the delivery request via the worker outbox. The worker

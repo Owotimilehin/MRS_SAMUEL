@@ -7,6 +7,7 @@ import {
   saleOrder,
   type DbClient,
 } from "@ms/db";
+import { isOutsideLagos } from "@ms/shared";
 import { sendMessage, channels } from "./notifiers/telegram.js";
 import { sendEmail } from "./notifiers/email.js";
 import { refundPayaza } from "./payments/payaza-refund.js";
@@ -126,7 +127,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
     case "sale.paid_online": {
       const scheduled = p["scheduled_delivery_at"];
       const state = p["delivery_state"];
-      const outsideLagos = state != null && state !== "Lagos";
+      const outsideLagos = isOutsideLagos(state);
       if (scheduled || outsideLagos) {
         const reasons: string[] = [];
         if (scheduled) reasons.push(`📅 Scheduled: *${lagosTime(scheduled)}*`);
@@ -348,7 +349,7 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
             const trackUrl = `${(process.env.PUBLIC_ADMIN_URL ?? "https://www.mrssamueljuice.com").replace("admin.", "www.")}/order/${p["order_number"]}`;
             const scheduled = p["scheduled_delivery_at"];
             const state = p["delivery_state"];
-            const outsideLagos = state != null && state !== "Lagos";
+            const outsideLagos = isOutsideLagos(state);
             let middle: string;
             if (outsideLagos) {
               middle =

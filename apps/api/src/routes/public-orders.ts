@@ -13,7 +13,7 @@ import {
   type DbClient,
 } from "@ms/db";
 import { availableAtBranch, nextOrderNumber } from "@ms/domain";
-import { normalizeNigerianPhone, phonesMatch } from "@ms/shared";
+import { normalizeNigerianPhone, phonesMatch, isOutsideLagos } from "@ms/shared";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { BusinessError } from "../lib/errors.js";
 import { createPayazaSession } from "../payments/payaza.js";
@@ -206,8 +206,7 @@ export function publicOrderRoutes(db: DbClient) {
     if (!b) {
       throw new BusinessError("validation_failed", "invalid branch", 422);
     }
-    const outsideLagos =
-      body.delivery_state != null && body.delivery_state !== "Lagos";
+    const outsideLagos = isOutsideLagos(body.delivery_state);
     // Outside Lagos has no Bolt last-mile: delivery is ₦0, arranged out-of-band.
     let deliveryFeeFinal = body.delivery_fee_ngn;
     if (outsideLagos) {

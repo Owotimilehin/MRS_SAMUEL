@@ -12,6 +12,7 @@
   "dependencies": {
     "@ms/db": "workspace:*",
     "@ms/domain": "workspace:*",
+    "@ms/shared": "workspace:*",
     "drizzle-orm": "0.45.2",
     "pino": "9.3.2"
   },

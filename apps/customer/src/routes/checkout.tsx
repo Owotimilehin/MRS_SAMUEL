@@ -202,7 +202,7 @@ export function CheckoutPage(): JSX.Element {
 
   async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (submitting || !pickupBranchId || !scheduledValid) return;
+    if (submitting || !pickupBranchId || !scheduledValid || (!outsideLagos && !zone)) return;
     setSubmitting(true);
     setError(null);
     try {
