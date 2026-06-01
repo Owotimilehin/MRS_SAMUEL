@@ -195,4 +195,40 @@ describe("transfer adjust + variance_note", () => {
     });
     expect([401, 403]).toContain(res.status);
   });
+
+  it("each successful adjust enqueues a stock_transfer.count_corrected outbox event", async () => {
+    const { id, itemId } = await newDispatchedTransfer(8);
+    await call("PATCH", `/v1/transfers/${id}/arrive`);
+    await call("PATCH", `/v1/transfers/${id}/receive`, {
+      items: [{ item_id: itemId, quantity_received: 8 }],
+    });
+    await call("PATCH", `/v1/transfers/${id}/items/${itemId}/adjust`, {
+      side: "received",
+      new_quantity: 9,
+      reason: "Found one extra on the back shelf",
+    });
+
+    // Reach into the DB directly — there's no public endpoint for the outbox
+    // (it's worker-internal), but the test container exposes `db`.
+    const { outboxEvent: outboxTable } = await import("@ms/db");
+    const { eq, desc } = await import("drizzle-orm");
+    const tdb = await import("./helpers.js").then((m) => m);
+    void tdb; // suppress unused; we already have db via setupTestDb sharing process.env.DATABASE_URL
+    const { createDbClient } = await import("@ms/db");
+    const db = createDbClient(process.env.DATABASE_URL!);
+    const rows = await db
+      .select()
+      .from(outboxTable)
+      .where(eq(outboxTable.eventType, "stock_transfer.count_corrected"))
+      .orderBy(desc(outboxTable.createdAt))
+      .limit(1);
+    expect(rows).toHaveLength(1);
+    const payload = rows[0]!.payload as Record<string, unknown>;
+    expect(payload["transfer_id"]).toBe(id);
+    expect(payload["side"]).toBe("received");
+    expect(payload["old_quantity"]).toBe(8);
+    expect(payload["new_quantity"]).toBe(9);
+    expect(payload["delta"]).toBe(1);
+    expect(payload["reason"]).toBe("Found one extra on the back shelf");
+  });
 });

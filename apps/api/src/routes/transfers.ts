@@ -527,6 +527,22 @@ export function transferRoutes(db: DbClient) {
           note: `Received adjusted ${oldQty}→${body.new_quantity} (${body.reason})`,
         });
       }
+
+      // Telegram alert so the owner (and the side whose count moved) sees
+      // every after-the-fact correction in real time.
+      await tx.insert(outboxEvent).values({
+        eventType: "stock_transfer.count_corrected",
+        payload: {
+          transfer_id: id,
+          transfer_number: t.transferNumber,
+          side: body.side,
+          old_quantity: oldQty,
+          new_quantity: body.new_quantity,
+          delta,
+          reason: body.reason,
+        },
+      });
+
       return { transferItem: { ...it, quantitySent: body.side === "sent" ? body.new_quantity : it.quantitySent, quantityReceived: body.side === "received" ? body.new_quantity : it.quantityReceived }, ledgerDelta: delta };
     });
 

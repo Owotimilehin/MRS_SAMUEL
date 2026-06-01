@@ -86,7 +86,8 @@ describe("Phase 2 walk-up sale flow", () => {
       branch_id: branch.id,
       items: [{ product_id: product.id, quantity_sent: 10 }],
     });
-    await call("PATCH", `/v1/transfers/${xfer.body.data.id}/dispatch`);
+    // POST /v1/transfers creates the row already in `dispatched` status —
+    // no separate /dispatch call is needed (or exists on the route table).
     await call("PATCH", `/v1/transfers/${xfer.body.data.id}/arrive`);
     const detail = await call<{
       data: { items: Array<{ id: string }> };

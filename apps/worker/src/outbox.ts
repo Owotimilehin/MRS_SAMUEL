@@ -88,6 +88,23 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Reason: ${p["reason"]}\n` +
           `👉 ${ADMIN_URL}/transfers/${p["transfer_id"]}`,
       };
+    case "stock_transfer.count_corrected": {
+      // Adjusting "sent" moves the factory ledger; "received" moves the
+      // branch ledger. Loop the side that moved into the alert so the
+      // people whose count just changed see it too.
+      const side = p["side"];
+      const sideChannel = side === "sent" ? channels.factory() : channels.branchAjao();
+      const delta = Number(p["delta"]);
+      const sign = delta > 0 ? "+" : "";
+      return {
+        chatIds: [owner, sideChannel],
+        text:
+          `🔧 *Count corrected*\n` +
+          `${p["transfer_number"]} · ${side} ${p["old_quantity"]} → ${p["new_quantity"]} (${sign}${delta})\n` +
+          `Reason: ${p["reason"]}\n` +
+          `👉 ${ADMIN_URL}/transfers/${p["transfer_id"]}`,
+      };
+    }
     case "sale_return.pending_approval":
       return {
         chatIds: [owner],

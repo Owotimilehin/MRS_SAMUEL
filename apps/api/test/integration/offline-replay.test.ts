@@ -101,10 +101,8 @@ describe("offline-replay: 5 sales drained from device outbox", () => {
       }),
     });
     const xfId = ((await xf.json()) as { data: { id: string } }).data.id;
-    await fetch(`${baseUrl}/v1/transfers/${xfId}/dispatch`, {
-      method: "PATCH",
-      headers: { cookie: cookies, "idempotency-key": uuid() },
-    });
+    // POST /v1/transfers creates the row already in `dispatched` status —
+    // no separate /dispatch call is needed (or exists on the route table).
     await fetch(`${baseUrl}/v1/transfers/${xfId}/arrive`, {
       method: "PATCH",
       headers: { cookie: cookies, "idempotency-key": uuid() },
