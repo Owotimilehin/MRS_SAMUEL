@@ -70,3 +70,42 @@ describe("worker outbox drain", () => {
     expect(updated?.status).toBe("sent");
   });
 });
+
+describe("sale.paid_online message formatting", () => {
+  const base = {
+    sale_order_id: "abc",
+    order_number: "MS-2026-00010",
+    total_ngn: 9000,
+  };
+
+  it("scheduled order names the time and says Bolt is NOT dispatched", async () => {
+    const { format } = await import("../src/outbox.js");
+    const { text } = format({
+      eventType: "sale.paid_online",
+      payload: { ...base, scheduled_delivery_at: "2026-06-03T13:00:00.000Z", delivery_state: null },
+    });
+    expect(text).toMatch(/scheduled/i);
+    expect(text).toMatch(/manual|NOT dispatched/i);
+    expect(text).not.toContain("dispatch queued");
+  });
+
+  it("outside-Lagos order names the state and says Bolt is NOT dispatched", async () => {
+    const { format } = await import("../src/outbox.js");
+    const { text } = format({
+      eventType: "sale.paid_online",
+      payload: { ...base, scheduled_delivery_at: null, delivery_state: "Oyo" },
+    });
+    expect(text).toContain("Oyo");
+    expect(text).toMatch(/manual|NOT dispatched/i);
+    expect(text).not.toContain("dispatch queued");
+  });
+
+  it("immediate Lagos order keeps the dispatch-queued copy", async () => {
+    const { format } = await import("../src/outbox.js");
+    const { text } = format({
+      eventType: "sale.paid_online",
+      payload: { ...base, scheduled_delivery_at: null, delivery_state: null },
+    });
+    expect(text).toContain("dispatch queued");
+  });
+});

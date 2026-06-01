@@ -17,6 +17,21 @@ import pino from "pino";
 const logger = pino({ base: { service: "ms-worker", part: "outbox" } });
 const ADMIN_URL = process.env.PUBLIC_ADMIN_URL ?? "https://admin.mrssamueljuice.com";
 
+/** Human-friendly delivery time in Lagos, e.g. "Tue 3 Jun, 2:00 PM". */
+function lagosTime(iso: unknown): string {
+  if (typeof iso !== "string" || !iso) return "the scheduled time";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "the scheduled time";
+  return d.toLocaleString("en-NG", {
+    timeZone: "Africa/Lagos",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 interface FormattedMessage {
   chatIds: (string | undefined)[];
   text: string;
@@ -32,7 +47,7 @@ interface FormattedMessage {
  * (refund requests, delivery requests, payment reminders) so the worker
  * marks them sent without double-dispatching.
  */
-function format(event: { eventType: string; payload: Record<string, unknown> }): FormattedMessage {
+export function format(event: { eventType: string; payload: Record<string, unknown> }): FormattedMessage {
   const p = event.payload as Record<string, string>;
   const owner = channels.owner();
   switch (event.eventType) {
@@ -108,7 +123,24 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
           `Waiting on payment.\n` +
           `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
       };
-    case "sale.paid_online":
+    case "sale.paid_online": {
+      const scheduled = p["scheduled_delivery_at"];
+      const state = p["delivery_state"];
+      const outsideLagos = state != null && state !== "Lagos";
+      if (scheduled || outsideLagos) {
+        const reasons: string[] = [];
+        if (scheduled) reasons.push(`📅 Scheduled: *${lagosTime(scheduled)}*`);
+        if (outsideLagos) reasons.push(`🚚 Outside Lagos: *${state}* (delivery ₦0)`);
+        return {
+          chatIds: [owner],
+          text:
+            `💰 *Online order paid — MANUAL FULFILMENT*\n` +
+            `${p["order_number"]} · ₦${p["total_ngn"] ?? "?"}\n` +
+            `${reasons.join("\n")}\n` +
+            `Bolt NOT dispatched — arrange delivery yourself, then mark delivered.\n` +
+            `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
+        };
+      }
       return {
         chatIds: [owner],
         text:
@@ -117,6 +149,7 @@ function format(event: { eventType: string; payload: Record<string, unknown> }):
           `Stock decremented; delivery dispatch queued.\n` +
           `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
       };
+    }
     case "sale.branch_sold":
       return {
         chatIds: [owner],
@@ -313,13 +346,30 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
           const [cust] = await db.select().from(customer).where(eq(customer.id, customerId));
           if (cust?.email) {
             const trackUrl = `${(process.env.PUBLIC_ADMIN_URL ?? "https://www.mrssamueljuice.com").replace("admin.", "www.")}/order/${p["order_number"]}`;
+            const scheduled = p["scheduled_delivery_at"];
+            const state = p["delivery_state"];
+            const outsideLagos = state != null && state !== "Lagos";
+            let middle: string;
+            if (outsideLagos) {
+              middle =
+                `We've received your payment. Since you're in ${state} (outside Lagos), ` +
+                `we'll arrange delivery to you and confirm the logistics and any ` +
+                `delivery cost separately — we'll be in touch shortly.`;
+            } else if (scheduled) {
+              middle =
+                `We've received your payment. You asked us to deliver around ` +
+                `${lagosTime(scheduled)}, so we'll prepare your bottles fresh and ` +
+                `bring them to you then.`;
+            } else {
+              middle =
+                `We've received your payment and we're prepping your bottles now.`;
+            }
             await sendEmail({
               to: cust.email,
               subject: `Order ${p["order_number"]} confirmed — Mrs. Samuel`,
               text:
                 `Hi ${cust.name ?? "there"},\n\n` +
-                `Thanks for your order. We've received your payment and we're prepping ` +
-                `your bottles now.\n\n` +
+                `Thanks for your order. ${middle}\n\n` +
                 `Track your order: ${trackUrl}\n\n` +
                 `— Mrs. Samuel Fruit Juice`,
             });
