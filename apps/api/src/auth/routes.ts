@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { setCookie, deleteCookie, getCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
-import { AuthSchemas } from "@ms/shared";
+import { AuthSchemas, resolveCapabilities, EMPTY_OVERRIDES, type PermissionOverrides } from "@ms/shared";
 import { adminUser } from "@ms/db";
 import type { DbClient } from "@ms/db";
 import { verifyPassword } from "./argon.js";
@@ -94,9 +94,14 @@ export function authRoutes(db: DbClient) {
       userAgent: c.req.header("user-agent") ?? null,
       ipAddress: c.req.header("x-forwarded-for") ?? null,
     });
+    const capabilities = resolveCapabilities(
+      user.role,
+      (user.permissionOverrides as PermissionOverrides | null) ?? EMPTY_OVERRIDES,
+    );
     const access = await issueAccessToken({
       sub: user.id,
       role: user.role,
+      capabilities,
       branch_id: user.branchId,
       device_id: deviceId,
     });
@@ -122,6 +127,7 @@ export function authRoutes(db: DbClient) {
             email: user.email,
             role: user.role,
             branch_id: user.branchId,
+            capabilities,
           },
         },
       },
@@ -135,10 +141,19 @@ export function authRoutes(db: DbClient) {
     if (!refresh) throw new BusinessError("unauthorized", "no refresh", 401);
     const result = await rotateSession(db, refresh);
     if (!result) throw new BusinessError("unauthorized", "invalid refresh", 401);
+    const [freshUser] = await db
+      .select({ role: adminUser.role, branchId: adminUser.branchId, overrides: adminUser.permissionOverrides })
+      .from(adminUser)
+      .where(eq(adminUser.id, result.user.id));
+    const capabilities = resolveCapabilities(
+      freshUser?.role ?? result.user.role,
+      (freshUser?.overrides as PermissionOverrides | null) ?? EMPTY_OVERRIDES,
+    );
     const access = await issueAccessToken({
       sub: result.user.id,
-      role: result.user.role,
-      branch_id: result.user.branchId,
+      role: freshUser?.role ?? result.user.role,
+      capabilities,
+      branch_id: freshUser?.branchId ?? result.user.branchId,
       device_id: c.req.header("x-device-id") ?? uuid(),
     });
     setCookie(c, ACCESS_COOKIE, access, accessCookieOpts());
@@ -169,13 +184,12 @@ export function authRoutes(db: DbClient) {
     }
     const [user] = await db.select().from(adminUser).where(eq(adminUser.id, payload.sub));
     if (!user) throw new BusinessError("unauthorized", "user missing", 401);
+    const capabilities = resolveCapabilities(
+      user.role,
+      (user.permissionOverrides as PermissionOverrides | null) ?? EMPTY_OVERRIDES,
+    );
     return c.json({
-      data: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        branch_id: user.branchId,
-      },
+      data: { id: user.id, email: user.email, role: user.role, branch_id: user.branchId, capabilities },
     });
   });
 

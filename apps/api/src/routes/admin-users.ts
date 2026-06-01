@@ -12,7 +12,7 @@ import { BusinessError } from "../lib/errors.js";
  * timestamps. Invite generates a temp password the caller surfaces once and
  * the new user is expected to change immediately.
  */
-const RoleEnum = z.enum(["owner", "factory_dispatcher", "branch_manager", "branch_staff"]);
+const RoleEnum = z.enum(["owner", "admin", "manager", "branch_staff"]);
 
 const InviteUser = z.object({
   email: z.string().email(),
