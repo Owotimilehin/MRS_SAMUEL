@@ -6,7 +6,7 @@ import { AuthSchemas, resolveCapabilities, EMPTY_OVERRIDES, type PermissionOverr
 import { adminUser } from "@ms/db";
 import type { DbClient } from "@ms/db";
 import { verifyPassword } from "./argon.js";
-import { issueAccessToken } from "./jwt.js";
+import { issueAccessToken, verifyAccessToken } from "./jwt.js";
 import {
   createSession,
   rotateSession,
@@ -145,15 +145,16 @@ export function authRoutes(db: DbClient) {
       .select({ role: adminUser.role, branchId: adminUser.branchId, overrides: adminUser.permissionOverrides })
       .from(adminUser)
       .where(eq(adminUser.id, result.user.id));
+    if (!freshUser) throw new BusinessError("unauthorized", "user no longer exists", 401);
     const capabilities = resolveCapabilities(
-      freshUser?.role ?? result.user.role,
-      (freshUser?.overrides as PermissionOverrides | null) ?? EMPTY_OVERRIDES,
+      freshUser.role,
+      (freshUser.overrides as PermissionOverrides | null) ?? EMPTY_OVERRIDES,
     );
     const access = await issueAccessToken({
       sub: result.user.id,
-      role: freshUser?.role ?? result.user.role,
+      role: freshUser.role,
       capabilities,
-      branch_id: freshUser?.branchId ?? result.user.branchId,
+      branch_id: freshUser.branchId,
       device_id: c.req.header("x-device-id") ?? uuid(),
     });
     setCookie(c, ACCESS_COOKIE, access, accessCookieOpts());
@@ -175,7 +176,6 @@ export function authRoutes(db: DbClient) {
   r.get("/me", async (c) => {
     const token = getCookie(c, ACCESS_COOKIE);
     if (!token) throw new BusinessError("unauthorized", "missing session", 401);
-    const { verifyAccessToken } = await import("./jwt.js");
     let payload;
     try {
       payload = await verifyAccessToken(token);
