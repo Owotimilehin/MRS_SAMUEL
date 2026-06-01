@@ -25,6 +25,17 @@ interface CreateOrderResp {
 }
 
 
+// Lagos first (default); the rest alphabetical. Any value other than "Lagos"
+// makes the order "outside Lagos" — delivery is ₦0 and arranged out-of-band.
+const NG_STATES = [
+  "Lagos",
+  "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue",
+  "Borno", "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu",
+  "Abuja (FCT)", "Gombe", "Imo", "Jigawa", "Kaduna", "Kano", "Katsina",
+  "Kebbi", "Kogi", "Kwara", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun",
+  "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara",
+] as const;
+
 export function CheckoutPage(): JSX.Element {
   // Re-fetch the cart on mount so a refresh / direct visit shows live state.
   useEffect(() => {
@@ -48,6 +59,9 @@ export function CheckoutPage(): JSX.Element {
   const [geoError, setGeoError] = useState<string | null>(null);
   const [selectedZone, setSelectedZone] = useState<string>("");
   const [notes, setNotes] = useState("");
+  const [deliveryState, setDeliveryState] = useState("Lagos");
+  const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");
+  const [scheduledAt, setScheduledAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,11 +102,12 @@ export function CheckoutPage(): JSX.Element {
   // even need to send items[]; the API resolves them from the cart row.
   const unmatched: { name: string }[] = [];
   const zone = zones.find((z) => `${z.branch_id}|${z.name}` === selectedZone);
+  const outsideLagos = deliveryState !== "Lagos";
 
   // Live delivery-fee quote. Refreshes when address text is stable for 800ms
   // OR coords change. Requires a branch + an address. Aborts on stale calls.
   useEffect(() => {
-    if (!zone || !address || address.trim().length < 4) {
+    if (outsideLagos || !zone || !address || address.trim().length < 4) {
       setQuote(null);
       return;
     }
@@ -141,7 +156,7 @@ export function CheckoutPage(): JSX.Element {
       window.clearTimeout(handle);
       abort.abort();
     };
-  }, [zone?.branch_id, address, coords?.lat, coords?.lng]);
+  }, [outsideLagos, zone?.branch_id, address, coords?.lat, coords?.lng]);
 
   function useMyLocation(): void {
     if (!navigator.geolocation) {
@@ -166,13 +181,28 @@ export function CheckoutPage(): JSX.Element {
       { enableHighAccuracy: true, timeout: 8000 },
     );
   }
-  // Prefer the live quote when present; fall back to the static zone fee.
-  const deliveryFee = quote?.fee_ngn ?? zone?.fee_ngn ?? 0;
+  // Prefer the live quote; fall back to the static zone fee. Outside Lagos has
+  // no Bolt last-mile, so delivery is ₦0 and arranged separately.
+  const deliveryFee = outsideLagos ? 0 : quote?.fee_ngn ?? zone?.fee_ngn ?? 0;
   const total = subtotal + deliveryFee;
+
+  const scheduledIso =
+    scheduleMode === "later" && scheduledAt ? new Date(scheduledAt).toISOString() : null;
+  const scheduledValid =
+    scheduleMode === "now" ||
+    (scheduledIso != null && new Date(scheduledIso).getTime() > Date.now());
+  const minDateTime = (() => {
+    const d = new Date(Date.now() + 60_000);
+    const pad = (n: number): string => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
+  // We still need a pickup branch even outside Lagos; use the selected zone's
+  // branch, else the first available branch.
+  const pickupBranchId = zone?.branch_id ?? zones[0]?.branch_id ?? "";
 
   async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (submitting || !zone) return;
+    if (submitting || !pickupBranchId || !scheduledValid) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -180,12 +210,14 @@ export function CheckoutPage(): JSX.Element {
       const res = await api<CreateOrderResp>("/orders", {
         method: "POST",
         body: JSON.stringify({
-          branch_id: zone.branch_id,
-          zone_name: zone.name,
+          branch_id: pickupBranchId,
+          zone_name: outsideLagos ? deliveryState : zone?.name ?? "",
           delivery_fee_ngn: deliveryFee,
-          ...(quote?.provider_quote_id
+          delivery_state: deliveryState,
+          ...(quote?.provider_quote_id && !outsideLagos
             ? { delivery_quote_id: quote.provider_quote_id }
             : {}),
+          ...(scheduledIso ? { scheduled_delivery_at: scheduledIso } : {}),
           customer: {
             name,
             phone,
@@ -242,7 +274,11 @@ export function CheckoutPage(): JSX.Element {
             <Eyebrow>Checkout</Eyebrow>
             <h1 className="ms-section-title">Where should we deliver?</h1>
             <p className="ms-section-sub">
-              We'll take a deposit now and dispatch within the hour. Pay with card or transfer on the next screen.
+              {outsideLagos
+                ? "Book and pay now — we'll arrange delivery to your state and confirm logistics separately."
+                : scheduleMode === "later"
+                  ? "Book and pay now — we'll prepare your order fresh and deliver it at your chosen time."
+                  : "We'll take a deposit now and dispatch within the hour. Pay with card or transfer on the next screen."}
             </p>
           </header>
 
@@ -342,29 +378,87 @@ export function CheckoutPage(): JSX.Element {
                   )}
                 </div>
               </Field>
-              <Field label="Delivery zone" required>
-                {loadingRef ? (
-                  <div className="ms-checkout__hint">Loading zones…</div>
-                ) : zones.length === 0 ? (
-                  <div className="ms-checkout__hint">No zones configured. Order on WhatsApp instead.</div>
-                ) : (
-                  <select
-                    className="ms-checkout__input"
-                    value={selectedZone}
-                    onChange={(e) => setSelectedZone(e.target.value)}
-                    required
-                  >
-                    {zones.map((z) => (
-                      <option
-                        key={`${z.branch_id}|${z.name}`}
-                        value={`${z.branch_id}|${z.name}`}
-                      >
-                        {z.name} · {ngn(z.fee_ngn)} · from {z.branch_name}
-                      </option>
-                    ))}
-                  </select>
+              <Field label="Delivery state" required>
+                <select
+                  className="ms-checkout__input"
+                  value={deliveryState}
+                  onChange={(e) => setDeliveryState(e.target.value)}
+                  required
+                >
+                  {NG_STATES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                {outsideLagos && (
+                  <div className="ms-checkout__hint">
+                    Outside Lagos — we'll arrange delivery to {deliveryState} and confirm
+                    logistics separately. No delivery fee charged now.
+                  </div>
                 )}
               </Field>
+
+              <Field label="When?">
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className={`btn btn--sm ${scheduleMode === "now" ? "btn--primary" : "btn--subtle"}`}
+                    onClick={() => setScheduleMode("now")}
+                  >
+                    Deliver now
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn--sm ${scheduleMode === "later" ? "btn--primary" : "btn--subtle"}`}
+                    onClick={() => setScheduleMode("later")}
+                  >
+                    Schedule for later
+                  </button>
+                </div>
+                {scheduleMode === "later" && (
+                  <input
+                    className="ms-checkout__input"
+                    style={{ marginTop: 8 }}
+                    type="datetime-local"
+                    min={minDateTime}
+                    value={scheduledAt}
+                    onChange={(e) => setScheduledAt(e.target.value)}
+                    required
+                  />
+                )}
+                {scheduleMode === "later" && !scheduledValid && scheduledAt && (
+                  <div className="ms-checkout__hint" style={{ color: "var(--warning)" }}>
+                    Pick a time in the future.
+                  </div>
+                )}
+              </Field>
+
+              {!outsideLagos && (
+                <Field label="Delivery zone" required>
+                  {loadingRef ? (
+                    <div className="ms-checkout__hint">Loading zones…</div>
+                  ) : zones.length === 0 ? (
+                    <div className="ms-checkout__hint">No zones configured. Order on WhatsApp instead.</div>
+                  ) : (
+                    <select
+                      className="ms-checkout__input"
+                      value={selectedZone}
+                      onChange={(e) => setSelectedZone(e.target.value)}
+                      required
+                    >
+                      {zones.map((z) => (
+                        <option
+                          key={`${z.branch_id}|${z.name}`}
+                          value={`${z.branch_id}|${z.name}`}
+                        >
+                          {z.name} · {ngn(z.fee_ngn)} · from {z.branch_name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+              )}
               <Field label="Notes for the rider (optional)">
                 <textarea
                   className="ms-checkout__input"
@@ -416,9 +510,9 @@ export function CheckoutPage(): JSX.Element {
                     </span>
                   )}
                 </span>
-                <span className="tabular-nums">{zone ? ngn(deliveryFee) : "—"}</span>
+                <span className="tabular-nums">{outsideLagos || zone ? ngn(deliveryFee) : "—"}</span>
               </div>
-              {quote?.eta_minutes && (
+              {outsideLagos ? (
                 <div
                   style={{
                     fontSize: 12,
@@ -427,8 +521,40 @@ export function CheckoutPage(): JSX.Element {
                     marginBottom: 6,
                   }}
                 >
-                  ETA ~{quote.eta_minutes} min from confirmation
+                  Delivery to {deliveryState} arranged separately — ₦0 charged now.
                 </div>
+              ) : scheduleMode === "later" && scheduledIso ? (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--accent)",
+                    fontWeight: 600,
+                    marginTop: -4,
+                    marginBottom: 6,
+                  }}
+                >
+                  Scheduled for{" "}
+                  {new Date(scheduledIso).toLocaleString("en-NG", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </div>
+              ) : (
+                quote?.eta_minutes && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--ink-soft)",
+                      marginTop: -4,
+                      marginBottom: 6,
+                    }}
+                  >
+                    ETA ~{quote.eta_minutes} min from confirmation
+                  </div>
+                )
               )}
               {quote?.notice && (
                 <div
@@ -463,10 +589,11 @@ export function CheckoutPage(): JSX.Element {
                 disabled={
                   submitting ||
                   loadingRef ||
-                  !zone ||
+                  !pickupBranchId ||
                   !name ||
                   !phone ||
-                  !address
+                  !address ||
+                  !scheduledValid
                 }
                 {...({ type: "submit" } as React.ButtonHTMLAttributes<HTMLButtonElement>)}
               >
