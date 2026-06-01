@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { ADMIN_ROLES, CAPABILITIES, type Capability } from "../permissions.js";
+import { ADMIN_ROLES, CAPABILITIES } from "../permissions.js";
 
 const RoleEnum = z.enum(ADMIN_ROLES);
-const CapabilityEnum = z.enum(CAPABILITIES as unknown as [Capability, ...Capability[]]);
+const CapabilityEnum = z.enum(CAPABILITIES);
 
 export const PermissionOverridesSchema = z.object({
   granted: z.array(CapabilityEnum).default([]),

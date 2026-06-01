@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveCapabilities, ROLE_DEFAULTS, CAPABILITIES } from "./permissions.js";
+import { resolveCapabilities, hasCapability, ROLE_DEFAULTS, CAPABILITIES } from "./permissions.js";
 
 describe("resolveCapabilities", () => {
   it("owner gets every capability", () => {
@@ -33,5 +33,13 @@ describe("resolveCapabilities", () => {
   it("revoking a capability the role never had is a no-op", () => {
     const caps = resolveCapabilities("admin", { granted: [], revoked: ["pos.sell"] });
     expect(caps.sort()).toEqual([...ROLE_DEFAULTS.admin].sort());
+  });
+});
+
+describe("hasCapability", () => {
+  it("hasCapability returns true/false correctly", () => {
+    const caps = resolveCapabilities("branch_staff");
+    expect(hasCapability(caps, "pos.sell")).toBe(true);
+    expect(hasCapability(caps, "users.manage")).toBe(false);
   });
 });

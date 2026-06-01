@@ -63,7 +63,7 @@ const MANAGER_CAPS: Capability[] = [
 
 const BRANCH_STAFF_CAPS: Capability[] = ["pos.sell", "sales.view", "transfers.receive"];
 
-export const ROLE_DEFAULTS: Record<AdminRole, Capability[]> = {
+export const ROLE_DEFAULTS: Record<AdminRole, readonly Capability[]> = {
   owner: [...CAPABILITIES],
   admin: ADMIN_CAPS,
   manager: MANAGER_CAPS,
