@@ -33,6 +33,8 @@ interface OrderResp {
     delivery_fee_ngn: number;
     channel: string;
     created_at: string;
+    scheduled_delivery_at: string | null;
+    delivery_state: string | null;
     delivery: DeliveryInfo | null;
   };
 }
@@ -159,6 +161,38 @@ export function OrderPage({ orderNumber }: { orderNumber: string }): JSX.Element
             updates on this page.
           </div>
         )}
+
+        {(() => {
+          const outsideLagos =
+            data.delivery_state != null && data.delivery_state !== "Lagos";
+          const done = ["delivered", "cancelled"].includes(data.status);
+          if (done || (!data.scheduled_delivery_at && !outsideLagos)) return null;
+          const when = data.scheduled_delivery_at
+            ? new Date(data.scheduled_delivery_at).toLocaleString("en-NG", {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+                hour: "numeric",
+                minute: "2-digit",
+              })
+            : null;
+          return (
+            <div className="ms-order__paid-banner" role="status">
+              {outsideLagos ? (
+                <>
+                  <strong>Delivery to {data.delivery_state}</strong> · Outside Lagos —
+                  we'll arrange delivery and confirm logistics with you.
+                  {when && <> Requested for {when}.</>} No live rider tracking here.
+                </>
+              ) : (
+                <>
+                  <strong>Scheduled delivery</strong> · We'll bring your order around{" "}
+                  {when}. No live rider tracking until we set out.
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         <Eyebrow>Order tracking</Eyebrow>
         <h1 className="ms-section-title">Order {orderNumber}</h1>
