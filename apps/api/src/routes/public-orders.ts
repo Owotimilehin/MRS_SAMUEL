@@ -59,6 +59,16 @@ const CreateOnlineOrder = z.object({
   notes: z.string().optional(),
   /** Optional: the quote id returned by /orders/quote — locks the fee. */
   delivery_quote_id: z.string().optional(),
+  /**
+   * ISO-8601 datetime string. When supplied the order is scheduled for later
+   * and Bolt dispatch is bypassed — the owner fulfils manually.
+   */
+  scheduled_delivery_at: z.string().optional(),
+  /**
+   * Nigerian state name for outside-Lagos deliveries. When supplied (and not
+   * "Lagos") the delivery fee is forced to ₦0 and Bolt dispatch is bypassed.
+   */
+  delivery_state: z.string().min(1).optional(),
 });
 
 const QuoteRequest = z.object({
@@ -171,27 +181,53 @@ export function publicOrderRoutes(db: DbClient) {
       throw new BusinessError("validation_failed", "idempotency-key header required", 400);
     }
 
+    // Validate scheduled_delivery_at: must be a valid ISO datetime and must be
+    // in the future. We parse as a plain string in Zod (so a ZodError → 400
+    // path is avoided) and do an explicit check here to return 422.
+    if (body.scheduled_delivery_at !== undefined) {
+      const scheduledMs = Date.parse(body.scheduled_delivery_at);
+      if (isNaN(scheduledMs)) {
+        throw new BusinessError(
+          "validation_failed",
+          "scheduled_delivery_at must be a valid ISO datetime",
+          422,
+        );
+      }
+      if (scheduledMs <= Date.now()) {
+        throw new BusinessError(
+          "validation_failed",
+          "scheduled_delivery_at must be in the future",
+          422,
+        );
+      }
+    }
+
     const [b] = await db.select().from(branch).where(eq(branch.id, body.branch_id));
     if (!b) {
       throw new BusinessError("validation_failed", "invalid branch", 422);
     }
-    // Pick the fee: trust the live Bolt quote if Redis still has it,
-    // otherwise fall back to the configured zone fee. No re-quote.
-    const zoneMatch = b.deliveryZones.find((z) => z.name === body.zone_name);
+    const outsideLagos =
+      body.delivery_state != null && body.delivery_state !== "Lagos";
+    // Outside Lagos has no Bolt last-mile: delivery is ₦0, arranged out-of-band.
     let deliveryFeeFinal = body.delivery_fee_ngn;
-    if (body.delivery_quote_id) {
-      const stored = await loadQuote(body.delivery_quote_id);
-      if (stored && stored.fee_ngn === body.delivery_fee_ngn) {
-        deliveryFeeFinal = stored.fee_ngn;
-      } else if (zoneMatch) {
+    if (outsideLagos) {
+      deliveryFeeFinal = 0;
+    } else {
+      const zoneMatch = b.deliveryZones.find((z) => z.name === body.zone_name);
+      if (body.delivery_quote_id) {
+        const stored = await loadQuote(body.delivery_quote_id);
+        if (stored && stored.fee_ngn === body.delivery_fee_ngn) {
+          deliveryFeeFinal = stored.fee_ngn;
+        } else if (zoneMatch) {
+          deliveryFeeFinal = zoneMatch.fee_ngn;
+        } else {
+          throw new BusinessError("validation_failed", "invalid delivery zone", 422);
+        }
+      } else if (zoneMatch && zoneMatch.fee_ngn === body.delivery_fee_ngn) {
         deliveryFeeFinal = zoneMatch.fee_ngn;
       } else {
         throw new BusinessError("validation_failed", "invalid delivery zone", 422);
       }
-    } else if (zoneMatch && zoneMatch.fee_ngn === body.delivery_fee_ngn) {
-      deliveryFeeFinal = zoneMatch.fee_ngn;
-    } else {
-      throw new BusinessError("validation_failed", "invalid delivery zone", 422);
     }
 
     // Decide where the line items come from. Explicit items[] wins (tests,
@@ -322,6 +358,10 @@ export function publicOrderRoutes(db: DbClient) {
           paymentStatus: "pending",
           createdAtLocal: new Date(),
           idempotencyKey,
+          scheduledDeliveryAt: body.scheduled_delivery_at
+            ? new Date(body.scheduled_delivery_at)
+            : null,
+          deliveryState: body.delivery_state ?? null,
           notes: body.notes ?? null,
         })
         .returning();
@@ -357,6 +397,10 @@ export function publicOrderRoutes(db: DbClient) {
           total_ngn: total,
           customer_name: cust.name,
           customer_phone: cust.phone,
+          scheduled_delivery_at: o.scheduledDeliveryAt
+            ? o.scheduledDeliveryAt.toISOString()
+            : null,
+          delivery_state: o.deliveryState ?? null,
         },
       });
       return { order: o, customerEmail: cust.email };

@@ -185,6 +185,82 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(stockBody.data[productId]).toBe(17); // 20 received - 3 sold
   });
 
+  it("stores scheduled_delivery_at when the customer schedules for later", async () => {
+    const future = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Test zone",
+        delivery_fee_ngn: 1500,
+        scheduled_delivery_at: future,
+        customer: {
+          name: "Sched Customer",
+          phone: "+2348025550001",
+          email: "sched@example.com",
+          address: "1 Future Street",
+        },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const body = (await orderRes.json()) as { data: { id: string } };
+
+    const detail = await fetch(`${baseUrl}/v1/branches/${branchId}/sales/${body.data.id}`, {
+      headers: { cookie: cookies },
+    });
+    const detailBody = (await detail.json()) as {
+      data: { scheduledDeliveryAt: string | null };
+    };
+    expect(detailBody.data.scheduledDeliveryAt).not.toBeNull();
+    expect(new Date(detailBody.data.scheduledDeliveryAt!).toISOString()).toBe(future);
+  });
+
+  it("rejects a scheduled_delivery_at in the past", async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const res = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Test zone",
+        delivery_fee_ngn: 1500,
+        scheduled_delivery_at: past,
+        customer: { name: "Past", phone: "+2348025550002", address: "2 Past Street" },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it("outside-Lagos order stores the state and is charged a ₦0 delivery fee", async () => {
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Outside Lagos",
+        delivery_fee_ngn: 0,
+        delivery_state: "Oyo",
+        customer: { name: "Oyo Customer", phone: "+2348025550006", address: "7 Ibadan Road" },
+        items: [{ product_id: productId, quantity: 2 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const body = (await orderRes.json()) as { data: { id: string; total_ngn: number } };
+    expect(body.data.total_ngn).toBe(5000);
+
+    const detail = await fetch(`${baseUrl}/v1/branches/${branchId}/sales/${body.data.id}`, {
+      headers: { cookie: cookies },
+    });
+    const detailBody = (await detail.json()) as {
+      data: { deliveryState: string | null; deliveryFeeNgn: number };
+    };
+    expect(detailBody.data.deliveryState).toBe("Oyo");
+    expect(detailBody.data.deliveryFeeNgn).toBe(0);
+  });
+
   it("tracking with wrong phone returns 404 (no enumeration)", async () => {
     // Create another order to track
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
