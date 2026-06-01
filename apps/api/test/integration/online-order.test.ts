@@ -19,10 +19,12 @@ describe("Phase 3 customer-site online order flow", () => {
   let server: ReturnType<typeof serve>;
   let branchId: string;
   let productId: string;
+  let db: Awaited<ReturnType<typeof setupTestDb>>["db"];
 
   beforeAll(async () => {
     const tdb = await setupTestDb();
     container = tdb.container;
+    db = tdb.db;
     await seedOwner(tdb.db);
     const { buildApp } = await import("../../src/test-app.js");
     server = serve({ fetch: buildApp().fetch, port: 0 });
@@ -285,5 +287,76 @@ describe("Phase 3 customer-site online order flow", () => {
       `${baseUrl}/v1/public/orders/${orderBody.data.order_number}?phone=wrong-number`,
     );
     expect(track.status).toBe(404);
+  });
+
+  async function eventsForOrder(orderId: string) {
+    const { outboxEvent } = await import("@ms/db");
+    const all = await db.select().from(outboxEvent);
+    return all.filter(
+      (e) => (e.payload as Record<string, unknown>)["sale_order_id"] === orderId,
+    );
+  }
+
+  async function placeAndPay(extra: Record<string, unknown>, phone: string) {
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Test zone",
+        delivery_fee_ngn: 1500,
+        customer: { name: "BP", phone, email: `${phone}@example.com`, address: "9 Pay Street" },
+        items: [{ product_id: productId, quantity: 1 }],
+        ...extra,
+      }),
+    });
+    const ob = (await orderRes.json()) as { data: { order_number: string; total_ngn: number } };
+    await fetch(`${baseUrl}/v1/webhooks/payaza`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        event: "transaction.success",
+        data: {
+          transaction_reference: ob.data.order_number,
+          status: "success",
+          amount: ob.data.total_ngn,
+          payaza_reference: `PYZ-${phone}`,
+        },
+      }),
+    });
+    const [order] = await db
+      .select()
+      .from(saleOrder)
+      .where(eq(saleOrder.orderNumber, ob.data.order_number));
+    return order!;
+  }
+
+  it("scheduled order: emits sale.paid_online but NOT delivery.request", async () => {
+    const future = new Date(Date.now() + 6 * 60 * 60_000).toISOString();
+    const order = await placeAndPay({ scheduled_delivery_at: future }, "+2348025550003");
+    const mine = await eventsForOrder(order.id);
+    expect(mine.some((e) => e.eventType === "delivery.request")).toBe(false);
+    expect(mine.some((e) => e.eventType === "sale.paid_online")).toBe(true);
+  });
+
+  it("outside-Lagos order: emits sale.paid_online but NOT delivery.request", async () => {
+    const order = await placeAndPay(
+      { delivery_state: "Oyo", zone_name: "Outside Lagos", delivery_fee_ngn: 0 },
+      "+2348025550007",
+    );
+    const mine = await eventsForOrder(order.id);
+    expect(mine.some((e) => e.eventType === "delivery.request")).toBe(false);
+    const paid = mine.find((e) => e.eventType === "sale.paid_online");
+    expect(paid).toBeDefined();
+    expect((paid!.payload as Record<string, unknown>)["delivery_state"]).toBe("Oyo");
+  });
+
+  it("immediate Lagos order: emits BOTH sale.paid_online and delivery.request", async () => {
+    const order = await placeAndPay({}, "+2348025550004");
+    const mine = await eventsForOrder(order.id);
+    expect(mine.some((e) => e.eventType === "delivery.request")).toBe(true);
+    expect(mine.some((e) => e.eventType === "sale.paid_online")).toBe(true);
   });
 });

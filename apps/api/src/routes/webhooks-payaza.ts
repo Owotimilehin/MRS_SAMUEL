@@ -107,20 +107,32 @@ export function payazaWebhookRoutes(db: DbClient) {
           order_number: o.orderNumber,
           branch_id: o.branchId,
           customer_id: o.customerId,
+          total_ngn: o.totalNgn,
+          scheduled_delivery_at: o.scheduledDeliveryAt
+            ? o.scheduledDeliveryAt.toISOString()
+            : null,
+          delivery_state: o.deliveryState ?? null,
         },
       });
-      // Kick off the delivery request via the worker outbox. The worker
-      // calls Bolt, persists a delivery_order row, and surfaces the result.
-      // Doing it from the worker (rather than inline) lets us retry without
-      // re-running the payment-completion code path.
-      await tx.insert(outboxEvent).values({
-        eventType: "delivery.request",
-        payload: {
-          sale_order_id: o.id,
-          order_number: o.orderNumber,
-          branch_id: o.branchId,
-        },
-      });
+      // Bypass: scheduled (future) OR outside-Lagos orders skip automated Bolt
+      // dispatch entirely; the owner fulfils them out-of-band. Only immediate,
+      // in-Lagos orders request a ride.
+      const outsideLagos = o.deliveryState != null && o.deliveryState !== "Lagos";
+      const bypass = o.scheduledDeliveryAt != null || outsideLagos;
+      if (!bypass) {
+        // Kick off the delivery request via the worker outbox. The worker
+        // calls Bolt, persists a delivery_order row, and surfaces the result.
+        // Doing it from the worker (rather than inline) lets us retry without
+        // re-running the payment-completion code path.
+        await tx.insert(outboxEvent).values({
+          eventType: "delivery.request",
+          payload: {
+            sale_order_id: o.id,
+            order_number: o.orderNumber,
+            branch_id: o.branchId,
+          },
+        });
+      }
     });
 
     return c.json({ ok: true });
