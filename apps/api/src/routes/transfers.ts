@@ -14,6 +14,10 @@ import { requireAuth, requireRole, requireCapability } from "../middleware/auth.
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 
+function actsOnAnyBranch(role: string): boolean {
+  return role === "owner" || role === "admin" || role === "manager";
+}
+
 const CreateDraft = z.object({
   factory_id: z.string().uuid(),
   branch_id: z.string().uuid(),
@@ -219,7 +223,7 @@ export function transferRoutes(db: DbClient) {
     const updated = await db.transaction(async (tx) => {
       const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id));
       if (!t) throw new BusinessError("not_found", "transfer not found", 404);
-      if (auth.role !== "owner" && t.branchId !== auth.branchId) {
+      if (!actsOnAnyBranch(auth.role) && t.branchId !== auth.branchId) {
         throw new BusinessError("forbidden", "wrong branch", 403);
       }
       if (!["dispatched", "in_transit"].includes(t.status)) {
@@ -256,7 +260,7 @@ export function transferRoutes(db: DbClient) {
     const updated = await db.transaction(async (tx) => {
       const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id));
       if (!t) throw new BusinessError("not_found", "transfer not found", 404);
-      if (auth.role !== "owner" && t.branchId !== auth.branchId) {
+      if (!actsOnAnyBranch(auth.role) && t.branchId !== auth.branchId) {
         throw new BusinessError("forbidden", "wrong branch", 403);
       }
       if (t.status !== "arrived") {
@@ -403,7 +407,7 @@ export function transferRoutes(db: DbClient) {
       if (t.status !== "arrived") {
         throw new BusinessError("conflict", `cannot reject from ${t.status}`, 409);
       }
-      if (auth.role !== "owner" && t.branchId !== auth.branchId) {
+      if (!actsOnAnyBranch(auth.role) && t.branchId !== auth.branchId) {
         throw new BusinessError("forbidden", "wrong branch", 403);
       }
 
