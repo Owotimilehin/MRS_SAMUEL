@@ -10,8 +10,7 @@ import {
   type DbClient,
 } from "@ms/db";
 import { checkFactoryStockAvailable, nextTransferNumber } from "@ms/domain";
-import { requireAuth, requireRole } from "../middleware/auth.js";
-import { requireFactoryRole } from "../middleware/scope.js";
+import { requireAuth, requireRole, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 
@@ -97,7 +96,7 @@ export function transferRoutes(db: DbClient) {
     if (q.factory_id) conds.push(eq(stockTransfer.factoryId, q.factory_id));
 
     // Branch users are restricted to their own branch.
-    if (auth.role === "branch_manager" || auth.role === "branch_staff") {
+    if (auth.role === "manager" || auth.role === "branch_staff") {
       if (!auth.branchId) throw new BusinessError("forbidden", "no branch", 403);
       conds.push(eq(stockTransfer.branchId, auth.branchId));
     } else if (q.branch_id) {
@@ -134,7 +133,7 @@ export function transferRoutes(db: DbClient) {
   // ============ Send (factory) ============
   // Single-step create + dispatch: the row is inserted already in `dispatched`,
   // factory stock is debited, and the branch is notified atomically.
-  r.post("/", requireFactoryRole(), async (c) => {
+  r.post("/", requireCapability("transfers.create"), async (c) => {
     const body = CreateDraft.parse(await c.req.json());
     const auth = c.get("auth");
 

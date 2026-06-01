@@ -2,8 +2,7 @@ import { Hono } from "hono";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { productionRun, productionRunItem, stockLedger, outboxEvent, type DbClient } from "@ms/db";
-import { requireAuth } from "../middleware/auth.js";
-import { requireFactoryRole } from "../middleware/scope.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 
@@ -33,7 +32,7 @@ const UpdateItem = z.object({
 
 export function productionRunRoutes(db: DbClient) {
   const r = new Hono();
-  r.use("*", requireAuth(), requireFactoryRole());
+  r.use("*", requireAuth(), requireCapability("production.manage"));
 
   r.post("/", async (c) => {
     const body = CreateRun.parse(await c.req.json());
