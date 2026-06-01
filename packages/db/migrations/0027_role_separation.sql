@@ -10,6 +10,8 @@ ALTER TABLE "admin_user"
   USING (
     CASE "role"::text
       WHEN 'owner' THEN 'owner'
+      WHEN 'admin' THEN 'admin'
+      WHEN 'manager' THEN 'manager'
       WHEN 'factory_dispatcher' THEN 'manager'
       WHEN 'branch_manager' THEN 'manager'
       ELSE 'branch_staff'
