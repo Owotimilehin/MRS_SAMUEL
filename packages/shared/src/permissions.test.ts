@@ -34,6 +34,12 @@ describe("resolveCapabilities", () => {
     const caps = resolveCapabilities("admin", { granted: [], revoked: ["pos.sell"] });
     expect(caps.sort()).toEqual([...ROLE_DEFAULTS.admin].sort());
   });
+
+  it("tolerates a malformed overrides object without throwing", () => {
+    // simulate a corrupted/partial jsonb row
+    const caps = resolveCapabilities("admin", {} as never);
+    expect(caps.sort()).toEqual([...ROLE_DEFAULTS.admin].sort());
+  });
 });
 
 describe("hasCapability", () => {

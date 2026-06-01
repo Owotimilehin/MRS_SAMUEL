@@ -82,9 +82,11 @@ export function resolveCapabilities(
   role: AdminRole,
   overrides: PermissionOverrides = EMPTY_OVERRIDES,
 ): Capability[] {
+  const granted = Array.isArray(overrides?.granted) ? overrides.granted : [];
+  const revoked = Array.isArray(overrides?.revoked) ? overrides.revoked : [];
   const set = new Set<Capability>(ROLE_DEFAULTS[role]);
-  for (const c of overrides.granted) set.add(c);
-  for (const c of overrides.revoked) set.delete(c);
+  for (const c of granted) set.add(c);
+  for (const c of revoked) set.delete(c);
   return CAPABILITIES.filter((c) => set.has(c));
 }
 
