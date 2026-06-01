@@ -64,6 +64,7 @@ export const stockTransferItem = pgTable("stock_transfer_item", {
   quantitySent: integer("quantity_sent").notNull(),
   quantityReceived: integer("quantity_received"),
   varianceReason: stockTransferVarianceReason("variance_reason"),
+  varianceNote: text("variance_note"),
   unitCostNgn: integer("unit_cost_ngn"),
   notes: text("notes"),
 });

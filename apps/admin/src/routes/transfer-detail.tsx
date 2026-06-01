@@ -97,7 +97,15 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
   const [acting, setActing] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [receiving, setReceiving] = useState(false);
-  const [receipt, setReceipt] = useState<Array<{ item_id: string; quantity_received: number; variance_reason: string; sent: number }>>([]);
+  const [receipt, setReceipt] = useState<
+    Array<{
+      item_id: string;
+      quantity_received: number;
+      variance_reason: string;
+      variance_note: string;
+      sent: number;
+    }>
+  >([]);
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -117,6 +125,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
           item_id: i.id,
           quantity_received: i.quantityReceived ?? i.quantitySent,
           variance_reason: i.varianceReason ?? "",
+          variance_note: "",
           sent: i.quantitySent,
         })),
       );
@@ -155,6 +164,16 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
       setError("Pick a variance reason for every line that doesn't match");
       return;
     }
+    const missingNote = receipt.find(
+      (d) =>
+        d.quantity_received !== d.sent &&
+        d.variance_reason === "other_with_note" &&
+        !d.variance_note.trim(),
+    );
+    if (missingNote) {
+      setError("Add a note for every line marked 'Other'");
+      return;
+    }
     setActing(true);
     setError(null);
     try {
@@ -165,11 +184,49 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
             item_id: d.item_id,
             quantity_received: Number(d.quantity_received),
             variance_reason: d.quantity_received === d.sent ? undefined : d.variance_reason,
+            variance_note:
+              d.quantity_received !== d.sent && d.variance_reason === "other_with_note"
+                ? d.variance_note.trim()
+                : undefined,
           })),
         }),
       });
       setFlash("Receipt recorded");
       setReceiving(false);
+      setTimeout(() => setFlash(null), 2500);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function adjustCount(
+    it: TransferItem,
+    side: "sent" | "received",
+  ): Promise<void> {
+    const current = side === "sent" ? it.quantitySent : it.quantityReceived ?? 0;
+    const raw = window.prompt(`New ${side} quantity for this line (currently ${current})`);
+    if (raw === null) return;
+    const nextQty = Number(raw);
+    if (!Number.isFinite(nextQty) || nextQty < 0) {
+      setError("Quantity must be a non-negative number");
+      return;
+    }
+    const reason = window.prompt("Reason for the correction (visible in audit log)");
+    if (!reason || reason.trim().length < 3) {
+      setError("Reason is required (min 3 chars)");
+      return;
+    }
+    setActing(true);
+    setError(null);
+    try {
+      await api(`/transfers/${transferId}/items/${it.id}/adjust`, {
+        method: "PATCH",
+        body: JSON.stringify({ side, new_quantity: nextQty, reason: reason.trim() }),
+      });
+      setFlash(`Count adjusted (${side})`);
       setTimeout(() => setFlash(null), 2500);
       await load();
     } catch (err) {
@@ -387,45 +444,94 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                           </td>
                           <td>
                             {d.quantity_received !== d.sent ? (
-                              <select
-                                className="select"
-                                value={d.variance_reason}
-                                onChange={(e) =>
-                                  setReceipt((s) =>
-                                    s.map((row, i) =>
-                                      i === idx ? { ...row, variance_reason: e.target.value } : row,
-                                    ),
-                                  )
-                                }
-                              >
-                                <option value="">Pick reason…</option>
-                                {VARIANCE_REASONS.map((r) => (
-                                  <option key={r.value} value={r.value}>
-                                    {r.label}
-                                  </option>
-                                ))}
-                              </select>
+                              <>
+                                <select
+                                  className="select"
+                                  value={d.variance_reason}
+                                  onChange={(e) =>
+                                    setReceipt((s) =>
+                                      s.map((row, i) =>
+                                        i === idx ? { ...row, variance_reason: e.target.value } : row,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <option value="">Pick reason…</option>
+                                  {VARIANCE_REASONS.map((r) => (
+                                    <option key={r.value} value={r.value}>
+                                      {r.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                {d.variance_reason === "other_with_note" && (
+                                  <textarea
+                                    className="textarea"
+                                    rows={2}
+                                    placeholder="Describe what happened (required)"
+                                    value={d.variance_note}
+                                    style={{ marginTop: 6, width: "100%" }}
+                                    onChange={(e) =>
+                                      setReceipt((s) =>
+                                        s.map((row, i) =>
+                                          i === idx
+                                            ? { ...row, variance_note: e.target.value }
+                                            : row,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                )}
+                              </>
                             ) : (
                               <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>matches</span>
                             )}
                           </td>
                         </tr>
                       ))
-                    : data.items.map((it) => (
-                        <tr key={it.id}>
-                          <td>{productName(it.productId)}</td>
-                          <td className="table__num">{it.quantitySent}</td>
-                          <td className="table__num" style={{ fontWeight: 700 }}>
-                            {it.quantityReceived ?? "—"}
-                          </td>
-                          <td className="table__num">
-                            {it.unitCostNgn != null ? ngn(it.unitCostNgn) : "—"}
-                          </td>
-                          <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
-                            {it.varianceReason ?? (it.quantityReceived != null ? "matches" : "—")}
-                          </td>
-                        </tr>
-                      ))}
+                    : data.items.map((it) => {
+                        const ownerCanAdjust =
+                          user.role === "owner" &&
+                          ["received", "received_with_variance", "completed"].includes(
+                            data.status,
+                          );
+                        return (
+                          <tr key={it.id}>
+                            <td>{productName(it.productId)}</td>
+                            <td className="table__num">{it.quantitySent}</td>
+                            <td className="table__num" style={{ fontWeight: 700 }}>
+                              {it.quantityReceived ?? "—"}
+                            </td>
+                            <td className="table__num">
+                              {it.unitCostNgn != null ? ngn(it.unitCostNgn) : "—"}
+                            </td>
+                            <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                              <div>
+                                {it.varianceReason ?? (it.quantityReceived != null ? "matches" : "—")}
+                              </div>
+                              {ownerCanAdjust && (
+                                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn--subtle btn--sm"
+                                    disabled={acting}
+                                    onClick={() => void adjustCount(it, "sent")}
+                                  >
+                                    Adjust sent
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn--subtle btn--sm"
+                                    disabled={acting}
+                                    onClick={() => void adjustCount(it, "received")}
+                                  >
+                                    Adjust received
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                 </tbody>
               </table>
             </div>

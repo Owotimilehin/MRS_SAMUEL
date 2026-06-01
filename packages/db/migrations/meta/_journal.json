@@ -169,6 +169,13 @@
       "when": 1779900000000,
       "tag": "0024_server_cart",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780300000000,
+      "tag": "0025_variance_note_and_draft_runs",
+      "breakpoints": true
     }
   ]
 }

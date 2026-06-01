@@ -1,46 +1,44 @@
-﻿import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 
-interface Factory {
-  id: string;
-  name: string;
-}
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-}
+interface Factory { id: string; name: string }
+interface Product { id: string; name: string; category: string }
 interface RunItem {
-  product_id: string;
-  quantity_produced: number;
-  batch_code: string;
+  id: string;
+  productId: string;
+  quantityProduced: number;
+  batchCode: string | null;
 }
-interface RunSummary {
+interface Run {
   id: string;
   factoryId: string;
   runDate: string;
   status: "draft" | "completed";
   createdAt: string;
+  notes: string | null;
+  items: RunItem[];
 }
 
 export function ProductionRunsPage(): JSX.Element {
   const [factories, setFactories] = useState<Factory[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [recent, setRecent] = useState<RunSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Draft state for the new run
   const [factoryId, setFactoryId] = useState<string>("");
   const [runDate, setRunDate] = useState(new Date().toISOString().slice(0, 10));
-  const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<RunItem[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const [run, setRun] = useState<Run | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  const [draftRow, setDraftRow] = useState<{ productId: string; qty: number; batch: string }>({
+    productId: "",
+    qty: 50,
+    batch: "",
+  });
 
+  // Bootstrap factories + products
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -53,318 +51,267 @@ export function ProductionRunsPage(): JSX.Element {
         setFactories(f.data);
         setProducts(p.data);
         if (f.data[0]) setFactoryId(f.data[0].id);
+        const firstProduct = p.data[0];
+        if (firstProduct) setDraftRow((d) => ({ ...d, productId: firstProduct.id }));
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  function addItem(): void {
-    const used = new Set(items.map((i) => i.product_id));
-    const next = products.find((p) => !used.has(p.id));
-    if (!next) return;
-    setItems((it) => [...it, { product_id: next.id, quantity_produced: 100, batch_code: "" }]);
-  }
-  function updateItem(idx: number, patch: Partial<RunItem>): void {
-    setItems((it) => it.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
-  }
-  function removeItem(idx: number): void {
-    setItems((it) => it.filter((_, i) => i !== idx));
-  }
-
-  async function submit(e: FormEvent, complete: boolean): Promise<void> {
-    e.preventDefault();
-    if (!factoryId || items.length === 0) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const created = await api<{ data: RunSummary }>(`/production-runs`, {
-        method: "POST",
-        body: JSON.stringify({
-          factory_id: factoryId,
-          run_date: runDate,
-          items: items.map((it) => ({
-            product_id: it.product_id,
-            quantity_produced: Number(it.quantity_produced),
-            batch_code: it.batch_code || undefined,
-          })),
-          notes: notes || undefined,
-        }),
-      });
-      let final = created.data;
-      if (complete) {
-        const done = await api<{ data: RunSummary }>(
-          `/production-runs/${created.data.id}/complete`,
-          { method: "PATCH" },
+  // Resume / refresh today's open draft whenever factory or date changes
+  useEffect(() => {
+    if (!factoryId || !runDate) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await api<{ data: Run | null }>(
+          `/production-runs/open?factory_id=${factoryId}&run_date=${runDate}`,
         );
-        final = done.data;
+        if (!cancelled) setRun(res.data);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
-      setRecent((r) => [final, ...r].slice(0, 10));
-      setItems([]);
-      setNotes("");
+    })();
+    return () => { cancelled = true; };
+  }, [factoryId, runDate]);
+
+  async function startDraft(): Promise<void> {
+    if (!factoryId) return;
+    setBusy(true); setError(null);
+    try {
+      const res = await api<{ data: Run }>(`/production-runs`, {
+        method: "POST",
+        body: JSON.stringify({ factory_id: factoryId, run_date: runDate }),
+      });
+      setRun(res.data);
+      setFlash("Draft started — add flavours as each batch is done");
+      setTimeout(() => setFlash(null), 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setBusy(false); }
   }
 
-  const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
-  const factoryName = (id: string): string => factories.find((f) => f.id === id)?.name ?? id.slice(0, 8);
+  async function appendItem(): Promise<void> {
+    if (!run || !draftRow.productId || draftRow.qty <= 0) return;
+    setBusy(true); setError(null);
+    try {
+      const res = await api<{ data: Run }>(`/production-runs/${run.id}/items`, {
+        method: "POST",
+        body: JSON.stringify({
+          items: [{
+            product_id: draftRow.productId,
+            quantity_produced: Number(draftRow.qty),
+            batch_code: draftRow.batch || undefined,
+          }],
+        }),
+      });
+      setRun(res.data);
+      setDraftRow((d) => ({ ...d, qty: 50, batch: "" }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally { setBusy(false); }
+  }
+
+  async function patchItem(itemId: string, patch: { quantity_produced?: number; batch_code?: string | null }): Promise<void> {
+    if (!run) return;
+    setBusy(true); setError(null);
+    try {
+      await api(`/production-runs/${run.id}/items/${itemId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      const res = await api<{ data: Run | null }>(
+        `/production-runs/open?factory_id=${factoryId}&run_date=${runDate}`,
+      );
+      setRun(res.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally { setBusy(false); }
+  }
+
+  async function deleteItem(itemId: string): Promise<void> {
+    if (!run) return;
+    if (!confirm("Remove this flavour from the run?")) return;
+    setBusy(true); setError(null);
+    try {
+      await api(`/production-runs/${run.id}/items/${itemId}`, { method: "DELETE" });
+      setRun((r) => (r ? { ...r, items: r.items.filter((i) => i.id !== itemId) } : r));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally { setBusy(false); }
+  }
+
+  async function completeRun(): Promise<void> {
+    if (!run) return;
+    setBusy(true); setError(null);
+    try {
+      const done = await api<{ data: Run }>(`/production-runs/${run.id}/complete`, { method: "PATCH" });
+      setRun(done.data);
+      setFlash("Run completed — stock posted to factory ledger");
+      setTimeout(() => setFlash(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally { setBusy(false); }
+  }
+
+  const productName = (id: string): string =>
+    products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
 
   return (
     <Shell title="Production runs">
       {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
+        <div className="card" style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}>
           {error}
         </div>
       )}
+      {flash && (
+        <div className="card" style={{ borderColor: "rgba(16,185,129,0.35)", color: "var(--success)", marginBottom: 16 }}>
+          {flash}
+        </div>
+      )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
-        <section className="card">
-          <h2 className="t-h2" style={{ marginBottom: 12 }}>Log a production run</h2>
-          {loading ? (
-            <InlineLoader />
-          ) : factories.length === 0 ? (
-            <div className="empty">No factories configured. Ask the owner to add one.</div>
-          ) : (
-            <form
-              onSubmit={(e) => void submit(e, false)}
-              style={{ display: "flex", flexDirection: "column", gap: 12 }}
-            >
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div className="field">
-                  <label className="field__label">Factory</label>
-                  <select
-                    className="select"
-                    value={factoryId}
-                    onChange={(e) => setFactoryId(e.target.value)}
-                  >
-                    {factories.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label className="field__label">Run date</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={runDate}
-                    onChange={(e) => setRunDate(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
+      <section className="card" style={{ marginBottom: 18 }}>
+        <h2 className="t-h2" style={{ marginBottom: 12 }}>Today's run</h2>
+        {loading ? (
+          <InlineLoader />
+        ) : factories.length === 0 ? (
+          <div className="empty">No factories configured. Ask the owner to add one.</div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div className="field">
-                <label className="field__label">Items</label>
-                {items.length === 0 ? (
-                  <div className="empty" style={{ padding: 18 }}>
-                    No items yet.{" "}
-                    <button
-                      type="button"
-                      className="btn btn--subtle btn--sm"
-                      onClick={addItem}
-                      style={{ marginLeft: 6 }}
-                    >
-                      + Add product
-                    </button>
+                <label className="field__label">Factory</label>
+                <select className="select" value={factoryId} onChange={(e) => setFactoryId(e.target.value)}>
+                  {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label className="field__label">Run date</label>
+                <input className="input" type="date" value={runDate} onChange={(e) => setRunDate(e.target.value)} />
+              </div>
+            </div>
+
+            {!run ? (
+              <button className="btn btn--primary" disabled={busy || !factoryId} onClick={() => void startDraft()}>
+                {busy ? "Starting…" : "Start today's run"}
+              </button>
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div>
+                    <span className={run.status === "completed" ? "pill pill--success" : "pill pill--warning"}>{run.status}</span>
+                    <span style={{ marginLeft: 8, color: "var(--ink-soft)", fontSize: 13 }}>
+                      {formatDate(run.runDate)} · {run.items.length} flavour{run.items.length === 1 ? "" : "s"}
+                    </span>
                   </div>
-                ) : (
-                  <div className="table-wrap" style={{ border: 0 }}>
+                  {run.status === "draft" && (
+                    <button
+                      className="btn btn--primary"
+                      disabled={busy || run.items.length === 0}
+                      onClick={() => void completeRun()}
+                    >
+                      {busy ? "Completing…" : "Complete run"}
+                    </button>
+                  )}
+                </div>
+
+                {run.items.length > 0 && (
+                  <div className="table-wrap" style={{ marginBottom: 12 }}>
                     <table className="table">
                       <thead>
-                        <tr>
-                          <th>Product</th>
-                          <th className="table__num">Quantity</th>
-                          <th>Batch code</th>
-                          <th />
-                        </tr>
+                        <tr><th>Product</th><th className="table__num">Qty</th><th>Batch</th><th /></tr>
                       </thead>
                       <tbody>
-                        {items.map((it, idx) => (
-                          <tr key={idx}>
-                            <td>
-                              <select
-                                className="select"
-                                value={it.product_id}
-                                onChange={(e) => updateItem(idx, { product_id: e.target.value })}
-                              >
-                                {products.map((p) => (
-                                  <option key={p.id} value={p.id}>
-                                    {p.name}
-                                  </option>
-                                ))}
-                              </select>
+                        {run.items.map((it) => (
+                          <tr key={it.id}>
+                            <td>{productName(it.productId)}</td>
+                            <td className="table__num">
+                              {run.status === "draft" ? (
+                                <input
+                                  className="input"
+                                  type="number"
+                                  defaultValue={it.quantityProduced}
+                                  style={{ width: 90, textAlign: "right" }}
+                                  onBlur={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (v > 0 && v !== it.quantityProduced) void patchItem(it.id, { quantity_produced: v });
+                                  }}
+                                />
+                              ) : (it.quantityProduced)}
                             </td>
                             <td>
-                              <input
-                                className="input"
-                                type="number"
-                                inputMode="numeric"
-                                style={{ textAlign: "right" }}
-                                value={it.quantity_produced}
-                                onChange={(e) =>
-                                  updateItem(idx, { quantity_produced: Number(e.target.value) })
-                                }
-                                min={1}
-                              />
-                            </td>
-                            <td>
-                              <input
-                                className="input"
-                                placeholder="optional"
-                                value={it.batch_code}
-                                onChange={(e) => updateItem(idx, { batch_code: e.target.value })}
-                              />
+                              {run.status === "draft" ? (
+                                <input
+                                  className="input"
+                                  defaultValue={it.batchCode ?? ""}
+                                  placeholder="optional"
+                                  onBlur={(e) => {
+                                    const v = e.target.value;
+                                    if (v !== (it.batchCode ?? "")) void patchItem(it.id, { batch_code: v || null });
+                                  }}
+                                />
+                              ) : (it.batchCode ?? "—")}
                             </td>
                             <td style={{ textAlign: "right" }}>
-                              <button
-                                type="button"
-                                onClick={() => removeItem(idx)}
-                                aria-label="Remove row"
-                                style={{
-                                  background: "transparent",
-                                  border: 0,
-                                  cursor: "pointer",
-                                  color: "var(--ink-soft)",
-                                  fontSize: 18,
-                                }}
-                              >
-                                ×
-                              </button>
+                              {run.status === "draft" && (
+                                <button
+                                  type="button"
+                                  aria-label="Remove"
+                                  style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--ink-soft)", fontSize: 18 }}
+                                  onClick={() => void deleteItem(it.id)}
+                                >×</button>
+                              )}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                    <div style={{ padding: 10, borderTop: "1px solid var(--line)" }}>
-                      <button
-                        type="button"
-                        className="btn btn--subtle btn--sm"
-                        onClick={addItem}
-                        disabled={items.length >= products.length}
-                      >
-                        + Add product
-                      </button>
-                    </div>
                   </div>
                 )}
-              </div>
 
-              <div className="field">
-                <label className="field__label">Notes</label>
-                <textarea
-                  className="textarea"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                  placeholder="Anything operations should know"
-                />
-              </div>
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  type="submit"
-                  className="btn btn--subtle"
-                  disabled={submitting || items.length === 0}
-                >
-                  {submitting ? "Saving…" : "Save as draft"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--primary"
-                  disabled={submitting || items.length === 0}
-                  onClick={(e) => void submit(e as unknown as FormEvent, true)}
-                >
-                  {submitting ? "Completing…" : "Save & complete"}
-                </button>
-              </div>
-            </form>
-          )}
-        </section>
-
-        <section className="card">
-          <h2 className="t-h2" style={{ marginBottom: 12 }}>Recently created</h2>
-          {recent.length === 0 ? (
-            <div className="empty">
-              Runs created in this session will appear here so you can quickly mark them completed.
-            </div>
-          ) : (
-            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-              {recent.map((r) => (
-                <li
-                  key={r.id}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 4,
-                    padding: 12,
-                    background: "var(--surface-soft)",
-                    borderRadius: 12,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <Link
-                      to="/factory/production-runs/$runId"
-                      params={{ runId: r.id }}
-                      style={{ fontWeight: 600, color: "var(--ink)" }}
-                    >
-                      {formatDate(r.runDate)}
-                    </Link>
-                    <span
-                      className={r.status === "completed" ? "pill pill--success" : "pill pill--warning"}
-                    >
-                      {r.status}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
-                    {factoryName(r.factoryId)} · {r.id.slice(0, 8)}
-                  </div>
-                  {r.status === "draft" && (
-                    <button
-                      type="button"
-                      className="btn btn--primary btn--sm"
-                      style={{ alignSelf: "flex-start", marginTop: 4 }}
-                      onClick={async () => {
-                        try {
-                          const done = await api<{ data: RunSummary }>(
-                            `/production-runs/${r.id}/complete`,
-                            { method: "PATCH" },
-                          );
-                          setRecent((rs) =>
-                            rs.map((row) => (row.id === r.id ? done.data : row)),
-                          );
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : String(err));
-                        }
-                      }}
-                    >
-                      Complete run
+                {run.status === "draft" && (
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 8, alignItems: "end" }}>
+                    <div className="field">
+                      <label className="field__label">Add flavour</label>
+                      <select className="select" value={draftRow.productId} onChange={(e) => setDraftRow((d) => ({ ...d, productId: e.target.value }))}>
+                        {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label className="field__label">Quantity</label>
+                      <input
+                        className="input" type="number" min={1}
+                        value={draftRow.qty}
+                        style={{ textAlign: "right" }}
+                        onChange={(e) => setDraftRow((d) => ({ ...d, qty: Number(e.target.value) }))}
+                      />
+                    </div>
+                    <div className="field">
+                      <label className="field__label">Batch</label>
+                      <input className="input" placeholder="optional" value={draftRow.batch} onChange={(e) => setDraftRow((d) => ({ ...d, batch: e.target.value }))} />
+                    </div>
+                    <button className="btn btn--subtle" disabled={busy || !draftRow.productId || draftRow.qty <= 0} onClick={() => void appendItem()}>
+                      {busy ? "…" : "+ Append"}
                     </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 14 }}>
-            Tip — completing a run posts the produced quantities into the factory ledger.
-          </p>
-        </section>
-      </div>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </section>
 
-      <div style={{ display: "none" }}>{productName("")}</div>
+      <section className="card">
+        <h2 className="t-h2" style={{ marginBottom: 8 }}>Tip</h2>
+        <p style={{ color: "var(--ink-soft)", margin: 0 }}>
+          Append a flavour each time a batch finishes — no need to hold the whole day in your head.
+          When the shift ends, hit <em>Complete run</em> and stock posts to the factory ledger.
+        </p>
+      </section>
     </Shell>
   );
 }

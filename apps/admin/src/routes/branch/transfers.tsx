@@ -222,6 +222,7 @@ function ReceiveModal({
       item_id: i.id,
       quantity_received: i.quantityReceived ?? i.quantitySent,
       variance_reason: i.varianceReason ?? "",
+      variance_note: "",
       notes: "",
       sent: i.quantitySent,
     })),
@@ -239,6 +240,15 @@ function ReceiveModal({
       if (missingReason) {
         throw new Error("Pick a variance reason for every line that doesn't match");
       }
+      const missingNote = draft.find(
+        (d) =>
+          d.quantity_received !== d.sent &&
+          d.variance_reason === "other_with_note" &&
+          !d.variance_note.trim(),
+      );
+      if (missingNote) {
+        throw new Error("Add a note for every line marked 'Other'");
+      }
       await api(`/transfers/${transfer.id}/receive`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -247,6 +257,10 @@ function ReceiveModal({
             quantity_received: Number(d.quantity_received),
             variance_reason:
               d.quantity_received === d.sent ? undefined : d.variance_reason,
+            variance_note:
+              d.quantity_received !== d.sent && d.variance_reason === "other_with_note"
+                ? d.variance_note.trim()
+                : undefined,
             notes: d.notes || undefined,
           })),
         }),
@@ -338,25 +352,44 @@ function ReceiveModal({
                     </td>
                     <td>
                       {variance ? (
-                        <select
-                          className="select"
-                          value={d.variance_reason}
-                          disabled={!editable}
-                          onChange={(e) =>
-                            setDraft((s) =>
-                              s.map((row, i) =>
-                                i === idx ? { ...row, variance_reason: e.target.value } : row,
-                              ),
-                            )
-                          }
-                        >
-                          <option value="">Pick a reason…</option>
-                          {VARIANCE_REASONS.map((r) => (
-                            <option key={r.value} value={r.value}>
-                              {r.label}
-                            </option>
-                          ))}
-                        </select>
+                        <>
+                          <select
+                            className="select"
+                            value={d.variance_reason}
+                            disabled={!editable}
+                            onChange={(e) =>
+                              setDraft((s) =>
+                                s.map((row, i) =>
+                                  i === idx ? { ...row, variance_reason: e.target.value } : row,
+                                ),
+                              )
+                            }
+                          >
+                            <option value="">Pick a reason…</option>
+                            {VARIANCE_REASONS.map((r) => (
+                              <option key={r.value} value={r.value}>
+                                {r.label}
+                              </option>
+                            ))}
+                          </select>
+                          {d.variance_reason === "other_with_note" && (
+                            <textarea
+                              className="textarea"
+                              rows={2}
+                              placeholder="Describe what happened (required)"
+                              value={d.variance_note}
+                              disabled={!editable}
+                              style={{ marginTop: 6, width: "100%" }}
+                              onChange={(e) =>
+                                setDraft((s) =>
+                                  s.map((row, i) =>
+                                    i === idx ? { ...row, variance_note: e.target.value } : row,
+                                  ),
+                                )
+                              }
+                            />
+                          )}
+                        </>
                       ) : (
                         <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>matches</span>
                       )}

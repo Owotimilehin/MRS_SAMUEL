@@ -1,11 +1,12 @@
 import { Hono } from "hono";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql, ne, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import {
   stockTransfer,
   stockTransferItem,
   stockLedger,
   outboxEvent,
+  product,
   type DbClient,
 } from "@ms/db";
 import { checkFactoryStockAvailable, nextTransferNumber } from "@ms/domain";
@@ -35,21 +36,29 @@ const CreateDraft = z.object({
 const ReceiveBody = z.object({
   items: z
     .array(
-      z.object({
-        item_id: z.string().uuid(),
-        quantity_received: z.number().int().nonnegative(),
-        variance_reason: z
-          .enum([
-            "short_shipped",
-            "damaged_in_transit",
-            "wrong_item",
-            "extra_received",
-            "count_error_at_branch",
-            "other_with_note",
-          ])
-          .optional(),
-        notes: z.string().optional(),
-      }),
+      z
+        .object({
+          item_id: z.string().uuid(),
+          quantity_received: z.number().int().nonnegative(),
+          variance_reason: z
+            .enum([
+              "short_shipped",
+              "damaged_in_transit",
+              "wrong_item",
+              "extra_received",
+              "count_error_at_branch",
+              "other_with_note",
+            ])
+            .optional(),
+          /** Free-text detail. REQUIRED when variance_reason === "other_with_note";
+           *  optional for the canned reasons (lets the branch add colour). */
+          variance_note: z.string().max(500).optional(),
+          notes: z.string().optional(),
+        })
+        .refine(
+          (v) => v.variance_reason !== "other_with_note" || (v.variance_note?.trim().length ?? 0) > 0,
+          { message: "variance_note required when variance_reason is other_with_note" },
+        ),
     )
     .min(1),
 });
@@ -282,6 +291,7 @@ export function transferRoutes(db: DbClient) {
           .set({
             quantityReceived: inp.quantity_received,
             varianceReason: inp.variance_reason ?? null,
+            varianceNote: inp.variance_note ?? null,
             notes: inp.notes ?? it.notes,
           })
           .where(eq(stockTransferItem.id, it.id));
@@ -448,6 +458,150 @@ export function transferRoutes(db: DbClient) {
       after: updated,
     });
     return c.json({ data: updated });
+  });
+
+  // ============ Adjust counts (owner) ============
+  // Fix a wrong quantity on a completed transfer after the fact. Writes a
+  // count_correction ledger entry on whichever side moved (factory or branch)
+  // so balances stay accurate. Use case: "we dispatched 50 but the manifest
+  // said 48", or "we counted 47 received but a re-count shows 49".
+  r.patch("/:id/items/:itemId/adjust", requireRole("owner"), async (c) => {
+    const id = c.req.param("id");
+    const itemId = c.req.param("itemId");
+    const auth = c.get("auth");
+    const body = z
+      .object({
+        side: z.enum(["sent", "received"]),
+        new_quantity: z.number().int().nonnegative(),
+        reason: z.string().min(3).max(500),
+      })
+      .parse(await c.req.json());
+
+    const result = await db.transaction(async (tx) => {
+      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id));
+      if (!t) throw new BusinessError("not_found", "transfer not found", 404);
+      const [it] = await tx
+        .select()
+        .from(stockTransferItem)
+        .where(and(eq(stockTransferItem.id, itemId), eq(stockTransferItem.stockTransferId, id)));
+      if (!it) throw new BusinessError("not_found", "transfer item not found", 404);
+
+      const oldQty = body.side === "sent" ? it.quantitySent : (it.quantityReceived ?? 0);
+      const delta = body.new_quantity - oldQty;
+      if (delta === 0) {
+        return { transferItem: it, ledgerDelta: 0 };
+      }
+
+      if (body.side === "sent") {
+        await tx
+          .update(stockTransferItem)
+          .set({ quantitySent: body.new_quantity })
+          .where(eq(stockTransferItem.id, itemId));
+        // Adjusting sent count moves stock at the factory: if new > old, we
+        // shipped MORE than recorded → factory had more out → factory ledger
+        // gets the negative delta to match. Vice versa for new < old.
+        await tx.insert(stockLedger).values({
+          locationType: "factory",
+          locationId: t.factoryId,
+          productId: it.productId,
+          delta: -delta,
+          sourceType: "count_correction",
+          sourceId: id,
+          recordedByUserId: auth.userId,
+          note: `Sent adjusted ${oldQty}→${body.new_quantity} (${body.reason})`,
+        });
+      } else {
+        await tx
+          .update(stockTransferItem)
+          .set({ quantityReceived: body.new_quantity })
+          .where(eq(stockTransferItem.id, itemId));
+        // Adjusting received count moves stock at the branch.
+        await tx.insert(stockLedger).values({
+          locationType: "branch",
+          locationId: t.branchId,
+          productId: it.productId,
+          delta,
+          sourceType: "count_correction",
+          sourceId: id,
+          recordedByUserId: auth.userId,
+          note: `Received adjusted ${oldQty}→${body.new_quantity} (${body.reason})`,
+        });
+      }
+      return { transferItem: { ...it, quantitySent: body.side === "sent" ? body.new_quantity : it.quantitySent, quantityReceived: body.side === "received" ? body.new_quantity : it.quantityReceived }, ledgerDelta: delta };
+    });
+
+    await writeAudit(db, c, {
+      action: "stock_transfer.adjust_count",
+      entityType: "stock_transfer_item",
+      entityId: itemId,
+      after: { side: body.side, new_quantity: body.new_quantity, reason: body.reason, ledger_delta: result.ledgerDelta },
+    });
+    return c.json({ data: result.transferItem });
+  });
+
+  // ============ Shrinkage report ============
+  // Every transfer where sent != received, with the variance bottles and
+  // value (uses the variant's current price as cost proxy if unit_cost_ngn
+  // is null). Owner-only.
+  r.get("/shrinkage", requireRole("owner"), async (c) => {
+    const url = new URL(c.req.url);
+    const from = url.searchParams.get("from"); // YYYY-MM-DD
+    const to = url.searchParams.get("to");
+
+    const conds = [
+      isNotNull(stockTransferItem.quantityReceived),
+      ne(stockTransferItem.quantitySent, stockTransferItem.quantityReceived),
+    ];
+    if (from) conds.push(sql`${stockTransfer.receivedAt} >= ${from}::timestamptz`);
+    if (to) conds.push(sql`${stockTransfer.receivedAt} < (${to}::date + interval '1 day')::timestamptz`);
+
+    const rows = await db
+      .select({
+        transferId: stockTransfer.id,
+        transferNumber: stockTransfer.transferNumber,
+        receivedAt: stockTransfer.receivedAt,
+        productId: stockTransferItem.productId,
+        productName: product.name,
+        quantitySent: stockTransferItem.quantitySent,
+        quantityReceived: stockTransferItem.quantityReceived,
+        varianceReason: stockTransferItem.varianceReason,
+        varianceNote: stockTransferItem.varianceNote,
+        unitCostNgn: stockTransferItem.unitCostNgn,
+      })
+      .from(stockTransferItem)
+      .innerJoin(stockTransfer, eq(stockTransfer.id, stockTransferItem.stockTransferId))
+      .innerJoin(product, eq(product.id, stockTransferItem.productId))
+      .where(and(...conds))
+      .orderBy(desc(stockTransfer.receivedAt));
+
+    let totalBottles = 0;
+    let totalNgn = 0;
+    const out = rows.map((r) => {
+      const lost = r.quantitySent - (r.quantityReceived ?? 0);
+      const lineNgn = (r.unitCostNgn ?? 0) * lost;
+      totalBottles += lost;
+      totalNgn += lineNgn;
+      return {
+        transfer_id: r.transferId,
+        transfer_number: r.transferNumber,
+        received_at: r.receivedAt,
+        product_id: r.productId,
+        product_name: r.productName,
+        quantity_sent: r.quantitySent,
+        quantity_received: r.quantityReceived,
+        bottles_lost: lost,
+        unit_cost_ngn: r.unitCostNgn,
+        line_loss_ngn: lineNgn,
+        variance_reason: r.varianceReason,
+        variance_note: r.varianceNote,
+      };
+    });
+    return c.json({
+      data: {
+        lines: out,
+        summary: { total_bottles_lost: totalBottles, total_loss_ngn: totalNgn, line_count: out.length },
+      },
+    });
   });
 
   return r;
