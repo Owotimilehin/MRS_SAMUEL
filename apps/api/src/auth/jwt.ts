@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import type { AdminRole, Capability } from "@ms/shared";
 
 const ISSUER = "ms-api";
 const AUDIENCE = "ms-admin";
@@ -15,7 +16,8 @@ function getKey(env: "current" | "previous"): Uint8Array | null {
 
 export interface AccessPayload extends JWTPayload {
   sub: string;
-  role: "owner" | "factory_dispatcher" | "branch_manager" | "branch_staff";
+  role: AdminRole;
+  capabilities: Capability[];
   branch_id: string | null;
   device_id: string;
 }
