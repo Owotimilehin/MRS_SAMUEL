@@ -18,6 +18,8 @@ interface Sale {
   branchId: string;
   channel: string;
   status: string;
+  scheduledDeliveryAt?: string | null;
+  deliveryState?: string | null;
   paymentMethod: string;
   subtotalNgn: number;
   deliveryFeeNgn: number;
@@ -127,7 +129,32 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                   Placed {formatDateTime(data.createdAtLocal)}
                 </div>
               </div>
-              {statusPill(data.status)}
+              <div style={{ textAlign: "right" }}>
+                {statusPill(data.status)}
+                {(data.scheduledDeliveryAt ||
+                  (data.deliveryState && data.deliveryState !== "Lagos")) && (
+                  <div style={{ marginTop: 6, fontSize: 13, color: "var(--warning)" }}>
+                    📦 Manual fulfilment — Bolt not dispatched.
+                    {data.scheduledDeliveryAt && (
+                      <>
+                        {" "}Scheduled for{" "}
+                        {new Date(data.scheduledDeliveryAt).toLocaleString("en-NG", {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                        .
+                      </>
+                    )}
+                    {data.deliveryState && data.deliveryState !== "Lagos" && (
+                      <> Outside Lagos: {data.deliveryState}.</>
+                    )}{" "}
+                    Arrange delivery manually, then mark delivered.
+                  </div>
+                )}
+              </div>
             </header>
 
             <h3 style={{ fontSize: 14, fontWeight: 700, margin: "16px 0 8px" }}>Items</h3>

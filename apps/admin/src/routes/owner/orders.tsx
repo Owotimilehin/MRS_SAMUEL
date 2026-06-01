@@ -18,6 +18,8 @@ interface Sale {
   branchId: string;
   channel: string;
   status: string;
+  scheduledDeliveryAt?: string | null;
+  deliveryState?: string | null;
   paymentMethod: string;
   totalNgn: number;
   createdAtLocal: string;
@@ -237,7 +239,19 @@ export function OrdersPage(): JSX.Element {
                     <td className="table__num" style={{ fontWeight: 700 }}>
                       {ngn(s.totalNgn)}
                     </td>
-                    <td>{statusPill(s.status)}</td>
+                    <td>
+                      {statusPill(s.status)}
+                      {s.scheduledDeliveryAt && (
+                        <span className="pill pill--warning" style={{ marginLeft: 6 }}>
+                          Scheduled
+                        </span>
+                      )}
+                      {s.deliveryState && s.deliveryState !== "Lagos" && (
+                        <span className="pill pill--warning" style={{ marginLeft: 6 }}>
+                          {s.deliveryState}
+                        </span>
+                      )}
+                    </td>
                     <td className="table__num">
                       <Link
                         to="/owner/orders/$saleId"
