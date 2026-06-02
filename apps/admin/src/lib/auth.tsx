@@ -6,12 +6,14 @@ import {
   type ReactNode,
 } from "react";
 import { PageLoader } from "../components/Spinner.js";
+import type { AdminRole, Capability } from "@ms/shared";
 
 export interface AuthUser {
   id: string;
   email: string;
-  role: "owner" | "manager" | "staff" | "factory";
+  role: AdminRole;
   branch_id: string | null;
+  capabilities: Capability[];
 }
 
 const AuthContext = createContext<AuthUser | null>(null);
@@ -20,6 +22,12 @@ export function useAuthUser(): AuthUser {
   const u = useContext(AuthContext);
   if (!u) throw new Error("useAuthUser called outside RequireAuth");
   return u;
+}
+
+/** Returns a predicate to test the current user's capabilities. */
+export function useCan(): (cap: Capability) => boolean {
+  const u = useAuthUser();
+  return (cap: Capability) => u.capabilities.includes(cap);
 }
 
 export function RequireAuth({ children }: { children: ReactNode }): JSX.Element {
