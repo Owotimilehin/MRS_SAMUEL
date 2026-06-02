@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDbClient, adminUser } from "@ms/db";
 import { hashPassword } from "../../src/auth/argon.js";
+import type { AdminRole, Capability } from "@ms/shared";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, "../../../../packages/db/migrations");
@@ -55,4 +56,30 @@ export async function loginAs(
   });
   if (!res.ok) throw new Error(`login failed: ${res.status}`);
   return res.headers.get("set-cookie") ?? "";
+}
+
+export async function seedUser(
+  db: ReturnType<typeof createDbClient>,
+  opts: {
+    email: string;
+    role: AdminRole;
+    password?: string;
+    branchId?: string | null;
+    granted?: Capability[];
+    revoked?: Capability[];
+  },
+): Promise<{ id: string }> {
+  const hash = await hashPassword(opts.password ?? "userpassword123");
+  const [row] = await db
+    .insert(adminUser)
+    .values({
+      email: opts.email,
+      passwordHash: hash,
+      role: opts.role,
+      branchId: opts.branchId ?? null,
+      permissionOverrides: { granted: opts.granted ?? [], revoked: opts.revoked ?? [] },
+    })
+    .returning();
+  if (!row) throw new Error("failed to seed user");
+  return row;
 }
