@@ -51,64 +51,44 @@ export function LoginPage(): JSX.Element {
 
   return (
     <main className="login">
-      {/* ───── Brand hero ───── */}
-      <aside className="login__hero">
-        {/* Floating decorative fruit + bottle */}
-        <img src="/orange.png" alt="" aria-hidden className="login__deco login__deco--orange" />
-        <img src="/lemon.png" alt="" aria-hidden className="login__deco login__deco--lemon" />
-        <img src="/bottle-hero.png" alt="" aria-hidden className="login__deco--bottle" />
+      {/* ───── Left: brand statement ───── */}
+      <aside className="login__brand">
+        <img
+          src="/orange.png"
+          alt=""
+          aria-hidden
+          className="login__deco login__deco--orange"
+        />
 
-        <div className="login__hero-top">
-          <div className="login__hero-logo">
+        <div className="login__brand-top">
+          <div className="login__brand-mark">
             <img src="/brand-logo.png" alt="" />
           </div>
-          <div>
-            <div className="login__hero-brand">Mrs. Samuel</div>
-            <div className="login__hero-tag">Admin · Operations</div>
+          <div className="login__wordmark">
+            Mrs.<span className="login__wordmark-accent">Samuel</span>
           </div>
         </div>
 
-        <div className="login__hero-body">
-          <div className="login__hero-eyebrow">For the team</div>
-          <h1 className="login__hero-title">
-            Run the day from one place.
+        <div className="login__brand-body">
+          <h1 className="login__brand-headline">
+            Run your day, sunrise to shelf.
           </h1>
-          <p className="login__hero-sub">
-            Production, transfers, branch sales, daily closes — every Mrs. Samuel
-            operation lives here, cold-pressed fresh every morning.
+          <p className="login__brand-sub">
+            Internal staff portal · Lagos
           </p>
-          <div className="login__pills">
-            <span className="login__pill">
-              <span className="login__pill-dot" />
-              17 cold-pressed flavours
-            </span>
-            <span className="login__pill">
-              <span className="login__pill-dot" />
-              Same-day delivery
-            </span>
-            <span className="login__pill">
-              <span className="login__pill-dot" />
-              Lagos, Nigeria
-            </span>
-          </div>
-        </div>
-
-        <div className="login__hero-foot">
-          © Mrs. Samuel Fruit Juice · Internal staff portal
         </div>
       </aside>
 
-      {/* ───── Form ───── */}
-      <section className="login__form">
-        <div className="login__form-inner">
-          <div className="login__form-logo">
+      {/* ───── Right: form card ───── */}
+      <section className="login__stage">
+        <div className="login__card">
+          <div className="login__card-mark">
             <img src="/brand-logo.png" alt="" />
           </div>
-          <div className="t-eyebrow" style={{ marginBottom: 12 }}>Sign in</div>
-          <h2 className="login__form-title">Welcome back.</h2>
-          <p className="login__form-sub">
-            Use the email and password your owner gave you. If this is your
-            first time, change your password right after signing in.
+          <div className="login__card-eyebrow">Sign in</div>
+          <h2 className="login__card-title">Welcome back.</h2>
+          <p className="login__card-sub">
+            Email and password from your owner.
           </p>
 
           <form onSubmit={handleSubmit} noValidate>
@@ -116,7 +96,7 @@ export function LoginPage(): JSX.Element {
               <label className="field__label" htmlFor="email">Email</label>
               <input
                 id="email"
-                className="input"
+                className="input login__input"
                 type="email"
                 autoComplete="username"
                 required
@@ -131,7 +111,7 @@ export function LoginPage(): JSX.Element {
               <label className="field__label" htmlFor="password">Password</label>
               <input
                 id="password"
-                className="input"
+                className="input login__input"
                 type="password"
                 autoComplete="current-password"
                 required
@@ -150,7 +130,7 @@ export function LoginPage(): JSX.Element {
 
             <button
               type="submit"
-              className="btn btn--primary btn--block btn--lg"
+              className="btn btn--primary btn--block btn--lg login__submit"
               disabled={submitting || !email || !password}
             >
               {submitting ? (
@@ -164,14 +144,9 @@ export function LoginPage(): JSX.Element {
             </button>
 
             <p className="login__hint">
-              Forgot your password? Ask your owner to reset it from the
-              Admin users page.
+              Lost your password? Ping your owner from the Admin users page.
             </p>
           </form>
-
-          <div className="login__footer">
-            Built in Lagos
-          </div>
         </div>
       </section>
     </main>

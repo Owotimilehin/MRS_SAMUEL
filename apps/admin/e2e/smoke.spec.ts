@@ -30,3 +30,19 @@ test("transfers page lists transfers (may be empty)", async ({ page }) => {
   await page.getByRole("link", { name: /transfers/i }).click();
   await expect(page.getByText(/new transfer/i)).toBeVisible();
 });
+
+test("login page renders the new aesthetic-pass structure", async ({ page }) => {
+  await page.goto("/login");
+
+  // New landmarks present
+  await expect(page.locator(".login__card")).toBeVisible();
+  await expect(page.locator(".login__wordmark-accent")).toHaveText("Samuel");
+  await expect(page.locator(".login__brand-headline")).toContainText(
+    "Run your day, sunrise to shelf.",
+  );
+
+  // Old decorations removed — these locators should match nothing
+  await expect(page.locator(".login__deco--bottle")).toHaveCount(0);
+  await expect(page.locator(".login__deco--lemon")).toHaveCount(0);
+  await expect(page.locator(".login__pill")).toHaveCount(0);
+});
