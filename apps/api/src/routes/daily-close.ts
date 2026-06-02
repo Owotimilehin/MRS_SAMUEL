@@ -8,7 +8,7 @@ import {
   type DbClient,
 } from "@ms/db";
 import { expectedCashForDay, expectedStockForDay } from "@ms/domain";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -33,7 +33,7 @@ export function dailyCloseRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth(), requireBranchScope());
 
-  r.post("/", async (c) => {
+  r.post("/", requireCapability("daily_close.submit"), async (c) => {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const body = Submit.parse(await c.req.json());
@@ -114,7 +114,7 @@ export function dailyCloseRoutes(db: DbClient) {
     return c.json({ data: created }, 201);
   });
 
-  r.patch("/:id/approve", requireRole("owner"), async (c) => {
+  r.patch("/:id/approve", requireCapability("close.approve"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const auth = c.get("auth");
@@ -146,7 +146,7 @@ export function dailyCloseRoutes(db: DbClient) {
     return c.json({ data: updated });
   });
 
-  r.patch("/:id/dispute", requireRole("owner"), async (c) => {
+  r.patch("/:id/dispute", requireCapability("close.approve"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const { reason } = z

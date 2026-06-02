@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { deviceStatus, type DbClient } from "@ms/db";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { logger } from "../logger.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 
@@ -86,7 +86,7 @@ export function telemetryRoutes(db: DbClient) {
     return c.body(null, 204);
   });
 
-  r.get("/devices", requireRole("owner"), async (c) => {
+  r.get("/devices", requireCapability("devices.view"), async (c) => {
     const rows = await db.execute<{
       device_id: string;
       branch_id: string | null;

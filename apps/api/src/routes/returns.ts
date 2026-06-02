@@ -21,7 +21,7 @@ import {
   nextOrderNumber,
   type ReturnReasonCategory,
 } from "@ms/domain";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -72,7 +72,7 @@ export function returnRoutes(db: DbClient) {
   r.use("*", requireAuth(), requireBranchScope());
 
   // ============ Create return ============
-  r.post("/", async (c) => {
+  r.post("/", requireCapability("returns.create"), async (c) => {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const body = CreateReturn.parse(await c.req.json());
@@ -227,7 +227,7 @@ export function returnRoutes(db: DbClient) {
   });
 
   // ============ Approve (owner) ============
-  r.patch("/:id/approve", requireRole("owner"), async (c) => {
+  r.patch("/:id/approve", requireCapability("returns.approve"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const auth = c.get("auth");
@@ -263,7 +263,7 @@ export function returnRoutes(db: DbClient) {
   });
 
   // ============ Cancel (draft/pending only) ============
-  r.patch("/:id/cancel", async (c) => {
+  r.patch("/:id/cancel", requireCapability("returns.create"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
 
@@ -285,7 +285,7 @@ export function returnRoutes(db: DbClient) {
   });
 
   // ============ List / detail ============
-  r.get("/", async (c) => {
+  r.get("/", requireCapability("sales.view"), async (c) => {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const rows = await db
@@ -295,7 +295,7 @@ export function returnRoutes(db: DbClient) {
     return c.json({ data: rows });
   });
 
-  r.get("/:id", async (c) => {
+  r.get("/:id", requireCapability("sales.view"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const [ret] = await db.select().from(saleReturn).where(eq(saleReturn.id, id));

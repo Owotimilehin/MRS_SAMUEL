@@ -14,7 +14,7 @@ import {
   type DbClient,
 } from "@ms/db";
 import { availableAtBranch, nextOrderNumber } from "@ms/domain";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -84,7 +84,7 @@ export function saleRoutes(db: DbClient) {
   r.use("*", requireAuth(), requireBranchScope());
 
   // ============ Confirm (creates DRAFT→CONFIRMED with stock reservation) ============
-  r.post("/", async (c) => {
+  r.post("/", requireCapability("pos.sell"), async (c) => {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const body = ConfirmSale.parse(await c.req.json());
@@ -256,7 +256,7 @@ export function saleRoutes(db: DbClient) {
   });
 
   // ============ Pay (CONFIRMED→PAID, converts reservation to ledger) ============
-  r.patch("/:id/pay", async (c) => {
+  r.patch("/:id/pay", requireCapability("pos.sell"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const auth = c.get("auth");
@@ -327,7 +327,7 @@ export function saleRoutes(db: DbClient) {
   });
 
   // ============ Hand over (PAID→HANDED_OVER for walkup/whatsapp/chowdeck) ============
-  r.patch("/:id/hand-over", async (c) => {
+  r.patch("/:id/hand-over", requireCapability("pos.sell"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const updated = await db.transaction(async (tx) => {
@@ -357,7 +357,7 @@ export function saleRoutes(db: DbClient) {
   });
 
   // ============ Mark delivered (PAID→DELIVERED for online/phone) ============
-  r.patch("/:id/mark-delivered", async (c) => {
+  r.patch("/:id/mark-delivered", requireCapability("pos.sell"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const updated = await db.transaction(async (tx) => {
@@ -387,7 +387,7 @@ export function saleRoutes(db: DbClient) {
   });
 
   // ============ Cancel (any non-terminal→CANCELLED) ============
-  r.patch("/:id/cancel", async (c) => {
+  r.patch("/:id/cancel", requireCapability("pos.sell"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const auth = c.get("auth");
@@ -445,7 +445,7 @@ export function saleRoutes(db: DbClient) {
   });
 
   // ============ List / Get (read-only) ============
-  r.get("/", async (c) => {
+  r.get("/", requireCapability("sales.view"), async (c) => {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const rows = await db
@@ -457,7 +457,7 @@ export function saleRoutes(db: DbClient) {
     return c.json({ data: rows });
   });
 
-  r.get("/:id", async (c) => {
+  r.get("/:id", requireCapability("sales.view"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const [o] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { blogPost, type DbClient } from "@ms/db";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 
@@ -25,7 +25,7 @@ const PatchPost = z.object({
 
 export function blogRoutes(db: DbClient) {
   const r = new Hono();
-  r.use("*", requireAuth(), requireRole("owner"));
+  r.use("*", requireAuth(), requireCapability("blog.manage"));
 
   r.get("/", async (c) => {
     const rows = await db

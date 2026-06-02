@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { branch, type DbClient } from "@ms/db";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 
@@ -42,7 +42,7 @@ export function branchRoutes(db: DbClient) {
     return c.json({ data: row });
   });
 
-  r.post("/", requireRole("owner"), async (c) => {
+  r.post("/", requireCapability("branches.manage"), async (c) => {
     const body = CreateBranch.parse(await c.req.json());
     const [row] = await db
       .insert(branch)
@@ -67,7 +67,7 @@ export function branchRoutes(db: DbClient) {
     return c.json({ data: row }, 201);
   });
 
-  r.patch("/:id", requireRole("owner"), async (c) => {
+  r.patch("/:id", requireCapability("branches.manage"), async (c) => {
     const id = c.req.param("id");
     const body = PatchBranch.parse(await c.req.json());
 

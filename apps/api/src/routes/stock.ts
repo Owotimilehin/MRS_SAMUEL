@@ -11,6 +11,7 @@ import { requireAuth } from "../middleware/auth.js";
 export function stockRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth());
+  // TODO(capability): gate with requireCapability("stock.adjust") when a stock-adjust mutation endpoint exists
 
   r.get("/factory/:factoryId", async (c) => {
     const balances = await balanceAt(db, {

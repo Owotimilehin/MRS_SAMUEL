@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, isNull, and, desc, asc } from "drizzle-orm";
 import { z } from "zod";
 import { product, productPrice, productVariant, type DbClient } from "@ms/db";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 
@@ -108,7 +108,7 @@ export function productRoutes(db: DbClient) {
     });
   });
 
-  r.post("/", requireRole("owner"), async (c) => {
+  r.post("/", requireCapability("products.manage"), async (c) => {
     const body = CreateProduct.parse(await c.req.json());
     const auth = c.get("auth");
 
@@ -196,7 +196,7 @@ export function productRoutes(db: DbClient) {
    * Publish a new price for one variant. Closes the existing price row (sets
    * valid_to=now()) and inserts a fresh row.
    */
-  r.post("/:id/prices", requireRole("owner"), async (c) => {
+  r.post("/:id/prices", requireCapability("prices.manage"), async (c) => {
     const id = c.req.param("id");
     const body = PublishPrice.parse(await c.req.json());
     const auth = c.get("auth");

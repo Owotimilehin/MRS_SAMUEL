@@ -11,7 +11,7 @@ import {
   customer,
   type DbClient,
 } from "@ms/db";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { BusinessError } from "../lib/errors.js";
 
@@ -30,7 +30,7 @@ export function syncRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth(), requireBranchScope());
 
-  r.get("/pull", async (c) => {
+  r.get("/pull", requireCapability("pos.sell"), async (c) => {
     const auth = c.get("auth");
     const url = new URL(c.req.url);
     const branchIdParam = url.searchParams.get("branch_id");

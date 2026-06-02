@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import type { DbClient } from "@ms/db";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 
 export function reportRoutes(db: DbClient) {
   const r = new Hono();
-  r.use("*", requireAuth(), requireRole("owner"));
+  r.use("*", requireAuth(), requireCapability("reports.view"));
 
   r.get("/revenue", async (c) => {
     const from =

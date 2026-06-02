@@ -2,8 +2,9 @@ import { Hono } from "hono";
 import { eq, isNull, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { adminUser, type DbClient } from "@ms/db";
+import { CAPABILITIES } from "@ms/shared";
 import { hashPassword } from "../auth/argon.js";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 
@@ -14,24 +15,31 @@ import { BusinessError } from "../lib/errors.js";
  */
 const RoleEnum = z.enum(["owner", "admin", "manager", "branch_staff"]);
 
+const CapabilityEnum = z.enum(CAPABILITIES);
+const Overrides = z
+  .object({ granted: z.array(CapabilityEnum).default([]), revoked: z.array(CapabilityEnum).default([]) })
+  .default({ granted: [], revoked: [] });
+
 const InviteUser = z.object({
   email: z.string().email(),
   role: RoleEnum,
   branch_id: z.string().uuid().nullable().optional(),
   password: z.string().min(12),
+  permission_overrides: Overrides.optional(),
 });
 
 const PatchUser = z.object({
   role: RoleEnum.optional(),
   branch_id: z.string().uuid().nullable().optional(),
   is_active: z.boolean().optional(),
+  permission_overrides: Overrides.optional(),
 });
 
 const ResetPassword = z.object({ password: z.string().min(12) });
 
 export function adminUserRoutes(db: DbClient) {
   const r = new Hono();
-  r.use("*", requireAuth(), requireRole("owner"));
+  r.use("*", requireAuth(), requireCapability("users.manage"));
 
   r.get("/", async (c) => {
     const rows = await db
@@ -46,6 +54,7 @@ export function adminUserRoutes(db: DbClient) {
         lockedUntil: adminUser.lockedUntil,
         lastLoginAt: adminUser.lastLoginAt,
         createdAt: adminUser.createdAt,
+        permissionOverrides: adminUser.permissionOverrides,
       })
       .from(adminUser)
       .where(isNull(adminUser.deletedAt))
@@ -71,6 +80,7 @@ export function adminUserRoutes(db: DbClient) {
         passwordHash,
         role: body.role,
         branchId: body.branch_id ?? null,
+        permissionOverrides: body.permission_overrides ?? { granted: [], revoked: [] },
       })
       .returning({
         id: adminUser.id,
@@ -79,6 +89,7 @@ export function adminUserRoutes(db: DbClient) {
         branchId: adminUser.branchId,
         isActive: adminUser.isActive,
         createdAt: adminUser.createdAt,
+        permissionOverrides: adminUser.permissionOverrides,
       });
     if (!row) throw new BusinessError("internal_error", "insert failed", 500);
     await writeAudit(db, c, {
@@ -105,6 +116,9 @@ export function adminUserRoutes(db: DbClient) {
         patch["failedLoginCount"] = 0;
         patch["lockedUntil"] = null;
       }
+    }
+    if (body.permission_overrides !== undefined) {
+      patch["permissionOverrides"] = body.permission_overrides;
     }
     const [row] = await db
       .update(adminUser)

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { stockTransfer, saleReturn, type DbClient } from "@ms/db";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 
 /**
  * Owner-only "Needs review" inbox. Aggregates everything that needs the
@@ -12,7 +12,7 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
  */
 export function reviewRoutes(db: DbClient) {
   const r = new Hono();
-  r.use("*", requireAuth(), requireRole("owner"));
+  r.use("*", requireAuth(), requireCapability("orders.manage"));
 
   r.get("/", async (c) => {
     const transferVariances = await db

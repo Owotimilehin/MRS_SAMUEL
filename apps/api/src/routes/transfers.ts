@@ -10,7 +10,7 @@ import {
   type DbClient,
 } from "@ms/db";
 import { checkFactoryStockAvailable, nextTransferNumber } from "@ms/domain";
-import { requireAuth, requireRole, requireCapability } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 
@@ -216,7 +216,7 @@ export function transferRoutes(db: DbClient) {
   });
 
   // ============ Arrive (branch) ============
-  r.patch("/:id/arrive", async (c) => {
+  r.patch("/:id/arrive", requireCapability("transfers.receive"), async (c) => {
     const id = c.req.param("id");
     const auth = c.get("auth");
 
@@ -252,7 +252,7 @@ export function transferRoutes(db: DbClient) {
   });
 
   // ============ Receive + variance (branch) ============
-  r.patch("/:id/receive", async (c) => {
+  r.patch("/:id/receive", requireCapability("transfers.receive"), async (c) => {
     const id = c.req.param("id");
     const auth = c.get("auth");
     const body = ReceiveBody.parse(await c.req.json());
@@ -362,7 +362,7 @@ export function transferRoutes(db: DbClient) {
   });
 
   // ============ Approve variance (owner) ============
-  r.patch("/:id/approve", requireRole("owner"), async (c) => {
+  r.patch("/:id/approve", requireCapability("transfers.adjust"), async (c) => {
     const id = c.req.param("id");
     const auth = c.get("auth");
 
@@ -396,7 +396,7 @@ export function transferRoutes(db: DbClient) {
   });
 
   // ============ Reject (branch or owner) ============
-  r.patch("/:id/reject", async (c) => {
+  r.patch("/:id/reject", requireCapability("transfers.receive"), async (c) => {
     const id = c.req.param("id");
     const auth = c.get("auth");
     const { reason } = RejectBody.parse(await c.req.json());
@@ -468,7 +468,7 @@ export function transferRoutes(db: DbClient) {
   // count_correction ledger entry on whichever side moved (factory or branch)
   // so balances stay accurate. Use case: "we dispatched 50 but the manifest
   // said 48", or "we counted 47 received but a re-count shows 49".
-  r.patch("/:id/items/:itemId/adjust", requireRole("owner"), async (c) => {
+  r.patch("/:id/items/:itemId/adjust", requireCapability("transfers.adjust"), async (c) => {
     const id = c.req.param("id");
     const itemId = c.req.param("itemId");
     const auth = c.get("auth");
@@ -562,7 +562,7 @@ export function transferRoutes(db: DbClient) {
   // Every transfer where sent != received, with the variance bottles and
   // value (uses the variant's current price as cost proxy if unit_cost_ngn
   // is null). Owner-only.
-  r.get("/shrinkage", requireRole("owner"), async (c) => {
+  r.get("/shrinkage", requireCapability("shrinkage.view"), async (c) => {
     const url = new URL(c.req.url);
     const from = url.searchParams.get("from"); // YYYY-MM-DD
     const to = url.searchParams.get("to");
