@@ -122,6 +122,72 @@ export function transferRoutes(db: DbClient) {
     return c.json({ data: rows });
   });
 
+  // ============ Shrinkage report ============
+  // Every transfer where sent != received, with the variance bottles and
+  // value (uses the variant's current price as cost proxy if unit_cost_ngn
+  // is null). Owner-only. Must be registered BEFORE /:id to avoid Hono
+  // matching "shrinkage" as a UUID parameter.
+  r.get("/shrinkage", requireCapability("shrinkage.view"), async (c) => {
+    const url = new URL(c.req.url);
+    const from = url.searchParams.get("from"); // YYYY-MM-DD
+    const to = url.searchParams.get("to");
+
+    const conds = [
+      isNotNull(stockTransferItem.quantityReceived),
+      ne(stockTransferItem.quantitySent, stockTransferItem.quantityReceived),
+    ];
+    if (from) conds.push(sql`${stockTransfer.receivedAt} >= ${from}::timestamptz`);
+    if (to) conds.push(sql`${stockTransfer.receivedAt} < (${to}::date + interval '1 day')::timestamptz`);
+
+    const rows = await db
+      .select({
+        transferId: stockTransfer.id,
+        transferNumber: stockTransfer.transferNumber,
+        receivedAt: stockTransfer.receivedAt,
+        productId: stockTransferItem.productId,
+        productName: product.name,
+        quantitySent: stockTransferItem.quantitySent,
+        quantityReceived: stockTransferItem.quantityReceived,
+        varianceReason: stockTransferItem.varianceReason,
+        varianceNote: stockTransferItem.varianceNote,
+        unitCostNgn: stockTransferItem.unitCostNgn,
+      })
+      .from(stockTransferItem)
+      .innerJoin(stockTransfer, eq(stockTransfer.id, stockTransferItem.stockTransferId))
+      .innerJoin(product, eq(product.id, stockTransferItem.productId))
+      .where(and(...conds))
+      .orderBy(desc(stockTransfer.receivedAt));
+
+    let totalBottles = 0;
+    let totalNgn = 0;
+    const out = rows.map((r) => {
+      const lost = r.quantitySent - (r.quantityReceived ?? 0);
+      const lineNgn = (r.unitCostNgn ?? 0) * lost;
+      totalBottles += lost;
+      totalNgn += lineNgn;
+      return {
+        transfer_id: r.transferId,
+        transfer_number: r.transferNumber,
+        received_at: r.receivedAt,
+        product_id: r.productId,
+        product_name: r.productName,
+        quantity_sent: r.quantitySent,
+        quantity_received: r.quantityReceived,
+        bottles_lost: lost,
+        unit_cost_ngn: r.unitCostNgn,
+        line_loss_ngn: lineNgn,
+        variance_reason: r.varianceReason,
+        variance_note: r.varianceNote,
+      };
+    });
+    return c.json({
+      data: {
+        lines: out,
+        summary: { total_bottles_lost: totalBottles, total_loss_ngn: totalNgn, line_count: out.length },
+      },
+    });
+  });
+
   // ============ Detail ============
   r.get("/:id", async (c) => {
     const id = c.req.param("id");
@@ -556,71 +622,6 @@ export function transferRoutes(db: DbClient) {
       after: { side: body.side, new_quantity: body.new_quantity, reason: body.reason, ledger_delta: result.ledgerDelta },
     });
     return c.json({ data: result.transferItem });
-  });
-
-  // ============ Shrinkage report ============
-  // Every transfer where sent != received, with the variance bottles and
-  // value (uses the variant's current price as cost proxy if unit_cost_ngn
-  // is null). Owner-only.
-  r.get("/shrinkage", requireCapability("shrinkage.view"), async (c) => {
-    const url = new URL(c.req.url);
-    const from = url.searchParams.get("from"); // YYYY-MM-DD
-    const to = url.searchParams.get("to");
-
-    const conds = [
-      isNotNull(stockTransferItem.quantityReceived),
-      ne(stockTransferItem.quantitySent, stockTransferItem.quantityReceived),
-    ];
-    if (from) conds.push(sql`${stockTransfer.receivedAt} >= ${from}::timestamptz`);
-    if (to) conds.push(sql`${stockTransfer.receivedAt} < (${to}::date + interval '1 day')::timestamptz`);
-
-    const rows = await db
-      .select({
-        transferId: stockTransfer.id,
-        transferNumber: stockTransfer.transferNumber,
-        receivedAt: stockTransfer.receivedAt,
-        productId: stockTransferItem.productId,
-        productName: product.name,
-        quantitySent: stockTransferItem.quantitySent,
-        quantityReceived: stockTransferItem.quantityReceived,
-        varianceReason: stockTransferItem.varianceReason,
-        varianceNote: stockTransferItem.varianceNote,
-        unitCostNgn: stockTransferItem.unitCostNgn,
-      })
-      .from(stockTransferItem)
-      .innerJoin(stockTransfer, eq(stockTransfer.id, stockTransferItem.stockTransferId))
-      .innerJoin(product, eq(product.id, stockTransferItem.productId))
-      .where(and(...conds))
-      .orderBy(desc(stockTransfer.receivedAt));
-
-    let totalBottles = 0;
-    let totalNgn = 0;
-    const out = rows.map((r) => {
-      const lost = r.quantitySent - (r.quantityReceived ?? 0);
-      const lineNgn = (r.unitCostNgn ?? 0) * lost;
-      totalBottles += lost;
-      totalNgn += lineNgn;
-      return {
-        transfer_id: r.transferId,
-        transfer_number: r.transferNumber,
-        received_at: r.receivedAt,
-        product_id: r.productId,
-        product_name: r.productName,
-        quantity_sent: r.quantitySent,
-        quantity_received: r.quantityReceived,
-        bottles_lost: lost,
-        unit_cost_ngn: r.unitCostNgn,
-        line_loss_ngn: lineNgn,
-        variance_reason: r.varianceReason,
-        variance_note: r.varianceNote,
-      };
-    });
-    return c.json({
-      data: {
-        lines: out,
-        summary: { total_bottles_lost: totalBottles, total_loss_ngn: totalNgn, line_count: out.length },
-      },
-    });
   });
 
   return r;

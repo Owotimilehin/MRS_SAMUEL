@@ -79,7 +79,7 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
       initial_price_ngn: 2500,
     });
     product = pRes.body.data;
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     server.close();

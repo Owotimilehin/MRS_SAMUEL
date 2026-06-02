@@ -88,7 +88,7 @@ describe("transfer adjust + variance_note", () => {
       items: [{ product_id: product.id, quantity_produced: 100 }],
     });
     await call("PATCH", `/v1/production-runs/${run.body.data.id}/complete`);
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     server.close();

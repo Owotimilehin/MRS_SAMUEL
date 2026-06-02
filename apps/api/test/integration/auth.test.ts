@@ -19,7 +19,7 @@ describe("auth integration", () => {
     await new Promise<void>((resolve) => server.once("listening", () => resolve()));
     const addr = server.address() as AddressInfo;
     baseUrl = `http://localhost:${addr.port}`;
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     server.close();

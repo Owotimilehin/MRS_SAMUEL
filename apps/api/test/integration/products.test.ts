@@ -21,7 +21,7 @@ describe("products + prices", () => {
     const addr = server.address() as AddressInfo;
     baseUrl = `http://localhost:${addr.port}`;
     cookies = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     server.close();

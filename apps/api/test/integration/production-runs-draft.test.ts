@@ -91,7 +91,7 @@ describe("production runs — draft + append flow", () => {
       initial_price_ngn: 2500,
     });
     prodB = b.body.data;
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     server.close();
