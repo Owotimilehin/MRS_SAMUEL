@@ -27,13 +27,6 @@ interface Branch {
   name: string;
 }
 
-const ROLE_LABEL: Record<Role, string> = {
-  owner: "Owner",
-  admin: "Admin",
-  manager: "Manager",
-  branch_staff: "Branch staff",
-};
-
 function rolePill(role: Role): JSX.Element {
   if (role === "owner") return <span className="pill pill--grad">Owner</span>;
   if (role === "admin") return <span className="pill pill--accent">Admin</span>;

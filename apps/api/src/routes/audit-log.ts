@@ -3,7 +3,6 @@ import { and, desc, eq, gte, lte, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auditLog, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
-import { BusinessError } from "../lib/errors.js";
 
 /**
  * Owner-only audit log reader. Filters by actor / entity / action / date.
