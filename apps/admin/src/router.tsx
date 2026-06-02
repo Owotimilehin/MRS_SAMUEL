@@ -160,9 +160,8 @@ const loginRoute = createRoute({
 /**
  * Role-aware root redirect. Calls /v1/auth/me once to discover the role, then
  * sends the user where they actually work:
- *  - owner / manager → /owner/dashboard
- *  - factory        → /factory/production-runs
- *  - staff or any user with a branch_id → /branch
+ *  - owner / admin → /owner/dashboard
+ *  - manager / branch_staff or any user with a branch_id → /branch
  *  - anon → /login
  */
 function RootRedirect(): JSX.Element {
@@ -181,11 +180,9 @@ function RootRedirect(): JSX.Element {
           data: { role: string; branch_id: string | null };
         };
         const dest =
-          body.data.role === "owner"
+          body.data.role === "owner" || body.data.role === "admin"
             ? "/owner/dashboard"
-            : body.data.role === "factory"
-              ? "/factory/production-runs"
-              : "/branch";
+            : "/branch";
         if (!cancelled && typeof window !== "undefined") {
           window.location.replace(dest);
         }

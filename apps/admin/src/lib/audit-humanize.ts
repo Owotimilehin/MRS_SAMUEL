@@ -37,9 +37,11 @@ const j = (v: unknown): Json => (v && typeof v === "object" ? (v as Json) : null
 
 const ROLE_LABEL: Record<string, string> = {
   owner: "Owner",
-  factory_dispatcher: "Factory",
-  branch_manager: "Branch manager",
+  admin: "Admin",
+  manager: "Manager",
   branch_staff: "Branch staff",
+  factory_dispatcher: "Factory (legacy)",
+  branch_manager: "Manager (legacy)",
 };
 
 /** Friendly role label or the raw value if unknown. */

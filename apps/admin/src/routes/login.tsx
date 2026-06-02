@@ -7,16 +7,15 @@ interface LoginResponse {
     user: {
       id: string;
       email: string;
-      role: "owner" | "manager" | "staff" | "factory";
+      role: "owner" | "admin" | "manager" | "branch_staff";
       branch_id: string | null;
     };
   };
 }
 
 function defaultDestination(role: string, branchId: string | null): string {
-  if (role === "owner") return "/owner/dashboard";
-  if (role === "factory") return "/factory/production-runs";
-  if (role === "manager" || role === "staff" || branchId) return "/branch";
+  if (role === "owner" || role === "admin") return "/owner/dashboard";
+  if (role === "manager" || role === "branch_staff" || branchId) return "/branch";
   return "/owner/dashboard";
 }
 
