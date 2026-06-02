@@ -4,8 +4,10 @@ import { Modal } from "../../components/Modal.js";
 import { api, ApiError } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { GateEditor, type GateValue } from "../../components/GateEditor.js";
+import type { AdminRole } from "@ms/shared";
 
-type Role = "owner" | "factory_dispatcher" | "branch_manager" | "branch_staff";
+type Role = AdminRole;
 
 interface AdminUserRow {
   id: string;
@@ -18,6 +20,7 @@ interface AdminUserRow {
   lockedUntil: string | null;
   lastLoginAt: string | null;
   createdAt: string;
+  permissionOverrides: GateValue;
 }
 interface Branch {
   id: string;
@@ -26,15 +29,15 @@ interface Branch {
 
 const ROLE_LABEL: Record<Role, string> = {
   owner: "Owner",
-  factory_dispatcher: "Factory dispatcher",
-  branch_manager: "Branch manager",
+  admin: "Admin",
+  manager: "Manager",
   branch_staff: "Branch staff",
 };
 
 function rolePill(role: Role): JSX.Element {
   if (role === "owner") return <span className="pill pill--grad">Owner</span>;
-  if (role === "factory_dispatcher") return <span className="pill pill--accent">Factory</span>;
-  if (role === "branch_manager") return <span className="pill pill--warning">Manager</span>;
+  if (role === "admin") return <span className="pill pill--accent">Admin</span>;
+  if (role === "manager") return <span className="pill pill--warning">Manager</span>;
   return <span className="pill">Staff</span>;
 }
 
@@ -204,6 +207,7 @@ function InviteModal({
   const [role, setRole] = useState<Role>("branch_staff");
   const [branchId, setBranchId] = useState<string>(branches[0]?.id ?? "");
   const [password, setPassword] = useState("");
+  const [gates, setGates] = useState<GateValue>({ granted: [], revoked: [] });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -225,8 +229,9 @@ function InviteModal({
         body: JSON.stringify({
           email,
           role,
-          branch_id: role === "owner" || role === "factory_dispatcher" ? null : branchId || null,
+          branch_id: role === "owner" || role === "admin" ? null : branchId || null,
           password,
+          permission_overrides: gates,
         }),
       });
       onSaved();
@@ -237,7 +242,7 @@ function InviteModal({
     }
   }
 
-  const needsBranch = role === "branch_manager" || role === "branch_staff";
+  const needsBranch = role === "manager" || role === "branch_staff";
 
   return (
     <Modal title="Invite user" onClose={onClose}>
@@ -255,12 +260,18 @@ function InviteModal({
         <div style={{ display: "grid", gridTemplateColumns: needsBranch ? "1fr 1fr" : "1fr", gap: 12 }}>
           <div className="field">
             <label className="field__label">Role</label>
-            <select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>
-              {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABEL[r]}
-                </option>
-              ))}
+            <select
+              className="select"
+              value={role}
+              onChange={(e) => {
+                setRole(e.target.value as Role);
+                setGates({ granted: [], revoked: [] });
+              }}
+            >
+              <option value="branch_staff">Branch staff</option>
+              <option value="manager">Manager</option>
+              <option value="admin">Admin</option>
+              <option value="owner">Owner</option>
             </select>
           </div>
           {needsBranch && (
@@ -282,6 +293,7 @@ function InviteModal({
             </div>
           )}
         </div>
+        <GateEditor role={role} value={gates} onChange={setGates} />
         <div className="field">
           <label className="field__label">Temporary password (12+ chars)</label>
           <div style={{ display: "flex", gap: 8 }}>
