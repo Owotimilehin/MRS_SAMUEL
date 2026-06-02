@@ -385,4 +385,34 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(mine.some((e) => e.eventType === "delivery.request")).toBe(true);
     expect(mine.some((e) => e.eventType === "sale.paid_online")).toBe(true);
   });
+
+  it("Lagos order: accepts a fee matching a configured zone fee with NO zone_name", async () => {
+    const res = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        delivery_fee_ngn: 1500, // equals the "Test zone" fee
+        customer: { name: "No Zone", phone: "+2348025550010", address: "1 Zoneless Rd" },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { data: { total_ngn: number } };
+    expect(body.data.total_ngn).toBe(2500 + 1500);
+  });
+
+  it("Lagos order: rejects a fee that matches no zone and has no quote", async () => {
+    const res = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        delivery_fee_ngn: 777, // not a configured zone fee, no quote id
+        customer: { name: "Bad Fee", phone: "+2348025550011", address: "2 Bad Fee Rd" },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(res.status).toBe(422);
+  });
 });
