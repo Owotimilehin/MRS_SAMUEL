@@ -9,6 +9,7 @@ export * from "./product.js";
 export * from "./product-variant.js";
 export * from "./product-price.js";
 export * from "./stock-ledger.js";
+export * from "./stock-adjustment.js";
 export * from "./production-run.js";
 export * from "./stock-transfer.js";
 export * from "./outbox-event.js";

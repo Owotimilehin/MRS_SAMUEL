@@ -105,6 +105,37 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `👉 ${ADMIN_URL}/transfers/${p["transfer_id"]}`,
       };
     }
+    case "stock_adjustment.recorded": {
+      // Owner-initiated inventory adjustment. Group of one-or-more product
+      // balance corrections. Owner always sees it; factory channel sees it
+      // for factory adjustments; branch channel sees it for branch adjustments.
+      const items = Array.isArray(event.payload["items"])
+        ? (event.payload["items"] as Array<Record<string, unknown>>)
+        : [];
+      const lines = items
+        .slice(0, 5)
+        .map((it) => {
+          const name = String(it["product_name"] ?? it["product_id"] ?? "?");
+          const oldQ = Number(it["old_quantity"] ?? 0);
+          const newQ = Number(it["new_quantity"] ?? 0);
+          const d = Number(it["delta"] ?? 0);
+          const sign = d > 0 ? "+" : "";
+          return ` • ${name}  ${oldQ} → ${newQ} (${sign}${d})`;
+        })
+        .join("\n");
+      const more = items.length > 5 ? `\n…and ${items.length - 5} more` : "";
+      const note = p["reason_note"] ? `\n_${String(p["reason_note"])}_` : "";
+      const sideChannel =
+        p["location_type"] === "factory" ? channels.factory() : channels.branchAjao();
+      return {
+        chatIds: [owner, sideChannel],
+        text:
+          `📒 *Inventory adjustment*\n` +
+          `${p["location_type"]} · ${p["reason_code"]}\n` +
+          `${lines}${more}${note}\n` +
+          `👉 ${ADMIN_URL}/owner/inventory`,
+      };
+    }
     case "sale_return.pending_approval":
       return {
         chatIds: [owner],

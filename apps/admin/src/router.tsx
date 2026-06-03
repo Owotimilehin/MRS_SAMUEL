@@ -90,6 +90,10 @@ const RunDetailPage = lazyNamed<{ runId: string }>(
   () => import("./routes/factory/run-detail.js"),
   "RunDetailPage",
 );
+const FactoryInventoryPage = lazyNamed(
+  () => import("./routes/factory/inventory.js"),
+  "FactoryInventoryPage",
+);
 
 const TransfersPage = lazyNamed(() => import("./routes/transfers.js"), "TransfersPage");
 const TransferDetailPage = lazyNamed<{ transferId: string }>(
@@ -395,6 +399,11 @@ const runDetailRoute = createRoute({
     return guarded(<L><RunDetailPage runId={params.runId} /></L>);
   },
 });
+const factoryInventoryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/factory/inventory",
+  component: () => guarded(<L><FactoryInventoryPage /></L>),
+});
 
 // ───── Cross-cutting ─────
 const transfersRoute = createRoute({
@@ -531,6 +540,7 @@ const routeTree = rootRoute.addChildren([
   // factory
   productionRunsRoute,
   runDetailRoute,
+  factoryInventoryRoute,
   // cross
   transfersRoute,
   ownerTransfersRoute,

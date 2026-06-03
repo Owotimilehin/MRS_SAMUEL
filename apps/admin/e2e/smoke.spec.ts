@@ -31,6 +31,17 @@ test("transfers page lists transfers (may be empty)", async ({ page }) => {
   await expect(page.getByText(/new transfer/i)).toBeVisible();
 });
 
+test("owner inventory cells are clickable (Adjust modal trigger)", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel(/email/i).fill("owner@example.com");
+  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await page.waitForURL(/\/owner|\/$/, { timeout: 5_000 });
+  await page.goto("/owner/inventory");
+  // The "Click any cell to adjust" hint only renders for owner.
+  await expect(page.getByText(/Click any cell to adjust/i)).toBeVisible({ timeout: 5_000 });
+});
+
 test("login page renders the new aesthetic-pass structure", async ({ page }) => {
   await page.goto("/login");
 

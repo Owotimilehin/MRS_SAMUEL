@@ -11,6 +11,7 @@ import { productRoutes } from "./routes/products.js";
 import { branchRoutes } from "./routes/branches.js";
 import { productionRunRoutes } from "./routes/production-runs.js";
 import { stockRoutes } from "./routes/stock.js";
+import { inventoryRoutes } from "./routes/inventory.js";
 import { transferRoutes } from "./routes/transfers.js";
 import { reviewRoutes } from "./routes/review.js";
 import { factoryRoutes } from "./routes/factories.js";
@@ -74,6 +75,7 @@ export function buildApp(): Hono {
   app.route("/v1/branches", branchRoutes(db));
   app.route("/v1/production-runs", productionRunRoutes(db));
   app.route("/v1/stock", stockRoutes(db));
+  app.route("/v1/inventory", inventoryRoutes(db));
   app.route("/v1/transfers", transferRoutes(db));
   app.route("/v1/review", reviewRoutes(db));
   app.route("/v1/factories", factoryRoutes(db));

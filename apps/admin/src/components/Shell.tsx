@@ -25,6 +25,7 @@ const NAV_OWNER: NavLink[] = [
 ];
 const NAV_OPS: NavLink[] = [
   { to: "/factory/production-runs", label: "Production runs", icon: "🏭", cap: "production.manage" },
+  { to: "/factory/inventory", label: "Factory inventory", icon: "📦", cap: "stock.read" },
   { to: "/owner/transfers", label: "Transfers", icon: "🚚", cap: "transfers.create" },
 ];
 const NAV_ADMIN: NavLink[] = [

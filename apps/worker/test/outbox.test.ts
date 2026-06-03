@@ -109,3 +109,33 @@ describe("sale.paid_online message formatting", () => {
     expect(text).toContain("dispatch queued");
   });
 });
+
+describe("stock_adjustment.recorded message formatting", () => {
+  it("formats per-line delta with sign and includes the note", async () => {
+    const { format } = await import("../src/outbox.js");
+    const out = format({
+      eventType: "stock_adjustment.recorded",
+      payload: {
+        adjustment_id: "00000000-0000-0000-0000-000000000001",
+        location_type: "factory",
+        location_id: "00000000-0000-0000-0000-000000000002",
+        reason_code: "damaged",
+        reason_note: "Forklift accident",
+        items: [
+          {
+            product_id: "p1",
+            product_name: "Sunrise Blend",
+            old_quantity: 50,
+            new_quantity: 47,
+            delta: -3,
+          },
+        ],
+      },
+    });
+    expect(out.text).toContain("📒");
+    expect(out.text).toContain("Sunrise Blend");
+    expect(out.text).toContain("50 → 47 (-3)");
+    expect(out.text).toContain("Forklift accident");
+    expect(out.text).toContain("/owner/inventory");
+  });
+});

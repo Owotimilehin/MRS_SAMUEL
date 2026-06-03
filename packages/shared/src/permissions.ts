@@ -27,6 +27,7 @@ export const CAPABILITIES = [
   "daily_close.submit",
   "returns.create",
   "stock.adjust",
+  "stock.read",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -58,7 +59,7 @@ const MANAGER_CAPS: Capability[] = [
   "sales.view",
   "daily_close.submit",
   "returns.create",
-  "stock.adjust",
+  "stock.read",
 ];
 
 const BRANCH_STAFF_CAPS: Capability[] = ["pos.sell", "sales.view", "transfers.receive"];
