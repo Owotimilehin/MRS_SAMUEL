@@ -24,7 +24,7 @@ import { env } from "../env.js";
 
 const CreateOnlineOrder = z.object({
   branch_id: z.string().uuid(),
-  zone_name: z.string().min(1),
+  zone_name: z.string().min(1).optional(),
   delivery_fee_ngn: z.number().int().nonnegative(),
   customer: z.object({
     name: z.string().min(1),
@@ -210,23 +210,23 @@ export function publicOrderRoutes(db: DbClient) {
     // Outside Lagos has no Bolt last-mile: delivery is ₦0, arranged out-of-band.
     let deliveryFeeFinal = body.delivery_fee_ngn;
     if (outsideLagos) {
+      // No Bolt last-mile outside Lagos — delivery is ₦0, arranged out-of-band.
       deliveryFeeFinal = 0;
-    } else {
-      const zoneMatch = b.deliveryZones.find((z) => z.name === body.zone_name);
-      if (body.delivery_quote_id) {
-        const stored = await loadQuote(body.delivery_quote_id);
-        if (stored && stored.fee_ngn === body.delivery_fee_ngn) {
-          deliveryFeeFinal = stored.fee_ngn;
-        } else if (zoneMatch) {
-          deliveryFeeFinal = zoneMatch.fee_ngn;
-        } else {
-          throw new BusinessError("validation_failed", "invalid delivery zone", 422);
-        }
-      } else if (zoneMatch && zoneMatch.fee_ngn === body.delivery_fee_ngn) {
-        deliveryFeeFinal = zoneMatch.fee_ngn;
+    } else if (body.delivery_quote_id) {
+      // A locked live quote wins; otherwise the fee must match a configured
+      // zone fee (the static fallback the customer was shown).
+      const stored = await loadQuote(body.delivery_quote_id);
+      if (stored && stored.fee_ngn === body.delivery_fee_ngn) {
+        deliveryFeeFinal = stored.fee_ngn;
+      } else if (b.deliveryZones.some((z) => z.fee_ngn === body.delivery_fee_ngn)) {
+        deliveryFeeFinal = body.delivery_fee_ngn;
       } else {
-        throw new BusinessError("validation_failed", "invalid delivery zone", 422);
+        throw new BusinessError("validation_failed", "delivery fee not recognised", 422);
       }
+    } else if (b.deliveryZones.some((z) => z.fee_ngn === body.delivery_fee_ngn)) {
+      deliveryFeeFinal = body.delivery_fee_ngn;
+    } else {
+      throw new BusinessError("validation_failed", "delivery fee not recognised", 422);
     }
 
     // Decide where the line items come from. Explicit items[] wins (tests,
