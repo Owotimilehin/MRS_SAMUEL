@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { eq, and, gte, lte, isNull, ilike, or, inArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { businessExpense, vendor, type DbClient } from "@ms/db";
+import { businessExpense, vendor, recurringExpense, type DbClient } from "@ms/db";
+import { desc } from "drizzle-orm";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -99,6 +100,135 @@ async function shape(
 export function expenseRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth());
+
+  // ===== Recurring expenses =====
+  // Registered BEFORE /:id so the literal `/recurring` path wins.
+  const RecurringCreate = z
+    .object({
+      category_code: CATEGORY,
+      amount_ngn: z.number().int().positive(),
+      vendor_name: z.string().max(200).optional(),
+      description: z.string().max(2000).optional(),
+      reason_note: z.string().max(500).optional(),
+      day_of_month: z.number().int().min(1).max(31),
+      starts_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      ends_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      active: z.boolean().optional(),
+    })
+    .refine(
+      (v) => v.category_code !== "other_with_note" || (v.reason_note?.trim().length ?? 0) > 0,
+      { message: "reason_note required when category_code is other_with_note" },
+    );
+
+  const RecurringPatch = z.object({
+    category_code: CATEGORY.optional(),
+    amount_ngn: z.number().int().positive().optional(),
+    vendor_name: z.string().max(200).nullable().optional(),
+    description: z.string().max(2000).nullable().optional(),
+    reason_note: z.string().max(500).nullable().optional(),
+    day_of_month: z.number().int().min(1).max(31).optional(),
+    starts_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    ends_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    active: z.boolean().optional(),
+  });
+
+  function shapeRecurring(row: typeof recurringExpense.$inferSelect) {
+    return {
+      id: row.id,
+      category_code: row.categoryCode,
+      amount_ngn: row.amountNgn,
+      vendor_name: row.vendorName,
+      description: row.description,
+      reason_note: row.reasonNote,
+      day_of_month: row.dayOfMonth,
+      starts_on: row.startsOn,
+      ends_on: row.endsOn,
+      active: row.active,
+      created_at: row.createdAt.toISOString(),
+      updated_at: row.updatedAt.toISOString(),
+    };
+  }
+
+  r.get("/recurring", requireCapability("expenses.view"), async (c) => {
+    const rows = await db
+      .select()
+      .from(recurringExpense)
+      .orderBy(desc(recurringExpense.active), recurringExpense.dayOfMonth);
+    return c.json({ data: rows.map(shapeRecurring) });
+  });
+
+  r.post("/recurring", requireCapability("expenses.write"), async (c) => {
+    const body = RecurringCreate.parse(await c.req.json());
+    const auth = c.get("auth");
+    const [row] = await db
+      .insert(recurringExpense)
+      .values({
+        categoryCode: body.category_code,
+        amountNgn: body.amount_ngn,
+        vendorName: body.vendor_name?.trim() || null,
+        description: body.description?.trim() || null,
+        reasonNote: body.reason_note?.trim() || null,
+        dayOfMonth: body.day_of_month,
+        startsOn: body.starts_on,
+        endsOn: body.ends_on ?? null,
+        active: body.active ?? true,
+        recordedByUserId: auth.userId,
+      })
+      .returning();
+    if (!row) throw new BusinessError("internal_error", "insert returned no rows", 500);
+    await writeAudit(db, c, {
+      action: "recurring_expense.create",
+      entityType: "recurring_expense",
+      entityId: row.id,
+      after: { category_code: row.categoryCode, amount_ngn: row.amountNgn, day_of_month: row.dayOfMonth },
+    });
+    return c.json({ data: shapeRecurring(row) }, 201);
+  });
+
+  r.patch("/recurring/:id", requireCapability("expenses.write"), async (c) => {
+    const id = c.req.param("id");
+    const body = RecurringPatch.parse(await c.req.json());
+    const [current] = await db.select().from(recurringExpense).where(eq(recurringExpense.id, id));
+    if (!current) throw new BusinessError("not_found", "recurring expense not found", 404);
+    const finalCategory = body.category_code ?? current.categoryCode;
+    const finalNote = body.reason_note === undefined ? current.reasonNote : body.reason_note;
+    if (finalCategory === "other_with_note" && (finalNote?.trim().length ?? 0) === 0) {
+      throw new BusinessError("validation_failed", "reason_note required when category is other_with_note", 400);
+    }
+
+    const patch: Partial<typeof recurringExpense.$inferInsert> = { updatedAt: new Date() };
+    if (body.category_code !== undefined) patch.categoryCode = body.category_code;
+    if (body.amount_ngn !== undefined) patch.amountNgn = body.amount_ngn;
+    if (body.vendor_name !== undefined) patch.vendorName = body.vendor_name?.trim() || null;
+    if (body.description !== undefined) patch.description = body.description?.trim() || null;
+    if (body.reason_note !== undefined) patch.reasonNote = body.reason_note?.trim() || null;
+    if (body.day_of_month !== undefined) patch.dayOfMonth = body.day_of_month;
+    if (body.starts_on !== undefined) patch.startsOn = body.starts_on;
+    if (body.ends_on !== undefined) patch.endsOn = body.ends_on;
+    if (body.active !== undefined) patch.active = body.active;
+
+    const [row] = await db.update(recurringExpense).set(patch).where(eq(recurringExpense.id, id)).returning();
+    if (!row) throw new BusinessError("not_found", "recurring expense not found", 404);
+    await writeAudit(db, c, {
+      action: "recurring_expense.update",
+      entityType: "recurring_expense",
+      entityId: id,
+      after: patch,
+    });
+    return c.json({ data: shapeRecurring(row) });
+  });
+
+  r.delete("/recurring/:id", requireCapability("expenses.write"), async (c) => {
+    const id = c.req.param("id");
+    const [row] = await db.delete(recurringExpense).where(eq(recurringExpense.id, id)).returning();
+    if (!row) throw new BusinessError("not_found", "recurring expense not found", 404);
+    await writeAudit(db, c, {
+      action: "recurring_expense.delete",
+      entityType: "recurring_expense",
+      entityId: id,
+    });
+    return c.json({ data: { id, deleted: true } });
+  });
 
   r.get("/", requireCapability("expenses.view"), async (c) => {
     const url = new URL(c.req.url);

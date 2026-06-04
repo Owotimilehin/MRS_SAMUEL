@@ -12,6 +12,8 @@ export * from "./stock-ledger.js";
 export * from "./stock-adjustment.js";
 export * from "./business-expense.js";
 export * from "./vendor.js";
+export * from "./cron-run.js";
+export * from "./recurring-expense.js";
 export * from "./production-run.js";
 export * from "./stock-transfer.js";
 export * from "./outbox-event.js";

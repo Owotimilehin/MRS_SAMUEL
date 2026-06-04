@@ -6,6 +6,7 @@ import { checkLateCloses, isLateCloseWindow } from "./late-close.js";
 import { exportAuditLog, isAuditExportWindow } from "./jobs/audit-export.js";
 import { queuePaymentReminders } from "./jobs/unpaid-reminder.js";
 import { runDeliveryWatchdog } from "./jobs/delivery-watchdog.js";
+import { runDueCronJobs } from "./jobs/cron.js";
 
 const logger = pino({ base: { service: "ms-worker" } });
 
@@ -18,6 +19,7 @@ const SWEEP_INTERVAL_MS = 60_000; // sweep expired reservations every minute
 const LATE_CLOSE_INTERVAL_MS = 60 * 60 * 1000; // check hourly
 const REMINDER_INTERVAL_MS = 5 * 60_000; // check for unpaid orders every 5 minutes
 const DELIVERY_WATCHDOG_MS = 60_000; // delivery retry/escalation every minute
+const CRON_CHECK_INTERVAL_MS = 15 * 60_000; // cron poll every 15 minutes
 
 let stopping = false;
 function shutdown(reason: string): void {
@@ -32,6 +34,7 @@ let lastSweepAt = 0;
 let lastLateCheckAt = 0;
 let lastReminderAt = 0;
 let lastDeliveryWatchdogAt = 0;
+let lastCronCheckAt = 0;
 let lastAuditExportDate: string | null = null;
 
 async function loop(): Promise<void> {
@@ -69,6 +72,17 @@ async function loop(): Promise<void> {
         const actions = await runDeliveryWatchdog(db);
         if (actions > 0) logger.info({ actions }, "delivery watchdog took action");
         lastDeliveryWatchdogAt = now;
+      }
+
+      // Cron jobs: monthly P&L digest + recurring expense sweep. Idempotent
+      // via the cron_run table so a restart never double-fires.
+      if (now - lastCronCheckAt > CRON_CHECK_INTERVAL_MS) {
+        try {
+          await runDueCronJobs(db);
+        } catch (err) {
+          logger.error({ err }, "cron jobs error");
+        }
+        lastCronCheckAt = now;
       }
 
       // Nightly audit-log export to R2. Skips itself if env not configured.

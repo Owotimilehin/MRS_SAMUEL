@@ -61,7 +61,7 @@ function shiftMonth(month: string, delta: number): string {
 export function BookkeepingPage(): JSX.Element {
   const user = useAuthUser();
   const canWrite = user.capabilities.includes("expenses.write");
-  const [tab, setTab] = useState<"expenses" | "pnl">("expenses");
+  const [tab, setTab] = useState<"expenses" | "pnl" | "recurring">("expenses");
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [pnl, setPnl] = useState<Pnl | null>(null);
@@ -127,6 +127,13 @@ export function BookkeepingPage(): JSX.Element {
             onClick={() => setTab("pnl")}
           >
             P&L
+          </button>
+          <button
+            type="button"
+            className={tab === "recurring" ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+            onClick={() => setTab("recurring")}
+          >
+            Recurring
           </button>
         </div>
       }
@@ -276,8 +283,10 @@ export function BookkeepingPage(): JSX.Element {
             {expenses.length} entr{expenses.length === 1 ? "y" : "ies"}.
           </p>
         </>
-      ) : (
+      ) : tab === "pnl" ? (
         <PnlPanel pnl={pnl} />
+      ) : (
+        <RecurringPanel canWrite={canWrite} />
       )}
 
       {flash && (
@@ -749,6 +758,293 @@ function ExpenseModal({
               disabled={submitting || uploadingReceipt}
             >
               {submitting ? "Saving…" : target ? "Save changes" : "Add expense"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+interface Recurring {
+  id: string;
+  category_code: string;
+  amount_ngn: number;
+  vendor_name: string | null;
+  description: string | null;
+  reason_note: string | null;
+  day_of_month: number;
+  starts_on: string;
+  ends_on: string | null;
+  active: boolean;
+}
+
+function RecurringPanel({ canWrite }: { canWrite: boolean }): JSX.Element {
+  const [rows, setRows] = useState<Recurring[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<Recurring | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+
+  async function load(): Promise<void> {
+    setLoading(true);
+    try {
+      const res = await api<{ data: Recurring[] }>(`/expenses/recurring`);
+      setRows(res.data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function handleDelete(id: string): Promise<void> {
+    if (!confirm("Delete this recurring schedule?")) return;
+    await api(`/expenses/recurring/${id}`, { method: "DELETE" });
+    setRows((vs) => vs.filter((v) => v.id !== id));
+  }
+
+  async function toggleActive(r: Recurring): Promise<void> {
+    await api(`/expenses/recurring/${r.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ active: !r.active }),
+    });
+    setRows((vs) => vs.map((v) => (v.id === r.id ? { ...v, active: !v.active } : v)));
+  }
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <p style={{ color: "var(--ink-soft)", fontSize: 13, margin: 0 }}>
+          Schedules that the worker materialises into a real expense each month on the matching day.
+        </p>
+        {canWrite && (
+          <button type="button" className="btn btn--primary btn--sm" onClick={() => setShowAdd(true)}>
+            + Add schedule
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div className="card" style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <InlineLoader />
+      ) : rows.length === 0 ? (
+        <div className="empty">No recurring schedules yet.</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Day</th>
+                <th>Category</th>
+                <th>Vendor</th>
+                <th className="table__num">Amount</th>
+                <th>Active</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.day_of_month}</td>
+                  <td>{labelFor(r.category_code)}</td>
+                  <td>{r.vendor_name ?? "—"}</td>
+                  <td className="table__num" style={{ fontWeight: 700 }}>{ngn(r.amount_ngn)}</td>
+                  <td>
+                    {canWrite ? (
+                      <button
+                        type="button"
+                        className="btn btn--subtle btn--sm"
+                        onClick={() => void toggleActive(r)}
+                      >
+                        {r.active ? "On" : "Off"}
+                      </button>
+                    ) : r.active ? "On" : "Off"}
+                  </td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    {canWrite && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn--subtle btn--sm"
+                          onClick={() => setEditTarget(r)}
+                          style={{ marginRight: 4 }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--subtle btn--sm"
+                          onClick={() => void handleDelete(r.id)}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {(showAdd || editTarget) && (
+        <RecurringModal
+          target={editTarget}
+          onClose={() => {
+            setShowAdd(false);
+            setEditTarget(null);
+          }}
+          onSaved={async () => {
+            setShowAdd(false);
+            setEditTarget(null);
+            await load();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function RecurringModal({
+  target,
+  onClose,
+  onSaved,
+}: {
+  target: Recurring | null;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}): JSX.Element {
+  const [categoryCode, setCategoryCode] = useState(target?.category_code ?? "rent");
+  const [amount, setAmount] = useState<number>(target?.amount_ngn ?? 0);
+  const [vendor, setVendor] = useState(target?.vendor_name ?? "");
+  const [description, setDescription] = useState(target?.description ?? "");
+  const [reasonNote, setReasonNote] = useState(target?.reason_note ?? "");
+  const [dayOfMonth, setDayOfMonth] = useState<number>(target?.day_of_month ?? 1);
+  const [startsOn, setStartsOn] = useState(target?.starts_on ?? new Date().toISOString().slice(0, 10));
+  const [endsOn, setEndsOn] = useState(target?.ends_on ?? "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (categoryCode === "other_with_note" && reasonNote.trim().length === 0) {
+      setError("Add a note for 'Other'");
+      return;
+    }
+    if (amount <= 0) {
+      setError("Amount must be greater than 0");
+      return;
+    }
+    if (dayOfMonth < 1 || dayOfMonth > 31) {
+      setError("Day must be 1–31");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const payload = {
+        category_code: categoryCode,
+        amount_ngn: Math.round(amount),
+        vendor_name: vendor.trim() || undefined,
+        description: description.trim() || undefined,
+        reason_note: reasonNote.trim() || undefined,
+        day_of_month: dayOfMonth,
+        starts_on: startsOn,
+        ends_on: endsOn || null,
+      };
+      if (target) {
+        await api(`/expenses/recurring/${target.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+      } else {
+        await api(`/expenses/recurring`, { method: "POST", body: JSON.stringify(payload) });
+      }
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(20,24,31,0.45)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 50,
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="card"
+        style={{ width: "100%", maxWidth: 480, background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header style={{ marginBottom: 14 }}>
+          <h2 className="t-h2">{target ? "Edit recurring schedule" : "Add recurring schedule"}</h2>
+        </header>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div className="field">
+            <label className="field__label" htmlFor="rec-cat">Category</label>
+            <select id="rec-cat" className="select" value={categoryCode} onChange={(e) => setCategoryCode(e.target.value)}>
+              {CATEGORIES.map((c) => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="rec-amt">Amount (₦)</label>
+            <input id="rec-amt" className="input" type="number" min={1} value={amount} onChange={(e) => setAmount(Number(e.target.value))} style={{ textAlign: "right" }} required />
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="rec-dom">Day of month (1–31)</label>
+            <input id="rec-dom" className="input" type="number" min={1} max={31} value={dayOfMonth} onChange={(e) => setDayOfMonth(Number(e.target.value))} required />
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="rec-vendor">Vendor (optional)</label>
+            <input id="rec-vendor" className="input" value={vendor} onChange={(e) => setVendor(e.target.value)} />
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="rec-desc">Description (optional)</label>
+            <input id="rec-desc" className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          {categoryCode === "other_with_note" && (
+            <div className="field">
+              <label className="field__label" htmlFor="rec-note">Notes</label>
+              <textarea id="rec-note" className="textarea" rows={2} value={reasonNote} onChange={(e) => setReasonNote(e.target.value)} />
+            </div>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className="field">
+              <label className="field__label" htmlFor="rec-start">Starts on</label>
+              <input id="rec-start" className="input" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} required />
+            </div>
+            <div className="field">
+              <label className="field__label" htmlFor="rec-end">Ends on (optional)</label>
+              <input id="rec-end" className="input" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
+            </div>
+          </div>
+          {error && <div className="field__error">{error}</div>}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+            <button type="button" className="btn btn--subtle" onClick={onClose} disabled={submitting}>Cancel</button>
+            <button type="submit" className="btn btn--primary" disabled={submitting}>
+              {submitting ? "Saving…" : target ? "Save changes" : "Add schedule"}
             </button>
           </div>
         </form>
