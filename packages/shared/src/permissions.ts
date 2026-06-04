@@ -28,6 +28,8 @@ export const CAPABILITIES = [
   "returns.create",
   "stock.adjust",
   "stock.read",
+  "expenses.write",
+  "expenses.view",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -43,6 +45,7 @@ const ADMIN_CAPS: Capability[] = [
   "devices.view",
   "customers.view",
   "orders.view",
+  "expenses.view",
 ];
 
 const MANAGER_CAPS: Capability[] = [

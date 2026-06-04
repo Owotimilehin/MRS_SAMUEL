@@ -12,6 +12,7 @@ import { branchRoutes } from "./routes/branches.js";
 import { productionRunRoutes } from "./routes/production-runs.js";
 import { stockRoutes } from "./routes/stock.js";
 import { inventoryRoutes } from "./routes/inventory.js";
+import { expenseRoutes } from "./routes/expenses.js";
 import { transferRoutes } from "./routes/transfers.js";
 import { reviewRoutes } from "./routes/review.js";
 import { factoryRoutes } from "./routes/factories.js";
@@ -84,6 +85,7 @@ export function buildApp(): Hono {
   app.route("/v1/branches/:branchId/returns", returnRoutes(db));
   app.route("/v1/branches/:branchId/daily-close", dailyCloseRoutes(db));
   app.route("/v1/reports", reportRoutes(db));
+  app.route("/v1/expenses", expenseRoutes(db));
   app.route("/v1/telemetry", telemetryRoutes(db));
   app.route("/v1/sync", syncRoutes(db));
   app.route("/v1/admin/users", adminUserRoutes(db));

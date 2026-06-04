@@ -56,6 +56,7 @@ const BranchDetailPage = lazyNamed<{ branchId: string }>(
 );
 const FactoriesPage = lazyNamed(() => import("./routes/owner/factories.js"), "FactoriesPage");
 const InventoryPage = lazyNamed(() => import("./routes/owner/inventory.js"), "InventoryPage");
+const BookkeepingPage = lazyNamed(() => import("./routes/owner/bookkeeping.js"), "BookkeepingPage");
 const UsersPage = lazyNamed(() => import("./routes/owner/users.js"), "UsersPage");
 const AuditLogPage = lazyNamed(() => import("./routes/owner/audit-log.js"), "AuditLogPage");
 const BlogPage = lazyNamed(() => import("./routes/owner/blog.js"), "BlogPage");
@@ -356,6 +357,11 @@ const inventoryRoute = createRoute({
   path: "/owner/inventory",
   component: () => guarded(<L><InventoryPage /></L>),
 });
+const bookkeepingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/bookkeeping",
+  component: () => guarded(<L><BookkeepingPage /></L>),
+});
 const usersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/owner/users",
@@ -532,6 +538,7 @@ const routeTree = rootRoute.addChildren([
   branchDetailRoute,
   factoriesRoute,
   inventoryRoute,
+  bookkeepingRoute,
   usersRoute,
   auditLogRoute,
   blogRoute,

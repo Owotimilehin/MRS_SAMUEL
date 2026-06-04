@@ -108,5 +108,90 @@ export function reportRoutes(db: DbClient) {
     return c.json({ data: rows });
   });
 
+  // Monthly P&L. Revenue from sale_order (paid/handed_over/delivered) and
+  // sale_return (completed) within the month, net of refunds; expenses from
+  // business_expense (excludes soft-deleted). All in NGN.
+  r.get("/pnl", async (c) => {
+    const month = c.req.query("month") ?? new Date().toISOString().slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return c.json(
+        { error: { code: "validation_failed", message: "month must be YYYY-MM" } },
+        400,
+      );
+    }
+    const from = `${month}-01`;
+    const [yy, mm] = month.split("-").map((s) => Number(s));
+    const nextMonth =
+      mm === 12 ? `${yy! + 1}-01-01` : `${yy}-${String(mm! + 1).padStart(2, "0")}-01`;
+
+    const revRow = await db.execute<{ revenue_ngn: number; refunds_ngn: number }>(sql`
+      WITH sales AS (
+        SELECT total_ngn FROM sale_order
+        WHERE status IN ('paid','handed_over','delivered')
+          AND created_at_local::date >= ${from}::date
+          AND created_at_local::date <  ${nextMonth}::date
+      ),
+      refunds AS (
+        SELECT refund_amount_ngn FROM sale_return
+        WHERE status = 'completed'
+          AND created_at::date >= ${from}::date
+          AND created_at::date <  ${nextMonth}::date
+      )
+      SELECT
+        COALESCE((SELECT SUM(total_ngn) FROM sales), 0)::int AS revenue_ngn,
+        COALESCE((SELECT SUM(refund_amount_ngn) FROM refunds), 0)::int AS refunds_ngn
+    `);
+    const rev = revRow[0] ?? { revenue_ngn: 0, refunds_ngn: 0 };
+
+    const expRows = await db.execute<{
+      category_code: string;
+      amount_ngn: number;
+      cnt: number;
+    }>(sql`
+      SELECT category_code,
+             COALESCE(SUM(amount_ngn), 0)::int AS amount_ngn,
+             COUNT(*)::int AS cnt
+      FROM business_expense
+      WHERE deleted_at IS NULL
+        AND expense_date >= ${from}::date
+        AND expense_date <  ${nextMonth}::date
+      GROUP BY category_code
+      ORDER BY amount_ngn DESC
+    `);
+
+    const LABEL: Record<string, string> = {
+      raw_materials: "Raw materials",
+      packaging: "Packaging",
+      utilities: "Utilities",
+      transport: "Transport",
+      salaries: "Salaries",
+      rent: "Rent",
+      marketing: "Marketing",
+      equipment: "Equipment",
+      regulatory: "Regulatory",
+      other_with_note: "Other",
+    };
+    const byCat = expRows.map((row) => ({
+      category_code: row.category_code,
+      label: LABEL[row.category_code] ?? row.category_code,
+      amount_ngn: Number(row.amount_ngn),
+    }));
+    const totalExp = byCat.reduce((s, r) => s + r.amount_ngn, 0);
+    const totalCnt = expRows.reduce((s, r) => s + Number(r.cnt), 0);
+    const netRev = Number(rev.revenue_ngn) - Number(rev.refunds_ngn);
+    return c.json({
+      data: {
+        month,
+        revenue_ngn: Number(rev.revenue_ngn),
+        refunds_ngn: Number(rev.refunds_ngn),
+        net_revenue_ngn: netRev,
+        expenses_total_ngn: totalExp,
+        expenses_by_category: byCat,
+        expense_count: totalCnt,
+        net_ngn: netRev - totalExp,
+      },
+    });
+  });
+
   return r;
 }

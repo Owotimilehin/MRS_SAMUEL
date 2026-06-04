@@ -42,6 +42,17 @@ test("owner inventory cells are clickable (Adjust modal trigger)", async ({ page
   await expect(page.getByText(/Click any cell to adjust/i)).toBeVisible({ timeout: 5_000 });
 });
 
+test("owner sees the Bookkeeping page", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel(/email/i).fill("owner@example.com");
+  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await page.waitForURL(/\/owner|\/$/, { timeout: 5_000 });
+  await page.goto("/owner/bookkeeping");
+  await expect(page.getByRole("button", { name: /add expense/i })).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("button", { name: /^P&L$/i })).toBeVisible();
+});
+
 test("login page renders the new aesthetic-pass structure", async ({ page }) => {
   await page.goto("/login");
 
