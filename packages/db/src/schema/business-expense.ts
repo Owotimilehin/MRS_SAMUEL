@@ -1,5 +1,6 @@
 import { pgTable, uuid, pgEnum, text, integer, date, timestamp, index } from "drizzle-orm/pg-core";
 import { adminUser } from "./admin-user.js";
+import { vendor } from "./vendor.js";
 
 export const businessExpenseCategory = pgEnum("business_expense_category", [
   "raw_materials",
@@ -26,6 +27,7 @@ export const businessExpense = pgTable(
     categoryCode: businessExpenseCategory("category_code").notNull(),
     amountNgn: integer("amount_ngn").notNull(),
     vendorName: text("vendor_name"),
+    vendorId: uuid("vendor_id").references(() => vendor.id),
     description: text("description"),
     reasonNote: text("reason_note"),
     receiptUrl: text("receipt_url"),

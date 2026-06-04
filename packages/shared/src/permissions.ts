@@ -63,6 +63,7 @@ const MANAGER_CAPS: Capability[] = [
   "daily_close.submit",
   "returns.create",
   "stock.read",
+  "stock.adjust",
 ];
 
 const BRANCH_STAFF_CAPS: Capability[] = ["pos.sell", "sales.view", "transfers.receive"];

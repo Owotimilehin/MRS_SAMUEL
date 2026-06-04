@@ -735,6 +735,16 @@ button { font: inherit; }
   color: var(--ink-soft);
   margin: 22px 0 0;
 }
+.login__card-foot {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--ink-soft);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+}
 
 /* ── Motion ── */
 @keyframes ms-login-card-in {

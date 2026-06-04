@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import type { DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
+import { toCsv } from "../lib/csv.js";
 
 export function reportRoutes(db: DbClient) {
   const r = new Hono();
@@ -179,6 +180,30 @@ export function reportRoutes(db: DbClient) {
     const totalExp = byCat.reduce((s, r) => s + r.amount_ngn, 0);
     const totalCnt = expRows.reduce((s, r) => s + Number(r.cnt), 0);
     const netRev = Number(rev.revenue_ngn) - Number(rev.refunds_ngn);
+    const net = netRev - totalExp;
+
+    if (c.req.query("format") === "csv") {
+      const lines: Array<readonly unknown[]> = [];
+      lines.push([`Mrs. Samuel - P&L for ${month}`, "", ""]);
+      lines.push(["", "", ""]);
+      lines.push(["Section", "Item", "Amount (NGN)"]);
+      lines.push(["Revenue", "Sales", Number(rev.revenue_ngn)]);
+      lines.push(["Revenue", "Refunds", -Number(rev.refunds_ngn)]);
+      lines.push(["Revenue", "Net revenue", netRev]);
+      lines.push(["", "", ""]);
+      lines.push(["Section", "Category", "Amount (NGN)"]);
+      for (const cat of byCat) {
+        lines.push(["Expenses", cat.label, cat.amount_ngn]);
+      }
+      lines.push(["Expenses", "Total expenses", totalExp]);
+      lines.push(["", "", ""]);
+      lines.push(["Net", "Net (Revenue - Expenses)", net]);
+      const filename = `pnl-${month}.csv`;
+      c.header("Content-Type", "text/csv; charset=utf-8");
+      c.header("Content-Disposition", `attachment; filename="${filename}"`);
+      return c.body(toCsv(["", "", ""], lines));
+    }
+
     return c.json({
       data: {
         month,
@@ -188,7 +213,7 @@ export function reportRoutes(db: DbClient) {
         expenses_total_ngn: totalExp,
         expenses_by_category: byCat,
         expense_count: totalCnt,
-        net_ngn: netRev - totalExp,
+        net_ngn: net,
       },
     });
   });

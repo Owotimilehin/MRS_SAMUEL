@@ -1,22 +1,37 @@
 import { Hono } from "hono";
 import { eq, and, gte, lte, isNull, ilike, or, inArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { businessExpense, type DbClient } from "@ms/db";
+import { businessExpense, vendor, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 import { presignGet, presignPut } from "../lib/r2.js";
+import { toCsv } from "../lib/csv.js";
 
 const CATEGORY = z.enum([
   "raw_materials","packaging","utilities","transport","salaries",
   "rent","marketing","equipment","regulatory","other_with_note",
 ]);
 
+const CATEGORY_LABEL: Record<string, string> = {
+  raw_materials: "Raw materials",
+  packaging: "Packaging",
+  utilities: "Utilities",
+  transport: "Transport",
+  salaries: "Salaries",
+  rent: "Rent",
+  marketing: "Marketing",
+  equipment: "Equipment",
+  regulatory: "Regulatory",
+  other_with_note: "Other",
+};
+
 const CreateBody = z
   .object({
     expense_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     category_code: CATEGORY,
     amount_ngn: z.number().int().positive(),
+    vendor_id: z.string().uuid().nullable().optional(),
     vendor_name: z.string().max(200).optional(),
     description: z.string().max(2000).optional(),
     reason_note: z.string().max(500).optional(),
@@ -31,6 +46,7 @@ const PatchBody = z.object({
   expense_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   category_code: CATEGORY.optional(),
   amount_ngn: z.number().int().positive().optional(),
+  vendor_id: z.string().uuid().nullable().optional(),
   vendor_name: z.string().max(200).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
   reason_note: z.string().max(500).nullable().optional(),
@@ -48,6 +64,7 @@ interface RowOut {
   expense_date: string;
   category_code: string;
   amount_ngn: number;
+  vendor_id: string | null;
   vendor_name: string | null;
   description: string | null;
   reason_note: string | null;
@@ -57,13 +74,19 @@ interface RowOut {
   updated_at: string;
 }
 
-async function shape(row: typeof businessExpense.$inferSelect): Promise<RowOut> {
+async function shape(
+  row: typeof businessExpense.$inferSelect,
+  resolvedVendorName?: string | null,
+): Promise<RowOut> {
   return {
     id: row.id,
     expense_date: row.expenseDate,
     category_code: row.categoryCode,
     amount_ngn: row.amountNgn,
-    vendor_name: row.vendorName,
+    vendor_id: row.vendorId,
+    // Prefer the joined vendor.name when we have a vendor_id; fall back to
+    // the legacy free-text vendor_name column.
+    vendor_name: row.vendorId ? (resolvedVendorName ?? null) : row.vendorName,
     description: row.description,
     reason_note: row.reasonNote,
     receipt_url: await presignGet(row.receiptUrl),
@@ -83,6 +106,7 @@ export function expenseRoutes(db: DbClient) {
     const to = url.searchParams.get("to") ?? new Date().toISOString().slice(0, 10);
     const categories = url.searchParams.getAll("category").filter(Boolean);
     const q = url.searchParams.get("q")?.trim() ?? "";
+    const format = url.searchParams.get("format");
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
     const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? 50)));
 
@@ -104,32 +128,71 @@ export function expenseRoutes(db: DbClient) {
       const orCond = or(
         ilike(businessExpense.vendorName, like),
         ilike(businessExpense.description, like),
+        ilike(vendor.name, like),
       );
       if (orCond) conds.push(orCond);
     }
 
     const where = and(...conds);
+
+    // CSV: no pagination, fetch all matching rows.
+    if (format === "csv") {
+      const rows = await db
+        .select({
+          expense: businessExpense,
+          vendor_name: vendor.name,
+        })
+        .from(businessExpense)
+        .leftJoin(vendor, eq(vendor.id, businessExpense.vendorId))
+        .where(where)
+        .orderBy(sql`${businessExpense.expenseDate} ASC, ${businessExpense.createdAt} ASC`);
+      const header = ["Date", "Category", "Vendor", "Description", "Amount (NGN)", "Notes"];
+      const data = rows.map((r) => {
+        const e = r.expense;
+        const vname = e.vendorId ? r.vendor_name : e.vendorName;
+        return [
+          e.expenseDate,
+          CATEGORY_LABEL[e.categoryCode] ?? e.categoryCode,
+          vname ?? "",
+          e.description ?? "",
+          e.amountNgn,
+          e.reasonNote ?? "",
+        ];
+      });
+      const filename = `expenses-${from}_${to}.csv`;
+      c.header("Content-Type", "text/csv; charset=utf-8");
+      c.header("Content-Disposition", `attachment; filename="${filename}"`);
+      return c.body(toCsv(header, data));
+    }
+
     const totalRow = await db
       .select({ total: sql<number>`COUNT(*)::int` })
       .from(businessExpense)
+      .leftJoin(vendor, eq(vendor.id, businessExpense.vendorId))
       .where(where);
     const total = Number(totalRow[0]?.total ?? 0);
+
     const rows = await db
-      .select()
+      .select({ expense: businessExpense, vendor_name: vendor.name })
       .from(businessExpense)
+      .leftJoin(vendor, eq(vendor.id, businessExpense.vendorId))
       .where(where)
       .orderBy(sql`${businessExpense.expenseDate} DESC, ${businessExpense.createdAt} DESC`)
       .limit(pageSize)
       .offset((page - 1) * pageSize);
-    const data = await Promise.all(rows.map(shape));
+    const data = await Promise.all(rows.map((r) => shape(r.expense, r.vendor_name)));
     return c.json({ data, pagination: { page, page_size: pageSize, total } });
   });
 
   r.get("/:id", requireCapability("expenses.view"), async (c) => {
     const id = c.req.param("id");
-    const [row] = await db.select().from(businessExpense).where(eq(businessExpense.id, id));
+    const [row] = await db
+      .select({ expense: businessExpense, vendor_name: vendor.name })
+      .from(businessExpense)
+      .leftJoin(vendor, eq(vendor.id, businessExpense.vendorId))
+      .where(eq(businessExpense.id, id));
     if (!row) throw new BusinessError("not_found", "expense not found", 404);
-    return c.json({ data: await shape(row) });
+    return c.json({ data: await shape(row.expense, row.vendor_name) });
   });
 
   r.post("/", requireCapability("expenses.write"), async (c) => {
@@ -141,7 +204,9 @@ export function expenseRoutes(db: DbClient) {
         expenseDate: body.expense_date,
         categoryCode: body.category_code,
         amountNgn: body.amount_ngn,
-        vendorName: body.vendor_name?.trim() || null,
+        vendorId: body.vendor_id ?? null,
+        // Only persist free-text vendor_name when no vendor_id is provided.
+        vendorName: body.vendor_id ? null : (body.vendor_name?.trim() || null),
         description: body.description?.trim() || null,
         reasonNote: body.reason_note?.trim() || null,
         receiptUrl: body.receipt_url?.trim() || null,
@@ -149,13 +214,18 @@ export function expenseRoutes(db: DbClient) {
       })
       .returning();
     if (!row) throw new BusinessError("internal_error", "insert returned no rows", 500);
+    let resolvedName: string | null = null;
+    if (row.vendorId) {
+      const [v] = await db.select({ name: vendor.name }).from(vendor).where(eq(vendor.id, row.vendorId));
+      resolvedName = v?.name ?? null;
+    }
     await writeAudit(db, c, {
       action: "business_expense.create",
       entityType: "business_expense",
       entityId: row.id,
       after: { category_code: row.categoryCode, amount_ngn: row.amountNgn },
     });
-    return c.json({ data: await shape(row) }, 201);
+    return c.json({ data: await shape(row, resolvedName) }, 201);
   });
 
   r.patch("/:id", requireCapability("expenses.write"), async (c) => {
@@ -174,7 +244,14 @@ export function expenseRoutes(db: DbClient) {
     if (body.expense_date !== undefined) patch.expenseDate = body.expense_date;
     if (body.category_code !== undefined) patch.categoryCode = body.category_code;
     if (body.amount_ngn !== undefined) patch.amountNgn = body.amount_ngn;
-    if (body.vendor_name !== undefined) patch.vendorName = body.vendor_name?.trim() || null;
+    if (body.vendor_id !== undefined) {
+      patch.vendorId = body.vendor_id;
+      // Switching to a vendor record clears the legacy free-text fallback.
+      if (body.vendor_id) patch.vendorName = null;
+    }
+    if (body.vendor_name !== undefined && !body.vendor_id) {
+      patch.vendorName = body.vendor_name?.trim() || null;
+    }
     if (body.description !== undefined) patch.description = body.description?.trim() || null;
     if (body.reason_note !== undefined) patch.reasonNote = body.reason_note?.trim() || null;
     if (body.receipt_url !== undefined) patch.receiptUrl = body.receipt_url?.trim() || null;
@@ -185,13 +262,18 @@ export function expenseRoutes(db: DbClient) {
       .where(eq(businessExpense.id, id))
       .returning();
     if (!row) throw new BusinessError("not_found", "expense not found", 404);
+    let resolvedName: string | null = null;
+    if (row.vendorId) {
+      const [v] = await db.select({ name: vendor.name }).from(vendor).where(eq(vendor.id, row.vendorId));
+      resolvedName = v?.name ?? null;
+    }
     await writeAudit(db, c, {
       action: "business_expense.update",
       entityType: "business_expense",
       entityId: id,
       after: patch,
     });
-    return c.json({ data: await shape(row) });
+    return c.json({ data: await shape(row, resolvedName) });
   });
 
   r.delete("/:id", requireCapability("expenses.write"), async (c) => {

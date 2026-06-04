@@ -57,6 +57,8 @@ const BranchDetailPage = lazyNamed<{ branchId: string }>(
 const FactoriesPage = lazyNamed(() => import("./routes/owner/factories.js"), "FactoriesPage");
 const InventoryPage = lazyNamed(() => import("./routes/owner/inventory.js"), "InventoryPage");
 const BookkeepingPage = lazyNamed(() => import("./routes/owner/bookkeeping.js"), "BookkeepingPage");
+const AdjustmentsPage = lazyNamed(() => import("./routes/owner/adjustments.js"), "AdjustmentsPage");
+const VendorsPage = lazyNamed(() => import("./routes/owner/vendors.js"), "VendorsPage");
 const UsersPage = lazyNamed(() => import("./routes/owner/users.js"), "UsersPage");
 const AuditLogPage = lazyNamed(() => import("./routes/owner/audit-log.js"), "AuditLogPage");
 const BlogPage = lazyNamed(() => import("./routes/owner/blog.js"), "BlogPage");
@@ -362,6 +364,16 @@ const bookkeepingRoute = createRoute({
   path: "/owner/bookkeeping",
   component: () => guarded(<L><BookkeepingPage /></L>),
 });
+const adjustmentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/adjustments",
+  component: () => guarded(<L><AdjustmentsPage /></L>),
+});
+const vendorsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/vendors",
+  component: () => guarded(<L><VendorsPage /></L>),
+});
 const usersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/owner/users",
@@ -539,6 +551,8 @@ const routeTree = rootRoute.addChildren([
   factoriesRoute,
   inventoryRoute,
   bookkeepingRoute,
+  adjustmentsRoute,
+  vendorsRoute,
   usersRoute,
   auditLogRoute,
   blogRoute,

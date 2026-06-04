@@ -26,6 +26,7 @@ interface Expense {
   expense_date: string;
   category_code: string;
   amount_ngn: number;
+  vendor_id: string | null;
   vendor_name: string | null;
   description: string | null;
   reason_note: string | null;
@@ -163,6 +164,31 @@ export function BookkeepingPage(): JSX.Element {
           Today
         </button>
         <div style={{ flex: 1 }} />
+        {tab === "expenses" && (
+          <button
+            type="button"
+            className="btn btn--subtle btn--sm"
+            onClick={() => {
+              const { from, to } = monthBounds(month);
+              window.open(`/v1/expenses?from=${from}&to=${to}&format=csv`, "_blank");
+            }}
+            style={{ marginRight: 6 }}
+          >
+            ⬇ CSV
+          </button>
+        )}
+        {tab === "pnl" && (
+          <button
+            type="button"
+            className="btn btn--subtle btn--sm"
+            onClick={() => {
+              window.open(`/v1/reports/pnl?month=${month}&format=csv`, "_blank");
+            }}
+            style={{ marginRight: 6 }}
+          >
+            ⬇ CSV
+          </button>
+        )}
         {tab === "expenses" && canWrite && (
           <button
             type="button"
@@ -408,12 +434,35 @@ function ExpenseModal({
   const [categoryCode, setCategoryCode] = useState(target?.category_code ?? "raw_materials");
   const [amount, setAmount] = useState<number>(target?.amount_ngn ?? 0);
   const [vendor, setVendor] = useState(target?.vendor_name ?? "");
+  const [vendorId, setVendorId] = useState<string | null>(target?.vendor_id ?? null);
+  const [vendorOptions, setVendorOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [vendorOpen, setVendorOpen] = useState(false);
   const [description, setDescription] = useState(target?.description ?? "");
   const [reasonNote, setReasonNote] = useState(target?.reason_note ?? "");
   const [receiptKey, setReceiptKey] = useState<string | null>(target?.receipt_url ?? null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Debounced vendor search as the owner types.
+  useEffect(() => {
+    if (vendorId && vendor && vendorOptions.find((o) => o.id === vendorId)?.name === vendor) {
+      // Selection still matches; no search.
+      return;
+    }
+    const q = vendor.trim();
+    if (q.length === 0) {
+      setVendorOptions([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      void api<{ data: Array<{ id: string; name: string }> }>(`/vendors?q=${encodeURIComponent(q)}`)
+        .then((r) => setVendorOptions(r.data))
+        .catch(() => setVendorOptions([]));
+    }, 200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendor]);
 
   async function handleReceiptFile(file: File): Promise<void> {
     setUploadingReceipt(true);
@@ -457,11 +506,29 @@ function ExpenseModal({
     setSubmitting(true);
     setError(null);
     try {
+      // If the user typed a vendor name but didn't pick a record AND it doesn't
+      // exactly match an existing option, create the vendor first so we always
+      // attach a structured vendor_id when there is text.
+      let effectiveVendorId = vendorId;
+      const typed = vendor.trim();
+      if (!effectiveVendorId && typed.length > 0) {
+        const exact = vendorOptions.find((o) => o.name.toLowerCase() === typed.toLowerCase());
+        if (exact) {
+          effectiveVendorId = exact.id;
+        } else {
+          const created = await api<{ data: { id: string } }>(`/vendors`, {
+            method: "POST",
+            body: JSON.stringify({ name: typed }),
+          });
+          effectiveVendorId = created.data.id;
+        }
+      }
       const payload = {
         expense_date: expenseDate,
         category_code: categoryCode,
         amount_ngn: Math.round(amount),
-        vendor_name: vendor.trim() || undefined,
+        vendor_id: effectiveVendorId ?? null,
+        vendor_name: effectiveVendorId ? undefined : (typed || undefined),
         description: description.trim() || undefined,
         reason_note: reasonNote.trim() || undefined,
         receipt_url: receiptKey ?? undefined,
@@ -556,7 +623,7 @@ function ExpenseModal({
               required
             />
           </div>
-          <div className="field">
+          <div className="field" style={{ position: "relative" }}>
             <label className="field__label" htmlFor="ex-vendor">
               Vendor (optional)
             </label>
@@ -564,9 +631,63 @@ function ExpenseModal({
               id="ex-vendor"
               className="input"
               value={vendor}
-              onChange={(e) => setVendor(e.target.value)}
-              placeholder="e.g. Adebayo orange market"
+              onChange={(e) => {
+                setVendor(e.target.value);
+                setVendorId(null);
+                setVendorOpen(true);
+              }}
+              onFocus={() => setVendorOpen(true)}
+              onBlur={() => setTimeout(() => setVendorOpen(false), 150)}
+              placeholder="Search or type a new vendor"
+              autoComplete="off"
             />
+            {vendorOpen && vendorOptions.length > 0 && (
+              <div
+                className="card"
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  right: 0,
+                  marginTop: 4,
+                  padding: 0,
+                  maxHeight: 200,
+                  overflowY: "auto",
+                  zIndex: 10,
+                  boxShadow: "var(--shadow-float)",
+                }}
+              >
+                {vendorOptions.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      background: "transparent",
+                      border: 0,
+                      cursor: "pointer",
+                      fontSize: 14,
+                    }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setVendor(o.name);
+                      setVendorId(o.id);
+                      setVendorOpen(false);
+                    }}
+                  >
+                    {o.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {vendor.trim() && !vendorId && !vendorOptions.some((o) => o.name.toLowerCase() === vendor.trim().toLowerCase()) && (
+              <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>
+                ↳ Will create new vendor “{vendor.trim()}” on save.
+              </div>
+            )}
           </div>
           <div className="field">
             <label className="field__label" htmlFor="ex-desc">

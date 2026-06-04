@@ -147,6 +147,7 @@ export function LoginPage(): JSX.Element {
               Lost your password? Ping your owner from the Admin users page.
             </p>
           </form>
+          <footer className="login__card-foot">Built in Lagos · v1</footer>
         </div>
       </section>
     </main>

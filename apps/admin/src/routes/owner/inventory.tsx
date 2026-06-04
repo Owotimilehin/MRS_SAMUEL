@@ -54,6 +54,7 @@ export function InventoryPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<AdjustTarget | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
   useEffect(() => {
@@ -239,6 +240,16 @@ export function InventoryPage(): JSX.Element {
           >
             Factories
           </button>
+          {isOwner && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => setBulkOpen(true)}
+              style={{ marginLeft: 6 }}
+            >
+              Bulk adjust
+            </button>
+          )}
         </div>
       }
     >
@@ -374,7 +385,296 @@ export function InventoryPage(): JSX.Element {
           onSubmit={runAdjust}
         />
       )}
+
+      {bulkOpen && (
+        <BulkAdjustModal
+          factories={factories}
+          branches={branches}
+          products={products}
+          factoryStock={factoryStock}
+          branchHeat={branchHeat}
+          onClose={() => setBulkOpen(false)}
+          onSaved={async (locType, locId, items) => {
+            // Apply locally so the heatmap updates without a refetch.
+            if (locType === "factory") {
+              setFactoryStock((s) => {
+                const next = { ...(s[locId] ?? {}) };
+                for (const it of items) next[it.productId] = it.newQty;
+                return { ...s, [locId]: next };
+              });
+            } else {
+              setBranchStock((rows) => {
+                const map = new Map(rows.map((r) => [`${r.branch_id}|${r.product_id}`, r]));
+                for (const it of items) {
+                  const key = `${locId}|${it.productId}`;
+                  const existing = map.get(key);
+                  if (existing) existing.balance = it.newQty;
+                  else map.set(key, { branch_id: locId, product_id: it.productId, balance: it.newQty });
+                }
+                return Array.from(map.values());
+              });
+            }
+            setBulkOpen(false);
+            setFlash(`Bulk adjustment recorded · ${items.length} line${items.length === 1 ? "" : "s"}`);
+            setTimeout(() => setFlash(null), 3000);
+          }}
+        />
+      )}
     </Shell>
+  );
+}
+
+function BulkAdjustModal({
+  factories,
+  branches,
+  products,
+  factoryStock,
+  branchHeat,
+  onClose,
+  onSaved,
+}: {
+  factories: Factory[];
+  branches: Branch[];
+  products: Product[];
+  factoryStock: Record<string, Record<string, number>>;
+  branchHeat: Map<string, number>;
+  onClose: () => void;
+  onSaved: (
+    locType: "factory" | "branch",
+    locId: string,
+    items: Array<{ productId: string; newQty: number }>,
+  ) => Promise<void>;
+}): JSX.Element {
+  const [locType, setLocType] = useState<"factory" | "branch">("factory");
+  const [locId, setLocId] = useState<string>(
+    factories[0]?.id ?? branches[0]?.id ?? "",
+  );
+  const [reasonCode, setReasonCode] = useState<string>("physical_recount");
+  const [reasonNote, setReasonNote] = useState<string>("");
+  const [overrides, setOverrides] = useState<Record<string, number>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset target when type flips.
+  useEffect(() => {
+    if (locType === "factory") setLocId(factories[0]?.id ?? "");
+    else setLocId(branches[0]?.id ?? "");
+    setOverrides({});
+  }, [locType, factories, branches]);
+
+  function currentQty(productId: string): number {
+    if (locType === "factory") return factoryStock[locId]?.[productId] ?? 0;
+    return branchHeat.get(`${locId}|${productId}`) ?? 0;
+  }
+
+  const locName =
+    locType === "factory"
+      ? factories.find((f) => f.id === locId)?.name ?? ""
+      : branches.find((b) => b.id === locId)?.name ?? "";
+
+  async function handleSubmit(): Promise<void> {
+    if (!locId) {
+      setError("Pick a location");
+      return;
+    }
+    if (reasonCode === "other_with_note" && reasonNote.trim().length === 0) {
+      setError("Add a note for 'Other'");
+      return;
+    }
+    const items: Array<{ productId: string; newQty: number }> = [];
+    for (const p of products) {
+      const newQ = overrides[p.id];
+      if (newQ === undefined) continue;
+      if (newQ === currentQty(p.id)) continue;
+      if (newQ < 0) {
+        setError(`Quantity for ${p.name} can't be negative`);
+        return;
+      }
+      items.push({ productId: p.id, newQty: newQ });
+    }
+    if (items.length === 0) {
+      setError("Nothing changed — adjust at least one row");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api(`/inventory/adjust`, {
+        method: "POST",
+        body: JSON.stringify({
+          location_type: locType,
+          location_id: locId,
+          reason_code: reasonCode,
+          reason_note: reasonNote.trim() || undefined,
+          items: items.map((i) => ({ product_id: i.productId, new_quantity: i.newQty })),
+        }),
+      });
+      await onSaved(locType, locId, items);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(20,24,31,0.45)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 50,
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="card"
+        style={{
+          width: "100%",
+          maxWidth: 720,
+          maxHeight: "90vh",
+          overflow: "auto",
+          background: "var(--shell)",
+          boxShadow: "var(--shadow-float)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header style={{ marginBottom: 14 }}>
+          <h2 className="t-h2">Bulk adjust</h2>
+          <p style={{ color: "var(--ink-soft)", fontSize: 13, margin: "4px 0 0" }}>
+            Type the new on-hand for each row that changed. Unchanged rows are skipped.
+          </p>
+        </header>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <div className="field">
+            <label className="field__label" htmlFor="bulk-loc-type">Location type</label>
+            <select
+              id="bulk-loc-type"
+              className="select"
+              value={locType}
+              onChange={(e) => setLocType(e.target.value as "factory" | "branch")}
+            >
+              <option value="factory">Factory</option>
+              <option value="branch">Branch</option>
+            </select>
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="bulk-loc-id">Location</label>
+            <select
+              id="bulk-loc-id"
+              className="select"
+              value={locId}
+              onChange={(e) => setLocId(e.target.value)}
+            >
+              {(locType === "factory" ? factories : branches).map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="bulk-reason">Reason (applies to all)</label>
+            <select
+              id="bulk-reason"
+              className="select"
+              value={reasonCode}
+              onChange={(e) => setReasonCode(e.target.value)}
+            >
+              <option value="physical_recount">Physical recount</option>
+              <option value="damaged">Damaged</option>
+              <option value="spoilage">Spoilage</option>
+              <option value="theft">Theft / loss</option>
+              <option value="found">Found extra</option>
+              <option value="opening_balance">Opening balance</option>
+              <option value="other_with_note">Other (specify)</option>
+            </select>
+          </div>
+        </div>
+
+        {reasonCode === "other_with_note" && (
+          <div className="field" style={{ marginBottom: 14 }}>
+            <label className="field__label" htmlFor="bulk-note">Notes</label>
+            <textarea
+              id="bulk-note"
+              className="textarea"
+              rows={2}
+              value={reasonNote}
+              onChange={(e) => setReasonNote(e.target.value)}
+              placeholder="Describe what happened"
+            />
+          </div>
+        )}
+
+        <div className="table-wrap" style={{ marginBottom: 14 }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th className="table__num">Current</th>
+                <th className="table__num">New on-hand</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map((p) => {
+                const cur = currentQty(p.id);
+                const newQ = overrides[p.id] ?? cur;
+                const changed = newQ !== cur;
+                return (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td className="table__num" style={{ color: "var(--ink-soft)" }}>{cur}</td>
+                    <td className="table__num">
+                      <input
+                        className="input"
+                        type="number"
+                        min={0}
+                        value={newQ}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setOverrides((o) => ({ ...o, [p.id]: Number.isFinite(v) ? v : 0 }));
+                        }}
+                        style={{
+                          width: 100,
+                          textAlign: "right",
+                          fontWeight: changed ? 700 : 400,
+                          color: changed ? "var(--accent)" : "var(--ink)",
+                        }}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {error && (
+          <div className="field__error" style={{ marginBottom: 10 }}>
+            {error}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button type="button" className="btn btn--subtle" onClick={onClose} disabled={submitting}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => void handleSubmit()}
+            disabled={submitting}
+          >
+            {submitting ? "Submitting…" : `Adjust ${locName || ""}`}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

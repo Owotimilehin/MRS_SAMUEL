@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, sql, inArray, desc } from "drizzle-orm";
 import { z } from "zod";
 import {
   stockAdjustment,
@@ -8,9 +8,10 @@ import {
   product,
   factory,
   branch,
+  adminUser,
   type DbClient,
 } from "@ms/db";
-import { requireAuth, requireCapability } from "../middleware/auth.js";
+import { requireAuth, requireCapability, requireAnyCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 
@@ -169,6 +170,106 @@ export function inventoryRoutes(db: DbClient) {
       { data: { id: result.adjustmentId, items_recorded: result.itemsRecorded } },
       201,
     );
+  });
+
+  // History — list past adjustments with their ledger lines.
+  // Gated by stock.adjust OR stock.read so both editors and viewers see it.
+  r.get("/adjustments", requireAnyCapability("stock.adjust", "stock.read"), async (c) => {
+    const url = new URL(c.req.url);
+    const fromStr =
+      url.searchParams.get("from") ??
+      new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    const toStr = url.searchParams.get("to") ?? new Date().toISOString().slice(0, 10);
+    const from = new Date(`${fromStr}T00:00:00.000Z`);
+    const toEnd = new Date(`${toStr}T23:59:59.999Z`);
+    const locationType = url.searchParams.get("location_type");
+    const locationId = url.searchParams.get("location_id");
+    const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
+    const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? 50)));
+
+    const conds = [
+      gte(stockAdjustment.createdAt, from),
+      lte(stockAdjustment.createdAt, toEnd),
+    ];
+    if (locationType === "factory" || locationType === "branch") {
+      conds.push(eq(stockAdjustment.locationType, locationType));
+    }
+    if (locationId) conds.push(eq(stockAdjustment.locationId, locationId));
+
+    const where = and(...conds);
+    const totalRow = await db
+      .select({ total: sql<number>`COUNT(*)::int` })
+      .from(stockAdjustment)
+      .where(where);
+    const total = Number(totalRow[0]?.total ?? 0);
+
+    const headers = await db
+      .select({
+        id: stockAdjustment.id,
+        location_type: stockAdjustment.locationType,
+        location_id: stockAdjustment.locationId,
+        reason_code: stockAdjustment.reasonCode,
+        reason_note: stockAdjustment.reasonNote,
+        recorded_by_user_id: stockAdjustment.recordedByUserId,
+        recorded_by_email: adminUser.email,
+        created_at: stockAdjustment.createdAt,
+      })
+      .from(stockAdjustment)
+      .leftJoin(adminUser, eq(adminUser.id, stockAdjustment.recordedByUserId))
+      .where(where)
+      .orderBy(desc(stockAdjustment.createdAt))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
+    const ids = headers.map((h) => h.id);
+    const linesByHeader = new Map<string, Array<{
+      product_id: string;
+      product_name: string;
+      delta: number;
+      note: string | null;
+    }>>();
+    if (ids.length > 0) {
+      const lines = await db
+        .select({
+          source_id: stockLedger.sourceId,
+          product_id: stockLedger.productId,
+          product_name: product.name,
+          delta: stockLedger.delta,
+          note: stockLedger.note,
+        })
+        .from(stockLedger)
+        .leftJoin(product, eq(product.id, stockLedger.productId))
+        .where(
+          and(
+            eq(stockLedger.sourceType, "adjustment"),
+            inArray(stockLedger.sourceId, ids),
+          ),
+        );
+      for (const l of lines) {
+        const arr = linesByHeader.get(l.source_id) ?? [];
+        arr.push({
+          product_id: l.product_id,
+          product_name: l.product_name ?? l.product_id,
+          delta: l.delta,
+          note: l.note,
+        });
+        linesByHeader.set(l.source_id, arr);
+      }
+    }
+
+    const data = headers.map((h) => ({
+      id: h.id,
+      location_type: h.location_type,
+      location_id: h.location_id,
+      reason_code: h.reason_code,
+      reason_note: h.reason_note,
+      recorded_by_user_id: h.recorded_by_user_id,
+      recorded_by_email: h.recorded_by_email,
+      created_at: h.created_at.toISOString(),
+      lines: linesByHeader.get(h.id) ?? [],
+    }));
+
+    return c.json({ data, pagination: { page, page_size: pageSize, total } });
   });
 
   return r;
