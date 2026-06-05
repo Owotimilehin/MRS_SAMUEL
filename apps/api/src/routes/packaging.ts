@@ -43,6 +43,17 @@ const PurchaseCreate = z
     { message: "total_cost_ngn must equal unit_cost_ngn × quantity" },
   );
 
+/** Serialize a material row to the snake_case shape the admin UI expects. */
+function serializeMaterial(m: typeof packagingMaterial.$inferSelect) {
+  return {
+    id: m.id,
+    name: m.name,
+    unit_label: m.unitLabel,
+    size_ml: m.sizeMl,
+    is_active: m.isActive,
+  };
+}
+
 export function packagingRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth());
@@ -53,7 +64,7 @@ export function packagingRoutes(db: DbClient) {
       .select()
       .from(packagingMaterial)
       .orderBy(packagingMaterial.name);
-    return c.json({ data: rows });
+    return c.json({ data: rows.map(serializeMaterial) });
   });
 
   r.post("/materials", requireCapability("packaging.write"), async (c) => {
@@ -74,7 +85,7 @@ export function packagingRoutes(db: DbClient) {
       entityId: row.id,
       after: { name: row.name },
     });
-    return c.json({ data: row }, 201);
+    return c.json({ data: serializeMaterial(row) }, 201);
   });
 
   r.patch("/materials/:id", requireCapability("packaging.write"), async (c) => {
@@ -97,7 +108,7 @@ export function packagingRoutes(db: DbClient) {
       entityId: id,
       after: patch,
     });
-    return c.json({ data: row });
+    return c.json({ data: serializeMaterial(row) });
   });
 
   // ─── Stock ───

@@ -72,7 +72,7 @@ export interface NormalizedWebhook {
 }
 
 export interface DeliveryProvider {
-  readonly name: "bolt" | "manual";
+  readonly name: "bolt" | "manual" | "shipbubble";
   quote(input: DeliveryQuoteInput): Promise<DeliveryQuote>;
   requestDelivery(input: RequestDeliveryInput): Promise<RequestDeliveryResult>;
   cancelDelivery(externalRef: string): Promise<void>;

@@ -11,6 +11,8 @@ interface Variant { id: string; size_ml: number | null; sku?: string | null }
 interface RunItem {
   id: string;
   productId: string;
+  variantId: string | null;
+  sizeMl: number | null;
   quantityProduced: number;
   batchCode: string | null;
 }
@@ -209,6 +211,7 @@ export function ProductionRunsPage(): JSX.Element {
 
   const productName = (id: string): string =>
     products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
+  const sizeLabel = (ml: number | null): string => (ml ? `${ml}ml` : "—");
 
   return (
     <Shell title="Production runs">
@@ -272,12 +275,13 @@ export function ProductionRunsPage(): JSX.Element {
                   <div className="table-wrap" style={{ marginBottom: 12 }}>
                     <table className="table">
                       <thead>
-                        <tr><th>Product</th><th className="table__num">Qty</th><th>Batch</th><th /></tr>
+                        <tr><th>Product</th><th>Size</th><th className="table__num">Qty</th><th>Batch</th><th /></tr>
                       </thead>
                       <tbody>
                         {run.items.map((it) => (
                           <tr key={it.id}>
                             <td>{productName(it.productId)}</td>
+                            <td style={{ color: "var(--ink-soft)" }}>{sizeLabel(it.sizeMl)}</td>
                             <td className="table__num">
                               {run.status === "draft" ? (
                                 <input

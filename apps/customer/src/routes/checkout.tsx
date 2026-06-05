@@ -1,10 +1,18 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
 import { cart as cartApi } from "../store/cart.js";
 import { Link } from "@tanstack/react-router";
 import { useCart } from "../store/cart.js";
 import { api, ngn } from "../lib/api.js";
 import { BRAND } from "../data/menu.js";
 import { Button, Eyebrow } from "../components/ui/index.js";
+
+// Lazy: the address picker pulls in mapbox-gl (~1.7 MB). Keep it out of the
+// main bundle so it only loads when a customer reaches checkout.
+const AddressAutocomplete = lazy(() =>
+  import("../components/AddressAutocomplete.js").then((m) => ({
+    default: m.AddressAutocomplete,
+  })),
+);
 
 interface Branch {
   id: string;
@@ -54,8 +62,6 @@ export function CheckoutPage(): JSX.Element {
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [geoLoading, setGeoLoading] = useState(false);
-  const [geoError, setGeoError] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [deliveryState, setDeliveryState] = useState("Lagos");
   const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");
@@ -161,29 +167,6 @@ export function CheckoutPage(): JSX.Element {
     };
   }, [outsideLagos, branchId, address, coords?.lat, coords?.lng]);
 
-  function useMyLocation(): void {
-    if (!navigator.geolocation) {
-      setGeoError("Your browser doesn't support location.");
-      return;
-    }
-    setGeoLoading(true);
-    setGeoError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setGeoLoading(false);
-      },
-      (err) => {
-        setGeoError(
-          err.code === err.PERMISSION_DENIED
-            ? "Location permission denied. Type your address instead."
-            : "Couldn't get your location. Type your address instead.",
-        );
-        setGeoLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 8000 },
-    );
-  }
   // Outside Lagos → ₦0 (arranged out-of-band). In Lagos → the live Bolt quote,
   // falling back to the branch's static zone fee if the quote is unavailable.
   const lagosFee = quote?.fee_ngn ?? fallbackFee;
@@ -294,42 +277,7 @@ export function CheckoutPage(): JSX.Element {
 
           <form onSubmit={submit} className="ms-checkout__grid">
             <section className="ms-checkout__form">
-              <h2 className="ms-checkout__h2">Your details</h2>
-              <div className="ms-checkout__row">
-                <Field label="Full name" required>
-                  <input
-                    className="ms-checkout__input"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    autoComplete="name"
-                  />
-                </Field>
-                <Field label="Phone" required>
-                  <input
-                    className="ms-checkout__input"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                    inputMode="tel"
-                    autoComplete="tel"
-                    placeholder="+234…"
-                  />
-                </Field>
-              </div>
-              <Field label="Email (optional)">
-                <input
-                  className="ms-checkout__input"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
-                />
-              </Field>
-
-              <h2 className="ms-checkout__h2" style={{ marginTop: 22 }}>
-                Delivery
-              </h2>
+              <h2 className="ms-checkout__h2">Delivery</h2>
 
               <Field label="When?">
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -388,56 +336,17 @@ export function CheckoutPage(): JSX.Element {
               </Field>
 
               <Field label="Address" required>
-                <textarea
-                  className="ms-checkout__input"
-                  rows={2}
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  required
-                  autoComplete="street-address"
-                />
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    marginTop: 6,
-                    flexWrap: "wrap",
-                  }}
+                <Suspense
+                  fallback={<div className="ms-checkout__input" aria-busy="true">Loading address search…</div>}
                 >
-                  <button
-                    type="button"
-                    className="btn btn--subtle btn--sm"
-                    onClick={useMyLocation}
-                    disabled={geoLoading}
-                    style={{ fontSize: 12 }}
-                  >
-                    {geoLoading
-                      ? "Locating…"
-                      : coords
-                        ? "✓ Using my location"
-                        : "📍 Use my location"}
-                  </button>
-                  {geoError && (
-                    <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>{geoError}</span>
-                  )}
-                  {coords && (
-                    <button
-                      type="button"
-                      onClick={() => setCoords(null)}
-                      style={{
-                        background: "transparent",
-                        border: 0,
-                        color: "var(--ink-soft)",
-                        fontSize: 12,
-                        cursor: "pointer",
-                        textDecoration: "underline",
-                      }}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
+                  <AddressAutocomplete
+                    value={{ address, lat: coords?.lat ?? null, lng: coords?.lng ?? null }}
+                    onChange={(v) => {
+                      setAddress(v.address);
+                      setCoords(v.lat != null && v.lng != null ? { lat: v.lat, lng: v.lng } : null);
+                    }}
+                  />
+                </Suspense>
               </Field>
               <Field label="Notes for the rider (optional)">
                 <textarea
@@ -446,6 +355,41 @@ export function CheckoutPage(): JSX.Element {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Gate code, landmark, etc."
+                />
+              </Field>
+
+              <h2 className="ms-checkout__h2" style={{ marginTop: 22 }}>
+                Your details
+              </h2>
+              <div className="ms-checkout__row">
+                <Field label="Full name" required>
+                  <input
+                    className="ms-checkout__input"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    autoComplete="name"
+                  />
+                </Field>
+                <Field label="Phone" required>
+                  <input
+                    className="ms-checkout__input"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    required
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="+234…"
+                  />
+                </Field>
+              </div>
+              <Field label="Email (optional)">
+                <input
+                  className="ms-checkout__input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                 />
               </Field>
             </section>

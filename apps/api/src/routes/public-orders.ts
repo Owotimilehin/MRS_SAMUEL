@@ -152,18 +152,25 @@ export function publicOrderRoutes(db: DbClient) {
         },
       });
     } catch (err) {
-      // Provider down — fall back to the cheapest static zone fee.
+      // Provider down or address not geocodable — fall back to the cheapest
+      // static zone fee so the customer can still complete checkout.
       const minZone = b.deliveryZones.reduce<number | null>(
         (acc, z) => (acc == null || z.fee_ngn < acc ? z.fee_ngn : acc),
         null,
       );
+      const msg = err instanceof Error ? err.message : String(err);
+      // A 400 on address/validate means the address was too vague to geocode.
+      // Surface a helpful, customer-facing hint rather than the raw API path.
+      const notice = /address\/validate.*400/.test(msg)
+        ? "We couldn't confirm live delivery for that address. Add a street number, area and city (e.g. “12 Admiralty Way, Lekki, Lagos”). Standard delivery fee applied for now."
+        : "Live delivery pricing is unavailable right now — standard delivery fee applied.";
       return c.json({
         data: {
           provider: "fallback" as const,
           provider_quote_id: null,
           fee_ngn: minZone ?? 1500,
           eta_minutes: 35,
-          notice: `Live quote unavailable (${err instanceof Error ? err.message : String(err)}). Showing zone fee.`,
+          notice,
         },
       });
     }

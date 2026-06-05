@@ -22,11 +22,25 @@ import { logger } from "../logger.js";
  * decide whether to retry, refund, or escalate.
  */
 export function boltWebhookRoutes(db: DbClient) {
+  return deliveryWebhookRoutes(db, "x-bolt-signature");
+}
+
+/** Shipbubble signs with `x-ship-signature` (HMAC-SHA512). */
+export function shipbubbleWebhookRoutes(db: DbClient) {
+  return deliveryWebhookRoutes(db, "x-ship-signature");
+}
+
+/**
+ * Generic delivery webhook receiver. The active provider (selected by env)
+ * verifies + normalizes the payload; the signature header name is the only
+ * provider-specific bit, so it's a parameter.
+ */
+export function deliveryWebhookRoutes(db: DbClient, signatureHeader: string) {
   const r = new Hono();
 
   r.post("/", async (c) => {
     const raw = await c.req.raw.clone().text();
-    const signature = c.req.header("x-bolt-signature") ?? null;
+    const signature = c.req.header(signatureHeader) ?? null;
     const provider = getDeliveryProvider();
 
     let parsed;

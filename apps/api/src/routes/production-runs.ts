@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc } from "drizzle-orm";
 import { z } from "zod";
 import {
   productionRun,
@@ -38,6 +38,27 @@ const UpdateItem = z.object({
   quantity_produced: z.number().int().positive().optional(),
   batch_code: z.string().nullable().optional(),
 });
+
+/** Load a run's items with the bottle size joined in from product_variant.
+ *  Legacy items (variant_id IS NULL) come back with sizeMl/sku = null. Used
+ *  by every endpoint that returns items so the UI can show the size. */
+function loadRunItems(db: DbClient, runId: string) {
+  return db
+    .select({
+      id: productionRunItem.id,
+      productionRunId: productionRunItem.productionRunId,
+      productId: productionRunItem.productId,
+      variantId: productionRunItem.variantId,
+      quantityProduced: productionRunItem.quantityProduced,
+      batchCode: productionRunItem.batchCode,
+      sizeMl: productVariant.sizeMl,
+      sku: productVariant.sku,
+    })
+    .from(productionRunItem)
+    .leftJoin(productVariant, eq(productVariant.id, productionRunItem.variantId))
+    .where(eq(productionRunItem.productionRunId, runId))
+    .orderBy(asc(productionRunItem.createdAt), asc(productionRunItem.id));
+}
 
 export function productionRunRoutes(db: DbClient) {
   const r = new Hono();
@@ -79,10 +100,7 @@ export function productionRunRoutes(db: DbClient) {
     });
     // Always include the items array (possibly empty) so the UI can treat
     // create and /open responses the same way.
-    const items = await db
-      .select()
-      .from(productionRunItem)
-      .where(eq(productionRunItem.productionRunId, created.id));
+    const items = await loadRunItems(db, created.id);
     return c.json({ data: { ...created, items } }, 201);
   });
 
@@ -194,10 +212,7 @@ export function productionRunRoutes(db: DbClient) {
     });
     // Return items alongside the run so the response matches the shape of
     // /open and create — the UI relies on `data.items` always being present.
-    const items = await db
-      .select()
-      .from(productionRunItem)
-      .where(eq(productionRunItem.productionRunId, id));
+    const items = await loadRunItems(db, id);
     return c.json({ data: { ...completed, items } });
   });
 
@@ -224,10 +239,7 @@ export function productionRunRoutes(db: DbClient) {
       .orderBy(desc(productionRun.createdAt))
       .limit(1);
     if (!run) return c.json({ data: null });
-    const items = await db
-      .select()
-      .from(productionRunItem)
-      .where(eq(productionRunItem.productionRunId, run.id));
+    const items = await loadRunItems(db, run.id);
     return c.json({ data: { ...run, items } });
   });
 
@@ -246,10 +258,7 @@ export function productionRunRoutes(db: DbClient) {
       .limit(limit);
     const withItems = await Promise.all(
       runs.map(async (run) => {
-        const items = await db
-          .select()
-          .from(productionRunItem)
-          .where(eq(productionRunItem.productionRunId, run.id));
+        const items = await loadRunItems(db, run.id);
         return { ...run, items };
       }),
     );
@@ -260,10 +269,7 @@ export function productionRunRoutes(db: DbClient) {
     const id = c.req.param("id");
     const [run] = await db.select().from(productionRun).where(eq(productionRun.id, id));
     if (!run) throw new BusinessError("not_found", "production_run not found", 404);
-    const items = await db
-      .select()
-      .from(productionRunItem)
-      .where(eq(productionRunItem.productionRunId, id));
+    const items = await loadRunItems(db, id);
     return c.json({ data: { ...run, items } });
   });
 
@@ -273,7 +279,7 @@ export function productionRunRoutes(db: DbClient) {
     const id = c.req.param("id");
     const body = AppendItems.parse(await c.req.json());
 
-    const updated = await db.transaction(async (tx) => {
+    const run = await db.transaction(async (tx) => {
       const [run] = await tx.select().from(productionRun).where(eq(productionRun.id, id));
       if (!run) throw new BusinessError("not_found", "production_run not found", 404);
       if (run.status !== "draft") {
@@ -292,11 +298,7 @@ export function productionRunRoutes(db: DbClient) {
         .update(productionRun)
         .set({ updatedAt: new Date() })
         .where(eq(productionRun.id, id));
-      const items = await tx
-        .select()
-        .from(productionRunItem)
-        .where(eq(productionRunItem.productionRunId, id));
-      return { ...run, items };
+      return run;
     });
 
     await writeAudit(db, c, {
@@ -305,7 +307,8 @@ export function productionRunRoutes(db: DbClient) {
       entityId: id,
       after: { added: body.items.length },
     });
-    return c.json({ data: updated });
+    const items = await loadRunItems(db, id);
+    return c.json({ data: { ...run, items } });
   });
 
   /** Edit a single draft line (typo on quantity, missing batch code, etc.). */

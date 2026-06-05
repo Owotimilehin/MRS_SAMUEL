@@ -1,10 +1,15 @@
 import { randomUUID } from "node:crypto";
+import {
+  ShipbubbleClient,
+  etaMinutesUntil,
+  lagosPickupDate,
+  shipbubbleConfigFromEnv,
+} from "@ms/domain";
 
 /**
- * Local mirror of the API's delivery provider interface. Duplicated (rather
- * than shared via a package) because the worker only needs the outbound
- * call surface — the API has the parser/webhook side too. Step 7 of the
- * Bolt integration plan extracts both into @ms/delivery.
+ * Local mirror of the API's delivery provider interface. The worker only needs
+ * the outbound call surface (requestDelivery) — the API owns the webhook parse
+ * side. The Shipbubble flow itself is shared via @ms/domain's ShipbubbleClient.
  */
 
 interface RequestDeliveryInput {
@@ -24,8 +29,48 @@ interface RequestDeliveryResult {
 }
 
 export interface DeliveryProvider {
-  readonly name: "bolt" | "manual";
+  readonly name: "bolt" | "manual" | "shipbubble";
   requestDelivery(input: RequestDeliveryInput): Promise<RequestDeliveryResult>;
+}
+
+/**
+ * Live Shipbubble dispatch. Validates sender (env) + receiver (the customer),
+ * fetches rates, and creates a label with the cheapest courier — all via the
+ * shared client. Status updates flow back through Shipbubble webhooks.
+ */
+class ShipbubbleWorker implements DeliveryProvider {
+  readonly name = "shipbubble" as const;
+  private readonly client: ShipbubbleClient;
+  private readonly cfg: NonNullable<ReturnType<typeof shipbubbleConfigFromEnv>>;
+
+  constructor(cfg: NonNullable<ReturnType<typeof shipbubbleConfigFromEnv>>) {
+    this.cfg = cfg;
+    this.client = new ShipbubbleClient({
+      apiBase: cfg.apiBase,
+      apiKey: cfg.apiKey,
+      webhookSecret: cfg.webhookSecret,
+    });
+  }
+
+  async requestDelivery(input: RequestDeliveryInput): Promise<RequestDeliveryResult> {
+    const digits = input.customerPhone.replace(/\D/g, "") || "customer";
+    const { label, chosen } = await this.client.dispatch({
+      sender: this.cfg.sender,
+      receiver: {
+        name: input.customerName,
+        email: `customer+${digits}@mrssamuel.ng`,
+        phone: input.customerPhone,
+        address: input.dropoffAddress,
+      },
+      pkg: this.cfg.pkg,
+      pickupDate: lagosPickupDate(),
+    });
+    return {
+      externalRef: label.orderId,
+      trackingUrl: label.trackingUrl,
+      initialEtaMinutes: etaMinutesUntil(chosen.deliveryEtaTime),
+    };
+  }
 }
 
 const RIDERS = [
@@ -100,8 +145,22 @@ let cached: DeliveryProvider | null = null;
 
 export function getWorkerDeliveryProvider(): DeliveryProvider {
   if (cached) return cached;
-  // Live mode wiring lands in Bolt step 7. Until then the worker always
-  // uses the mock provider — the API side already gates on BOLT_PROVIDER.
+
+  const active = (process.env["DELIVERY_PROVIDER"] ?? "bolt").toLowerCase();
+  if (active === "shipbubble") {
+    const mode = (process.env["SHIPBUBBLE_PROVIDER"] ?? "mock").toLowerCase();
+    const cfg = shipbubbleConfigFromEnv(process.env);
+    if (mode === "live" && cfg) {
+      cached = new ShipbubbleWorker(cfg);
+      return cached;
+    }
+    if (mode === "live") {
+      console.warn(
+        "[worker] DELIVERY_PROVIDER=shipbubble + live but SHIPBUBBLE_API_KEY missing — using mock",
+      );
+    }
+  }
+
   const webhookUrl =
     process.env["BOLT_MOCK_WEBHOOK_URL"] ?? "http://127.0.0.1:3001/v1/webhooks/bolt";
   cached = new BoltMockWorker(webhookUrl);

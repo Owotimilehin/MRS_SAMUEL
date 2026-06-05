@@ -31,4 +31,6 @@ export const productionRunItem = pgTable("production_run_item", {
   variantId: uuid("variant_id").references(() => productVariant.id),
   quantityProduced: integer("quantity_produced").notNull(),
   batchCode: text("batch_code"),
+  // Insertion order — the draft lists flavours in the sequence they were added.
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

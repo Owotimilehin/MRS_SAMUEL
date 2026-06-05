@@ -16,7 +16,7 @@ import { branch } from "./branch.js";
  * Third-party delivery provider (today only Bolt; left as enum so adding
  * Glovo / Chowdeck Send / in-house dispatch is a one-line migration).
  */
-export const deliveryProvider = pgEnum("delivery_provider", ["bolt", "manual"]);
+export const deliveryProvider = pgEnum("delivery_provider", ["bolt", "manual", "shipbubble"]);
 
 /**
  * Status machine for a delivery, parallel to (but distinct from) sale_order

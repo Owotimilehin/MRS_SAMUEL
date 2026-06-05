@@ -225,6 +225,20 @@
       "when": 1781000000000,
       "tag": "0032_packaging",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1781100000000,
+      "tag": "0033_shipbubble_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1781200000000,
+      "tag": "0034_production_run_item_order",
+      "breakpoints": true
     }
   ]
 }

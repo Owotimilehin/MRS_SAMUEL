@@ -8,6 +8,8 @@ import { InlineLoader } from "../../components/Spinner.js";
 interface RunItem {
   id: string;
   productId: string;
+  variantId: string | null;
+  sizeMl: number | null;
   quantityProduced: number;
   batchCode: string | null;
 }
@@ -85,6 +87,7 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
 
   const factoryName = (id: string): string => factories.find((f) => f.id === id)?.name ?? id.slice(0, 8);
   const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
+  const sizeLabel = (ml: number | null): string => (ml ? `${ml}ml` : "—");
 
   const totalBottles = run?.items.reduce((sum, it) => sum + it.quantityProduced, 0) ?? 0;
 
@@ -171,6 +174,7 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
                   <thead>
                     <tr>
                       <th>Product</th>
+                      <th>Size</th>
                       <th className="table__num">Quantity</th>
                       <th>Batch code</th>
                     </tr>
@@ -179,6 +183,7 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
                     {run.items.map((it) => (
                       <tr key={it.id}>
                         <td>{productName(it.productId)}</td>
+                        <td style={{ color: "var(--ink-soft)" }}>{sizeLabel(it.sizeMl)}</td>
                         <td className="table__num" style={{ fontWeight: 700 }}>
                           {it.quantityProduced.toLocaleString()}
                         </td>

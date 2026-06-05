@@ -24,7 +24,7 @@ function getRedis(): Redis | null {
 }
 
 export interface QuoteEnvelope {
-  provider: "bolt" | "manual" | "fallback";
+  provider: "bolt" | "manual" | "shipbubble" | "fallback";
   branch_id: string;
   fee_ngn: number;
   dropoff_address: string;

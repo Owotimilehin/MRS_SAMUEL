@@ -25,7 +25,7 @@ interface DeliveryRequestInput {
   customerPhone: string;
 }
 interface DeliveryProviderShape {
-  readonly name: "bolt" | "manual";
+  readonly name: "bolt" | "manual" | "shipbubble";
   requestDelivery(input: DeliveryRequestInput): Promise<{
     externalRef: string;
     trackingUrl: string | null;

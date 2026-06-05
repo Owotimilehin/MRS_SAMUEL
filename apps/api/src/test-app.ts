@@ -33,7 +33,7 @@ import { adminUserRoutes } from "./routes/admin-users.js";
 import { auditLogRoutes } from "./routes/audit-log.js";
 import { blogRoutes } from "./routes/blog.js";
 import { publicBlogRoutes } from "./routes/public-blog.js";
-import { boltWebhookRoutes } from "./routes/webhooks-bolt.js";
+import { boltWebhookRoutes, shipbubbleWebhookRoutes } from "./routes/webhooks-bolt.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -105,6 +105,7 @@ export function buildApp(): Hono {
   app.route("/v1/public/telemetry", telemetryRoutes(db));
   app.route("/v1/webhooks/payaza", payazaWebhookRoutes(db));
   app.route("/v1/webhooks/bolt", boltWebhookRoutes(db));
+  app.route("/v1/webhooks/shipbubble", shipbubbleWebhookRoutes(db));
 
   // Temporary echo endpoint used by idempotency integration tests.
   // TODO: remove once a real mutation endpoint exists (Phase 1).
