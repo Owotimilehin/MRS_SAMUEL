@@ -1,13 +1,22 @@
 import { Hono } from "hono";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
-import { productionRun, productionRunItem, stockLedger, outboxEvent, type DbClient } from "@ms/db";
+import {
+  productionRun,
+  productionRunItem,
+  stockLedger,
+  outboxEvent,
+  productVariant,
+  packagingStockLedger,
+  type DbClient,
+} from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 
 const ItemInput = z.object({
   product_id: z.string().uuid(),
+  variant_id: z.string().uuid().optional(),
   quantity_produced: z.number().int().positive(),
   batch_code: z.string().optional(),
 });
@@ -54,6 +63,7 @@ export function productionRunRoutes(db: DbClient) {
         await tx.insert(productionRunItem).values({
           productionRunId: run.id,
           productId: it.product_id,
+          variantId: it.variant_id ?? null,
           quantityProduced: it.quantity_produced,
           batchCode: it.batch_code ?? null,
         });
@@ -80,7 +90,9 @@ export function productionRunRoutes(db: DbClient) {
     const id = c.req.param("id");
     const auth = c.get("auth");
 
-    const completed = await db.transaction(async (tx) => {
+    let completed;
+    try {
+      completed = await db.transaction(async (tx) => {
       const [run] = await tx.select().from(productionRun).where(eq(productionRun.id, id));
       if (!run) throw new BusinessError("not_found", "production_run not found", 404);
       if (run.status !== "draft") {
@@ -107,6 +119,31 @@ export function productionRunRoutes(db: DbClient) {
         });
       }
 
+      // Packaging consumption — only fires when the item has a variant_id
+      // AND that variant has a bottle_material_id linkage. Legacy items
+      // (variant_id IS NULL) silently skip. The packaging_stock_ledger
+      // trigger fires at commit time, so the negative-balance rejection is
+      // re-shaped to a 422 in the OUTER try/catch around db.transaction
+      // below — not here.
+      for (const it of items) {
+        if (!it.variantId) continue;
+        const [variant] = await tx
+          .select()
+          .from(productVariant)
+          .where(eq(productVariant.id, it.variantId));
+        if (!variant?.bottleMaterialId) continue;
+
+        await tx.insert(packagingStockLedger).values({
+          factoryId: run.factoryId,
+          packagingMaterialId: variant.bottleMaterialId,
+          delta: -it.quantityProduced,
+          sourceType: "consumption",
+          sourceId: id,
+          recordedByUserId: auth.userId,
+          note: `Run ${id} consumed ${it.quantityProduced} bottles`,
+        });
+      }
+
       const [updated] = await tx
         .update(productionRun)
         .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
@@ -123,7 +160,31 @@ export function productionRunRoutes(db: DbClient) {
         },
       });
       return updated;
-    });
+      });
+    } catch (err) {
+      // The trigger error fires at commit time, escaping the inner try/catch
+      // as a DrizzleQueryError. Walk the error chain (err, err.cause, etc)
+      // looking for the Postgres trigger text.
+      if (err instanceof BusinessError) throw err;
+      let walker: unknown = err;
+      let messages = "";
+      let depth = 0;
+      while (walker && depth < 5) {
+        if (walker instanceof Error) {
+          messages += walker.message + " | ";
+          walker = (walker as { cause?: unknown }).cause;
+        } else {
+          break;
+        }
+        depth++;
+      }
+      if (messages.includes("negative balance") || messages.includes("packaging_stock_ledger")) {
+        throw new BusinessError("conflict", "packaging stock would go negative", 422, {
+          reason: "packaging_insufficient",
+        });
+      }
+      throw err;
+    }
 
     await writeAudit(db, c, {
       action: "production_run.complete",
@@ -222,6 +283,7 @@ export function productionRunRoutes(db: DbClient) {
         await tx.insert(productionRunItem).values({
           productionRunId: id,
           productId: it.product_id,
+          variantId: it.variant_id ?? null,
           quantityProduced: it.quantity_produced,
           batchCode: it.batch_code ?? null,
         });

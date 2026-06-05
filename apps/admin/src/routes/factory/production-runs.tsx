@@ -7,6 +7,7 @@ import { InlineLoader } from "../../components/Spinner.js";
 
 interface Factory { id: string; name: string }
 interface Product { id: string; name: string; category: string }
+interface Variant { id: string; size_ml: number | null; sku?: string | null }
 interface RunItem {
   id: string;
   productId: string;
@@ -34,11 +35,27 @@ export function ProductionRunsPage(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
-  const [draftRow, setDraftRow] = useState<{ productId: string; qty: number; batch: string }>({
+  const [variantsByProduct, setVariantsByProduct] = useState<Record<string, Variant[]>>({});
+  const [draftRow, setDraftRow] = useState<{ productId: string; variantId: string; qty: number; batch: string }>({
     productId: "",
+    variantId: "",
     qty: 50,
     batch: "",
   });
+
+  // Fetch variants for a product on demand and cache. Used when the factory
+  // picks a flavour from the dropdown.
+  async function ensureVariants(productId: string): Promise<Variant[]> {
+    if (variantsByProduct[productId]) return variantsByProduct[productId]!;
+    try {
+      const res = await api<{ data: { variants?: Variant[] } }>(`/products/${productId}`);
+      const list = res.data.variants ?? [];
+      setVariantsByProduct((s) => ({ ...s, [productId]: list }));
+      return list;
+    } catch {
+      return [];
+    }
+  }
 
   // Bootstrap factories + products
   useEffect(() => {
@@ -54,7 +71,15 @@ export function ProductionRunsPage(): JSX.Element {
         setProducts(p.data);
         if (f.data[0]) setFactoryId(f.data[0].id);
         const firstProduct = p.data[0];
-        if (firstProduct) setDraftRow((d) => ({ ...d, productId: firstProduct.id }));
+        if (firstProduct) {
+          setDraftRow((d) => ({ ...d, productId: firstProduct.id }));
+          // Pre-load variants for the first product so the Size dropdown
+          // is populated immediately.
+          void ensureVariants(firstProduct.id).then((vs) => {
+            const first = vs[0];
+            if (first) setDraftRow((d) => (d.productId === firstProduct.id && !d.variantId ? { ...d, variantId: first.id } : d));
+          });
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -124,6 +149,7 @@ export function ProductionRunsPage(): JSX.Element {
         body: JSON.stringify({
           items: [{
             product_id: draftRow.productId,
+            variant_id: draftRow.variantId || undefined,
             quantity_produced: Number(draftRow.qty),
             batch_code: draftRow.batch || undefined,
           }],
@@ -297,11 +323,43 @@ export function ProductionRunsPage(): JSX.Element {
                 )}
 
                 {run.status === "draft" && (
-                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 8, alignItems: "end" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr auto", gap: 8, alignItems: "end" }}>
                     <div className="field">
                       <label className="field__label">Add flavour</label>
-                      <select className="select" value={draftRow.productId} onChange={(e) => setDraftRow((d) => ({ ...d, productId: e.target.value }))}>
+                      <select
+                        className="select"
+                        value={draftRow.productId}
+                        onChange={(e) => {
+                          const pid = e.target.value;
+                          setDraftRow((d) => ({ ...d, productId: pid, variantId: "" }));
+                          void ensureVariants(pid).then((vs) => {
+                            if (vs.length > 0) {
+                              const first = vs[0]!;
+                              setDraftRow((d) => (d.productId === pid && !d.variantId ? { ...d, variantId: first.id } : d));
+                            }
+                          });
+                        }}
+                      >
                         {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label className="field__label">Size</label>
+                      <select
+                        className="select"
+                        value={draftRow.variantId}
+                        onChange={(e) => setDraftRow((d) => ({ ...d, variantId: e.target.value }))}
+                        disabled={!draftRow.productId || (variantsByProduct[draftRow.productId]?.length ?? 0) === 0}
+                      >
+                        {(variantsByProduct[draftRow.productId] ?? []).length === 0 ? (
+                          <option value="">—</option>
+                        ) : (
+                          (variantsByProduct[draftRow.productId] ?? []).map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.size_ml ? `${v.size_ml}ml` : (v.sku ?? v.id.slice(0, 6))}
+                            </option>
+                          ))
+                        )}
                       </select>
                     </div>
                     <div className="field">
