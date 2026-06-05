@@ -50,53 +50,68 @@ export function LoginPage(): JSX.Element {
   }
 
   return (
-    <main className="login">
-      {/* ───── Left: brand statement ───── */}
-      <aside className="login__brand">
-        <img
-          src="/orange.png"
-          alt=""
-          aria-hidden
-          className="login__deco login__deco--orange"
-        />
-
-        <div className="login__brand-top">
-          <div className="login__brand-mark">
-            <img src="/brand-logo.png" alt="" />
-          </div>
-          <div className="login__wordmark">
-            Mrs.<span className="login__wordmark-accent">Samuel</span>
-          </div>
-        </div>
-
-        <div className="login__brand-body">
-          <h1 className="login__brand-headline">
-            Run your day, sunrise to shelf.
+    <main className="login-cinematic">
+      {/* ───── Brand composition (left) ───── */}
+      <div className="login-cinematic__scene">
+        <div className="login-cinematic__brand">
+          <h1 className="login-cinematic__wordmark">
+            Mrs.<span className="login-cinematic__wordmark-accent">Samuel</span>
           </h1>
-          <p className="login__brand-sub">
-            Internal staff portal · Lagos
+          <p className="login-cinematic__headline">
+            Run your day, sunrise to shelf.
           </p>
         </div>
-      </aside>
 
-      {/* ───── Right: form card ───── */}
-      <section className="login__stage">
-        <div className="login__card">
-          <div className="login__card-mark">
-            <img src="/brand-logo.png" alt="" />
-          </div>
-          <div className="login__card-eyebrow">Sign in</div>
-          <h2 className="login__card-title">Welcome back.</h2>
-          <p className="login__card-sub">
+        <div className="login-cinematic__tagline">Internal portal · Lagos</div>
+      </div>
+
+      {/* ───── Decorative fruits + bottle ───── */}
+      <img
+        src="/orange.png"
+        alt=""
+        aria-hidden="true"
+        className="login-cinematic__fruit login-cinematic__fruit--orange"
+      />
+      <img
+        src="/lemon.png"
+        alt=""
+        aria-hidden="true"
+        className="login-cinematic__fruit login-cinematic__fruit--lemon"
+      />
+      <img
+        src="/pineapple.png"
+        alt=""
+        aria-hidden="true"
+        className="login-cinematic__fruit login-cinematic__fruit--pineapple"
+      />
+      <img
+        src="/strawberry.png"
+        alt=""
+        aria-hidden="true"
+        className="login-cinematic__fruit login-cinematic__fruit--strawberry"
+      />
+      <img
+        src="/bottle-hero.png"
+        alt=""
+        aria-hidden="true"
+        className="login-cinematic__bottle"
+      />
+
+      {/* ───── Form card (right) ───── */}
+      <section className="login-cinematic__stage">
+        <div className="login-cinematic__card">
+          <div className="login-cinematic__eyebrow">Sign in</div>
+          <h2 className="login-cinematic__title">Welcome back.</h2>
+          <p className="login-cinematic__sub">
             Email and password from your owner.
           </p>
 
           <form onSubmit={handleSubmit} noValidate>
-            <div className="field" style={{ marginBottom: 14 }}>
-              <label className="field__label" htmlFor="email">Email</label>
+            <div className="login-cinematic__field">
+              <label className="login-cinematic__label" htmlFor="email">Email</label>
               <input
                 id="email"
-                className="input login__input"
+                className="login-cinematic__input"
                 type="email"
                 autoComplete="username"
                 required
@@ -107,11 +122,11 @@ export function LoginPage(): JSX.Element {
                 disabled={submitting}
               />
             </div>
-            <div className="field" style={{ marginBottom: 18 }}>
-              <label className="field__label" htmlFor="password">Password</label>
+            <div className="login-cinematic__field" style={{ marginBottom: 18 }}>
+              <label className="login-cinematic__label" htmlFor="password">Password</label>
               <input
                 id="password"
-                className="input login__input"
+                className="login-cinematic__input"
                 type="password"
                 autoComplete="current-password"
                 required
@@ -123,14 +138,14 @@ export function LoginPage(): JSX.Element {
             </div>
 
             {error && (
-              <div role="alert" className="login__error">
+              <div role="alert" className="login-cinematic__error">
                 {error}
               </div>
             )}
 
             <button
               type="submit"
-              className="btn btn--primary btn--block btn--lg login__submit"
+              className="login-cinematic__submit"
               disabled={submitting || !email || !password}
             >
               {submitting ? (
@@ -139,15 +154,16 @@ export function LoginPage(): JSX.Element {
                   Signing in…
                 </>
               ) : (
-                "Sign in →"
+                <>
+                  Sign in <span className="login-cinematic__submit-arrow">→</span>
+                </>
               )}
             </button>
 
-            <p className="login__hint">
+            <p className="login-cinematic__hint">
               Lost your password? Ping your owner from the Admin users page.
             </p>
           </form>
-          <footer className="login__card-foot">Built in Lagos · v1</footer>
         </div>
       </section>
     </main>

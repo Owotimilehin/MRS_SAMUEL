@@ -53,18 +53,20 @@ test("owner sees the Bookkeeping page", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^P&L$/i })).toBeVisible();
 });
 
-test("login page renders the new aesthetic-pass structure", async ({ page }) => {
+test("login page renders the cinematic sunrise structure", async ({ page }) => {
   await page.goto("/login");
 
-  // New landmarks present
-  await expect(page.locator(".login__card")).toBeVisible();
-  await expect(page.locator(".login__wordmark-accent")).toHaveText("Samuel");
-  await expect(page.locator(".login__brand-headline")).toContainText(
-    "Run your day, sunrise to shelf.",
-  );
+  // New landmarks present.
+  await expect(page.locator(".login-cinematic__card")).toBeVisible();
+  await expect(page.locator(".login-cinematic__wordmark-accent")).toHaveText("Samuel");
+  await expect(page.locator(".login-cinematic__title")).toContainText("Welcome back.");
+  await expect(page.locator(".login-cinematic__bottle")).toBeAttached();
 
-  // Old decorations removed — these locators should match nothing
+  // All previous-iteration landmarks are gone.
+  await expect(page.locator(".login__card")).toHaveCount(0);
+  await expect(page.locator(".login__brand")).toHaveCount(0);
   await expect(page.locator(".login__deco--bottle")).toHaveCount(0);
-  await expect(page.locator(".login__deco--lemon")).toHaveCount(0);
-  await expect(page.locator(".login__pill")).toHaveCount(0);
+
+  // No "v1" anywhere on the page.
+  await expect(page.getByText(/\bv1\b/i)).toHaveCount(0);
 });
