@@ -139,3 +139,27 @@ describe("stock_adjustment.recorded message formatting", () => {
     expect(out.text).toContain("/owner/inventory");
   });
 });
+
+describe("packaging.purchase_recorded formatting", () => {
+  it("formats with supplier + total cost + qty + material name", async () => {
+    const { format } = await import("../src/outbox.js");
+    const out = format({
+      eventType: "packaging.purchase_recorded",
+      payload: {
+        purchase_id: "p1",
+        factory_id: "f1",
+        material_id: "m1",
+        material_name: "330ml glass bottle",
+        quantity: 5000,
+        total_cost_ngn: 200000,
+        supplier_name: "Glass Co.",
+      },
+    });
+    expect(out.text).toContain("🧴");
+    expect(out.text).toContain("Glass Co.");
+    expect(out.text).toContain("200,000");
+    expect(out.text).toContain("5,000");
+    expect(out.text).toContain("330ml glass bottle");
+    expect(out.text).toContain("/owner/packaging");
+  });
+});

@@ -136,6 +136,22 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `👉 ${ADMIN_URL}/owner/inventory`,
       };
     }
+    case "packaging.purchase_recorded": {
+      // Owner records a packaging-material purchase. The factory who needs
+      // bottles is the audience along with the owner.
+      const lines = [
+        `🧴 *Packaging purchase*`,
+        p["supplier_name"]
+          ? `${p["supplier_name"]} · ₦${Number(p["total_cost_ngn"]).toLocaleString()}`
+          : `₦${Number(p["total_cost_ngn"]).toLocaleString()}`,
+        `${Number(p["quantity"]).toLocaleString()} × ${p["material_name"]}`,
+        `👉 ${ADMIN_URL}/owner/packaging`,
+      ];
+      return {
+        chatIds: [owner],
+        text: lines.filter(Boolean).join("\n"),
+      };
+    }
     case "sale_return.pending_approval":
       return {
         chatIds: [owner],

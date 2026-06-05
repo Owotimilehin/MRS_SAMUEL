@@ -21,6 +21,7 @@ const NAV_OWNER: NavLink[] = [
   { to: "/owner/adjustments", label: "Adjustments", icon: "🪪", cap: "stock.read" },
   { to: "/owner/bookkeeping", label: "Bookkeeping", icon: "💰", cap: "expenses.view" },
   { to: "/owner/vendors", label: "Vendors", icon: "🏷️", cap: "expenses.view" },
+  { to: "/owner/packaging", label: "Packaging", icon: "🧴", cap: "packaging.view" },
   { to: "/owner/zones", label: "Delivery zones", icon: "🗺️", cap: "zones.manage" },
   { to: "/owner/customers", label: "Customers", icon: "👤", cap: "customers.view" },
   { to: "/owner/closes", label: "Daily closes", icon: "📋", cap: "close.approve" },

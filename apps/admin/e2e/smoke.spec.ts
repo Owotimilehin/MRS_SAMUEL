@@ -70,3 +70,13 @@ test("login page renders the cinematic sunrise structure", async ({ page }) => {
   // No "v1" anywhere on the page.
   await expect(page.getByText(/\bv1\b/i)).toHaveCount(0);
 });
+
+test("owner sees the Packaging page", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel(/email/i).fill("owner@example.com");
+  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await page.waitForURL(/\/owner|\/$/, { timeout: 5_000 });
+  await page.goto("/owner/packaging");
+  await expect(page.getByRole("button", { name: /add material/i })).toBeVisible({ timeout: 5_000 });
+});

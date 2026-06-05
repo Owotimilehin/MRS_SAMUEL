@@ -2,6 +2,7 @@ import { pgTable, uuid, integer, text, timestamp, pgEnum, date } from "drizzle-o
 import { factory } from "./factory.js";
 import { product } from "./product.js";
 import { adminUser } from "./admin-user.js";
+import { productVariant } from "./product-variant.js";
 
 export const productionRunStatus = pgEnum("production_run_status", [
   "draft",
@@ -27,6 +28,7 @@ export const productionRunItem = pgTable("production_run_item", {
     .notNull()
     .references(() => productionRun.id, { onDelete: "cascade" }),
   productId: uuid("product_id").notNull().references(() => product.id, { onDelete: "restrict" }),
+  variantId: uuid("variant_id").references(() => productVariant.id),
   quantityProduced: integer("quantity_produced").notNull(),
   batchCode: text("batch_code"),
 });

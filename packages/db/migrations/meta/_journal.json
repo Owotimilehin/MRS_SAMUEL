@@ -218,6 +218,13 @@
       "when": 1780900000000,
       "tag": "0031_cron_and_recurring",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781000000000,
+      "tag": "0032_packaging",
+      "breakpoints": true
     }
   ]
 }

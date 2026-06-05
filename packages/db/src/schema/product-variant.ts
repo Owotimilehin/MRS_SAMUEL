@@ -1,5 +1,6 @@
 import { pgTable, uuid, integer, text, boolean, timestamp, index, unique } from "drizzle-orm/pg-core";
 import { product } from "./product.js";
+import { packagingMaterial } from "./packaging-material.js";
 
 /**
  * A sellable size of a flavor (330ml can, 650ml bottle, ...). product_price,
@@ -19,6 +20,7 @@ export const productVariant = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    bottleMaterialId: uuid("bottle_material_id").references(() => packagingMaterial.id),
   },
   (t) => ({
     idxProduct: index("idx_product_variant_product").on(t.productId),
