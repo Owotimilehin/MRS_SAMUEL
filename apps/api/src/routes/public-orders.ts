@@ -16,10 +16,11 @@ import { availableAtBranch, nextOrderNumber } from "@ms/domain";
 import { normalizeNigerianPhone, phonesMatch, isOutsideLagos } from "@ms/shared";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { BusinessError } from "../lib/errors.js";
-import { createPayazaSession } from "../payments/payaza.js";
+import { createOpaySession } from "../payments/opay.js";
 import { getDeliveryProvider } from "../delivery/index.js";
 import { storeQuote, loadQuote } from "../delivery/quote-store.js";
 import { takeCartAsOrderItems, clearCartForCookie } from "./public-cart.js";
+import { verifyTurnstileToken } from "../lib/turnstile.js";
 import { env } from "../env.js";
 
 const CreateOnlineOrder = z.object({
@@ -69,6 +70,8 @@ const CreateOnlineOrder = z.object({
    * "Lagos") the delivery fee is forced to ₦0 and Bolt dispatch is bypassed.
    */
   delivery_state: z.string().min(1).optional(),
+  /** Cloudflare Turnstile token from the checkout widget (bot protection). */
+  turnstile_token: z.string().optional(),
 });
 
 const QuoteRequest = z.object({
@@ -178,7 +181,7 @@ export function publicOrderRoutes(db: DbClient) {
 
   /**
    * Create an online order — anonymous (no session). Reserves stock, returns
-   * the new order id + a Payaza checkout URL. If the device drops out before
+   * the new order id + an OPay checkout URL. If the device drops out before
    * paying, the reservation expires and the bottles return to inventory.
    */
   r.post("/", async (c) => {
@@ -186,6 +189,17 @@ export function publicOrderRoutes(db: DbClient) {
     const idempotencyKey = c.req.header("idempotency-key");
     if (!idempotencyKey) {
       throw new BusinessError("validation_failed", "idempotency-key header required", 400);
+    }
+
+    // Bot check (Cloudflare Turnstile). No-op unless TURNSTILE_SECRET is set, and
+    // fails open on a Cloudflare outage — see verifyTurnstileToken.
+    const human = await verifyTurnstileToken(
+      env.TURNSTILE_SECRET,
+      body.turnstile_token,
+      c.req.header("cf-connecting-ip") ?? undefined,
+    );
+    if (!human) {
+      throw new BusinessError("validation_failed", "Bot check failed — please retry.", 400);
     }
 
     // Validate scheduled_delivery_at: must be a valid ISO datetime and must be
@@ -412,8 +426,8 @@ export function publicOrderRoutes(db: DbClient) {
       return { order: o, customerEmail: cust.email };
     });
 
-    // Initiate Payaza session (or mock URL in dev). PUBLIC_CUSTOMER_URL wins
-    // when set; the admin→www substitution is a legacy fallback for prod
+    // Initiate the OPay Cashier session (or mock URL in dev). PUBLIC_CUSTOMER_URL
+    // wins when set; the admin→www substitution is a legacy fallback for prod
     // where customer + admin share a domain root.
     // The order owns the cart contents now — empty the cart so a refresh
     // doesn't replay the same items into a second order.
@@ -421,12 +435,16 @@ export function publicOrderRoutes(db: DbClient) {
 
     const customerBase =
       env.PUBLIC_CUSTOMER_URL ?? env.PUBLIC_ADMIN_URL.replace("admin.", "www.");
-    const callbackUrl = `${customerBase}/order/${created.order.orderNumber}?paid=1`;
-    const session = await createPayazaSession({
+    // returnUrl = where OPay sends the customer's browser back to; callbackUrl =
+    // the server-to-server webhook that actually confirms payment.
+    const returnUrl = `${customerBase}/order/${created.order.orderNumber}?paid=1`;
+    const session = await createOpaySession({
       amountNgn: created.order.totalNgn,
       email: created.customerEmail ?? "no-email@example.com",
       reference: created.order.orderNumber,
-      callbackUrl,
+      returnUrl,
+      callbackUrl: `${env.PUBLIC_API_URL}/v1/webhooks/opay`,
+      productName: `Mrs. Samuel order ${created.order.orderNumber}`,
     });
 
     return c.json(

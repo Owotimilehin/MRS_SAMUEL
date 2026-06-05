@@ -10,6 +10,12 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages packages
 COPY apps/customer apps/customer
 RUN pnpm install --frozen-lockfile
+# Vite inlines VITE_* at build time, so they must be present here (passed as
+# build args from docker-compose). Blank is fine — features degrade gracefully.
+ARG VITE_TURNSTILE_SITEKEY=""
+ARG VITE_MAPBOX_TOKEN=""
+ENV VITE_TURNSTILE_SITEKEY=$VITE_TURNSTILE_SITEKEY
+ENV VITE_MAPBOX_TOKEN=$VITE_MAPBOX_TOKEN
 RUN pnpm --filter @ms/shared build \
  && pnpm --filter @ms/customer build
 

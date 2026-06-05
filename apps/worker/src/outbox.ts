@@ -10,7 +10,7 @@ import {
 import { isOutsideLagos } from "@ms/shared";
 import { sendMessage, channels } from "./notifiers/telegram.js";
 import { sendEmail } from "./notifiers/email.js";
-import { refundPayaza } from "./payments/payaza-refund.js";
+import { refundOpay } from "./payments/opay-refund.js";
 import { dispatchDeliveryFromEvent } from "./jobs/dispatch-delivery.js";
 import { getWorkerDeliveryProvider } from "./delivery-provider.js";
 import pino from "pino";
@@ -229,7 +229,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         text:
           `💸 *Refund initiated*\n` +
           `Return ${p["return_number"] ?? "?"} · ₦${p["amount_ngn"]}\n` +
-          `Calling Payaza now.`,
+          `Calling OPay now.`,
       };
     case "sale.payment_reminder":
       // Email reminder handled inline; ping owner so they know one was sent.
@@ -274,7 +274,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         chatIds: [owner],
         text:
           `🚨 *Payment amount mismatch*\n` +
-          `${p["order_number"]} expected ₦${p["expected_ngn"]} but Payaza reported ₦${p["reported_ngn"]}.\n` +
+          `${p["order_number"]} expected ₦${p["expected_ngn"]} but OPay reported ₦${p["reported_ngn"]}.\n` +
           `Order parked for reconciliation.\n` +
           `👉 ${ADMIN_URL}/branch/sales/${p["sale_order_id"]}`,
       };
@@ -319,7 +319,7 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
         }
       }
 
-      // Card refund: hit Payaza, flip payment.status to refunded,
+      // Card refund: hit OPay, flip payment.status to refunded,
       // optionally email the customer the receipt.
       if (ev.eventType === "payment.refund_request") {
         const p = ev.payload as Record<string, string | number | null>;
@@ -328,7 +328,7 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
         const paymentId = p["payment_id"];
         const saleReturnId = p["sale_return_id"];
         if (typeof processorReference === "string" && typeof amountNgn === "number" && typeof paymentId === "string") {
-          const refund = await refundPayaza({
+          const refund = await refundOpay({
             processorReference,
             amountNgn,
           });
@@ -368,7 +368,7 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
       }
 
       // delivery.request: kick off a Bolt delivery for a freshly-paid online
-      // order. The worker performs the HTTP call so the Payaza webhook stays
+      // order. The worker performs the HTTP call so the OPay webhook stays
       // fast; if it fails the outbox retries with backoff.
       if (ev.eventType === "delivery.request") {
         await dispatchDeliveryFromEvent(

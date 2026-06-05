@@ -65,6 +65,7 @@ services:
       COOKIE_INSECURE: ${COOKIE_INSECURE:-0}
       PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}
       PAYAZA_WEBHOOK_SECRET: ${PAYAZA_WEBHOOK_SECRET:-}
+      TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
       BOLT_PROVIDER: ${BOLT_PROVIDER:-mock}
       BOLT_API_KEY: ${BOLT_API_KEY:-}
       BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET:-}
@@ -130,6 +131,9 @@ services:
     build:
       context: .
       dockerfile: apps/customer/Dockerfile
+      args:
+        VITE_TURNSTILE_SITEKEY: ${VITE_TURNSTILE_SITEKEY:-}
+        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-}
     ports:
       - "${HOST_BIND:-0.0.0.0}:3002:80"
     depends_on:

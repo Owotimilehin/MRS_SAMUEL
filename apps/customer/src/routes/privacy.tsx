@@ -21,11 +21,11 @@ export function PrivacyPage(): JSX.Element {
         <ul>
           <li>Contact (name, phone, optional email) — to coordinate delivery.</li>
           <li>Delivery address + zone — used once, then kept against your order record.</li>
-          <li>Payment reference — provided by Payaza; we never see your card details.</li>
+          <li>Payment reference — provided by OPay; we never see your card details.</li>
         </ul>
         <h2>Who sees it</h2>
         <p>
-          The kitchen team, the rider for your order, and our payment processor (Payaza). That's
+          The kitchen team, the rider for your order, and our payment processor (OPay). That's
           the entire list.
         </p>
         <h2>Questions</h2>

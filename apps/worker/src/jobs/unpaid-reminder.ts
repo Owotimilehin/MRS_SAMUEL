@@ -9,7 +9,7 @@ import {
 
 /**
  * Find online orders that have been sitting in `confirmed` status for >=15min
- * (the user opened Payaza but never paid) and whose stock reservation is still
+ * (the user opened OPay but never paid) and whose stock reservation is still
  * live (we haven't given up on them). Emit a one-time `sale.payment_reminder`
  * outbox event per order so the outbox worker can email/SMS the customer.
  *

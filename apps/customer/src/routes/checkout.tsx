@@ -5,6 +5,7 @@ import { useCart } from "../store/cart.js";
 import { api, ngn } from "../lib/api.js";
 import { BRAND } from "../data/menu.js";
 import { Button, Eyebrow } from "../components/ui/index.js";
+import { TurnstileWidget, TURNSTILE_SITEKEY } from "../components/TurnstileWidget.js";
 
 // Lazy: the address picker pulls in mapbox-gl (~1.7 MB). Keep it out of the
 // main bundle so it only loads when a customer reaches checkout.
@@ -68,6 +69,9 @@ export function CheckoutPage(): JSX.Element {
   const [scheduledAt, setScheduledAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Turnstile bot check — only enforced when a sitekey is baked into the build.
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRequired = !!TURNSTILE_SITEKEY;
 
   // Live delivery quote (Bolt). Refreshed when address or coords change.
   const [quote, setQuote] = useState<{
@@ -205,6 +209,7 @@ export function CheckoutPage(): JSX.Element {
             ? { delivery_quote_id: quote.provider_quote_id }
             : {}),
           ...(scheduledIso ? { scheduled_delivery_at: scheduledIso } : {}),
+          ...(turnstileToken ? { turnstile_token: turnstileToken } : {}),
           customer: {
             name,
             phone,
@@ -506,6 +511,8 @@ export function CheckoutPage(): JSX.Element {
                 </div>
               )}
 
+              <TurnstileWidget onToken={setTurnstileToken} />
+
               <Button
                 variant="primary"
                 className="ms-cart__cta"
@@ -518,6 +525,7 @@ export function CheckoutPage(): JSX.Element {
                   !phone ||
                   !address ||
                   !scheduledValid ||
+                  (turnstileRequired && !turnstileToken) ||
                   (!outsideLagos && !feeReady)
                 }
                 {...({ type: "submit" } as React.ButtonHTMLAttributes<HTMLButtonElement>)}
@@ -525,7 +533,7 @@ export function CheckoutPage(): JSX.Element {
                 {submitting ? "Creating order…" : `Pay ${ngn(total)}`}
               </Button>
               <p className="ms-cart__fineprint">
-                You'll be taken to a secure Payaza page. Prefer WhatsApp?{" "}
+                You'll be taken to a secure OPay page. Prefer WhatsApp?{" "}
                 <a
                   href={`https://wa.me/${BRAND.whatsapp}`}
                   target="_blank"

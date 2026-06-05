@@ -16,6 +16,7 @@ const Env = z.object({
   R2_ACCESS_KEY_ID: z.preprocess(emptyToUndef, z.string().optional()),
   R2_SECRET_ACCESS_KEY: z.preprocess(emptyToUndef, z.string().optional()),
   R2_BUCKET: z.preprocess(emptyToUndef, z.string().optional()),
+  TURNSTILE_SECRET: z.preprocess(emptyToUndef, z.string().optional()),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   PUBLIC_API_URL: z.string().url(),
   PUBLIC_ADMIN_URL: z.string().url(),

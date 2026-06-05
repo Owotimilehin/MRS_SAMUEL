@@ -215,7 +215,7 @@ export function SettingsPage(): JSX.Element {
               Active integrations for accepting payments and dispatching riders.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14 }}>
-              <ReadRow label="Card payments" value="Payaza · live" />
+              <ReadRow label="Card payments" value="OPay · live" />
               <ReadRow label="Delivery partner" value="Bolt · live" />
               <ReadRow
                 label="Bank transfer"

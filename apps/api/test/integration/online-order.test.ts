@@ -9,7 +9,7 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
  * Customer-site happy path:
  *   1. Public menu returns seeded products + a zone for our branch
  *   2. Anonymous customer creates an order (zone valid, stock available)
- *   3. Payaza webhook (HMAC validation off in test mode) marks paid
+ *   3. OPay callback (queryorder mock-confirms in test mode) marks paid
  *   4. Branch ledger decrements; tracking endpoint shows paid status
  */
 describe("Phase 3 customer-site online order flow", () => {
@@ -150,17 +150,14 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(orderBody.data.total_ngn).toBe(2500 * 3 + 1500);
     expect(orderBody.data.payment.authorization_url).toContain("paid=1");
 
-    // Simulate the Payaza webhook landing on success (no signature in dev)
-    const webhook = await fetch(`${baseUrl}/v1/webhooks/payaza`, {
+    // Simulate the OPay callback landing (mock queryorder confirms in dev)
+    const webhook = await fetch(`${baseUrl}/v1/webhooks/opay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        event: "transaction.success",
-        data: {
-          transaction_reference: orderBody.data.order_number,
-          status: "success",
-          amount: orderBody.data.total_ngn,
-          payaza_reference: "PYZ-MOCK-001",
+        payload: {
+          reference: orderBody.data.order_number,
+          status: "SUCCESS",
         },
       }),
     });
@@ -339,16 +336,13 @@ describe("Phase 3 customer-site online order flow", () => {
       }),
     });
     const ob = (await orderRes.json()) as { data: { order_number: string; total_ngn: number } };
-    await fetch(`${baseUrl}/v1/webhooks/payaza`, {
+    await fetch(`${baseUrl}/v1/webhooks/opay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        event: "transaction.success",
-        data: {
-          transaction_reference: ob.data.order_number,
-          status: "success",
-          amount: ob.data.total_ngn,
-          payaza_reference: `PYZ-${phone}`,
+        payload: {
+          reference: ob.data.order_number,
+          status: "SUCCESS",
         },
       }),
     });
