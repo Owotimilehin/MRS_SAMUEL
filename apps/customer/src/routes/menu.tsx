@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
   BRAND,
-  FRUITS,
   FRUIT_NUTRITION,
   MENU,
   bottleFor,
@@ -19,9 +18,6 @@ import { SizeToggle } from "../components/ui/SizeToggle.js";
 import { SiteLayout } from "../components/SiteLayout.js";
 
 /** Cart line items distinguish sizes by suffix. */
-function variantId(item: MenuItem, size: Size): string {
-  return `${item.id}-${size}`;
-}
 function variantName(item: MenuItem, size: Size): string {
   return `${item.name} (${size}ml)`;
 }
@@ -32,7 +28,6 @@ const AUTOPLAY_MS = 5500;
 const WHATSAPP_URL = `https://wa.me/${BRAND.whatsapp}?text=${encodeURIComponent(
   "Hi Mrs. Samuel! I'd like to place an order.",
 )}`;
-const PHONE_URL = `tel:${BRAND.phone.replace(/\s/g, "")}`;
 
 /* Fixed slot positions around the bottle — top→down, alternating sides.
  * Each slot has a base size and rotation. We fill slots in order from the

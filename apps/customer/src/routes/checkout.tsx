@@ -97,7 +97,6 @@ export function CheckoutPage(): JSX.Element {
   // Server cart already exposes variant UUIDs — no slug-matching needed.
   // Order submit reads from the cookie-keyed cart on the server, so we don't
   // even need to send items[]; the API resolves them from the cart row.
-  const unmatched: { name: string }[] = [];
   // Single active kitchen — auto-picked, no branch UI. Its delivery zones are
   // kept only as the static fallback fee when the live Bolt quote is down.
   const branch = branches[0] ?? null;

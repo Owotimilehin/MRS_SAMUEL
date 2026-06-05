@@ -28,8 +28,10 @@ async function getVariant(
   return v;
 }
 
+import type { Page } from "@playwright/test";
+
 // Track every console error/pageerror so the suite fails on silent UI regressions.
-function attachErrorTracking(page: import("@playwright/test").Page): string[] {
+function attachErrorTracking(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => {
@@ -311,7 +313,7 @@ test.describe("Customer site — feature sweep", () => {
     expect(errors, errors.join("\n")).toEqual([]);
   });
 
-  test("13. tracking with wrong phone returns 404 (no enumeration)", async ({ page }) => {
+  test("13. tracking with wrong phone returns 404 (no enumeration)", async ({ page: _page }) => {
     const ctx = await request.newContext();
     // Use a known-existing order from earlier tests if any — otherwise create one inline.
     const v = await getVariant(ctx, "sunrise-blend", 330);

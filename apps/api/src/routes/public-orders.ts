@@ -18,7 +18,7 @@ import { rateLimit } from "../middleware/rate-limit.js";
 import { BusinessError } from "../lib/errors.js";
 import { createPayazaSession } from "../payments/payaza.js";
 import { getDeliveryProvider } from "../delivery/index.js";
-import { storeQuote, loadQuote, quoteMatches } from "../delivery/quote-store.js";
+import { storeQuote, loadQuote } from "../delivery/quote-store.js";
 import { takeCartAsOrderItems, clearCartForCookie } from "./public-cart.js";
 import { env } from "../env.js";
 

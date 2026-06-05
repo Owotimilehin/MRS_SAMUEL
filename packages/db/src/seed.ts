@@ -229,7 +229,7 @@ If you ever get a bottle from us that tastes "off" or fizzy, it's past its windo
     coverUrl: null,
     bodyMd: `# What actually goes into our Ultimate Detox
 
-\"Detox juice\" usually means something with more marketing than ingredients. Ours has four:
+"Detox juice" usually means something with more marketing than ingredients. Ours has four:
 
 1. **Cucumber** — 96% water, electrolyte-rich, and the reason the bottle goes down so easy
 2. **Apple** — sweetens the cucumber without sugar, adds quercetin and soluble fibre

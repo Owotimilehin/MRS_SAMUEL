@@ -38,7 +38,7 @@ class BoltMockWorker implements DeliveryProvider {
   readonly name = "bolt" as const;
   constructor(private readonly webhookUrl: string) {}
 
-  async requestDelivery(input: RequestDeliveryInput): Promise<RequestDeliveryResult> {
+  async requestDelivery(_input: RequestDeliveryInput): Promise<RequestDeliveryResult> {
     const externalRef = `mock_d_${randomUUID().slice(0, 12)}`;
     const trackingUrl = `https://mock-bolt.local/track/${externalRef}`;
     const rider = RIDERS[Math.floor(Math.random() * RIDERS.length)]!;

@@ -1,3 +1,6 @@
+/* eslint-disable react-hooks/rules-of-hooks */
+// TanStack Router calls each route's `component` arrow function as a render
+// function rather than a React component; useParams is intentional here.
 import {
   createRouter,
   createRoute,

@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { SiteLayout } from "../components/SiteLayout.js";
 import { BRAND } from "../data/menu.js";
-import { Button, Eyebrow } from "../components/ui/index.js";
+import { Eyebrow } from "../components/ui/index.js";
 
 export function AboutPage(): JSX.Element {
   return (
