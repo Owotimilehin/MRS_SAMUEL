@@ -107,6 +107,13 @@ export class BranchDB extends Dexie {
       reservations: "id, sale_order_id, product_id, expires_at",
       meta: "id",
     });
+    // v2: index outbox.created_at_local so the queue page can `.orderBy()` it.
+    // Without the index, BranchQueuePage threw "KeyPath created_at_local … is
+    // not indexed" and crashed. Dexie rebuilds indexes on the version bump;
+    // existing devices migrate automatically with no upgrade callback needed.
+    this.version(2).stores({
+      outbox: "id, status, next_attempt_at, depends_on, created_at_local",
+    });
   }
 }
 

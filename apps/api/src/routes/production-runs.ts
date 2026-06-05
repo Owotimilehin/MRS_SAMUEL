@@ -131,7 +131,13 @@ export function productionRunRoutes(db: DbClient) {
       entityId: id,
       after: completed,
     });
-    return c.json({ data: completed });
+    // Return items alongside the run so the response matches the shape of
+    // /open and create — the UI relies on `data.items` always being present.
+    const items = await db
+      .select()
+      .from(productionRunItem)
+      .where(eq(productionRunItem.productionRunId, id));
+    return c.json({ data: { ...completed, items } });
   });
 
   /** Find today's open draft for a factory so the UI can resume it instead
@@ -162,6 +168,31 @@ export function productionRunRoutes(db: DbClient) {
       .from(productionRunItem)
       .where(eq(productionRunItem.productionRunId, run.id));
     return c.json({ data: { ...run, items } });
+  });
+
+  /** Recent runs for the history list, newest first. Optionally scoped to a
+   *  factory. Each run carries its items so the UI can show flavour/bottle
+   *  totals and link into the detail page. Registered before `/:id`. */
+  r.get("/", async (c) => {
+    const url = new URL(c.req.url);
+    const factoryId = url.searchParams.get("factory_id");
+    const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 200);
+    const runs = await db
+      .select()
+      .from(productionRun)
+      .where(factoryId ? eq(productionRun.factoryId, factoryId) : undefined)
+      .orderBy(desc(productionRun.runDate), desc(productionRun.createdAt))
+      .limit(limit);
+    const withItems = await Promise.all(
+      runs.map(async (run) => {
+        const items = await db
+          .select()
+          .from(productionRunItem)
+          .where(eq(productionRunItem.productionRunId, run.id));
+        return { ...run, items };
+      }),
+    );
+    return c.json({ data: withItems });
   });
 
   r.get("/:id", async (c) => {

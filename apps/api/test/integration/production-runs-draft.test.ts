@@ -156,6 +156,9 @@ describe("production runs — draft + append flow", () => {
     const done = await call<{ data: Run }>("PATCH", `/v1/production-runs/${runId}/complete`);
     expect(done.status).toBe(200);
     expect(done.body.data.status).toBe("completed");
+    // The /complete response MUST carry items — the admin UI renders
+    // `run.items` immediately after and crashes if it is undefined.
+    expect(done.body.data.items).toHaveLength(1);
 
     // 9. Editing items on a completed run is blocked
     const blocked = await call("PATCH", `/v1/production-runs/${runId}/items/${itemAId}`, {

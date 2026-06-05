@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { formatDate } from "../../lib/format.js";
@@ -28,6 +29,7 @@ export function ProductionRunsPage(): JSX.Element {
   const [factoryId, setFactoryId] = useState<string>("");
   const [runDate, setRunDate] = useState(new Date().toISOString().slice(0, 10));
   const [run, setRun] = useState<Run | null>(null);
+  const [history, setHistory] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +80,24 @@ export function ProductionRunsPage(): JSX.Element {
     })();
     return () => { cancelled = true; };
   }, [factoryId, runDate]);
+
+  // Load the run history for the selected factory.
+  async function loadHistory(): Promise<void> {
+    if (!factoryId) return;
+    try {
+      const res = await api<{ data: Run[] }>(
+        `/production-runs?factory_id=${factoryId}&limit=50`,
+      );
+      setHistory(res.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  useEffect(() => {
+    void loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [factoryId]);
 
   async function startDraft(): Promise<void> {
     if (!factoryId) return;
@@ -150,7 +170,10 @@ export function ProductionRunsPage(): JSX.Element {
     setBusy(true); setError(null);
     try {
       const done = await api<{ data: Run }>(`/production-runs/${run.id}/complete`, { method: "PATCH" });
-      setRun(done.data);
+      // Merge so `items` survives even if the API ever omits it — guards the
+      // render against `run.items` being undefined.
+      setRun((r) => (r ? { ...r, ...done.data, items: done.data.items ?? r.items } : done.data));
+      void loadHistory();
       setFlash("Run completed — stock posted to factory ledger");
       setTimeout(() => setFlash(null), 3000);
     } catch (err) {
@@ -302,6 +325,44 @@ export function ProductionRunsPage(): JSX.Element {
               </>
             )}
           </>
+        )}
+      </section>
+
+      <section className="card" style={{ marginBottom: 18 }}>
+        <h2 className="t-h2" style={{ marginBottom: 12 }}>Run history</h2>
+        {history.length === 0 ? (
+          <div className="empty">No runs yet for this factory.</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th className="table__num">Flavours</th>
+                  <th className="table__num">Bottles</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.id}>
+                    <td>{formatDate(h.runDate)}</td>
+                    <td>
+                      <span className={h.status === "completed" ? "pill pill--success" : "pill pill--warning"}>{h.status}</span>
+                    </td>
+                    <td className="table__num">{h.items.length}</td>
+                    <td className="table__num">{h.items.reduce((sum, it) => sum + it.quantityProduced, 0)}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <Link to="/factory/production-runs/$runId" params={{ runId: h.id }} className="btn btn--subtle btn--sm">
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
