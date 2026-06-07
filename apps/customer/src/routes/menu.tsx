@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   BRAND,
   FRUIT_NUTRITION,
@@ -853,15 +854,15 @@ function About(): JSX.Element {
     { n: "17", label: "Juice flavours" },
     { n: "100%", label: "Natural fruit" },
     { n: "0g", label: "Added sugar" },
-    { n: "Same-day", label: "Lagos delivery" },
+    { n: "40,000+", label: "Bottles sold" },
   ];
   return (
     <section id="about" className="ms-about scroll-enter">
       <div className="ms-about__copy">
         <div className="ms-label eyebrow">The story</div>
         <h2 className="ms-section-title">
-          One kitchen.<br />Seventeen juices.<br />
-          <span className="text-grad">Zero shortcuts.</span>
+          We could have taken shortcuts.<br />
+          <span className="text-grad">We took mornings instead.</span>
         </h2>
         <figure
           style={{
@@ -889,14 +890,25 @@ function About(): JSX.Element {
           </figcaption>
         </figure>
         <p className="ms-section-sub">
-          Every bottle starts at our kitchen in Ajao Estate before sunrise. We wash, peel, and
-          cold-press real fruit — the same kind you'd buy at the market — and bottle it
-          immediately. No concentrates, no syrups, nothing on the label your grandmother
-          wouldn't recognize.
+          Every "fresh" juice on a supermarket shelf made a choice somewhere between the farm
+          and the bottle — heat it, thin it, preserve it, ship it. We made a different one:
+          press it the same morning, in a kitchen on Ajao Estate, with fruit that looks exactly
+          like what you'd choose yourself. No concentrate. No syrup. Nothing on the label that
+          needs a translator.
         </p>
         <p className="ms-section-sub">
-          We deliver same-day across Lagos. Most customers come back before they finish the
-          first bottle.
+          That choice is slower, smaller, and harder to scale — which is probably why so few
+          people actually make it. And yet, somehow, it's the reason one order turned into
+          another, then into <strong>40,000+ bottles</strong> sold to people who kept coming
+          back before they'd finished the first one.
+        </p>
+        <p className="ms-section-sub">
+          So now we're doing something that sounds contradictory: getting bigger without
+          getting easier on ourselves. New machines arriving soon will let us press up to
+          5,000 bottles a day — same hands-on standards, just more of them, for more of Lagos.{" "}
+          <Link to="/about" style={{ color: "var(--accent)", fontWeight: 600 }}>
+            Read the full story →
+          </Link>
         </p>
       </div>
       <div className="ms-about__stats">

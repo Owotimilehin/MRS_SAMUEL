@@ -193,6 +193,79 @@ interface BlogSeed {
 
 const BLOG_POSTS: BlogSeed[] = [
   {
+    slug: "forty-thousand-bottles-later",
+    title: "Forty thousand bottles later: what's next for Mrs. Samuel",
+    excerpt:
+      "Last year September, all we had was belief and a cold-press. Today we've sold over 40,000 bottles — and we're bringing in machines that can do 5,000 a day.",
+    coverUrl: null,
+    bodyMd: `# Forty thousand bottles later: what's next for Mrs. Samuel
+
+Last year September, we started this journey with a simple vision: to create fresh juice people could truly trust. Real fruits. Real quality. Real care.
+
+At the time, all we had was our belief, our passion, and the willingness to work every single day to build something meaningful. There were long nights, early mornings, and a lot of moments where we had to choose faith over fear.
+
+## One order became many
+
+Slowly, people began to believe in what we were building. One order became many orders — and somewhere along the way, without either of us quite noticing the exact bottle it happened on, we crossed **forty thousand bottles sold**.
+
+Forty thousand moments shared in homes, offices, events, gyms, and everyday lives. For us, this is bigger than juice. It's proof that something built with consistency and honesty can grow.
+
+## The biggest step yet
+
+And now, we're getting ready for our biggest step yet. In the coming weeks, we'll be bringing in new production machines designed to produce **up to five thousand bottles daily**.
+
+That means:
+
+- **More growth** — more flavours, more batches, fewer "sold out" messages on WhatsApp
+- **More opportunities** — for the people who work with us, and the traders who supply our fruit
+- **More freshness for every Nigerian** — because the goal was never to stay small, it was to do this properly at a size that matters
+
+## Still the same kitchen values
+
+Bigger machines don't change what goes in the bottle. Same fruit from the same markets, same hand-checked batches, same 48-hour promise. We're scaling the *how*, not changing the *what*.
+
+What started as a dream between two people is becoming something much bigger than us. And honestly — this is only the beginning.
+
+We want you to be part of this from the very start. [Visit the menu](/) and place your order today, because something big is coming, and we're just getting started.
+
+**Fresh. Real. Made with purpose.**`,
+  },
+  {
+    slug: "more-than-juice-fighting-fruit-waste",
+    title: "Why we're building more than a juice company",
+    excerpt:
+      "Nigeria loses up to half its fresh produce after harvest. Here's why we think a juice bottle is one small way to fix that — and how farmers fit into our next phase.",
+    coverUrl: null,
+    bodyMd: `# Why we're building more than a juice company
+
+Every year in Nigeria, thousands of tons of fruit are wasted. Mangoes. Oranges. Pineapples. Watermelons. Fruits grown with real, hard work — left to spoil before they ever reach the people who'd happily pay for them.
+
+Studies estimate Nigeria loses somewhere between **30 and 50 percent of fresh produce** after harvest, mostly down to poor storage, difficult transportation, and limited local processing capacity. For a lot of farmers, that turns a season of work into a loss instead of a profit. Waste instead of opportunity.
+
+## We think something different is possible
+
+We believe every fruit that's harvested should become value — for the farmer who grew it, and for the person who eventually drinks it. That belief is the actual reason we started a juice company. Not just to make juice, but to become part of the solution to a problem that's bigger than any one bottle.
+
+Because when fruit gets processed close to where it's grown:
+
+- **Farmers earn more** — there's a buyer for produce that would otherwise sit and spoil
+- **Waste goes down** — fruit moves from farm to press in days, not weeks
+- **Jobs get created** — pressing, bottling, packing, and delivering all need people
+- **The local economy gets a little stronger** — money stays closer to where the fruit came from
+
+## What this looks like for us right now
+
+We already buy in bulk from traders at Mile 12 and a small farm in Ogun State (we wrote about [where our fruit comes from](/blog/fruit-sourcing) a while back). The new production machines we're bringing in — built to handle up to five thousand bottles a day — aren't just about serving more customers faster. They're about being able to take on a lot more fruit, which means creating real, steady demand for what local growers already produce.
+
+## An open invitation
+
+This is bigger than business to us. It's about building something that actually holds up for farmers, distributors, workers, and families across Nigeria — not just for one season, but for the long run.
+
+So to every fruit farmer, and every farm cooperative reading this: we'd genuinely like to talk. Message us on WhatsApp, tell us what you grow and where, and let's see what we can build together.
+
+Let's reduce waste together. Let's create value together. Because the future of fruit processing in Nigeria is just beginning — and we'd rather build it with people than around them.`,
+  },
+  {
     slug: "why-cold-pressed",
     title: "Why cold-pressed beats centrifugal every time",
     excerpt:

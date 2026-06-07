@@ -18,13 +18,13 @@ export function AboutPage(): JSX.Element {
         <div className="ms-about__hero-text">
           <Eyebrow>Our story</Eyebrow>
           <h1 className="ms-h1">
-            Juice the way your <span className="text-grad">grandmother</span> would have made it.
+            Real juice was never going to be the <span className="text-grad">easy</span> way to do this.
           </h1>
           <p className="ms-sub" style={{ maxWidth: 540, marginTop: 18 }}>
             Mrs. Samuel started in a home kitchen in Ajao Estate, Lagos — one woman, one cold-press,
-            seventeen recipes she'd been perfecting for her family for decades. We bottle that same
-            juice every morning, deliver it the same day, and refuse to add a single thing nobody
-            recognises.
+            and seventeen recipes she'd spent years getting right for the people she loved. We still
+            bottle that same juice every morning, deliver it the same day, and refuse to put a single
+            thing in it that we couldn't explain to your face.
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 24 }}>
             <Link to="/" className="btn btn--primary">
@@ -60,17 +60,17 @@ export function AboutPage(): JSX.Element {
           <Pillar
             kicker="100% Natural"
             title="Fruit. Water. That's it."
-            body="No concentrates. No syrups. No 'natural flavours' from a lab in another country. Every bottle is whole fruit pressed within minutes of being cut."
+            body="No concentrates. No syrups. No 'natural flavours' engineered in a lab somewhere else. Every bottle is whole fruit, pressed within minutes of being cut."
           />
           <Pillar
             kicker="48-hour shelf"
-            title="If it stays fresh, we didn't add enough."
-            body="Real juice doesn't last a year — that's what preservatives buy you. We bottle in the morning, deliver the same day, and you drink it before the weekend."
+            title="If it lasts a year, ask what's keeping it alive."
+            body="Real juice doesn't survive on a shelf — that's what preservatives are for. We press in the morning, deliver the same day, and trust you to drink it before the weekend."
           />
           <Pillar
             kicker="Made in Lagos"
             title="Pressed five minutes from your door."
-            body="Our factory is on Asa Afariogun Street. Every order is hand-packed, hand-checked, and hand-delivered by people who live in the same city."
+            body="Our kitchen sits on Asa Afariogun Street. Every order is packed, checked, and delivered by people who live in the same city you do — because we do too."
           />
         </div>
       </section>
@@ -82,39 +82,76 @@ export function AboutPage(): JSX.Element {
           <h2 className="ms-section-title">Lagos runs hot, fast, and on too much sugar.</h2>
           <p>
             We started Mrs. Samuel because we kept opening fridges full of bottled "juice" that
-            tasted like sweetened water and had ingredient lists we couldn't read. Lagos deserves
-            better. The fruit grows here. The customers care. The only thing missing was someone
-            willing to do the work — every day, before sunrise — to put real juice on the table.
+            tasted like sweetened water with an ingredient list nobody could read out loud. Lagos
+            deserved better than that. The fruit grows here. The people care here. The only thing
+            missing was someone willing to wake up at 5am and do the actual work of making it real.
           </p>
           <p>
-            Cold-pressing matters. It's not a marketing word. A spinning blade heats the fruit and
-            destroys most of the nutrients you wanted in the first place. A hydraulic press squeezes
-            without bruising — you taste the pineapple, the ginger, the carrot, separately, on the
-            way to a finish that's both bright and soft. It's the difference between juice and
-            sugar-water that happens to be orange.
+            Cold-pressing isn't a marketing word — it's a different decision at the start. A
+            spinning blade heats the fruit as it cuts, and heat is the enemy of everything you
+            wanted from the fruit in the first place. A hydraulic press squeezes slowly instead,
+            without bruising, so you can taste the pineapple, the ginger, the carrot — each one on
+            its own — on the way to a finish that's bright instead of just sweet.
           </p>
           <p>
-            And we don't pasteurise. Pasteurisation is what lets supermarket "fresh" juice last six
-            months — heated to 75°C, then sealed. Convenient. Dead. Mrs. Samuel goes in a glass
-            bottle the same morning it was pressed, into a refrigerated van, and onto your shelf
-            within hours. It's a smaller window, but the window is the product.
+            And we don't pasteurise. That's the step that lets supermarket "fresh" juice survive six
+            months on a shelf — heat it to 75°C, seal it, done. Convenient for them. Lifeless for
+            you. Ours leaves the press, goes into a glass bottle, into a refrigerated van, and onto
+            your shelf within hours of being made. The window is smaller. The window is also the
+            entire point.
           </p>
 
           <h3>What's in the seventeen?</h3>
           <p>
-            <strong>Carrot, pawpaw, orange, pineapple</strong> for breakfast and sunrise energy.{" "}
-            <strong>Beetroot, celery, apple, ginger</strong> for the afternoon detox. Watermelon
-            after the gym. Strawberry and soursop for the days you want a treat that isn't a treat.
-            Seventeen blends because seventeen households told us what they needed — not seventeen
-            because the marketing team thought it was a round number.
+            <strong>Carrot, pawpaw, orange, pineapple</strong> for mornings that need a push.{" "}
+            <strong>Beetroot, celery, apple, ginger</strong> for the afternoon reset. Watermelon
+            for after the gym. Strawberry and soursop for the days that need a small win that isn't
+            a bad decision. Seventeen blends — not because seventeen is a tidy number, but because
+            that's how many it took before seventeen households stopped asking for something
+            different.
           </p>
 
           <h3>The promise</h3>
           <p>
-            If you open a Mrs. Samuel bottle and it doesn't taste like the fruit on the label, we'll
-            replace it. If it arrives late, we'll refund the delivery. If your child won't drink it,
-            we'll swap it for a flavour they will. You've been buying juice your whole life — we're
-            asking for the chance to be the first one that's worth telling someone about.
+            If a bottle doesn't taste like the fruit on the label, we'll replace it. If it arrives
+            late, we'll refund the delivery. If your child won't drink it, we'll swap it for one
+            they will. You've been buying juice your whole life. We're asking for one chance to be
+            the brand you actually tell someone about.
+          </p>
+        </div>
+      </section>
+
+      {/* ───── Milestones ───── */}
+      <section className="ms-container ms-about__essay">
+        <div className="ms-about__essay-inner">
+          <Eyebrow>Where we are now</Eyebrow>
+          <h2 className="ms-section-title">Forty thousand bottles. One belief, still standing.</h2>
+          <p>
+            Last September, this started with a decision that looked, from the outside, like the
+            harder way to do things: press it fresh, every morning, by hand, and refuse to
+            shortcut any of it. At the time, all we had was belief, passion, and the willingness
+            to show up before sunrise — long nights, early mornings, and a lot of moments where
+            we had to choose faith over fear.
+          </p>
+          <p>
+            Slowly, people began to believe in what we were building. One order became many
+            orders. And today, since we began, we've sold over <strong>forty thousand
+            bottles</strong> — forty thousand moments shared in homes, offices, events, gyms, and
+            everyday lives. For us, that's bigger than juice. It's proof that something built with
+            consistency and honesty can grow.
+          </p>
+
+          <h3>The next step</h3>
+          <p>
+            And now, we're getting ready for our biggest step yet. In the coming weeks, we'll be
+            bringing in new production machines designed to produce up to{" "}
+            <strong>five thousand bottles daily</strong>. That means more growth, more
+            opportunities, and more freshness for every Nigerian. What started as a dream between
+            two people is becoming something much bigger than us — and this is only the beginning.
+          </p>
+          <p>
+            We want you to be part of this journey from the very start. Because something big is
+            coming, and we're just getting started. Fresh. Real. Made with purpose.
           </p>
         </div>
       </section>
@@ -127,8 +164,8 @@ export function AboutPage(): JSX.Element {
             Start with one bottle.
           </h2>
           <p className="ms-section-sub" style={{ maxWidth: 480, margin: "0 auto 22px" }}>
-            Pick whichever sounds good. We'll deliver same-day in Lagos and you can decide whether
-            we've earned the second order.
+            Pick whichever sounds good. We'll get it to you the same day, in Lagos — and then it's
+            up to the juice to earn the second order.
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
             <Link to="/" className="btn btn--primary">
