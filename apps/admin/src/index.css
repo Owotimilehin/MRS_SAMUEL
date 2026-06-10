@@ -831,6 +831,37 @@ button { font: inherit; }
   box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35);
 }
 
+.login-cinematic__input-wrap { position: relative; }
+.login-cinematic__input--password { padding-right: 68px; }
+
+.login-cinematic__reveal {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  height: 38px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.login-cinematic__reveal:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--ink);
+}
+.login-cinematic__reveal:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.55);
+}
+.login-cinematic__reveal:disabled { opacity: 0.5; cursor: default; }
+
 .login-cinematic__error {
   background: rgba(220, 38, 38, 0.20);
   color: #FFE5E5;

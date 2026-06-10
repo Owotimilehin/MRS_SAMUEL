@@ -22,6 +22,7 @@ function defaultDestination(role: string, branchId: string | null): string {
 export function LoginPage(): JSX.Element {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,17 +125,30 @@ export function LoginPage(): JSX.Element {
             </div>
             <div className="login-cinematic__field" style={{ marginBottom: 18 }}>
               <label className="login-cinematic__label" htmlFor="password">Password</label>
-              <input
-                id="password"
-                className="login-cinematic__input"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                disabled={submitting}
-              />
+              <div className="login-cinematic__input-wrap">
+                <input
+                  id="password"
+                  className="login-cinematic__input login-cinematic__input--password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  disabled={submitting}
+                />
+                <button
+                  type="button"
+                  className="login-cinematic__reveal"
+                  onClick={() => setShowPassword((v) => !v)}
+                  disabled={submitting}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  title={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
 
             {error && (
