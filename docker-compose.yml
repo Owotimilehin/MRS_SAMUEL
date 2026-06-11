@@ -63,13 +63,42 @@ services:
       # session cookies to drop the Secure flag so the browser actually sends
       # them back. Production behind Cloudflare Tunnel = HTTPS, leave unset.
       COOKIE_INSECURE: ${COOKIE_INSECURE:-0}
-      PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}
-      PAYAZA_WEBHOOK_SECRET: ${PAYAZA_WEBHOOK_SECRET:-}
+      # Payments — OPay Cashier. Empty keys = mock mode (auto-success checkout).
+      OPAY_MERCHANT_ID: ${OPAY_MERCHANT_ID:-}
+      OPAY_PUBLIC_KEY: ${OPAY_PUBLIC_KEY:-}
+      OPAY_PRIVATE_KEY: ${OPAY_PRIVATE_KEY:-}
+      OPAY_API_BASE: ${OPAY_API_BASE:-}
+      OPAY_SIGN_ALG: ${OPAY_SIGN_ALG:-}
       TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
+      # Delivery — Shipbubble (active) or Bolt (legacy mock fallback).
+      DELIVERY_PROVIDER: ${DELIVERY_PROVIDER:-bolt}
+      SHIPBUBBLE_PROVIDER: ${SHIPBUBBLE_PROVIDER:-mock}
+      SHIPBUBBLE_API_KEY: ${SHIPBUBBLE_API_KEY:-}
+      SHIPBUBBLE_API_BASE: ${SHIPBUBBLE_API_BASE:-}
+      SHIPBUBBLE_WEBHOOK_SECRET: ${SHIPBUBBLE_WEBHOOK_SECRET:-}
+      SHIPBUBBLE_SENDER_NAME: ${SHIPBUBBLE_SENDER_NAME:-}
+      SHIPBUBBLE_SENDER_PHONE: ${SHIPBUBBLE_SENDER_PHONE:-}
+      SHIPBUBBLE_SENDER_EMAIL: ${SHIPBUBBLE_SENDER_EMAIL:-}
+      SHIPBUBBLE_SENDER_ADDRESS: ${SHIPBUBBLE_SENDER_ADDRESS:-}
+      SHIPBUBBLE_CATEGORY_ID: ${SHIPBUBBLE_CATEGORY_ID:-}
+      SHIPBUBBLE_PKG_WEIGHT_KG: ${SHIPBUBBLE_PKG_WEIGHT_KG:-}
+      SHIPBUBBLE_PKG_VALUE_NGN: ${SHIPBUBBLE_PKG_VALUE_NGN:-}
+      SHIPBUBBLE_PKG_LENGTH_CM: ${SHIPBUBBLE_PKG_LENGTH_CM:-}
+      SHIPBUBBLE_PKG_WIDTH_CM: ${SHIPBUBBLE_PKG_WIDTH_CM:-}
+      SHIPBUBBLE_PKG_HEIGHT_CM: ${SHIPBUBBLE_PKG_HEIGHT_CM:-}
       BOLT_PROVIDER: ${BOLT_PROVIDER:-mock}
       BOLT_API_KEY: ${BOLT_API_KEY:-}
       BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET:-}
+      # Image uploads (Cloudflare R2). Empty = uploads disabled.
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      # Instagram feed (optional).
+      IG_ACCESS_TOKEN: ${IG_ACCESS_TOKEN:-}
+      IG_BUSINESS_ACCOUNT_ID: ${IG_BUSINESS_ACCOUNT_ID:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
       - "${HOST_BIND:-0.0.0.0}:3001:3001"
@@ -99,11 +128,29 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PUBLIC_ADMIN_URL: ${PUBLIC_ADMIN_URL:-http://localhost:3010}
       PUBLIC_CUSTOMER_URL: ${PUBLIC_CUSTOMER_URL:-http://localhost:3002}
+      # Delivery dispatch + watchdog (worker drives Shipbubble/Bolt label + tracking).
+      DELIVERY_PROVIDER: ${DELIVERY_PROVIDER:-bolt}
+      DELIVERY_WATCHDOG_MS: ${DELIVERY_WATCHDOG_MS:-}
+      SHIPBUBBLE_PROVIDER: ${SHIPBUBBLE_PROVIDER:-mock}
+      SHIPBUBBLE_API_KEY: ${SHIPBUBBLE_API_KEY:-}
+      SHIPBUBBLE_API_BASE: ${SHIPBUBBLE_API_BASE:-}
+      SHIPBUBBLE_WEBHOOK_SECRET: ${SHIPBUBBLE_WEBHOOK_SECRET:-}
       BOLT_PROVIDER: ${BOLT_PROVIDER:-mock}
       BOLT_API_KEY: ${BOLT_API_KEY:-}
       BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET:-}
-      PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}
+      BOLT_MOCK_WEBHOOK_URL: ${BOLT_MOCK_WEBHOOK_URL:-}
+      # Refunds — OPay. Empty = mock refund reference.
+      OPAY_MERCHANT_ID: ${OPAY_MERCHANT_ID:-}
+      OPAY_PRIVATE_KEY: ${OPAY_PRIVATE_KEY:-}
+      OPAY_API_BASE: ${OPAY_API_BASE:-}
+      OPAY_SIGN_ALG: ${OPAY_SIGN_ALG:-}
+      # Image processing (Cloudflare R2).
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_OWNER_CHANNEL_ID: ${TELEGRAM_OWNER_CHANNEL_ID:-}
@@ -131,11 +178,19 @@ services:
     build:
       context: .
       dockerfile: apps/customer/Dockerfile
-      args:
-        VITE_TURNSTILE_SITEKEY: ${VITE_TURNSTILE_SITEKEY:-}
-        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-}
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      # Used by the SSR app's server functions to reach the API. This is the
+      # in-network service address and is deliberately NOT derived from the
+      # host's PUBLIC_API_URL: that var is overloaded (the api service uses it
+      # for outbound OPay callback URLs, which must be the *public* host URL).
+      # The customer container always reaches the api over the compose network,
+      # where it is `http://api:3001` in both dev and prod.
+      PUBLIC_API_URL: http://api:3001
     ports:
-      - "${HOST_BIND:-0.0.0.0}:3002:80"
+      - "${HOST_BIND:-0.0.0.0}:3002:3000"
     depends_on:
       api:
         condition: service_healthy
