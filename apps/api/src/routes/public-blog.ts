@@ -18,12 +18,29 @@ export function publicBlogRoutes(db: DbClient) {
         excerpt: blogPost.excerpt,
         coverUrl: blogPost.coverUrl,
         publishedAt: blogPost.publishedAt,
+        author: blogPost.author,
+        readMins: blogPost.readMins,
+        category: blogPost.category,
+        cluster: blogPost.cluster,
       })
       .from(blogPost)
       .where(and(isNotNull(blogPost.publishedAt), isNull(blogPost.deletedAt)))
       .orderBy(desc(blogPost.publishedAt))
       .limit(50);
-    return c.json({ data: rows });
+    return c.json({
+      data: rows.map((r) => ({
+        id: r.id,
+        slug: r.slug,
+        title: r.title,
+        excerpt: r.excerpt,
+        cover_url: r.coverUrl,
+        published_at: r.publishedAt,
+        author: r.author,
+        read_mins: r.readMins,
+        category: r.category,
+        cluster: r.cluster,
+      })),
+    });
   });
 
   r.get("/:slug", async (c) => {
@@ -48,6 +65,10 @@ export function publicBlogRoutes(db: DbClient) {
         body_md: row.bodyMd,
         cover_url: row.coverUrl,
         published_at: row.publishedAt,
+        author: row.author,
+        read_mins: row.readMins,
+        category: row.category,
+        cluster: row.cluster,
         // Read counter is a nice-to-have; skip for v1.
       },
     });
