@@ -25,6 +25,9 @@ import {
   ShoppingCart,
   Search,
   ChevronRight,
+  CalendarClock,
+  Gift,
+  Inbox,
   type LucideIcon,
 } from "lucide-react";
 import { useAuthUser } from "../lib/auth.js";
@@ -65,6 +68,9 @@ const NAV_ADMIN: NavLink[] = [
   { to: "/owner/devices", label: "Devices", Icon: Smartphone, cap: "devices.view" },
   { to: "/owner/settings", label: "Settings", Icon: Settings, cap: "settings.manage" },
   { to: "/owner/blog", label: "Blog", Icon: PenLine, cap: "blog.manage" },
+  { to: "/owner/subscriptions", label: "Subscriptions", Icon: CalendarClock, cap: "marketing.manage" },
+  { to: "/owner/bundles", label: "Bundles", Icon: Gift, cap: "marketing.manage" },
+  { to: "/owner/leads", label: "Leads", Icon: Inbox, cap: "marketing.manage" },
 ];
 
 interface ShellProps {

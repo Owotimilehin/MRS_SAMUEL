@@ -34,6 +34,7 @@ import { telemetryRoutes } from "./routes/telemetry.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
 import { auditLogRoutes } from "./routes/audit-log.js";
 import { blogRoutes } from "./routes/blog.js";
+import { marketingRoutes } from "./routes/marketing.js";
 import { publicBlogRoutes } from "./routes/public-blog.js";
 import { publicContactRoutes } from "./routes/public-contact.js";
 import { publicSubscriptionRoutes } from "./routes/public-subscriptions.js";
@@ -101,6 +102,7 @@ export function buildApp(): Hono {
   app.route("/v1/audit-log", auditLogRoutes(db));
   app.route("/v1/customers", customerRoutes(db));
   app.route("/v1/blog", blogRoutes(db));
+  app.route("/v1/marketing", marketingRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));

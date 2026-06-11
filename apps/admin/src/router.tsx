@@ -67,6 +67,9 @@ const PackagingPage = lazyNamed(() => import("./routes/owner/packaging.js"), "Pa
 const UsersPage = lazyNamed(() => import("./routes/owner/users.js"), "UsersPage");
 const AuditLogPage = lazyNamed(() => import("./routes/owner/audit-log.js"), "AuditLogPage");
 const BlogPage = lazyNamed(() => import("./routes/owner/blog.js"), "BlogPage");
+const SubscriptionsPage = lazyNamed(() => import("./routes/owner/subscriptions.js"), "SubscriptionsPage");
+const BundlesPage = lazyNamed(() => import("./routes/owner/bundles.js"), "BundlesPage");
+const LeadsPage = lazyNamed(() => import("./routes/owner/leads.js"), "LeadsPage");
 const OrdersPage = lazyNamed(() => import("./routes/owner/orders.js"), "OrdersPage");
 const OrderDetailPage = lazyNamed<{ saleId: string }>(
   () => import("./routes/owner/order-detail.js"),
@@ -411,6 +414,21 @@ const blogRoute = createRoute({
   path: "/owner/blog",
   component: () => guarded(<L><BlogPage /></L>),
 });
+const subscriptionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/subscriptions",
+  component: () => guarded(<L><SubscriptionsPage /></L>),
+});
+const bundlesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/bundles",
+  component: () => guarded(<L><BundlesPage /></L>),
+});
+const leadsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/leads",
+  component: () => guarded(<L><LeadsPage /></L>),
+});
 const ownerClosesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/owner/closes",
@@ -580,6 +598,9 @@ const routeTree = rootRoute.addChildren([
   usersRoute,
   auditLogRoute,
   blogRoute,
+  subscriptionsRoute,
+  bundlesRoute,
+  leadsRoute,
   ownerClosesRoute,
   closeDetailRoute,
   // factory
