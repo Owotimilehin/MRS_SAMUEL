@@ -8,6 +8,7 @@ import { idempotencyMiddleware } from "./middleware/idempotency.js";
 import { authRoutes } from "./auth/routes.js";
 import { healthRoutes } from "./routes/health.js";
 import { productRoutes } from "./routes/products.js";
+import { mediaRoutes } from "./routes/media.js";
 import { branchRoutes } from "./routes/branches.js";
 import { productionRunRoutes } from "./routes/production-runs.js";
 import { stockRoutes } from "./routes/stock.js";
@@ -19,6 +20,7 @@ import { transferRoutes } from "./routes/transfers.js";
 import { reviewRoutes } from "./routes/review.js";
 import { factoryRoutes } from "./routes/factories.js";
 import { saleRoutes } from "./routes/sales.js";
+import { customerRoutes } from "./routes/customers.js";
 import { syncRoutes } from "./routes/sync.js";
 import { publicCatalogRoutes } from "./routes/public-catalog.js";
 import { publicOrderRoutes } from "./routes/public-orders.js";
@@ -33,6 +35,8 @@ import { adminUserRoutes } from "./routes/admin-users.js";
 import { auditLogRoutes } from "./routes/audit-log.js";
 import { blogRoutes } from "./routes/blog.js";
 import { publicBlogRoutes } from "./routes/public-blog.js";
+import { publicContactRoutes } from "./routes/public-contact.js";
+import { publicSubscriptionRoutes } from "./routes/public-subscriptions.js";
 import { boltWebhookRoutes, shipbubbleWebhookRoutes } from "./routes/webhooks-bolt.js";
 
 let cachedDb: DbClient | null = null;
@@ -75,6 +79,7 @@ export function buildApp(): Hono {
   app.route("/v1/auth", authRoutes(db));
   app.route("/v1/health", healthRoutes(db));
   app.route("/v1/products", productRoutes(db));
+  app.route("/v1/media", mediaRoutes(db));
   app.route("/v1/branches", branchRoutes(db));
   app.route("/v1/production-runs", productionRunRoutes(db));
   app.route("/v1/stock", stockRoutes(db));
@@ -94,6 +99,7 @@ export function buildApp(): Hono {
   app.route("/v1/sync", syncRoutes(db));
   app.route("/v1/admin/users", adminUserRoutes(db));
   app.route("/v1/audit-log", auditLogRoutes(db));
+  app.route("/v1/customers", customerRoutes(db));
   app.route("/v1/blog", blogRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
@@ -102,6 +108,8 @@ export function buildApp(): Hono {
   app.route("/v1/public/orders", publicOrderRoutes(db));
   app.route("/v1/public/instagram", publicInstagramRoutes());
   app.route("/v1/public/blog", publicBlogRoutes(db));
+  app.route("/v1/public/contact", publicContactRoutes(db));
+  app.route("/v1/public/subscriptions", publicSubscriptionRoutes(db));
   app.route("/v1/public/telemetry", telemetryRoutes(db));
   app.route("/v1/webhooks/opay", opayWebhookRoutes(db));
   app.route("/v1/webhooks/bolt", boltWebhookRoutes(db));
