@@ -1,0 +1,13 @@
+{
+  "bundles": [
+    { "slug": "starter-6", "name": "Starter 6-Pack", "price_ngn": 14000, "description": "Six bottles, your pick of any classic flavours. The easiest way to discover a new favourite.", "contents_label": "6 × 330ml", "badge": "Most loved", "display_order": 1 },
+    { "slug": "detox-12", "name": "Detox 12-Pack", "price_ngn": 27500, "description": "Twelve bottles built around our Detox, Immune Booster and Blood Booster. A clean two-week reset.", "contents_label": "12 × 330ml", "badge": "Reset", "display_order": 2 },
+    { "slug": "family-20", "name": "Family 20-Pack", "price_ngn": 44000, "description": "Twenty bottles, mixed sizes — enough fresh juice for a household for two full weeks.", "contents_label": "20 × 330ml + 650ml", "badge": "Best value", "display_order": 3 },
+    { "slug": "gift-box", "name": "Mrs. Samuel Gift Box", "price_ngn": 18500, "description": "Four Specials wrapped beautifully — Pink Paradise, Guyabano Delight and two seasonal picks. Birthdays. Baby showers. Sorry-I-missed-it.", "contents_label": "4 × 650ml + card", "badge": "Gift", "display_order": 4 }
+  ],
+  "subscription_plans": [
+    { "slug": "weekly-juice-box", "name": "Weekly Juice Box", "price_ngn": 12500, "period": "/week", "bottles_label": "7 bottles", "description": "One bottle a day. Perfect to start a routine and keep it.", "perks": ["7 × 330ml weekly", "Skip any week", "5% off retail"], "popular": false, "display_order": 1 },
+    { "slug": "monthly-detox", "name": "Monthly Detox Plan", "price_ngn": 42000, "period": "/month", "bottles_label": "20 bottles", "description": "Cleanse-focused — Detox, Immune Booster, Blood Booster on rotation.", "perks": ["20 × 330ml monthly", "Wellness call with Mrs. Samuel", "10% off + free delivery"], "popular": true, "display_order": 2 },
+    { "slug": "family-package", "name": "Family Package", "price_ngn": 65000, "period": "/month", "bottles_label": "30 bottles", "description": "Mixed sizes, mixed flavours — enough fresh juice for a household.", "perks": ["30 bottles, mixed sizes", "Kid-friendly flavour priority", "12% off + free delivery"], "popular": false, "display_order": 3 }
+  ]
+}

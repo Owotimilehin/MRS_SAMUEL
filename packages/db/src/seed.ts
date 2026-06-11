@@ -8,6 +8,8 @@ import {
   productPrice,
   productVariant,
   mediaAsset,
+  bundle,
+  subscriptionPlan,
 } from "./schema/index.js";
 import argon2 from "argon2";
 import { eq, and, isNull } from "drizzle-orm";
@@ -523,12 +525,79 @@ async function seedBlogPosts(): Promise<void> {
   );
 }
 
+interface StorefrontFile {
+  bundles: Array<{
+    slug: string;
+    name: string;
+    price_ngn: number;
+    description: string;
+    contents_label: string;
+    badge: string;
+    display_order: number;
+  }>;
+  subscription_plans: Array<{
+    slug: string;
+    name: string;
+    price_ngn: number;
+    period: string;
+    bottles_label: string;
+    description: string;
+    perks: string[];
+    popular: boolean;
+    display_order: number;
+  }>;
+}
+
+async function seedStorefront(): Promise<void> {
+  const data = JSON.parse(
+    readFileSync(new URL("./seed-data/storefront.json", import.meta.url), "utf8"),
+  ) as StorefrontFile;
+  for (const b of data.bundles) {
+    const [exists] = await db.select().from(bundle).where(eq(bundle.slug, b.slug)).limit(1);
+    if (!exists) {
+      await db.insert(bundle).values({
+        slug: b.slug,
+        name: b.name,
+        priceNgn: b.price_ngn,
+        description: b.description,
+        contentsLabel: b.contents_label,
+        badge: b.badge,
+        displayOrder: b.display_order,
+      });
+    }
+  }
+  for (const p of data.subscription_plans) {
+    const [exists] = await db
+      .select()
+      .from(subscriptionPlan)
+      .where(eq(subscriptionPlan.slug, p.slug))
+      .limit(1);
+    if (!exists) {
+      await db.insert(subscriptionPlan).values({
+        slug: p.slug,
+        name: p.name,
+        priceNgn: p.price_ngn,
+        period: p.period,
+        bottlesLabel: p.bottles_label,
+        description: p.description,
+        perks: p.perks,
+        popular: p.popular,
+        displayOrder: p.display_order,
+      });
+    }
+  }
+  console.warn(
+    `storefront seeded: ${data.bundles.length} bundles, ${data.subscription_plans.length} plans`,
+  );
+}
+
 async function main(): Promise<void> {
   await seedOwner();
   await seedFactory();
   await seedBranch();
   await seedProducts();
   await seedBlogPosts();
+  await seedStorefront();
 }
 
 main()
