@@ -1,21 +1,27 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Clock } from "lucide-react";
-import { getPost, posts } from "@/data/blogPosts";
+import { fetchBlogPost, fetchBlogPosts } from "@/lib/api/server-fns";
+import { renderMarkdown } from "@/lib/markdown";
 import { SiteShell } from "@/components/SiteShell";
 import { CLUSTERS } from "@/lib/visuals";
 
 export const Route = createFileRoute("/blog/$slug")({
-  loader: ({ params }) => {
-    const p = getPost(params.slug);
-    if (!p) throw notFound();
-    return p;
+  loader: async ({ params }) => {
+    const [post, all] = await Promise.all([
+      fetchBlogPost({ data: params.slug }),
+      fetchBlogPosts(),
+    ]);
+    return {
+      post,
+      related: all.filter((x) => x.slug !== post.slug && x.category === post.category).slice(0, 2),
+    };
   },
   head: ({ loaderData }) => ({
     meta: [
-      { title: `${loaderData?.title ?? "Post"} — Mrs. Samuel Journal` },
-      { name: "description", content: loaderData?.excerpt ?? "" },
-      { property: "og:title", content: loaderData?.title ?? "" },
-      { property: "og:description", content: loaderData?.excerpt ?? "" },
+      { title: `${loaderData?.post?.title ?? "Post"} — Mrs. Samuel Journal` },
+      { name: "description", content: loaderData?.post?.excerpt ?? "" },
+      { property: "og:title", content: loaderData?.post?.title ?? "" },
+      { property: "og:description", content: loaderData?.post?.excerpt ?? "" },
       { property: "og:type", content: "article" },
     ],
   }),
@@ -31,8 +37,7 @@ export const Route = createFileRoute("/blog/$slug")({
 });
 
 function Page() {
-  const p = Route.useLoaderData() as NonNullable<ReturnType<typeof getPost>>;
-  const related = posts.filter((x) => x.slug !== p.slug && x.category === p.category).slice(0, 2);
+  const { post: p, related } = Route.useLoaderData();
 
   return (
     <SiteShell>
@@ -58,15 +63,7 @@ function Page() {
         </div>
 
         <div className="prose-content mt-10 space-y-6 text-[17px] leading-[1.75] text-[color:var(--brand)]/85">
-          {p.body.map((b: { type: "p" | "h" | "quote"; text: string }, i: number) => {
-            if (b.type === "h") return <h2 key={i} className="font-display text-2xl sm:text-3xl text-[color:var(--brand)] mt-10">{b.text}</h2>;
-            if (b.type === "quote") return (
-              <blockquote key={i} className="my-8 border-l-4 border-[color:var(--brand-orange)] pl-5 font-display text-xl sm:text-2xl text-[color:var(--brand)] italic">
-                "{b.text}"
-              </blockquote>
-            );
-            return <p key={i}>{b.text}</p>;
-          })}
+          {renderMarkdown(p.bodyMd.replace(/^#\s+.*(?:\n+|$)/, ""))}
         </div>
 
         <div className="mt-14 pt-8 border-t border-black/10">

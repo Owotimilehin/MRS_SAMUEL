@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Clock, ArrowRight } from "lucide-react";
-import { posts } from "@/data/blogPosts";
+import { Clock } from "lucide-react";
+import { fetchBlogPosts } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { CLUSTERS } from "@/lib/visuals";
@@ -9,6 +9,7 @@ import { useState } from "react";
 import clusterBerry from "@/assets/decor/cluster-berry.png";
 
 export const Route = createFileRoute("/blog/")({
+  loader: async () => ({ posts: await fetchBlogPosts() }),
   head: () => ({
     meta: [
       { title: "Blog — Mrs. Samuel Fruit Juice" },
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/blog/")({
 const categories = ["All", "Story", "Wellness", "Behind the Scenes", "Recipes"] as const;
 
 function Page() {
+  const { posts } = Route.useLoaderData();
   const [cat, setCat] = useState<(typeof categories)[number]>("All");
   const list = cat === "All" ? posts : posts.filter((p) => p.category === cat);
   const [featured, ...rest] = list;

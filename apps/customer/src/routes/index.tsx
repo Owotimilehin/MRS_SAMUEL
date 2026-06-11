@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import type { Product } from "@/lib/api/mappers";
-import { fetchProducts } from "@/lib/api/server-fns";
+import { fetchProducts, fetchBlogPosts } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";
 import { Hero } from "@/components/Hero";
 import { ProductCard } from "@/components/ProductCard";
@@ -33,12 +33,15 @@ export const Route = createFileRoute("/")({
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,300..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" },
     ],
   }),
-  loader: async () => ({ products: await fetchProducts() }),
+  loader: async () => {
+    const [products, posts] = await Promise.all([fetchProducts(), fetchBlogPosts()]);
+    return { products, posts };
+  },
   component: Page,
 });
 
 function Page() {
-  const { products } = Route.useLoaderData();
+  const { products, posts } = Route.useLoaderData();
   const [selected, setSelected] = useState<Product | null>(null);
   const classics = products.filter((p) => p.category === "Classic").slice(0, 8);
   const specials = products.filter((p) => p.category === "Special");
@@ -100,7 +103,7 @@ function Page() {
       <Story />
       <Sustainability />
       <Testimonials />
-      <Blog />
+      <Blog posts={posts} />
       <FeatureCards />
       <FAQ />
 
