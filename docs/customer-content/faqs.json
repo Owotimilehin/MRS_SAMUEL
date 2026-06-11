@@ -1,0 +1,32 @@
+{
+  "_comment": "FAQs extracted from fruit-splash-showcase src/components/FAQ.tsx. No backend table — these can stay static on the frontend, or move to a faq table (see STRUCTURE.md).",
+  "faqs": [
+    {
+      "question": "How long does the juice last?",
+      "answer": "Up to 4 days refrigerated. Cold-pressed and unpasteurised, so the cold chain matters — keep it chilled the whole way.",
+      "display_order": 1
+    },
+    {
+      "question": "Do you add sugar or sweeteners?",
+      "answer": "Never. The only sweetness is from the fruit itself. No syrups, no concentrates, no preservatives.",
+      "display_order": 2
+    },
+    {
+      "question": "Do you deliver nationwide?",
+      "answer": "Same-day cold delivery across Lagos. Other cities by special arrangement — message us on WhatsApp.",
+      "display_order": 3
+    },
+    {
+      "question": "Can I refrigerate the juice?",
+      "answer": "Yes, please do. Store between 2–6°C from the moment it arrives and consume within 4 days for the best taste.",
+      "display_order": 4
+    }
+  ],
+  "contact_form": {
+    "_comment": "Fields from src/routes/contact.tsx — no backend endpoint exists. See STRUCTURE.md (contact_message + POST /v1/public/contact).",
+    "fields": ["name", "email", "phone", "subject", "message"],
+    "required": ["name", "email", "subject", "message"],
+    "whatsapp": "2349019512246",
+    "phone_display": "0901 951 2246"
+  }
+}

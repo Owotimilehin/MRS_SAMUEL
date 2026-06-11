@@ -3,6 +3,7 @@ import type {
   DeliveryProvider,
   DeliveryQuote,
   DeliveryQuoteInput,
+  DeliveryQuoteOptions,
   NormalizedWebhook,
   RequestDeliveryInput,
   RequestDeliveryResult,
@@ -45,6 +46,25 @@ export class BoltLiveProvider implements DeliveryProvider {
       feeNgn: Math.round(Number(res.price)),
       etaMinutes: Math.round(Number(res.eta_minutes ?? 25)),
       expiresInSeconds: Number(res.expires_in_seconds ?? 300),
+    };
+  }
+
+  async quoteOptions(input: DeliveryQuoteInput): Promise<DeliveryQuoteOptions> {
+    // Bolt returns a single quote; surface it as one option.
+    const q = await this.quote(input);
+    return {
+      quoteToken: q.providerQuoteId,
+      expiresInSeconds: q.expiresInSeconds,
+      validatedAddress: { addressCode: 0, formatted: input.dropoffAddress, lat: null, lng: null },
+      options: [
+        {
+          id: q.providerQuoteId,
+          courierName: "Bolt",
+          feeNgn: q.feeNgn,
+          etaMinutes: q.etaMinutes,
+          onDemand: true,
+        },
+      ],
     };
   }
 

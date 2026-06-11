@@ -7,7 +7,7 @@ import {
 import { SiteShell } from "@/components/SiteShell";
 import { useCart, formatNaira } from "@/lib/cart";
 import { fetchBranches, requestQuote, placeOrder as placeOrderFn } from "@/lib/api/server-fns";
-import { ApiError } from "@/lib/api/client";
+import { asApiError } from "@/lib/api/client";
 import type { ApiDeliveryOption } from "@/lib/api/types";
 import { NIGERIA_STATES } from "@/lib/nigeria-states";
 import { WINDOWS, scheduledIso, isWindowAvailable, type DeliveryWindow } from "@/lib/schedule";
@@ -78,7 +78,8 @@ function Page() {
         .catch((e: unknown) => {
           if (!alive) return;
           setOptions([]); setSelectedId(null);
-          setQuoteNotice(e instanceof ApiError ? e.message : "Live delivery is unavailable right now — no delivery charge applied.");
+          const qErr = asApiError(e);
+          setQuoteNotice(qErr ? qErr.message : "Live delivery is unavailable right now — no delivery charge applied.");
         })
         .finally(() => { if (alive) setQuoting(false); });
     }, 600);
@@ -144,19 +145,23 @@ function Page() {
       clear();
       window.location.href = res.payment.authorization_url;
     } catch (e) {
-      if (e instanceof ApiError && e.code === "idempotency_in_flight") {
+      // placeOrder runs as a server function; the API's ApiError is serialized
+      // across the RPC boundary and reconstructed here so we can branch on
+      // code/status (the raw `e` is a plain Error on the client).
+      const err = asApiError(e);
+      if (err && err.code === "idempotency_in_flight") {
         setTimeout(() => submit(true), 1500); // first attempt still settling — replay same key
         return;
       }
-      if (e instanceof ApiError && e.code === "idempotency_key_reused") {
+      if (err && err.code === "idempotency_key_reused") {
         await submit(false); // body changed under the same key — fresh attempt
         return;
       }
-      if (e instanceof ApiError && (e.code === "conflict" || e.status === 422)) {
+      if (err && (err.code === "conflict" || err.status === 422)) {
         // Stock/validation conflict — the API message explains (e.g. "only N left").
-        setPlaceError(`${e.message} Adjust your basket and try again.`);
+        setPlaceError(`${err.message} Adjust your basket and try again.`);
       } else {
-        setPlaceError(e instanceof ApiError ? e.message : "Something went wrong placing your order. Please try again.");
+        setPlaceError(err ? err.message : "Something went wrong placing your order. Please try again.");
       }
       setPlacing(false);
     }

@@ -22,6 +22,10 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [channel, setChannel] = useState<Channel>("walkup");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  // Optional customer — phone is the identity (server merges returning customers
+  // by phone); name is just for readability. Both blank = anonymous walk-up.
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,14 +85,29 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           throw new Error(`Insufficient stock for ${p?.name ?? l.product_id} (${have} available)`);
         }
       }
+      const itemCount = cart.reduce((n, l) => n + l.quantity, 0);
+      const trimmedPhone = customerPhone.trim();
+      const trimmedName = customerName.trim();
       const sale = await createLocalSale({
         branchId,
         channel,
         items: cart,
         payment_method: paymentMethod,
+        ...(trimmedPhone || trimmedName
+          ? {
+              customer: {
+                ...(trimmedName ? { name: trimmedName } : {}),
+                ...(trimmedPhone ? { phone: trimmedPhone } : {}),
+              },
+            }
+          : {}),
       });
-      setFlash(`Sold · ${sale.orderNumber} · ${ngn(sale.subtotal)}`);
+      setFlash(
+        `Sale recorded ✓ · ${itemCount} ${itemCount === 1 ? "item" : "items"} · ${ngn(sale.subtotal)}`,
+      );
       setCart([]);
+      setCustomerPhone("");
+      setCustomerName("");
       setTimeout(() => setFlash(null), 4000);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -245,6 +264,27 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           )}
 
           <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="field">
+              <label className="field__label">Customer phone (optional)</label>
+              <input
+                className="input"
+                inputMode="tel"
+                autoComplete="off"
+                placeholder="e.g. 0803…"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label className="field__label">Customer name (optional)</label>
+              <input
+                className="input"
+                autoComplete="off"
+                placeholder="e.g. Bisi"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+              />
+            </div>
             <div className="field">
               <label className="field__label">Channel</label>
               <select

@@ -147,7 +147,8 @@ describe("Phase 3 customer-site online order flow", () => {
         payment: { authorization_url: string; reference: string };
       };
     };
-    expect(orderBody.data.total_ngn).toBe(2500 * 3 + 1500);
+    // No live quote → delivery is not charged; total is the subtotal only.
+    expect(orderBody.data.total_ngn).toBe(2500 * 3);
     expect(orderBody.data.payment.authorization_url).toContain("paid=1");
 
     // Simulate the OPay callback landing (mock queryorder confirms in dev)
@@ -380,33 +381,35 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(mine.some((e) => e.eventType === "sale.paid_online")).toBe(true);
   });
 
-  it("Lagos order: accepts a fee matching a configured zone fee with NO zone_name", async () => {
+  it("Lagos order: a client-sent fee with no live quote is ignored (delivery ₦0)", async () => {
     const res = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": uuid() },
       body: JSON.stringify({
         branch_id: branchId,
-        delivery_fee_ngn: 1500, // equals the "Test zone" fee
+        delivery_fee_ngn: 1500, // ignored — only a locked live quote can charge
         customer: { name: "No Zone", phone: "+2348025550010", address: "1 Zoneless Rd" },
         items: [{ product_id: productId, quantity: 1 }],
       }),
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { data: { total_ngn: number } };
-    expect(body.data.total_ngn).toBe(2500 + 1500);
+    expect(body.data.total_ngn).toBe(2500);
   });
 
-  it("Lagos order: rejects a fee that matches no zone and has no quote", async () => {
+  it("Lagos order: an arbitrary fee with no quote is forced to ₦0, not rejected", async () => {
     const res = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": uuid() },
       body: JSON.stringify({
         branch_id: branchId,
-        delivery_fee_ngn: 777, // not a configured zone fee, no quote id
+        delivery_fee_ngn: 777, // no live quote → forced to ₦0
         customer: { name: "Bad Fee", phone: "+2348025550011", address: "2 Bad Fee Rd" },
         items: [{ product_id: productId, quantity: 1 }],
       }),
     });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { data: { total_ngn: number } };
+    expect(body.data.total_ngn).toBe(2500);
   });
 });

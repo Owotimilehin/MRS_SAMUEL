@@ -21,6 +21,17 @@ interface RequestDeliveryInput {
   dropoffAddress: string;
   customerName: string;
   customerPhone: string;
+  /** The courier the customer chose, encoded requestToken::courierId::serviceCode. */
+  providerQuoteId?: string;
+  /** Validated dropoff address_code captured at quote time. */
+  receiverAddressCode?: number;
+}
+
+/** Parse `requestToken::courierId::serviceCode` back into its parts. */
+function parseOptionId(id: string): { courierId: string; serviceCode: string } | null {
+  const parts = id.split("::");
+  if (parts.length !== 3 || !parts[1] || !parts[2]) return null;
+  return { courierId: parts[1], serviceCode: parts[2] };
 }
 interface RequestDeliveryResult {
   externalRef: string;
@@ -54,17 +65,33 @@ class ShipbubbleWorker implements DeliveryProvider {
 
   async requestDelivery(input: RequestDeliveryInput): Promise<RequestDeliveryResult> {
     const digits = input.customerPhone.replace(/\D/g, "") || "customer";
-    const { label, chosen } = await this.client.dispatch({
-      sender: this.cfg.sender,
-      receiver: {
-        name: input.customerName,
-        email: `customer+${digits}@mrssamuel.ng`,
-        phone: input.customerPhone,
-        address: input.dropoffAddress,
-      },
-      pkg: this.cfg.pkg,
-      pickupDate: lagosPickupDate(),
-    });
+    const pref = input.providerQuoteId ? parseOptionId(input.providerQuoteId) : null;
+    const prefArgs = pref
+      ? { preferCourierId: pref.courierId, preferServiceCode: pref.serviceCode }
+      : {};
+    // Route by the address_code captured at quote time when we have it, so the
+    // rider goes to exactly the quoted+confirmed address (no re-geocoding).
+    const { label, chosen } =
+      input.receiverAddressCode != null
+        ? await this.client.dispatchByReceiverCode({
+            sender: this.cfg.sender,
+            receiverAddressCode: input.receiverAddressCode,
+            pkg: this.cfg.pkg,
+            pickupDate: lagosPickupDate(),
+            ...prefArgs,
+          })
+        : await this.client.dispatch({
+            sender: this.cfg.sender,
+            receiver: {
+              name: input.customerName,
+              email: `customer+${digits}@mrssamuel.ng`,
+              phone: input.customerPhone,
+              address: input.dropoffAddress,
+            },
+            pkg: this.cfg.pkg,
+            pickupDate: lagosPickupDate(),
+            ...prefArgs,
+          });
     return {
       externalRef: label.orderId,
       trackingUrl: label.trackingUrl,

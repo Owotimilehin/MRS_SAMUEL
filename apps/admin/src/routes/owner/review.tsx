@@ -15,6 +15,7 @@ interface TransferVariance {
 interface ReturnApproval {
   id: string;
   originalSaleOrderId: string;
+  originalSaleOrderNumber: string | null;
   reason: string;
   refundAmountNgn: number;
   createdAt: string;
@@ -186,8 +187,8 @@ export function ReviewPage(): JSX.Element {
               <tbody>
                 {data.return_approvals.map((r) => (
                   <tr key={r.id}>
-                    <td style={{ fontFamily: "monospace", fontSize: 13 }}>
-                      {r.originalSaleOrderId.slice(0, 8)}
+                    <td style={{ fontWeight: 600 }}>
+                      {r.originalSaleOrderNumber ?? "—"}
                     </td>
                     <td>{r.reason}</td>
                     <td className="table__num" style={{ fontWeight: 700 }}>

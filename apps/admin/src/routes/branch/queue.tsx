@@ -12,6 +12,48 @@ function age(ms: number): string {
   return `${Math.round(s / 86400)}d ago`;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function titleCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Turn a raw outbox row (HTTP method + URL with UUIDs) into plain language a
+ * shop owner can read at a glance. Known operations get a friendly label and a
+ * short detail line; anything unrecognised falls back to a humanised path with
+ * the IDs stripped out so the till never shows raw codes.
+ */
+function describeOperation(row: OutboxRow): { label: string; detail?: string } {
+  const { method, endpoint, payload } = row;
+
+  // PATCH /v1/branches/{id}/sales/{id}/pay
+  if (method === "PATCH" && /\/sales\/[^/]+\/pay$/.test(endpoint)) {
+    return { label: "Payment recorded" };
+  }
+
+  // POST /v1/branches/{id}/sales
+  if (method === "POST" && /\/sales$/.test(endpoint)) {
+    const p = payload as
+      | { items?: unknown[]; payment_method?: string }
+      | null
+      | undefined;
+    const count = Array.isArray(p?.items) ? p.items.length : 0;
+    const itemsText = count > 0 ? `${count} ${count === 1 ? "item" : "items"}` : null;
+    const payText = p?.payment_method ? titleCase(p.payment_method) : null;
+    const detail = [itemsText, payText].filter(Boolean).join(" · ");
+    return detail ? { label: "Sale rung up", detail } : { label: "Sale rung up" };
+  }
+
+  // Fallback: humanise the path, dropping version + UUID segments.
+  const words = endpoint
+    .split("/")
+    .filter((seg) => seg && seg !== "v1" && !UUID.test(seg))
+    .map((seg) => seg.replace(/[-_]/g, " "));
+  const verb = method === "POST" ? "New" : "Update";
+  return { label: titleCase([verb, ...words].join(" ")) };
+}
+
 function statusPill(s: OutboxRow["status"]): JSX.Element {
   if (s === "pending") return <span className="pill pill--warning">Pending</span>;
   if (s === "in_flight") return <span className="pill pill--ink">Sending…</span>;
@@ -145,22 +187,27 @@ function QueueTable({
       <table className="table">
         <thead>
           <tr>
-            <th>Operation</th>
+            <th>Activity</th>
             <th>Status</th>
-            <th className="table__num">Attempts</th>
-            <th>Age</th>
+            {!compact && <th className="table__num">Attempts</th>}
+            <th>When</th>
             {!compact && <th>Last error</th>}
             {!compact && <th />}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {rows.map((r) => {
+            const op = describeOperation(r);
+            return (
             <tr key={r.id}>
-              <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>
-                {r.method} {r.endpoint}
+              <td>
+                <div style={{ fontWeight: 600 }}>{op.label}</div>
+                {op.detail && (
+                  <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{op.detail}</div>
+                )}
               </td>
               <td>{statusPill(r.status)}</td>
-              <td className="table__num">{r.attempt_count}</td>
+              {!compact && <td className="table__num">{r.attempt_count}</td>}
               <td style={{ color: "var(--ink-soft)" }}>{age(r.created_at_local)}</td>
               {!compact && (
                 <td style={{ fontSize: 12, color: "var(--danger)", maxWidth: 320 }}>
@@ -190,7 +237,8 @@ function QueueTable({
                 </td>
               )}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

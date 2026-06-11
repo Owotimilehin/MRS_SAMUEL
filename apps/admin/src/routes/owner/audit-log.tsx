@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useState, type CSSProperties } from "react";
 import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
@@ -49,6 +49,10 @@ const ACTION_LABEL: Record<string, string> = {
   "daily_close.submit": "Daily closes submitted",
   "daily_close.approve": "Daily closes approved",
 };
+
+const filterFieldStyle: CSSProperties ={ gap: 4 };
+const filterLabelStyle: CSSProperties ={ fontSize: 11 };
+const filterControlStyle: CSSProperties ={ height: 34, fontSize: 13, padding: "0 10px" };
 
 export function AuditLogPage(): JSX.Element {
   const [rows, setRows] = useState<AuditRow[]>([]);
@@ -137,15 +141,16 @@ export function AuditLogPage(): JSX.Element {
         className="card"
         style={{
           marginBottom: 16,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr)) auto",
-          gap: 12,
+          padding: "12px 14px",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 10,
           alignItems: "end",
         }}
       >
-        <div className="field">
-          <label className="field__label">What</label>
-          <select className="select" value={entityType} onChange={(e) => setEntityType(e.target.value)}>
+        <div className="field" style={{ ...filterFieldStyle, width: 150 }}>
+          <label className="field__label" style={filterLabelStyle}>What</label>
+          <select className="select" style={filterControlStyle} value={entityType} onChange={(e) => setEntityType(e.target.value)}>
             <option value="">Anything</option>
             {facets.entity_types.map((t) => (
               <option key={t} value={t}>
@@ -154,9 +159,9 @@ export function AuditLogPage(): JSX.Element {
             ))}
           </select>
         </div>
-        <div className="field">
-          <label className="field__label">Action</label>
-          <select className="select" value={action} onChange={(e) => setAction(e.target.value)}>
+        <div className="field" style={{ ...filterFieldStyle, width: 170 }}>
+          <label className="field__label" style={filterLabelStyle}>Action</label>
+          <select className="select" style={filterControlStyle} value={action} onChange={(e) => setAction(e.target.value)}>
             <option value="">Any action</option>
             {facets.actions.map((a) => (
               <option key={a} value={a}>
@@ -165,9 +170,9 @@ export function AuditLogPage(): JSX.Element {
             ))}
           </select>
         </div>
-        <div className="field">
-          <label className="field__label">Who</label>
-          <select className="select" value={actorUserId} onChange={(e) => setActorUserId(e.target.value)}>
+        <div className="field" style={{ ...filterFieldStyle, width: 200 }}>
+          <label className="field__label" style={filterLabelStyle}>Who</label>
+          <select className="select" style={filterControlStyle} value={actorUserId} onChange={(e) => setActorUserId(e.target.value)}>
             <option value="">Anyone</option>
             {users.map((u) => (
               <option key={u.id} value={u.id}>
@@ -176,15 +181,15 @@ export function AuditLogPage(): JSX.Element {
             ))}
           </select>
         </div>
-        <div className="field">
-          <label className="field__label">From</label>
-          <input className="input" type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
+        <div className="field" style={{ ...filterFieldStyle, width: 185 }}>
+          <label className="field__label" style={filterLabelStyle}>From</label>
+          <input className="input" style={filterControlStyle} type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
         </div>
-        <div className="field">
-          <label className="field__label">To</label>
-          <input className="input" type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
+        <div className="field" style={{ ...filterFieldStyle, width: 185 }}>
+          <label className="field__label" style={filterLabelStyle}>To</label>
+          <input className="input" style={filterControlStyle} type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
-        <button type="button" className="btn btn--primary" onClick={() => void load()}>
+        <button type="button" className="btn btn--primary btn--sm" style={{ flex: 1, minWidth: 100 }} onClick={() => void load()}>
           Apply
         </button>
       </div>

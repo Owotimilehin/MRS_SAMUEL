@@ -18,6 +18,7 @@ interface ReturnDetail {
   id: string;
   returnNumber: string;
   originalSaleOrderId: string;
+  originalSaleOrderNumber: string | null;
   branchId: string;
   channel: string;
   status: "draft" | "pending_approval" | "completed" | "cancelled";
@@ -151,7 +152,7 @@ export function ReturnDetailPage({
                     params={{ saleId: ret.originalSaleOrderId }}
                     style={{ color: "var(--accent)", fontWeight: 600 }}
                   >
-                    {ret.originalSaleOrderId.slice(0, 8)} →
+                    {ret.originalSaleOrderNumber ?? "View order"} →
                   </Link>
                 </div>
               </div>

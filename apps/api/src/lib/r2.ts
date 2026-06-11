@@ -30,6 +30,8 @@ export interface PresignPutArgs {
   filename: string;
   contentType: string;
   sizeBytes: number;
+  /** Top-level R2 folder. Defaults to expense-receipts for legacy callers. */
+  folder?: string;
 }
 
 export interface PresignPutResult {
@@ -48,7 +50,8 @@ export async function presignPut(args: PresignPutArgs): Promise<PresignPutResult
   const yyyy = now.getUTCFullYear();
   const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
   const ext = (args.filename.split(".").pop() ?? "bin").toLowerCase().slice(0, 6);
-  const key = `expense-receipts/${yyyy}/${mm}/${uuid()}.${ext}`;
+  const folder = (args.folder ?? "expense-receipts").replace(/[^a-z0-9-]/gi, "");
+  const key = `${folder}/${yyyy}/${mm}/${uuid()}.${ext}`;
   const cmd = new PutObjectCommand({
     Bucket: env.R2_BUCKET!,
     Key: key,

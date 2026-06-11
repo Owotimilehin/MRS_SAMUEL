@@ -1,200 +1,126 @@
-import { Link } from "@tanstack/react-router";
-import { SiteLayout } from "../components/SiteLayout.js";
-import { BRAND } from "../data/menu.js";
-import { Eyebrow } from "../components/ui/index.js";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { motion } from "framer-motion";
+import { SiteShell } from "@/components/SiteShell";
+import { PageHero } from "@/components/PageHero";
+import clusterRoot from "@/assets/decor/cluster-root.png";
 
-export function AboutPage(): JSX.Element {
+export const Route = createFileRoute("/about")({
+  head: () => ({
+    meta: [
+      { title: "About Us — Mrs. Samuel Fruit Juice" },
+      { name: "description", content: "The story of Mr. & Mrs. Samuel — how a kitchen in Lagos became Nigeria's freshest cold-pressed juice brand, and the mission to end Nigerian fruit waste." },
+      { property: "og:title", content: "About — Mrs. Samuel" },
+      { property: "og:description", content: "More than business. Building a sustainable future for Nigerian farmers, families and fruit." },
+    ],
+  }),
+  component: Page,
+});
+
+const dialogue: Array<{ who: "MRS" | "MR" | "BOTH"; text: string }> = [
+  { who: "MRS", text: "Last year September, we started this journey with a simple vision — to create fresh, honest juice from Nigerian fruit and put it in glass on a Lagos table." },
+  { who: "MR", text: "We started in our kitchen. One press. Six bottles a day. People came back the next week asking for more." },
+  { who: "MRS", text: "By the third month, the kitchen wasn't enough. We moved to a proper prep room, hired two people, and stopped pretending this was a side project." },
+  { who: "MR", text: "Today we press thousands of bottles a month. Same recipes. Same press. Same morning delivery." },
+  { who: "BOTH", text: "But it has never been about scale. It has always been about respect — for the farmer, for the fruit, and for the person who twists the cap open." },
+  { who: "MR", text: "This is more than business." },
+  { who: "MRS", text: "This is about building a sustainable future for farmers, distributors, workers, and families across Nigeria." },
+  { who: "MR", text: "To every fruit farmer…" },
+  { who: "MRS", text: "To every farm cooperative…" },
+  { who: "BOTH", text: "We invite you to partner with us." },
+  { who: "MR", text: "Let's reduce waste together." },
+  { who: "MRS", text: "Let's create value together." },
+  { who: "BOTH", text: "Because the future of fruit processing in Nigeria is just beginning." },
+];
+
+const milestones = [
+  { date: "Sep 2024", title: "First bottle", body: "Six bottles in the Samuel family kitchen. Three friends, three strangers." },
+  { date: "Dec 2024", title: "First 1,000", body: "Word travelled. We started a WhatsApp delivery rota for Lagos Island." },
+  { date: "Mar 2025", title: "Glass-only commitment", body: "We say no to plastic, permanently. Bottle-return programme launches." },
+  { date: "Jun 2025", title: "First wholesale account", body: "A boutique hotel in Lekki adopts Sunrise Blend for guest breakfasts." },
+  { date: "Jan 2026", title: "40,000 bottles served", body: "And counting. Every one of them pressed the same morning it shipped." },
+  { date: "2026 →", title: "Mission scale", body: "Partnering with farm cooperatives to cut post-harvest fruit waste across Nigeria." },
+];
+
+function Page() {
   return (
-    <SiteLayout
-      active="about"
-      meta={{
-        title: "About Mrs. Samuel Fruit Juice — Cold-pressed wellness from Lagos",
-        description:
-          "Why we built Mrs. Samuel: the story of a Lagos family bringing cold-pressed, preservative-free juice to a city that runs on heat, hustle, and hard work.",
-      }}
-    >
-      {/* ───── Hero ───── */}
-      <section className="ms-container ms-about__hero">
-        <div className="ms-about__hero-text">
-          <Eyebrow>Our story</Eyebrow>
-          <h1 className="ms-h1">
-            Real juice was never going to be the <span className="text-grad">easy</span> way to do this.
-          </h1>
-          <p className="ms-sub" style={{ maxWidth: 540, marginTop: 18 }}>
-            Mrs. Samuel started in a home kitchen in Ajao Estate, Lagos — one woman, one cold-press,
-            and seventeen recipes she'd spent years getting right for the people she loved. We still
-            bottle that same juice every morning, deliver it the same day, and refuse to put a single
-            thing in it that we couldn't explain to your face.
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 24 }}>
-            <Link to="/" className="btn btn--primary">
-              See the menu
-            </Link>
-            <a
-              href={`https://wa.me/${BRAND.whatsapp}`}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn--ghost"
+    <SiteShell>
+      <PageHero
+        eyebrow="Our Story"
+        title={<>A kitchen in Lagos.<br /><span className="text-[color:var(--brand-orange)]">A mission for Nigeria.</span></>}
+        subtitle="Mrs. Samuel Fruit Juice started in September 2024 with a press, a fridge, and a refusal to put sugar in anything. This is how it grew — and where it's going."
+        decor={clusterRoot}
+        accent="#e85d8a"
+      />
+
+      {/* Dialogue */}
+      <section className="px-5 sm:px-10 max-w-4xl mx-auto pb-20">
+        <div className="space-y-4">
+          {dialogue.map((d, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-30px" }}
+              transition={{ duration: 0.4 }}
+              className={`max-w-[85%] rounded-2xl p-5 ${
+                d.who === "MRS"
+                  ? "bg-[color:var(--brand-orange)]/10 mr-auto"
+                  : d.who === "MR"
+                  ? "bg-[color:var(--brand)]/10 ml-auto"
+                  : "bg-[color:var(--brand)] text-white mx-auto text-center"
+              }`}
             >
-              Order on WhatsApp
-            </a>
-          </div>
-        </div>
-        <div className="ms-about__hero-art" aria-hidden>
-          <div className="ms-about__hero-glow" />
-          <img
-            src="/assets/bottle-hero.png"
-            alt=""
-            onError={(e) => {
-              const img = e.currentTarget;
-              if (img.src.endsWith("/assets/bottle-hero.png")) return;
-              img.src = "/assets/bottle-hero.png";
-            }}
-          />
+              <div className={`text-[10px] font-bold uppercase tracking-[0.22em] mb-1.5 ${
+                d.who === "BOTH" ? "text-white/70" : "text-[color:var(--brand)]/60"
+              }`}>
+                {d.who === "MRS" ? "Mrs. Samuel" : d.who === "MR" ? "Mr. Samuel" : "Together"}
+              </div>
+              <p className={`font-display text-lg sm:text-xl leading-snug ${
+                d.who === "BOTH" ? "text-white" : "text-[color:var(--brand)]"
+              }`}>
+                "{d.text}"
+              </p>
+            </motion.div>
+          ))}
         </div>
       </section>
 
-      {/* ───── Pillars ───── */}
-      <section className="ms-container" style={{ padding: "32px 0" }}>
-        <div className="ms-about__pillars">
-          <Pillar
-            kicker="100% Natural"
-            title="Fruit. Water. That's it."
-            body="No concentrates. No syrups. No 'natural flavours' engineered in a lab somewhere else. Every bottle is whole fruit, pressed within minutes of being cut."
-          />
-          <Pillar
-            kicker="48-hour shelf"
-            title="If it lasts a year, ask what's keeping it alive."
-            body="Real juice doesn't survive on a shelf — that's what preservatives are for. We press in the morning, deliver the same day, and trust you to drink it before the weekend."
-          />
-          <Pillar
-            kicker="Made in Lagos"
-            title="Pressed five minutes from your door."
-            body="Our kitchen sits on Asa Afariogun Street. Every order is packed, checked, and delivered by people who live in the same city you do — because we do too."
-          />
+      {/* Timeline */}
+      <section id="mission" className="px-5 sm:px-10 max-w-5xl mx-auto pb-24">
+        <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand)]/70">Timeline</div>
+        <h2 className="mt-3 font-display text-4xl text-[color:var(--brand)]">From one press to a movement.</h2>
+        <div className="mt-10 relative pl-8 border-l-2 border-[color:var(--brand-orange)]/30">
+          {milestones.map((m, i) => (
+            <motion.div
+              key={m.date}
+              initial={{ opacity: 0, x: -12 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: i * 0.05 }}
+              className="mb-10 relative"
+            >
+              <span className="absolute -left-[42px] top-1 h-4 w-4 rounded-full bg-[color:var(--brand-orange)] ring-4 ring-[color:var(--cream)]" />
+              <div className="text-xs font-bold text-[color:var(--brand-orange)] uppercase tracking-[0.18em]">{m.date}</div>
+              <h3 className="mt-1 font-display text-2xl text-[color:var(--brand)]">{m.title}</h3>
+              <p className="mt-2 text-[color:var(--brand)]/70 leading-relaxed max-w-xl">{m.body}</p>
+            </motion.div>
+          ))}
         </div>
       </section>
 
-      {/* ───── Why we exist ───── */}
-      <section className="ms-container ms-about__essay">
-        <div className="ms-about__essay-inner">
-          <Eyebrow>Why fruit juice, why now</Eyebrow>
-          <h2 className="ms-section-title">Lagos runs hot, fast, and on too much sugar.</h2>
-          <p>
-            We started Mrs. Samuel because we kept opening fridges full of bottled "juice" that
-            tasted like sweetened water with an ingredient list nobody could read out loud. Lagos
-            deserved better than that. The fruit grows here. The people care here. The only thing
-            missing was someone willing to wake up at 5am and do the actual work of making it real.
+      {/* Partner */}
+      <section className="px-5 sm:px-10 pb-20">
+        <div className="mx-auto max-w-5xl rounded-[2rem] bg-[color:var(--brand)] text-white px-8 sm:px-14 py-14 text-center">
+          <h2 className="font-display text-4xl sm:text-5xl">Partner with us.</h2>
+          <p className="mt-4 max-w-2xl mx-auto text-white/80">
+            We're actively buying from farm cooperatives across Nigeria — including fruit that won't sell at retail. If you grow fruit, distribute it, or run a venue that wants real juice on the menu, we want to talk.
           </p>
-          <p>
-            Cold-pressing isn't a marketing word — it's a different decision at the start. A
-            spinning blade heats the fruit as it cuts, and heat is the enemy of everything you
-            wanted from the fruit in the first place. A hydraulic press squeezes slowly instead,
-            without bruising, so you can taste the pineapple, the ginger, the carrot — each one on
-            its own — on the way to a finish that's bright instead of just sweet.
-          </p>
-          <p>
-            And we don't pasteurise. That's the step that lets supermarket "fresh" juice survive six
-            months on a shelf — heat it to 75°C, seal it, done. Convenient for them. Lifeless for
-            you. Ours leaves the press, goes into a glass bottle, into a refrigerated van, and onto
-            your shelf within hours of being made. The window is smaller. The window is also the
-            entire point.
-          </p>
-
-          <h3>What's in the seventeen?</h3>
-          <p>
-            <strong>Carrot, pawpaw, orange, pineapple</strong> for mornings that need a push.{" "}
-            <strong>Beetroot, celery, apple, ginger</strong> for the afternoon reset. Watermelon
-            for after the gym. Strawberry and soursop for the days that need a small win that isn't
-            a bad decision. Seventeen blends — not because seventeen is a tidy number, but because
-            that's how many it took before seventeen households stopped asking for something
-            different.
-          </p>
-
-          <h3>The promise</h3>
-          <p>
-            If a bottle doesn't taste like the fruit on the label, we'll replace it. If it arrives
-            late, we'll refund the delivery. If your child won't drink it, we'll swap it for one
-            they will. You've been buying juice your whole life. We're asking for one chance to be
-            the brand you actually tell someone about.
-          </p>
-        </div>
-      </section>
-
-      {/* ───── Milestones ───── */}
-      <section className="ms-container ms-about__essay">
-        <div className="ms-about__essay-inner">
-          <Eyebrow>Where we are now</Eyebrow>
-          <h2 className="ms-section-title">Forty thousand bottles. One belief, still standing.</h2>
-          <p>
-            Last September, this started with a decision that looked, from the outside, like the
-            harder way to do things: press it fresh, every morning, by hand, and refuse to
-            shortcut any of it. At the time, all we had was belief, passion, and the willingness
-            to show up before sunrise — long nights, early mornings, and a lot of moments where
-            we had to choose faith over fear.
-          </p>
-          <p>
-            Slowly, people began to believe in what we were building. One order became many
-            orders. And today, since we began, we've sold over <strong>forty thousand
-            bottles</strong> — forty thousand moments shared in homes, offices, events, gyms, and
-            everyday lives. For us, that's bigger than juice. It's proof that something built with
-            consistency and honesty can grow.
-          </p>
-
-          <h3>The next step</h3>
-          <p>
-            And now, we're getting ready for our biggest step yet. In the coming weeks, we'll be
-            bringing in new production machines designed to produce up to{" "}
-            <strong>five thousand bottles daily</strong>. That means more growth, more
-            opportunities, and more freshness for every Nigerian. What started as a dream between
-            two people is becoming something much bigger than us — and this is only the beginning.
-          </p>
-          <p>
-            We want you to be part of this journey from the very start. Because something big is
-            coming, and we're just getting started. Fresh. Real. Made with purpose.
-          </p>
-        </div>
-      </section>
-
-      {/* ───── Closing CTA ───── */}
-      <section className="ms-container ms-about__cta">
-        <div className="ms-about__cta-card">
-          <Eyebrow>Try it</Eyebrow>
-          <h2 className="ms-section-title" style={{ marginBottom: 12 }}>
-            Start with one bottle.
-          </h2>
-          <p className="ms-section-sub" style={{ maxWidth: 480, margin: "0 auto 22px" }}>
-            Pick whichever sounds good. We'll get it to you the same day, in Lagos — and then it's
-            up to the juice to earn the second order.
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
-            <Link to="/" className="btn btn--primary">
-              Browse the menu
-            </Link>
-            <Link to="/locations" className="btn btn--ghost">
-              See where we deliver
-            </Link>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Link to="/contact" className="rounded-full bg-[color:var(--brand-orange)] text-white px-6 py-3 text-sm font-semibold">Reach out</Link>
+            <a href="https://wa.me/2349019512246" target="_blank" rel="noreferrer" className="rounded-full bg-white/10 text-white px-6 py-3 text-sm font-semibold hover:bg-white/20">WhatsApp us</a>
           </div>
         </div>
       </section>
-    </SiteLayout>
-  );
-}
-
-function Pillar({
-  kicker,
-  title,
-  body,
-}: {
-  kicker: string;
-  title: string;
-  body: string;
-}): JSX.Element {
-  return (
-    <article className="ms-about__pillar">
-      <div className="ms-about__pillar-kicker">{kicker}</div>
-      <h3 className="ms-about__pillar-title">{title}</h3>
-      <p className="ms-about__pillar-body">{body}</p>
-    </article>
+    </SiteShell>
   );
 }

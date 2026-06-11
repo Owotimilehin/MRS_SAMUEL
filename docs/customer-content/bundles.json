@@ -1,0 +1,41 @@
+{
+  "_comment": "Shop bundles extracted from fruit-splash-showcase src/routes/shop.tsx. No backend table exists yet — see STRUCTURE.md (product_bundle). price_ngn is a fixed pack price. items_label is display copy; item composition is not itemised in the frontend.",
+  "bundles": [
+    {
+      "slug": "starter-6-pack",
+      "name": "Starter 6-Pack",
+      "badge": "Most loved",
+      "price_ngn": 14000,
+      "items_label": "6 × 330ml",
+      "description": "Six bottles, your pick of any classic flavours. The easiest way to discover a new favourite.",
+      "display_order": 1
+    },
+    {
+      "slug": "detox-12-pack",
+      "name": "Detox 12-Pack",
+      "badge": "Reset",
+      "price_ngn": 27500,
+      "items_label": "12 × 330ml",
+      "description": "Twelve bottles built around our Detox, Immune Booster and Blood Booster. A clean two-week reset.",
+      "display_order": 2
+    },
+    {
+      "slug": "family-20-pack",
+      "name": "Family 20-Pack",
+      "badge": "Best value",
+      "price_ngn": 44000,
+      "items_label": "20 × 330ml + 650ml",
+      "description": "Twenty bottles, mixed sizes — enough fresh juice for a household for two full weeks.",
+      "display_order": 3
+    },
+    {
+      "slug": "gift-box",
+      "name": "Mrs. Samuel Gift Box",
+      "badge": "Gift",
+      "price_ngn": 18500,
+      "items_label": "4 × 650ml + card",
+      "description": "Four Specials wrapped beautifully — Pink Paradise, Guyabano Delight and two seasonal picks. Birthdays. Baby showers. Sorry-I-missed-it.",
+      "display_order": 4
+    }
+  ]
+}

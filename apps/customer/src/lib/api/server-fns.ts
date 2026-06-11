@@ -71,11 +71,18 @@ export interface QuoteInput {
 export const requestQuote = createServerFn({ method: "POST" })
   .validator((d: QuoteInput) => d)
   .handler(async ({ data }): Promise<ApiQuote> => {
-    return apiFetch<ApiQuote>("/v1/public/orders/quote", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(data),
-    });
+    try {
+      return await apiFetch<ApiQuote>("/v1/public/orders/quote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    } catch (err) {
+      // Preserve the API's structured error across the RPC boundary so the
+      // checkout can show the precise reason a quote failed.
+      if (err instanceof ApiError) throw new Error(err.serialize());
+      throw err;
+    }
   });
 
 export interface PlaceOrderInput {
@@ -94,11 +101,20 @@ export const placeOrder = createServerFn({ method: "POST" })
   .validator((d: PlaceOrderInput) => d)
   .handler(async ({ data }): Promise<ApiPlacedOrder> => {
     const { idempotency_key, ...body } = data;
-    return apiFetch<ApiPlacedOrder>("/v1/public/orders", {
-      method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": idempotency_key },
-      body: JSON.stringify(body),
-    });
+    try {
+      return await apiFetch<ApiPlacedOrder>("/v1/public/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": idempotency_key },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      // Preserve the API's structured error (code/status) across the RPC
+      // boundary so the checkout UI can surface precise messages — e.g.
+      // "insufficient stock" or the idempotency replay codes — instead of a
+      // generic failure. The prototype is otherwise stripped on the client.
+      if (err instanceof ApiError) throw new Error(err.serialize());
+      throw err;
+    }
   });
 
 export const trackOrder = createServerFn({ method: "GET" })

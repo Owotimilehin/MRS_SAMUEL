@@ -10,6 +10,12 @@ interface CreateLocalSaleInput {
   payment_method: "cash" | "card" | "transfer";
   channel: "walkup" | "whatsapp" | "chowdeck_pickup";
   external_reference?: string;
+  /**
+   * Optional customer captured at the till. Forwarded to the server, which
+   * resolves a returning customer by phone (find-or-create) so their orders
+   * roll up. Omitted entirely for an anonymous walk-up.
+   */
+  customer?: { name?: string; phone?: string };
 }
 
 interface CreateLocalSaleResult {
@@ -90,6 +96,9 @@ export async function createLocalSale(
           payment_method: input.payment_method,
           ...(input.external_reference
             ? { external_reference: input.external_reference }
+            : {}),
+          ...(input.customer && (input.customer.name || input.customer.phone)
+            ? { customer: input.customer }
             : {}),
           created_at_local: nowIso,
         },

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { stockTransfer, saleReturn, type DbClient } from "@ms/db";
+import { stockTransfer, saleReturn, saleOrder, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 
 /**
@@ -21,14 +21,18 @@ export function reviewRoutes(db: DbClient) {
       .where(eq(stockTransfer.status, "received_with_variance"));
 
     const returnApprovals = await db
-      .select()
+      .select({ ret: saleReturn, originalSaleOrderNumber: saleOrder.orderNumber })
       .from(saleReturn)
+      .leftJoin(saleOrder, eq(saleOrder.id, saleReturn.originalSaleOrderId))
       .where(eq(saleReturn.status, "pending_approval"));
 
     return c.json({
       data: {
         transfer_variances: transferVariances,
-        return_approvals: returnApprovals,
+        return_approvals: returnApprovals.map((r) => ({
+          ...r.ret,
+          originalSaleOrderNumber: r.originalSaleOrderNumber,
+        })),
       },
     });
   });

@@ -17,8 +17,9 @@ import { normalizeNigerianPhone, phonesMatch, isOutsideLagos } from "@ms/shared"
 import { rateLimit } from "../middleware/rate-limit.js";
 import { BusinessError } from "../lib/errors.js";
 import { createOpaySession } from "../payments/opay.js";
+import { resolveCustomer } from "../lib/customers.js";
 import { getDeliveryProvider } from "../delivery/index.js";
-import { storeQuote, loadQuote } from "../delivery/quote-store.js";
+import { storeOptionSet, loadOptionSet } from "../delivery/quote-store.js";
 import { takeCartAsOrderItems, clearCartForCookie } from "./public-cart.js";
 import { verifyTurnstileToken } from "../lib/turnstile.js";
 import { env } from "../env.js";
@@ -79,7 +80,21 @@ const QuoteRequest = z.object({
   dropoff_address: z.string().min(3),
   dropoff_lat: z.number().optional(),
   dropoff_lng: z.number().optional(),
+  delivery_state: z.string().min(1).optional(),
 });
+
+/**
+ * Shipbubble's address validator needs a complete address (street, area,
+ * state, country). Append the delivery state + "Nigeria" when the customer's
+ * text omits them, so more addresses validate (and thus return couriers)
+ * instead of silently dropping to ₦0.
+ */
+function normalizeDropoff(addr: string, state?: string): string {
+  const a = addr.trim().replace(/,\s*$/, "");
+  if (/nigeria/i.test(a)) return a;
+  const st = state && state.trim() ? state.trim() : "Lagos";
+  return new RegExp(st, "i").test(a) ? `${a}, Nigeria` : `${a}, ${st}, Nigeria`;
+}
 
 const TrackQuery = z.object({
   phone: z.string().min(7),
@@ -90,9 +105,10 @@ export function publicOrderRoutes(db: DbClient) {
   r.use("*", rateLimit({ points: 30, durationSeconds: 60, keyPrefix: "public-orders" }));
 
   /**
-   * Live delivery-fee quote. Customer's checkout calls this as the address
-   * settles. Falls back to the static branch zone fee if Bolt is unhappy so
-   * the customer can still complete the order.
+   * Live delivery options. The customer's checkout calls this as the address
+   * settles (immediate, in-Lagos only) and shows the returned couriers for the
+   * customer to choose from. Returns an empty list when no live price is
+   * available — delivery is then ignored (₦0); we never use a manual zone fee.
    */
   r.post("/quote", async (c) => {
     const body = QuoteRequest.parse(await c.req.json());
@@ -102,44 +118,55 @@ export function publicOrderRoutes(db: DbClient) {
     }
     const pickupLat = b.lat != null ? Number(b.lat) : null;
     const pickupLng = b.lng != null ? Number(b.lng) : null;
-    if (pickupLat == null || pickupLng == null || !b.address) {
-      // No pickup coords on file — cannot get a real quote; surface the
-      // cheapest static zone fee as a safe fallback.
-      const minZone = b.deliveryZones.reduce<number | null>(
-        (acc, z) => (acc == null || z.fee_ngn < acc ? z.fee_ngn : acc),
-        null,
-      );
-      return c.json({
+
+    const empty = (notice: string, addressValid = false) =>
+      c.json({
         data: {
           provider: "fallback" as const,
-          provider_quote_id: null,
-          fee_ngn: minZone ?? 1500,
-          eta_minutes: 30,
-          notice: "Branch coordinates not configured — showing default zone fee.",
+          quote_token: null,
+          options: [],
+          validated_address: null,
+          address_valid: addressValid,
+          notice,
         },
       });
+
+    if (pickupLat == null || pickupLng == null || !b.address) {
+      // No pickup coords on file — cannot get live options. Delivery ₦0.
+      return empty("Live delivery pricing is unavailable — no delivery charge applied.");
     }
 
     const provider = getDeliveryProvider();
+    const dropoff = normalizeDropoff(body.dropoff_address, body.delivery_state);
     try {
-      const input: Parameters<typeof provider.quote>[0] = {
+      const input: Parameters<typeof provider.quoteOptions>[0] = {
         pickupAddress: b.address,
         pickupLat,
         pickupLng,
-        dropoffAddress: body.dropoff_address,
+        dropoffAddress: dropoff,
       };
       if (body.dropoff_lat !== undefined) input.dropoffLat = body.dropoff_lat;
       if (body.dropoff_lng !== undefined) input.dropoffLng = body.dropoff_lng;
-      const q = await provider.quote(input);
-      // Stash the quote so the create-order endpoint can verify the customer
-      // didn't tamper with the fee. Fails open if Redis is unavailable.
-      await storeQuote(
-        q.providerQuoteId,
+      const q = await provider.quoteOptions(input);
+      if (q.options.length === 0) {
+        return empty("No couriers cover this address right now — no delivery charge applied.", true);
+      }
+      // Stash the option set + validated address so create-order can verify the
+      // chosen option and persist the address_code for dispatch. Fails open if
+      // Redis is unavailable.
+      await storeOptionSet(
+        q.quoteToken,
         {
           provider: provider.name,
           branch_id: body.branch_id,
-          fee_ngn: q.feeNgn,
-          dropoff_address: body.dropoff_address,
+          dropoff_address: dropoff,
+          options: q.options.map((o) => ({ id: o.id, fee_ngn: o.feeNgn })),
+          ...(q.validatedAddress
+            ? {
+                address_code: q.validatedAddress.addressCode,
+                address_formatted: q.validatedAddress.formatted,
+              }
+            : {}),
           expires_at: Date.now() + q.expiresInSeconds * 1000,
         },
         q.expiresInSeconds,
@@ -147,35 +174,28 @@ export function publicOrderRoutes(db: DbClient) {
       return c.json({
         data: {
           provider: provider.name,
-          provider_quote_id: q.providerQuoteId,
-          fee_ngn: q.feeNgn,
-          eta_minutes: q.etaMinutes,
+          quote_token: q.quoteToken,
           expires_in_seconds: q.expiresInSeconds,
-          ...(q.notice ? { notice: q.notice } : {}),
+          address_valid: true,
+          validated_address: q.validatedAddress
+            ? { formatted: q.validatedAddress.formatted, lat: q.validatedAddress.lat, lng: q.validatedAddress.lng }
+            : null,
+          options: q.options.map((o) => ({
+            id: o.id,
+            courier_name: o.courierName,
+            fee_ngn: o.feeNgn,
+            eta_minutes: o.etaMinutes,
+            on_demand: o.onDemand,
+          })),
         },
       });
     } catch (err) {
-      // Provider down or address not geocodable — fall back to the cheapest
-      // static zone fee so the customer can still complete checkout.
-      const minZone = b.deliveryZones.reduce<number | null>(
-        (acc, z) => (acc == null || z.fee_ngn < acc ? z.fee_ngn : acc),
-        null,
-      );
+      // Address couldn't be validated, or provider down — no couriers.
       const msg = err instanceof Error ? err.message : String(err);
-      // A 400 on address/validate means the address was too vague to geocode.
-      // Surface a helpful, customer-facing hint rather than the raw API path.
-      const notice = /address\/validate.*400/.test(msg)
-        ? "We couldn't confirm live delivery for that address. Add a street number, area and city (e.g. “12 Admiralty Way, Lekki, Lagos”). Standard delivery fee applied for now."
-        : "Live delivery pricing is unavailable right now — standard delivery fee applied.";
-      return c.json({
-        data: {
-          provider: "fallback" as const,
-          provider_quote_id: null,
-          fee_ngn: minZone ?? 1500,
-          eta_minutes: 35,
-          notice,
-        },
-      });
+      const notice = /address\/validate|couldn't validate|provide a clear/i.test(msg)
+        ? "We couldn't confirm this address for delivery. Pick a suggestion, or add your area, city and state."
+        : "Live delivery is unavailable right now — please try again.";
+      return empty(notice);
     }
   });
 
@@ -228,26 +248,43 @@ export function publicOrderRoutes(db: DbClient) {
       throw new BusinessError("validation_failed", "invalid branch", 422);
     }
     const outsideLagos = isOutsideLagos(body.delivery_state);
-    // Outside Lagos has no Bolt last-mile: delivery is ₦0, arranged out-of-band.
-    let deliveryFeeFinal = body.delivery_fee_ngn;
-    if (outsideLagos) {
-      // No Bolt last-mile outside Lagos — delivery is ₦0, arranged out-of-band.
+    const scheduled = body.scheduled_delivery_at != null;
+    // Delivery is only charged for an immediate, in-Lagos order — the only case
+    // we dispatch a rider now (mirrors the Bolt-dispatch bypass below). Even
+    // then it must come from a live, server-locked quote; we never fall back to
+    // a manual zone fee. Scheduled / outside-Lagos orders are ₦0.
+    let deliveryFeeFinal = 0;
+    let deliveryQuoteRef: string | null = null;
+    let deliveryAddressCode: string | null = null;
+    let deliveryAddressFormatted: string | null = null;
+    if (outsideLagos || scheduled) {
       deliveryFeeFinal = 0;
     } else if (body.delivery_quote_id) {
-      // A locked live quote wins; otherwise the fee must match a configured
-      // zone fee (the static fallback the customer was shown).
-      const stored = await loadQuote(body.delivery_quote_id);
-      if (stored && stored.fee_ngn === body.delivery_fee_ngn) {
-        deliveryFeeFinal = stored.fee_ngn;
-      } else if (b.deliveryZones.some((z) => z.fee_ngn === body.delivery_fee_ngn)) {
-        deliveryFeeFinal = body.delivery_fee_ngn;
+      // The customer picked a courier option. Verify it's one we offered, at
+      // the fee we offered, then lock it + capture the validated address so
+      // dispatch routes to exactly that point. The option id's first segment is
+      // the quote token the option set is stored under.
+      const quoteToken = body.delivery_quote_id.split("::")[0] ?? "";
+      const set = await loadOptionSet(quoteToken);
+      if (!set) {
+        // Can't verify (Redis down or set expired) → don't charge rather than
+        // reject a paying customer or trust an unverified fee.
+        deliveryFeeFinal = 0;
       } else {
-        throw new BusinessError("validation_failed", "delivery fee not recognised", 422);
+        const opt = set.options.find((o) => o.id === body.delivery_quote_id);
+        if (opt && opt.fee_ngn === body.delivery_fee_ngn) {
+          deliveryFeeFinal = opt.fee_ngn;
+          deliveryQuoteRef = opt.id;
+          deliveryAddressCode = set.address_code != null ? String(set.address_code) : null;
+          deliveryAddressFormatted = set.address_formatted ?? null;
+        } else {
+          // An option/fee we never offered → tampering.
+          throw new BusinessError("validation_failed", "delivery option not recognised", 422);
+        }
       }
-    } else if (b.deliveryZones.some((z) => z.fee_ngn === body.delivery_fee_ngn)) {
-      deliveryFeeFinal = body.delivery_fee_ngn;
     } else {
-      throw new BusinessError("validation_failed", "delivery fee not recognised", 422);
+      // No option chosen → delivery is not charged.
+      deliveryFeeFinal = 0;
     }
 
     // Decide where the line items come from. Explicit items[] wins (tests,
@@ -269,17 +306,17 @@ export function publicOrderRoutes(db: DbClient) {
           422,
         );
       }
-      const [cust] = await tx
-        .insert(customer)
-        .values({
-          name: body.customer.name,
-          phone: normalizedPhone,
-          email: body.customer.email ?? null,
-          defaultAddress: body.customer.address,
-          source: "online",
-        })
-        .returning();
-      if (!cust) throw new BusinessError("internal_error", "customer insert failed", 500);
+      // Same identity rule as the POS: a returning customer (matched on the
+      // normalized phone) reuses their existing row so online + counter orders
+      // roll up together.
+      const customerId = await resolveCustomer(tx, {
+        name: body.customer.name,
+        phone: normalizedPhone,
+        email: body.customer.email ?? null,
+        defaultAddress: body.customer.address,
+        source: "online",
+      });
+      if (!customerId) throw new BusinessError("internal_error", "customer resolve failed", 500);
 
       let subtotal = 0;
       const lines: {
@@ -369,7 +406,7 @@ export function publicOrderRoutes(db: DbClient) {
           orderNumber,
           branchId: body.branch_id,
           channel: "online",
-          customerId: cust.id,
+          customerId,
           status: "confirmed",
           subtotalNgn: subtotal,
           deliveryFeeNgn: deliveryFeeFinal,
@@ -382,6 +419,9 @@ export function publicOrderRoutes(db: DbClient) {
             ? new Date(body.scheduled_delivery_at)
             : null,
           deliveryState: body.delivery_state ?? null,
+          deliveryQuoteRef,
+          deliveryAddressCode,
+          deliveryAddressFormatted,
           notes: body.notes ?? null,
         })
         .returning();
@@ -415,15 +455,15 @@ export function publicOrderRoutes(db: DbClient) {
           sale_order_id: o.id,
           order_number: o.orderNumber,
           total_ngn: total,
-          customer_name: cust.name,
-          customer_phone: cust.phone,
+          customer_name: body.customer.name,
+          customer_phone: normalizedPhone,
           scheduled_delivery_at: o.scheduledDeliveryAt
             ? o.scheduledDeliveryAt.toISOString()
             : null,
           delivery_state: o.deliveryState ?? null,
         },
       });
-      return { order: o, customerEmail: cust.email };
+      return { order: o, customerEmail: body.customer.email ?? null };
     });
 
     // Initiate the OPay Cashier session (or mock URL in dev). PUBLIC_CUSTOMER_URL

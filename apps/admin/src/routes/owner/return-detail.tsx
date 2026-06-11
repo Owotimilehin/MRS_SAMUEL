@@ -25,6 +25,10 @@ interface ReturnDetail {
   createdAt: string;
   items: ReturnItem[];
 }
+interface Product {
+  id: string;
+  name: string;
+}
 
 function statusPill(s: ReturnDetail["status"]): JSX.Element {
   if (s === "completed") return <span className="pill pill--success">Completed</span>;
@@ -42,19 +46,25 @@ export function OwnerReturnDetailPage({
   returnId: string;
 }): JSX.Element {
   const [data, setData] = useState<ReturnDetail | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
   const [branchName, setBranchName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
 
+  const productName = (id: string): string =>
+    products.find((p) => p.id === id)?.name ?? "Unknown product";
+
   async function load(): Promise<void> {
     setLoading(true);
     try {
-      const [r, br] = await Promise.all([
+      const [r, br, p] = await Promise.all([
         api<{ data: ReturnDetail }>(`/branches/${branchId}/returns/${returnId}`),
         api<{ data: Array<{ id: string; name: string }> }>("/branches"),
+        api<{ data: Product[] }>("/products"),
       ]);
       setData(r.data);
+      setProducts(p.data);
       setBranchName(br.data.find((b) => b.id === branchId)?.name ?? "");
       setError(null);
     } catch (err) {
@@ -134,7 +144,7 @@ export function OwnerReturnDetailPage({
                 <tbody>
                   {data.items.map((it) => (
                     <tr key={it.id}>
-                      <td>{it.productId.slice(0, 8)}…</td>
+                      <td>{productName(it.productId)}</td>
                       <td className="table__num">{it.quantity}</td>
                       <td className="table__num">{ngn(it.unitPriceNgn)}</td>
                       <td style={{ color: "var(--ink-soft)" }}>{it.disposition}</td>

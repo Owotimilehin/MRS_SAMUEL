@@ -212,13 +212,15 @@ export class ShipbubbleClient {
     return v.addressCode;
   }
 
-  /** validate receiver → fetch rates → return cheapest courier + token. */
+  /** validate receiver → fetch rates → return cheapest courier + token + the
+   *  validated receiver (its reusable address_code is what guarantees dispatch
+   *  routes to the exact address that was quoted). */
   async quote(input: {
     sender: ShipbubbleAddress;
     receiver: ShipbubbleAddress;
     pkg: PackageProfile;
     pickupDate: string;
-  }): Promise<{ rates: RatesResult; chosen: CourierRate }> {
+  }): Promise<{ rates: RatesResult; chosen: CourierRate; receiver: ValidatedAddress }> {
     const [senderCode, receiverV] = await Promise.all([
       this.resolveSenderCode(input.sender),
       this.validateAddress(input.receiver),
@@ -231,17 +233,71 @@ export class ShipbubbleClient {
     });
     const chosen = rates.cheapest;
     if (!chosen) throw new ShipbubbleError("no couriers returned for route", 200, "");
-    return { rates, chosen };
+    return { rates, chosen, receiver: receiverV };
   }
 
-  /** Full dispatch: validate → rates → create label with the cheapest courier. */
+  /**
+   * Dispatch using a receiver address_code captured at quote time — skips
+   * re-validating the raw address string, so the courier routes to exactly the
+   * geocoded point the customer was quoted and confirmed. Honors the chosen
+   * courier; falls back to cheapest if it's no longer offered.
+   */
+  async dispatchByReceiverCode(input: {
+    sender: ShipbubbleAddress;
+    receiverAddressCode: number;
+    pkg: PackageProfile;
+    pickupDate: string;
+    preferCourierId?: string;
+    preferServiceCode?: string;
+  }): Promise<{ label: CreatedLabel; chosen: CourierRate }> {
+    const senderCode = await this.resolveSenderCode(input.sender);
+    const rates = await this.fetchRates({
+      senderAddressCode: senderCode,
+      receiverAddressCode: input.receiverAddressCode,
+      pickupDate: input.pickupDate,
+      pkg: input.pkg,
+    });
+    const preferred =
+      input.preferCourierId != null
+        ? rates.couriers.find(
+            (c) =>
+              c.courierId === input.preferCourierId &&
+              c.serviceCode === input.preferServiceCode,
+          )
+        : undefined;
+    const chosen = preferred ?? rates.cheapest;
+    if (!chosen) throw new ShipbubbleError("no couriers returned for route", 200, "");
+    const label = await this.createLabel({
+      requestToken: rates.requestToken,
+      serviceCode: chosen.serviceCode,
+      courierId: chosen.courierId,
+    });
+    return { label, chosen };
+  }
+
+  /**
+   * Full dispatch: validate → rates → create label. Picks the courier the
+   * customer chose (preferCourierId/preferServiceCode) when it's still
+   * available on the fresh rate set; otherwise falls back to the cheapest.
+   */
   async dispatch(input: {
     sender: ShipbubbleAddress;
     receiver: ShipbubbleAddress;
     pkg: PackageProfile;
     pickupDate: string;
+    preferCourierId?: string;
+    preferServiceCode?: string;
   }): Promise<{ label: CreatedLabel; chosen: CourierRate }> {
-    const { rates, chosen } = await this.quote(input);
+    const { rates, chosen: cheapest } = await this.quote(input);
+    const preferred =
+      input.preferCourierId != null
+        ? rates.couriers.find(
+            (c) =>
+              c.courierId === input.preferCourierId &&
+              c.serviceCode === input.preferServiceCode,
+          )
+        : undefined;
+    const chosen = preferred ?? cheapest;
     const label = await this.createLabel({
       requestToken: rates.requestToken,
       serviceCode: chosen.serviceCode,

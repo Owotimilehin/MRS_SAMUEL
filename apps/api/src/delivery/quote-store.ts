@@ -31,6 +31,59 @@ export interface QuoteEnvelope {
   expires_at: number; // epoch ms
 }
 
+/** One courier option as offered to the customer, stored for validation. */
+export interface StoredOption {
+  id: string;
+  fee_ngn: number;
+}
+
+/** The full option set offered for a quote_token, so order creation can verify
+ *  the chosen option id + fee is one we actually offered. */
+export interface OptionSetEnvelope {
+  provider: "bolt" | "manual" | "shipbubble";
+  branch_id: string;
+  dropoff_address: string;
+  options: StoredOption[];
+  /** The courier-validated dropoff captured at quote time. Reused at dispatch
+   *  so the rider routes to exactly this address. */
+  address_code?: number;
+  address_formatted?: string;
+  expires_at: number; // epoch ms
+}
+
+export async function storeOptionSet(
+  quoteToken: string,
+  envelope: OptionSetEnvelope,
+  ttlSeconds: number,
+): Promise<void> {
+  const client = getRedis();
+  if (!client) return;
+  try {
+    await client.set(
+      `dqo:${quoteToken}`,
+      JSON.stringify(envelope),
+      "EX",
+      Math.max(60, ttlSeconds),
+    );
+  } catch {
+    // Storage failure — fall through; verification fails open (delivery ₦0).
+  }
+}
+
+export async function loadOptionSet(quoteToken: string): Promise<OptionSetEnvelope | null> {
+  const client = getRedis();
+  if (!client) return null;
+  try {
+    const raw = await client.get(`dqo:${quoteToken}`);
+    if (!raw) return null;
+    const env = JSON.parse(raw) as OptionSetEnvelope;
+    if (env.expires_at < Date.now()) return null;
+    return env;
+  } catch {
+    return null;
+  }
+}
+
 export async function storeQuote(
   providerQuoteId: string,
   envelope: QuoteEnvelope,

@@ -1,0 +1,71 @@
+{
+  "_comment": "Blog posts extracted from fruit-splash-showcase src/data/blogPosts.ts. The frontend stores body as a structured array ({type:p|h|quote}); here it is flattened to markdown (body_md) to fit the existing blog_post table. The blog_post table has no author_name/category/read_mins columns yet — see STRUCTURE.md. 'cover' is a frontend cluster hint, not a real image URL.",
+  "posts": [
+    {
+      "slug": "why-we-cold-press-at-sunrise",
+      "title": "Why we cold-press before the sun is fully up",
+      "excerpt": "There's a reason the first bottle of the day tastes different. We press while the city is still quiet — and the fruit is still cold.",
+      "author_name": "Mrs. Samuel",
+      "category": "Story",
+      "read_mins": 4,
+      "cover_hint": "citrus",
+      "published_at": "2026-05-28",
+      "body_md": "By 5:30am the kitchen is already humming. The market run finished an hour ago. Pineapples are being trimmed. Beetroots are being washed twice — once for the soil, once for peace of mind.\n\n## Heat is the enemy of nutrients\n\nCold-pressing is slower. It costs more. But it keeps the enzymes alive — the same enzymes that make pineapple actually feel like it's helping your digestion, not just satisfying your taste buds.\n\nBy 9am, the first crates are out for delivery. Bottles you receive that morning were fruit on a tree the day before.\n\n> If you wouldn't drink it cloudy by lunchtime, we won't bottle it at sunrise.\n\nIt's a small promise. But it's why every bottle has a press date — not just an expiry."
+    },
+    {
+      "slug": "nigerian-fruit-waste-story",
+      "title": "The 30–50% nobody talks about",
+      "excerpt": "Nigeria grows beautiful fruit. Half of it never reaches a glass. Here's what we're doing about it — and how you can help.",
+      "author_name": "Mr. Samuel",
+      "category": "Story",
+      "read_mins": 6,
+      "cover_hint": "tropical",
+      "published_at": "2026-05-14",
+      "body_md": "Walk through any market at 6pm and look at what's being thrown away. Mangoes too ripe to sell tomorrow. Pineapples bruised in transit. Watermelons that didn't move.\n\nIndustry estimates put Nigerian post-harvest fruit loss between 30% and 50%. That's farmers losing income, families losing nutrition, and food losing its meaning.\n\n## Our small piece of the answer\n\nWe buy directly from cooperatives — including fruit that wouldn't make it to a supermarket shelf because of a small bruise or an irregular shape. In a cold-press bottle, none of that matters.\n\nThe farmer gets paid. The fruit gets used. The customer gets juice that was a tree yesterday.\n\n## What you can do\n\nChoose juice that names its growers. Ask where your fruit comes from. And if you run a business that wants to buy in volume — we'd love to talk."
+    },
+    {
+      "slug": "beetroot-the-misunderstood-hero",
+      "title": "Beetroot: the misunderstood hero",
+      "excerpt": "It tastes like soil. It looks like blood. And it might be the most underrated thing in your fridge.",
+      "author_name": "Mrs. Samuel",
+      "category": "Wellness",
+      "read_mins": 5,
+      "cover_hint": "root",
+      "published_at": "2026-04-30",
+      "body_md": "I get the side-eye every time I recommend beetroot to a first-time customer. It's earthy. It stains everything. And it tastes like the ground it grew in.\n\nThat earthiness is also why athletes are obsessed with it. Beetroot is full of nitrates — the same compound your body converts into nitric oxide to widen blood vessels and improve stamina.\n\n## How we tame it\n\nWe pair beetroot with apple and pineapple. The sweetness doesn't hide the earthiness — it balances it. By the second sip, most people stop noticing the soil note and start noticing the body it gives the juice.\n\nTry Crimson Garden Glow or Crimson Elixir if you're ready to give it a real chance."
+    },
+    {
+      "slug": "mrs-samuels-morning-ritual",
+      "title": "Mrs. Samuel's morning ritual",
+      "excerpt": "What the woman who built this brand actually drinks before her first cup of tea. Spoiler: it's not the brand's bestseller.",
+      "author_name": "Mrs. Samuel",
+      "category": "Wellness",
+      "read_mins": 3,
+      "cover_hint": "green",
+      "published_at": "2026-04-18",
+      "body_md": "Before phone. Before tea. Before anyone else in the house is up — one shot of Immune Booster, slow.\n\nTurmeric, ginger, pineapple, lemon. It burns a little. That's the point.\n\n## Why the slow sip matters\n\nDrinking it fast wastes it. The warmth from the ginger needs a minute to spread. The lemon needs to coat your mouth long enough to wake your senses up.\n\nI follow it with a glass of water. Not before. The water dilutes the bite, and the bite is half the medicine."
+    },
+    {
+      "slug": "why-glass-not-plastic",
+      "title": "Why glass, not plastic",
+      "excerpt": "Plastic is cheaper. Plastic ships better. And plastic ruins cold-pressed juice. Here's why we won't switch.",
+      "author_name": "Mr. Samuel",
+      "category": "Behind the Scenes",
+      "read_mins": 4,
+      "cover_hint": "citrus",
+      "published_at": "2026-04-02",
+      "body_md": "Every quarter, a packaging vendor offers us PET bottles. Lighter. Cheaper. Easier to print on. We say no every time.\n\n## Cold-pressed juice is alive\n\nEnzymes are still working in the bottle. They react to micro-plastics. They react to oxygen passing through soft walls. Glass is the only container that respects what's inside it.\n\nYes, our bottles are heavier. Yes, returning them helps us reuse them — and yes, we'll always take them back.\n\n> We're not selling a drink. We're delivering an ingredient list."
+    },
+    {
+      "slug": "behind-one-bottle-sunrise-blend",
+      "title": "Behind one bottle of Sunrise Blend",
+      "excerpt": "From the farm in Benue to your fridge in Lekki — a single bottle's 18-hour journey.",
+      "author_name": "Mr. Samuel",
+      "category": "Behind the Scenes",
+      "read_mins": 7,
+      "cover_hint": "tropical",
+      "published_at": "2026-03-21",
+      "body_md": "4:00am, Benue. A driver loads crates of carrot, pawpaw, and orange picked the afternoon before. He'll be in Lagos by 11pm.\n\n11:30pm, Lagos. The crates land at our prep room. They're inspected, weighed, and refrigerated overnight.\n\n## Sunrise: the press\n\n5:30am the next morning, we wash everything twice and feed it through the cold press. The pineapple goes in last — its juice is the brightener.\n\n9:00am: bottling. Glass, sealed cold, labelled with that day's press date. Onto the bikes by 10.\n\nBy the time you twist the cap open, you're holding fruit that was on a tree thirty-six hours ago. That's the entire promise."
+    }
+  ]
+}

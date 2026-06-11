@@ -289,22 +289,34 @@ export function returnRoutes(db: DbClient) {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const rows = await db
-      .select()
+      .select({ ret: saleReturn, originalSaleOrderNumber: saleOrder.orderNumber })
       .from(saleReturn)
+      .leftJoin(saleOrder, eq(saleOrder.id, saleReturn.originalSaleOrderId))
       .where(eq(saleReturn.branchId, branchId));
-    return c.json({ data: rows });
+    return c.json({
+      data: rows.map((r) => ({
+        ...r.ret,
+        originalSaleOrderNumber: r.originalSaleOrderNumber,
+      })),
+    });
   });
 
   r.get("/:id", requireCapability("sales.view"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
-    const [ret] = await db.select().from(saleReturn).where(eq(saleReturn.id, id));
-    if (!ret) throw new BusinessError("not_found", "return not found", 404);
+    const [row] = await db
+      .select({ ret: saleReturn, originalSaleOrderNumber: saleOrder.orderNumber })
+      .from(saleReturn)
+      .leftJoin(saleOrder, eq(saleOrder.id, saleReturn.originalSaleOrderId))
+      .where(eq(saleReturn.id, id));
+    if (!row) throw new BusinessError("not_found", "return not found", 404);
     const items = await db
       .select()
       .from(saleReturnItem)
       .where(eq(saleReturnItem.saleReturnId, id));
-    return c.json({ data: { ...ret, items } });
+    return c.json({
+      data: { ...row.ret, originalSaleOrderNumber: row.originalSaleOrderNumber, items },
+    });
   });
 
   return r;

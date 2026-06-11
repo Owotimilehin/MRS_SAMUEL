@@ -15,6 +15,35 @@ const VariantInput = z.object({
   price_ngn: z.number().int().positive(),
 });
 
+const HEX = /^#[0-9a-fA-F]{6}$/;
+const PaletteInput = z.object({
+  surface: z.string().regex(HEX),
+  accent: z.string().regex(HEX),
+  text: z.string().regex(HEX),
+});
+const IngredientDetailInput = z.object({
+  name: z.string().min(1),
+  benefit: z.string().min(1),
+});
+
+// Storefront marketing content + colour + media-library references. All
+// optional so a bare product (name/slug/category/price) still creates cleanly;
+// the admin editor fills these in for the rich customer juice pages.
+const ContentFields = {
+  image_url: z.string().min(1).optional(),
+  tagline: z.string().optional(),
+  story: z.string().optional(),
+  pairing: z.string().optional(),
+  note: z.string().optional(),
+  benefits: z.array(z.string()).optional(),
+  best_for: z.array(z.string()).optional(),
+  ingredient_details: z.array(IngredientDetailInput).optional(),
+  palette: PaletteInput.nullable().optional(),
+  bottle_asset_id: z.string().uuid().nullable().optional(),
+  cluster_asset_id: z.string().uuid().nullable().optional(),
+  fruit_asset_id: z.string().uuid().nullable().optional(),
+};
+
 const CreateProduct = z
   .object({
     name: z.string().min(1),
@@ -28,11 +57,44 @@ const CreateProduct = z
     // Legacy single-variant shape, kept for tests and any older callers.
     size_ml: z.number().int().positive().optional(),
     initial_price_ngn: z.number().int().positive().optional(),
+    ...ContentFields,
   })
   .refine(
     (b) => (b.variants && b.variants.length > 0) || b.initial_price_ngn != null,
     { message: "either variants[] or initial_price_ngn is required" },
   );
+
+// PATCH payload: edit product attributes + content. Variants/prices are managed
+// by the dedicated /prices endpoint, so they're intentionally absent here.
+const UpdateProduct = z.object({
+  name: z.string().min(1).optional(),
+  category: z.enum(["regular", "special", "punch"]).optional(),
+  ingredients: z.array(z.string()).optional(),
+  shelf_life_hours: z.number().int().positive().optional(),
+  display_order: z.number().int().optional(),
+  is_active: z.boolean().optional(),
+  ...ContentFields,
+});
+
+// Map the snake_case content fields from a parsed payload onto the Drizzle
+// product columns. Only keys actually present are returned (so PATCH leaves
+// untouched columns alone).
+function contentToColumns(b: Record<string, unknown>): Record<string, unknown> {
+  const cols: Record<string, unknown> = {};
+  if ("image_url" in b) cols.imageUrl = b.image_url;
+  if ("tagline" in b) cols.tagline = b.tagline;
+  if ("story" in b) cols.story = b.story;
+  if ("pairing" in b) cols.pairing = b.pairing;
+  if ("note" in b) cols.note = b.note;
+  if ("benefits" in b) cols.benefits = b.benefits;
+  if ("best_for" in b) cols.bestFor = b.best_for;
+  if ("ingredient_details" in b) cols.ingredientDetails = b.ingredient_details;
+  if ("palette" in b) cols.palette = b.palette;
+  if ("bottle_asset_id" in b) cols.bottleAssetId = b.bottle_asset_id;
+  if ("cluster_asset_id" in b) cols.clusterAssetId = b.cluster_asset_id;
+  if ("fruit_asset_id" in b) cols.fruitAssetId = b.fruit_asset_id;
+  return cols;
+}
 
 const PublishPrice = z.object({
   // Preferred: target a specific can size. Omitted = the smallest variant
@@ -156,6 +218,7 @@ export function productRoutes(db: DbClient) {
           sizeMl: smallestSize,
           shelfLifeHours: body.shelf_life_hours,
           displayOrder: body.display_order,
+          ...contentToColumns(body),
         })
         .returning();
       if (!row) throw new BusinessError("internal_error", "insert returned no rows", 500);
@@ -190,6 +253,85 @@ export function productRoutes(db: DbClient) {
       after: { ...created.row, variants: created.variants },
     });
     return c.json({ data: { ...created.row, variants: created.variants } }, 201);
+  });
+
+  /**
+   * Update product attributes + storefront content (palette, media refs,
+   * marketing copy). Variants/prices go through /:id/prices.
+   */
+  r.patch("/:id", requireCapability("products.manage"), async (c) => {
+    const id = c.req.param("id");
+    const body = UpdateProduct.parse(await c.req.json());
+
+    const [existing] = await db
+      .select()
+      .from(product)
+      .where(and(eq(product.id, id), isNull(product.deletedAt)));
+    if (!existing) throw new BusinessError("not_found", "product not found", 404);
+
+    const updates: Record<string, unknown> = { ...contentToColumns(body) };
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.category !== undefined) updates.category = body.category;
+    if (body.ingredients !== undefined) updates.ingredients = body.ingredients;
+    if (body.shelf_life_hours !== undefined) updates.shelfLifeHours = body.shelf_life_hours;
+    if (body.display_order !== undefined) updates.displayOrder = body.display_order;
+    if (body.is_active !== undefined) updates.isActive = body.is_active;
+
+    if (Object.keys(updates).length === 0) {
+      return c.json({ data: existing });
+    }
+    updates.updatedAt = new Date();
+
+    const [row] = await db
+      .update(product)
+      .set(updates)
+      .where(eq(product.id, id))
+      .returning();
+
+    await writeAudit(db, c, {
+      action: "product.update",
+      entityType: "product",
+      entityId: id,
+      before: existing,
+      after: row,
+    });
+    return c.json({ data: row });
+  });
+
+  /**
+   * Retire a flavour. Soft-delete (sets deleted_at) so historical sale_order
+   * rows that reference the product stay intact — the catalog and admin lists
+   * both filter on deleted_at IS NULL, so it vanishes from every live view.
+   * To bring a seasonal flavour back, PATCH is_active instead of deleting.
+   */
+  r.delete("/:id", requireCapability("products.manage"), async (c) => {
+    const id = c.req.param("id");
+    const [existing] = await db
+      .select()
+      .from(product)
+      .where(and(eq(product.id, id), isNull(product.deletedAt)));
+    if (!existing) throw new BusinessError("not_found", "product not found", 404);
+
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx
+        .update(product)
+        .set({ deletedAt: now, isActive: false, updatedAt: now })
+        .where(eq(product.id, id));
+      // Retire its variants too, so they can't be sold or re-priced.
+      await tx
+        .update(productVariant)
+        .set({ deletedAt: now, isActive: false })
+        .where(and(eq(productVariant.productId, id), isNull(productVariant.deletedAt)));
+    });
+
+    await writeAudit(db, c, {
+      action: "product.delete",
+      entityType: "product",
+      entityId: id,
+      before: existing,
+    });
+    return c.json({ data: { ok: true } });
   });
 
   /**

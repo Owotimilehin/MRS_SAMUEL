@@ -73,6 +73,15 @@ export const saleOrder = pgTable("sale_order", {
   // value = outside Lagos: automated dispatch is bypassed and delivery is ₦0.
   deliveryState: text("delivery_state"),
   deliveryProviderRef: text("delivery_provider_ref"),
+  // The courier option the customer chose at checkout, encoded
+  // `requestToken::courierId::serviceCode`. Passed to dispatch so we send the
+  // exact courier they paid for (not the auto-cheapest).
+  deliveryQuoteRef: text("delivery_quote_ref"),
+  // The courier-validated dropoff captured at quote time. The address_code is
+  // reused at dispatch so the rider routes to exactly the quoted+confirmed
+  // address; the formatted string is what we show/store as the delivery address.
+  deliveryAddressCode: text("delivery_address_code"),
+  deliveryAddressFormatted: text("delivery_address_formatted"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

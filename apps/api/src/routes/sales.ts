@@ -9,7 +9,6 @@ import {
   stockLedger,
   productPrice,
   productVariant,
-  customer,
   outboxEvent,
   type DbClient,
 } from "@ms/db";
@@ -18,6 +17,7 @@ import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+import { resolveCustomer } from "../lib/customers.js";
 
 const ConfirmSale = z.object({
   // Optional client-supplied UUID. The branch PWA generates this offline so the
@@ -95,30 +95,24 @@ export function saleRoutes(db: DbClient) {
     const auth = c.get("auth");
 
     const created = await db.transaction(async (tx) => {
-      // Resolve or create customer if we have any details
-      let customerId: string | null = null;
-      if (body.customer && (body.customer.name || body.customer.phone)) {
-        const [cust] = await tx
-          .insert(customer)
-          .values({
-            name: body.customer.name ?? null,
-            phone: body.customer.phone ?? null,
-            email: body.customer.email ?? null,
-            defaultAddress: body.customer.default_address ?? null,
-            source:
-              body.channel === "walkup"
-                ? "walkup_anonymous"
-                : body.channel === "online"
-                  ? "online"
-                  : body.channel === "phone"
-                    ? "phone"
-                    : body.channel === "whatsapp"
-                      ? "whatsapp"
-                      : "chowdeck",
-          })
-          .returning();
-        customerId = cust?.id ?? null;
-      }
+      // Resolve or create the customer by phone (shared identity rule). Returns
+      // null for a fully anonymous walk-up (no name and no phone).
+      const customerId = await resolveCustomer(tx, {
+        name: body.customer?.name ?? null,
+        phone: body.customer?.phone ?? null,
+        email: body.customer?.email ?? null,
+        defaultAddress: body.customer?.default_address ?? null,
+        source:
+          body.channel === "walkup"
+            ? "walkup_anonymous"
+            : body.channel === "online"
+              ? "online"
+              : body.channel === "phone"
+                ? "phone"
+                : body.channel === "whatsapp"
+                  ? "whatsapp"
+                  : "chowdeck",
+      });
 
       // Snapshot current price + check stock per line
       let subtotal = 0;

@@ -26,6 +26,40 @@ export interface DeliveryQuote {
   notice?: string;
 }
 
+/** A single courier option the customer can choose at checkout. */
+export interface DeliveryOption {
+  /**
+   * Opaque id passed back into the order + requestDelivery to identify the
+   * chosen courier. For Shipbubble this encodes
+   * `requestToken::courierId::serviceCode`.
+   */
+  id: string;
+  courierName: string;
+  feeNgn: number;
+  etaMinutes: number;
+  /** True for instant on-demand dispatch; false for scheduled pickup. */
+  onDemand: boolean;
+}
+
+/** The courier-validated dropoff. Its address_code is reused at dispatch so the
+ *  rider routes to exactly the address that was quoted + confirmed. */
+export interface ValidatedDropoff {
+  addressCode: number;
+  formatted: string;
+  lat: number | null;
+  lng: number | null;
+}
+
+export interface DeliveryQuoteOptions {
+  /** Groups this set of options for server-side storage / validation. */
+  quoteToken: string;
+  options: DeliveryOption[];
+  /** TTL in seconds after which the options may no longer be valid. */
+  expiresInSeconds: number;
+  /** The validated dropoff (present when the provider validates addresses). */
+  validatedAddress?: ValidatedDropoff;
+}
+
 export interface RequestDeliveryInput {
   saleOrderId: string;
   orderNumber: string;
@@ -41,6 +75,9 @@ export interface RequestDeliveryInput {
   customerPhone: string;
   /** Optional rider instructions. */
   notes?: string;
+  /** Validated dropoff address_code captured at quote time — when present the
+   *  provider routes to exactly this address (no re-geocoding). */
+  receiverAddressCode?: number;
 }
 
 export interface RequestDeliveryResult {
@@ -74,6 +111,8 @@ export interface NormalizedWebhook {
 export interface DeliveryProvider {
   readonly name: "bolt" | "manual" | "shipbubble";
   quote(input: DeliveryQuoteInput): Promise<DeliveryQuote>;
+  /** Return every courier option for the route so the customer can choose. */
+  quoteOptions(input: DeliveryQuoteInput): Promise<DeliveryQuoteOptions>;
   requestDelivery(input: RequestDeliveryInput): Promise<RequestDeliveryResult>;
   cancelDelivery(externalRef: string): Promise<void>;
   /**

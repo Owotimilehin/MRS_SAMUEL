@@ -10,6 +10,37 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
+
+  /**
+   * Serialize to a JSON string suitable for re-throwing as a plain Error
+   * across the TanStack server-function RPC boundary, which strips custom
+   * Error subclasses. Pair with {@link asApiError} on the client.
+   */
+  serialize(): string {
+    return JSON.stringify({ __apiError: { code: this.code, message: this.message, status: this.status } });
+  }
+}
+
+/**
+ * Recover an ApiError from an unknown caught value. Handles both a real
+ * ApiError (same realm) and the serialized form produced by
+ * {@link ApiError.serialize} after it crosses a server-function boundary
+ * (where the prototype and custom fields are otherwise lost). Returns null
+ * when the value is not an API error.
+ */
+export function asApiError(err: unknown): ApiError | null {
+  if (err instanceof ApiError) return err;
+  if (err instanceof Error) {
+    try {
+      const parsed = JSON.parse(err.message) as { __apiError?: { code: string; message: string; status: number } };
+      if (parsed.__apiError) {
+        return new ApiError(parsed.__apiError.code, parsed.__apiError.message, parsed.__apiError.status);
+      }
+    } catch {
+      /* message was not a serialized ApiError */
+    }
+  }
+  return null;
 }
 
 /**

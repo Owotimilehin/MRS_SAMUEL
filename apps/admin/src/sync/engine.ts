@@ -97,6 +97,27 @@ async function sendOne(row: OutboxRow): Promise<void> {
   });
 }
 
+/**
+ * Reclaim outbox rows orphaned in `in_flight`.
+ *
+ * A row is only ever `in_flight` for the duration of a single in-process send.
+ * If the till app is closed or the tab crashes mid-send — common on a bad
+ * network where the request hangs and staff force-quit — the row is left
+ * stranded: `flushOutbox` only picks up `pending`, so it would never retry, and
+ * the queue UI even hides its Retry button. On a fresh session any `in_flight`
+ * row is by definition orphaned, so reset it to `pending` and make it due now.
+ * Re-sends are safe because each row carries its id as the Idempotency-Key.
+ */
+export async function reclaimInFlight(): Promise<void> {
+  await local.outbox
+    .where("status")
+    .equals("in_flight")
+    .modify((row) => {
+      row.status = "pending";
+      row.next_attempt_at = Date.now();
+    });
+}
+
 export async function flushOutbox(): Promise<void> {
   if (!navigator.onLine) return;
   const now = Date.now();
@@ -272,7 +293,10 @@ export function startSyncLoop(branchId: string): () => void {
     void flushOutbox();
   };
   window.addEventListener("online", onOnline);
-  void tick();
+
+  // Fresh session: rescue any sale stranded mid-send by a previous crash/close,
+  // THEN start the loop so the rescued rows flush on the very first tick.
+  void reclaimInFlight().finally(() => void tick());
 
   // Fire-and-forget telemetry tick.
   void reportTelemetry();

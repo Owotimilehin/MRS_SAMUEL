@@ -1,0 +1,43 @@
+{
+  "_comment": "Subscription plans extracted from fruit-splash-showcase src/routes/subscription.tsx. No backend table exists yet — see STRUCTURE.md (subscription_plan). period is the billing cadence; bottles_label is display copy.",
+  "plans": [
+    {
+      "slug": "weekly-juice-box",
+      "name": "Weekly Juice Box",
+      "price_ngn": 12500,
+      "period": "week",
+      "bottles_label": "7 bottles",
+      "is_popular": false,
+      "description": "One bottle a day. Perfect to start a routine and keep it.",
+      "perks": ["7 × 330ml weekly", "Skip any week", "5% off retail"],
+      "display_order": 1
+    },
+    {
+      "slug": "monthly-detox-plan",
+      "name": "Monthly Detox Plan",
+      "price_ngn": 42000,
+      "period": "month",
+      "bottles_label": "20 bottles",
+      "is_popular": true,
+      "description": "Cleanse-focused — Detox, Immune Booster, Blood Booster on rotation.",
+      "perks": ["20 × 330ml monthly", "Wellness call with Mrs. Samuel", "10% off + free delivery"],
+      "display_order": 2
+    },
+    {
+      "slug": "family-package",
+      "name": "Family Package",
+      "price_ngn": 65000,
+      "period": "month",
+      "bottles_label": "30 bottles",
+      "is_popular": false,
+      "description": "Mixed sizes, mixed flavours — enough fresh juice for a household.",
+      "perks": ["30 bottles, mixed sizes", "Kid-friendly flavour priority", "12% off + free delivery"],
+      "display_order": 3
+    }
+  ],
+  "how_it_works": [
+    { "step": 1, "title": "Pick a plan", "description": "Weekly, monthly detox, or family. Change later anytime." },
+    { "step": 2, "title": "Customise your bottles", "description": "Tell us your flavour preferences and any ingredient you don't want." },
+    { "step": 3, "title": "We deliver fresh", "description": "Pressed at sunrise, delivered the same morning across Lagos." }
+  ]
+}

@@ -3,6 +3,7 @@ import type {
   DeliveryProvider,
   DeliveryQuote,
   DeliveryQuoteInput,
+  DeliveryQuoteOptions,
   NormalizedWebhook,
   RequestDeliveryInput,
   RequestDeliveryResult,
@@ -60,6 +61,34 @@ export class BoltMockProvider implements DeliveryProvider {
       feeNgn,
       etaMinutes,
       expiresInSeconds: 5 * 60,
+    };
+  }
+
+  async quoteOptions(input: DeliveryQuoteInput): Promise<DeliveryQuoteOptions> {
+    const base = await this.quote(input);
+    const token = `mock_${uuid().slice(0, 8)}`;
+    // Two synthetic couriers so the selector has something to choose between
+    // in dev: a cheaper/slower standard and a pricier/faster express.
+    return {
+      quoteToken: token,
+      expiresInSeconds: base.expiresInSeconds,
+      validatedAddress: { addressCode: 0, formatted: input.dropoffAddress, lat: null, lng: null },
+      options: [
+        {
+          id: `${token}::mock-standard::ND`,
+          courierName: "Mock Standard",
+          feeNgn: base.feeNgn,
+          etaMinutes: base.etaMinutes,
+          onDemand: true,
+        },
+        {
+          id: `${token}::mock-express::SD`,
+          courierName: "Mock Express",
+          feeNgn: base.feeNgn + 700,
+          etaMinutes: Math.max(15, Math.round(base.etaMinutes * 0.6)),
+          onDemand: true,
+        },
+      ],
     };
   }
 

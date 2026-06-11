@@ -23,6 +23,10 @@ interface DeliveryRequestInput {
   dropoffAddress: string;
   customerName: string;
   customerPhone: string;
+  /** The courier the customer chose, encoded requestToken::courierId::serviceCode. */
+  providerQuoteId?: string;
+  /** Validated dropoff address_code captured at quote time. */
+  receiverAddressCode?: number;
 }
 interface DeliveryProviderShape {
   readonly name: "bolt" | "manual" | "shipbubble";
@@ -100,6 +104,12 @@ export async function dispatchDeliveryFromEvent(
       dropoffAddress: cust.defaultAddress,
       customerName: cust.name ?? "Customer",
       customerPhone: cust.phone,
+      // Honor the courier the customer chose at checkout.
+      ...(order.deliveryQuoteRef ? { providerQuoteId: order.deliveryQuoteRef } : {}),
+      // Route to the exact address validated + confirmed at checkout.
+      ...(order.deliveryAddressCode
+        ? { receiverAddressCode: Number(order.deliveryAddressCode) }
+        : {}),
     });
   } catch (err) {
     logger.error(

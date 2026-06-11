@@ -9,6 +9,7 @@ interface ReturnRow {
   id: string;
   returnNumber: string;
   originalSaleOrderId: string;
+  originalSaleOrderNumber: string | null;
   status: "draft" | "pending_approval" | "completed" | "cancelled";
   reasonCategory: string;
   refundMethod: string;
@@ -141,8 +142,8 @@ export function BranchReturnsPage({ branchId }: { branchId: string }): JSX.Eleme
                       {r.returnNumber}
                     </Link>
                   </td>
-                  <td style={{ fontFamily: "monospace", fontSize: 13 }}>
-                    {r.originalSaleOrderId.slice(0, 8)}
+                  <td style={{ fontWeight: 600 }}>
+                    {r.originalSaleOrderNumber ?? "—"}
                   </td>
                   <td style={{ textTransform: "capitalize" }}>
                     {r.reasonCategory.replace(/_/g, " ")}

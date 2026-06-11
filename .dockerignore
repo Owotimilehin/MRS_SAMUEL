@@ -17,3 +17,7 @@ parse-audit.mjs
 api-dev.log
 *.log
 **/.DS_Store
+
+# SSR build outputs
+**/.output
+**/.vercel
