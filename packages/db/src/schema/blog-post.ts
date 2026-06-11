@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, timestamp, index } from "drizzle-orm/pg-core";
 import { adminUser } from "./admin-user.js";
 
 /**
@@ -13,6 +13,10 @@ export const blogPost = pgTable(
     title: text("title").notNull(),
     excerpt: text("excerpt"),
     bodyMd: text("body_md").notNull(),
+    author: text("author"),
+    readMins: integer("read_mins"),
+    category: text("category"),
+    cluster: text("cluster"),
     coverUrl: text("cover_url"),
     authorUserId: uuid("author_user_id").references(() => adminUser.id, { onDelete: "set null" }),
     publishedAt: timestamp("published_at", { withTimezone: true }),
