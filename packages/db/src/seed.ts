@@ -7,11 +7,12 @@ import {
   product,
   productPrice,
   productVariant,
+  mediaAsset,
 } from "./schema/index.js";
 import argon2 from "argon2";
 import { eq, and, isNull } from "drizzle-orm";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { PALETTES, VISUALS } from "./seed-data/visuals.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required");
@@ -62,124 +63,137 @@ async function seedBranch(): Promise<void> {
   console.warn("branch Ajao Estate seeded");
 }
 
-interface MenuFile {
-  pricing: {
-    regular_330ml: number;
-    regular_650ml: number;
-    specials: number;
-    fruit_punch: number;
-  };
-  items: Array<{
-    id: number;
-    name: string;
-    category: "regular" | "special" | "punch";
-    ingredients: string[];
-  }>;
+interface CatalogProduct {
+  slug: string;
+  name: string;
+  category: "regular" | "special" | "punch";
+  tagline?: string;
+  ingredients: string[];
+  ingredient_details?: { name: string; benefit: string }[];
+  benefits?: string[];
+  story?: string;
+  pairing?: string;
+  best_for?: string[];
+  note?: string;
+  variants: { size_ml: number; price_ngn: number }[];
+}
+interface CatalogFile {
+  products: CatalogProduct[];
 }
 
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
-
-/** Price for a flavour at a given can size. Specials and punch don't have
- *  documented size-tiered prices in menu.json, so they fall back to the
- *  documented flat price for any size. */
-function priceForSize(
-  category: "regular" | "special" | "punch",
-  sizeMl: number,
-  menu: MenuFile,
-): number {
-  if (category === "special") return menu.pricing.specials;
-  if (category === "punch") return menu.pricing.fruit_punch;
-  return sizeMl >= 650 ? menu.pricing.regular_650ml : menu.pricing.regular_330ml;
+/** Find-or-create a media_asset by its url (idempotent across reseeds). */
+async function ensureMediaAsset(
+  kind: "bottle" | "cluster" | "fruit",
+  name: string,
+  url: string,
+): Promise<{ id: string; created: boolean }> {
+  const [existing] = await db.select().from(mediaAsset).where(eq(mediaAsset.url, url)).limit(1);
+  if (existing) return { id: existing.id, created: false };
+  const [row] = await db.insert(mediaAsset).values({ kind, name, url }).returning();
+  return { id: row!.id, created: true };
 }
 
 async function seedProducts(): Promise<void> {
-  // menu.json lives in the project root: ../../../menu.json relative to this file's
-  // tsx execution cwd (packages/db). We resolve from cwd so seed can be invoked
-  // either via pnpm filter or directly with tsx.
-  const candidates = [
-    resolve(process.cwd(), "../../menu.json"),     // when invoked from packages/db
-    resolve(process.cwd(), "../../../menu.json"),  // when invoked from repo root
-    resolve(process.cwd(), "menu.json"),
-  ];
-  let menuPath: string | undefined;
-  for (const p of candidates) {
-    try {
-      readFileSync(p, "utf8");
-      menuPath = p;
-      break;
-    } catch {
-      /* try next */
-    }
-  }
-  if (!menuPath) {
-    console.warn("menu.json not found, skipping product seed. Checked:", candidates.join(", "));
-    return;
-  }
-  const menu = JSON.parse(readFileSync(menuPath, "utf8")) as MenuFile;
-  console.warn("seeding products from", menuPath);
+  // The canonical storefront catalog (20 flavours with marketing content +
+  // variant prices). Shipped inside the package so the migrator image has it.
+  const catalog = JSON.parse(
+    readFileSync(new URL("./seed-data/catalog.json", import.meta.url), "utf8"),
+  ) as CatalogFile;
+  console.warn(`seeding ${catalog.products.length} products from storefront catalog`);
 
   let createdProducts = 0;
   let createdVariants = 0;
   let createdPrices = 0;
-  for (const item of menu.items) {
-    const slug = slugify(item.name);
-    let [row] = await db.select().from(product).where(eq(product.slug, slug));
+  let createdAssets = 0;
+
+  for (let i = 0; i < catalog.products.length; i++) {
+    const item = catalog.products[i]!;
+    const vis = VISUALS[item.slug];
+    const palette = vis ? PALETTES[vis.palette] : null;
+
+    // Media library — bottle + decoration assets, shared across flavours and
+    // referenced by id. URLs are served by the customer app from /media/.
+    let bottleId: string | null = null;
+    let clusterId: string | null = null;
+    let fruitId: string | null = null;
+    let bottleUrl: string | null = null;
+    if (vis) {
+      bottleUrl = `/media/bottles/${vis.bottle}`;
+      const b = await ensureMediaAsset("bottle", item.name, bottleUrl);
+      const c = await ensureMediaAsset("cluster", `${item.slug} cluster`, `/media/decor/${vis.cluster}`);
+      const f = await ensureMediaAsset("fruit", `${item.slug} fruit`, `/media/decor/${vis.fruit}`);
+      bottleId = b.id;
+      clusterId = c.id;
+      fruitId = f.id;
+      createdAssets += [b, c, f].filter((x) => x.created).length;
+    }
+
+    const values = {
+      name: item.name,
+      slug: item.slug,
+      category: item.category,
+      ingredients: item.ingredients,
+      sizeMl: Math.min(...item.variants.map((v) => v.size_ml)),
+      displayOrder: i,
+      imageUrl: bottleUrl,
+      tagline: item.tagline ?? null,
+      story: item.story ?? null,
+      pairing: item.pairing ?? null,
+      note: item.note ?? null,
+      benefits: item.benefits ?? [],
+      bestFor: item.best_for ?? [],
+      ingredientDetails: item.ingredient_details ?? [],
+      palette,
+      bottleAssetId: bottleId,
+      clusterAssetId: clusterId,
+      fruitAssetId: fruitId,
+    };
+
+    let [row] = await db.select().from(product).where(eq(product.slug, item.slug));
     if (!row) {
-      const inserted = await db
-        .insert(product)
-        .values({
-          name: item.name,
-          slug,
-          category: item.category,
-          ingredients: item.ingredients,
-          sizeMl: 330,
-          displayOrder: item.id,
-        })
-        .returning();
+      const inserted = await db.insert(product).values(values).returning();
       row = inserted[0];
       if (!row) continue;
       createdProducts++;
+    } else {
+      await db
+        .update(product)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(product.id, row.id));
     }
 
-    // One variant per documented can size, idempotent on (product_id, size_ml).
-    // Each variant carries its own current price row in product_price.
-    for (const sizeMl of [330, 650] as const) {
-      let [variant] = await db
+    // One variant + open-ended price per catalog size, idempotent on (product, size_ml).
+    for (const variant of item.variants) {
+      const sizeMl = variant.size_ml;
+      let [v] = await db
         .select()
         .from(productVariant)
         .where(and(eq(productVariant.productId, row.id), eq(productVariant.sizeMl, sizeMl)));
-      if (!variant) {
+      if (!v) {
         const inserted = await db
           .insert(productVariant)
-          .values({
-            productId: row.id,
-            sizeMl,
-            sku: `${slug}-${sizeMl}ml`,
-          })
+          .values({ productId: row.id, sizeMl, sku: `${item.slug}-${sizeMl}ml` })
           .returning();
-        variant = inserted[0];
-        if (!variant) continue;
+        v = inserted[0];
+        if (!v) continue;
         createdVariants++;
       }
-      // Skip if this variant already has an open-ended price.
       const existingPrice = await db
         .select()
         .from(productPrice)
-        .where(and(eq(productPrice.variantId, variant.id), isNull(productPrice.validTo)))
+        .where(and(eq(productPrice.variantId, v.id), isNull(productPrice.validTo)))
         .limit(1);
       if (existingPrice.length > 0) continue;
       await db.insert(productPrice).values({
         productId: row.id,
-        variantId: variant.id,
-        priceNgn: priceForSize(item.category, sizeMl, menu),
+        variantId: v.id,
+        priceNgn: variant.price_ngn,
       });
       createdPrices++;
     }
   }
   console.warn(
-    `products seeded: ${createdProducts} new (${menu.items.length} total); variants seeded: ${createdVariants}; prices seeded: ${createdPrices}`,
+    `products seeded: ${createdProducts} new (${catalog.products.length} total); variants: ${createdVariants}; prices: ${createdPrices}; media assets: ${createdAssets}`,
   );
 }
 
@@ -189,11 +203,19 @@ interface BlogSeed {
   excerpt: string;
   bodyMd: string;
   coverUrl: string | null;
+  author: string;
+  readMins: number;
+  category: string;
+  cluster: string;
 }
 
 const BLOG_POSTS: BlogSeed[] = [
   {
     slug: "forty-thousand-bottles-later",
+    author: "Mrs. Samuel",
+    readMins: 4,
+    category: "Story",
+    cluster: "tropical",
     title: "Forty thousand bottles later: what's next for Mrs. Samuel",
     excerpt:
       "Last year September, all we had was belief and a cold-press. Today we've sold over 40,000 bottles — and we're bringing in machines that can do 5,000 a day.",
@@ -232,6 +254,10 @@ We want you to be part of this from the very start. [Visit the menu](/) and plac
   },
   {
     slug: "more-than-juice-fighting-fruit-waste",
+    author: "Mr. Samuel",
+    readMins: 6,
+    category: "Story",
+    cluster: "tropical",
     title: "Why we're building more than a juice company",
     excerpt:
       "Nigeria loses up to half its fresh produce after harvest. Here's why we think a juice bottle is one small way to fix that — and how farmers fit into our next phase.",
@@ -267,6 +293,10 @@ Let's reduce waste together. Let's create value together. Because the future of 
   },
   {
     slug: "why-cold-pressed",
+    author: "Mrs. Samuel",
+    readMins: 4,
+    category: "Wellness",
+    cluster: "citrus",
     title: "Why cold-pressed beats centrifugal every time",
     excerpt:
       "Heat kills nutrients. Our hydraulic press crushes fruit slowly so the juice that lands in the bottle is the same juice that was in the fruit ten minutes earlier.",
@@ -296,6 +326,10 @@ If you ever get a bottle from us that tastes "off" or fizzy, it's past its windo
   },
   {
     slug: "what-actually-goes-into-detox",
+    author: "Mrs. Samuel",
+    readMins: 5,
+    category: "Wellness",
+    cluster: "green",
     title: "What actually goes into our Ultimate Detox",
     excerpt:
       "Cucumber, apple, pineapple, and ginger — in that order. Here's why each one matters and why we kept this recipe so simple.",
@@ -327,6 +361,10 @@ A juice is not a detox. Your liver and kidneys do that, 24/7, for free. What goo
   },
   {
     slug: "lagos-traffic-and-48-hour-shelf-life",
+    author: "Mr. Samuel",
+    readMins: 4,
+    category: "Behind the Scenes",
+    cluster: "watermelon",
     title: "Why we deliver same-day in Lagos (and why it matters)",
     excerpt:
       "Cold-pressed juice has a 48-hour shelf life. Lagos traffic eats an hour minimum. Here's how we keep the maths working.",
@@ -360,6 +398,10 @@ Once we have the routing dialled in for Lagos, we'll look at Abuja. Other cities
   },
   {
     slug: "fruit-sourcing",
+    author: "Mr. Samuel",
+    readMins: 6,
+    category: "Behind the Scenes",
+    cluster: "root",
     title: "Where our fruit comes from",
     excerpt:
       "Mile 12, Mushin, and a small farm in Ogun for the strawberries. We name names because the supply chain matters.",
@@ -394,6 +436,10 @@ We host kitchen visits on the last Saturday of the month. WhatsApp us if you wan
   },
   {
     slug: "the-punch-recipe",
+    author: "Mrs. Samuel",
+    readMins: 5,
+    category: "Recipes",
+    cluster: "berry",
     title: "Behind Mrs. Samuel Fruit Punch (the one everyone asks about)",
     excerpt:
       "Our most popular bottle is also the one we're most cagey about. Here's as much as we'll share.",
@@ -460,6 +506,10 @@ async function seedBlogPosts(): Promise<void> {
         excerpt: post.excerpt,
         bodyMd: post.bodyMd,
         coverUrl: post.coverUrl,
+        author: post.author,
+        readMins: post.readMins,
+        category: post.category,
+        cluster: post.cluster,
         authorUserId: authorId,
         publishedAt,
       });

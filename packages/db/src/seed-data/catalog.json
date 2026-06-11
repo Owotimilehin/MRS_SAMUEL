@@ -1,0 +1,376 @@
+{
+  "_comment": "Customer catalog extracted from the new frontend (fruit-splash-showcase) src/data/products.ts. Maps to product + product_variant + product_price. category: Classic->regular, Special->special. Variant prices: regular = 330ml 2500 / 650ml 3500; special = 330ml 4500 / 650ml 4500. 'cluster' is a frontend decoration hint, kept for parity.",
+  "pricing_tiers": {
+    "regular": { "330": 2500, "650": 3500 },
+    "special": { "330": 4500, "650": 4500 }
+  },
+  "products": [
+    {
+      "slug": "sunrise",
+      "name": "Sunrise Blend",
+      "category": "regular",
+      "cluster": "citrus",
+      "tagline": "Carrot, pawpaw, orange & pineapple at first light.",
+      "ingredients": ["Carrot", "Pawpaw", "Orange", "Pineapple"],
+      "ingredient_details": [
+        { "name": "Carrot", "benefit": "Beta-carotene for clear skin and sharp eyes." },
+        { "name": "Pawpaw", "benefit": "Digestive enzymes; gentle on the gut." },
+        { "name": "Orange", "benefit": "Vitamin C — immunity and morning lift." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." }
+      ],
+      "benefits": ["Brightens skin", "Aids digestion", "Vitamin-C immunity", "Natural energy"],
+      "story": "The blend Mrs. Samuel wakes up to. Pressed before sunrise so every bottle reaches you with the day's first energy still in it.",
+      "pairing": "Drink chilled with breakfast — eggs, akara, or fruit and yoghurt.",
+      "best_for": ["Mornings", "Skin", "Digestion"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "crimson-garden",
+      "name": "Crimson Garden Glow",
+      "category": "regular",
+      "cluster": "root",
+      "tagline": "Garden vegetables blended with apple sweetness.",
+      "ingredients": ["Apple", "Beetroot", "Celery", "Carrot", "Pineapple"],
+      "ingredient_details": [
+        { "name": "Apple", "benefit": "Soluble fibre, slow-burn sweetness." },
+        { "name": "Beetroot", "benefit": "Iron and nitrates for blood and stamina." },
+        { "name": "Celery", "benefit": "Hydrating, mineral-rich, cooling." },
+        { "name": "Carrot", "benefit": "Beta-carotene for clear skin and sharp eyes." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." }
+      ],
+      "benefits": ["Iron-rich", "Skin glow", "Anti-inflammatory", "Detox support"],
+      "story": "Our garden in a bottle. Five plants, no shortcuts — the beetroot earthiness gets balanced by apple and pineapple so even beetroot-sceptics ask for seconds.",
+      "pairing": "Mid-afternoon, on an empty-ish stomach, when energy dips.",
+      "best_for": ["Glow-up", "Recovery", "Blood health"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "crimson-elixir",
+      "name": "Crimson Elixir",
+      "category": "regular",
+      "cluster": "watermelon",
+      "tagline": "Beetroot, pineapple and watermelon — earthy and bright.",
+      "ingredients": ["Beetroot", "Pineapple", "Watermelon"],
+      "ingredient_details": [
+        { "name": "Beetroot", "benefit": "Iron and nitrates for blood and stamina." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." },
+        { "name": "Watermelon", "benefit": "Lycopene and pure summer hydration." }
+      ],
+      "benefits": ["Stamina", "Hydration", "Heart-healthy", "Rich in nitrates"],
+      "story": "For the friends who train hard and the ones who just want to feel strong. Beetroot's nitrates lift stamina; watermelon keeps it cooling.",
+      "pairing": "30 minutes before a workout, or with grilled fish.",
+      "best_for": ["Athletes", "Heart", "Endurance"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "crimson-cooler",
+      "name": "Crimson Cooler",
+      "category": "regular",
+      "cluster": "watermelon",
+      "tagline": "Watermelon and beetroot, balanced with carrot.",
+      "ingredients": ["Watermelon", "Beetroot", "Carrot"],
+      "ingredient_details": [
+        { "name": "Watermelon", "benefit": "Lycopene and pure summer hydration." },
+        { "name": "Beetroot", "benefit": "Iron and nitrates for blood and stamina." },
+        { "name": "Carrot", "benefit": "Beta-carotene for clear skin and sharp eyes." }
+      ],
+      "benefits": ["Cooling", "Iron-rich", "Skin food", "Hydrating"],
+      "story": "The bottle our customers describe as 'tasting like summer.' Watermelon softens beetroot the way Mrs. Samuel intended.",
+      "pairing": "Anytime the sun's out. Especially with peppered fish.",
+      "best_for": ["Skin", "Blood", "Summer"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "ginger-spark",
+      "name": "Ginger Spark",
+      "category": "regular",
+      "cluster": "tropical",
+      "tagline": "Watermelon and pineapple with a ginger snap.",
+      "ingredients": ["Watermelon", "Pineapple", "Ginger"],
+      "ingredient_details": [
+        { "name": "Watermelon", "benefit": "Lycopene and pure summer hydration." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." },
+        { "name": "Ginger", "benefit": "Warming, anti-nausea, circulation kick." }
+      ],
+      "benefits": ["Digestion", "Anti-nausea", "Hydration", "Refreshing"],
+      "story": "Sweet, then heat. The ginger sneaks up — not too much, just enough to wake you up.",
+      "pairing": "Before a long drive or a long meeting.",
+      "best_for": ["Focus", "Digestion", "Travel"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "orange",
+      "name": "Orange Juice",
+      "category": "regular",
+      "cluster": "citrus",
+      "tagline": "Hand-pressed Nigerian oranges. Nothing else.",
+      "ingredients": ["Orange"],
+      "ingredient_details": [
+        { "name": "Orange", "benefit": "Vitamin C — immunity and morning lift." }
+      ],
+      "benefits": ["Vitamin C", "Pure", "Familiar", "Energy"],
+      "story": "Single ingredient, single origin — Benue oranges, pressed within hours of arriving in Lagos. No water, no sugar, nothing else.",
+      "pairing": "Breakfast. Always breakfast.",
+      "best_for": ["Classic", "Kids", "Mornings"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "pineapple",
+      "name": "Pineapple Juice",
+      "category": "regular",
+      "cluster": "tropical",
+      "tagline": "Pure, golden pineapple pressed at sunrise.",
+      "ingredients": ["Pineapple"],
+      "ingredient_details": [
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." }
+      ],
+      "benefits": ["Bromelain", "Energy", "Digestion", "Anti-inflammatory"],
+      "story": "Sweet enough on its own. We just press and bottle — the pineapple does the rest.",
+      "pairing": "Brunch, weekend cocktails (non-alcoholic mixers).",
+      "best_for": ["Pure flavour", "Brunch", "Mixers"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "pinecado",
+      "name": "Pinecado Bliss",
+      "category": "regular",
+      "cluster": "green",
+      "tagline": "Silky avocado folded into bright pineapple.",
+      "ingredients": ["Avocado", "Pineapple"],
+      "ingredient_details": [
+        { "name": "Avocado", "benefit": "Healthy fats, silky body, satisfying." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." }
+      ],
+      "benefits": ["Healthy fats", "Filling", "Smooth texture", "Skin food"],
+      "story": "Most people don't think to drink avocado. Once they try this, they don't go back. Creamy, bright, surprisingly addictive.",
+      "pairing": "Meal replacement, gym day, late breakfast.",
+      "best_for": ["Filling", "Skin", "Fitness"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "guyabano",
+      "name": "Guyabano Delight",
+      "category": "special",
+      "cluster": "berry",
+      "tagline": "Soursop, strawberry and pineapple — rare and ripe.",
+      "ingredients": ["Strawberry", "Soursop", "Pineapple"],
+      "ingredient_details": [
+        { "name": "Strawberry", "benefit": "Antioxidants, vitamin C, mood lift." },
+        { "name": "Soursop (Guyabano)", "benefit": "Rare West African fruit, immune-supportive." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." }
+      ],
+      "benefits": ["Immune support", "Rare nutrients", "Unique flavour", "Soothing"],
+      "story": "Soursop is hard to find and harder to press well. Mr. Samuel sources ours personally from a single grower in the South-West.",
+      "pairing": "Quiet evenings. Late-night reading.",
+      "best_for": ["Wellness", "Discovery", "Calm"],
+      "variants": [ { "size_ml": 330, "price_ngn": 4500 }, { "size_ml": 650, "price_ngn": 4500 } ]
+    },
+    {
+      "slug": "vitamin-vibe",
+      "name": "Vitamin Vibe",
+      "category": "regular",
+      "cluster": "root",
+      "tagline": "Turmeric, ginger and citrus in a carrot-pineapple base.",
+      "ingredients": ["Turmeric", "Pineapple", "Ginger", "Lemon", "Carrot"],
+      "ingredient_details": [
+        { "name": "Turmeric", "benefit": "Curcumin — anti-inflammatory powerhouse." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." },
+        { "name": "Ginger", "benefit": "Warming, anti-nausea, circulation kick." },
+        { "name": "Lemon", "benefit": "Detoxifying citrus, alkalising." },
+        { "name": "Carrot", "benefit": "Beta-carotene for clear skin and sharp eyes." }
+      ],
+      "benefits": ["Immunity", "Glow", "Anti-inflammatory", "Daily wellness"],
+      "story": "A daily wellness blend built around fresh turmeric and ginger root — never powder. Carrot rounds out the bite; lemon lifts it.",
+      "pairing": "Sip first thing in the morning before food.",
+      "best_for": ["Immunity", "Skin", "Daily ritual"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "ginger-mint-splash",
+      "name": "Ginger Mint Splash",
+      "category": "regular",
+      "cluster": "green",
+      "tagline": "Pineapple, ginger and a cool finish of mint leaf.",
+      "ingredients": ["Pineapple", "Ginger", "Mint Leaf"],
+      "ingredient_details": [
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." },
+        { "name": "Ginger", "benefit": "Warming, anti-nausea, circulation kick." },
+        { "name": "Mint Leaf", "benefit": "Soothes the stomach, cools the head." }
+      ],
+      "benefits": ["Digestion", "Cooling", "Breath-freshening", "Energising"],
+      "story": "Bright pineapple meets a clean ginger snap, finished with hand-torn mint. A bottle built for Lagos afternoons.",
+      "pairing": "After a heavy meal, or with grilled suya.",
+      "best_for": ["Digestion", "Refresh", "Focus"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "zesty-sunrise",
+      "name": "Zesty Sunrise",
+      "category": "regular",
+      "cluster": "citrus",
+      "tagline": "Apple, orange and pineapple sharpened with lemon and ginger.",
+      "ingredients": ["Apple", "Orange", "Pineapple", "Lemon", "Ginger"],
+      "ingredient_details": [
+        { "name": "Apple", "benefit": "Soluble fibre, slow-burn sweetness." },
+        { "name": "Orange", "benefit": "Vitamin C — immunity and morning lift." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." },
+        { "name": "Lemon", "benefit": "Detoxifying citrus, alkalising." },
+        { "name": "Ginger", "benefit": "Warming, anti-nausea, circulation kick." }
+      ],
+      "benefits": ["Wake-up vitamin C", "Metabolism", "Clarity", "Light energy"],
+      "story": "Our brightest morning bottle. Five fruits that argue beautifully — apple sweetens, lemon sharpens, ginger lingers.",
+      "pairing": "Breakfast, school runs, early meetings.",
+      "best_for": ["Mornings", "Focus", "Kids"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "veggie-burst",
+      "name": "Veggie Burst",
+      "category": "regular",
+      "cluster": "green",
+      "tagline": "Beetroot, ugu and celery balanced with ginger and pineapple.",
+      "ingredients": ["Beetroot", "Ugu", "Celery", "Ginger", "Pineapple"],
+      "ingredient_details": [
+        { "name": "Beetroot", "benefit": "Iron and nitrates for blood and stamina." },
+        { "name": "Ugu (Fluted Pumpkin)", "benefit": "Iron-rich Nigerian leafy green, blood-building." },
+        { "name": "Celery", "benefit": "Hydrating, mineral-rich, cooling." },
+        { "name": "Ginger", "benefit": "Warming, anti-nausea, circulation kick." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." }
+      ],
+      "benefits": ["Iron-rich", "Blood-building", "Cleansing", "Nigerian greens"],
+      "story": "Built around ugu — the fluted pumpkin leaf Nigerian grandmothers swear by. Pineapple keeps it drinkable; beetroot keeps it serious.",
+      "pairing": "Mid-morning, or after a hard training session.",
+      "best_for": ["Blood health", "Recovery", "Greens"],
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 }, { "size_ml": 650, "price_ngn": 3500 } ]
+    },
+    {
+      "slug": "lemon-sip",
+      "name": "Lemon Sip",
+      "category": "regular",
+      "cluster": "green",
+      "tagline": "Lemon, ginger and cucumber — the cleanest sip on the menu.",
+      "ingredients": ["Lemon", "Ginger", "Cucumber"],
+      "ingredient_details": [
+        { "name": "Lemon", "benefit": "Detoxifying citrus, alkalising." },
+        { "name": "Ginger", "benefit": "Warming, anti-nausea, circulation kick." },
+        { "name": "Cucumber", "benefit": "97% water — pure hydration." }
+      ],
+      "benefits": ["Alkalising", "Hydrating", "Metabolism", "Detox support"],
+      "story": "Three ingredients, zero sugar, maximum reset. A small-batch bottle pressed on order — preorder required.",
+      "pairing": "First thing in the morning, or as an afternoon reset.",
+      "best_for": ["Detox", "Hydration", "Reset"],
+      "note": "330ml only — preorder required.",
+      "variants": [ { "size_ml": 330, "price_ngn": 2500 } ]
+    },
+    {
+      "slug": "sweet-pepper-splash",
+      "name": "Sweet Pepper Splash",
+      "category": "special",
+      "cluster": "watermelon",
+      "tagline": "Tomato, bell pepper and pineapple — savoury meets sweet.",
+      "ingredients": ["Tomato", "Bell Pepper", "Pineapple"],
+      "ingredient_details": [
+        { "name": "Tomato", "benefit": "Lycopene — heart and skin support." },
+        { "name": "Bell Pepper", "benefit": "Vitamin C and gentle natural sweetness." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." }
+      ],
+      "benefits": ["Lycopene", "Heart-healthy", "Skin-loving", "Unexpected"],
+      "story": "Our most polarising bottle on first sip — and our most repeated order by week two. Tomato and bell pepper press into something Lagos has never tasted.",
+      "pairing": "Brunch. Or alongside grilled fish at sunset.",
+      "best_for": ["Curious palates", "Heart", "Skin"],
+      "variants": [ { "size_ml": 330, "price_ngn": 4500 }, { "size_ml": 650, "price_ngn": 4500 } ]
+    },
+    {
+      "slug": "melongrape",
+      "name": "Melongrape",
+      "category": "special",
+      "cluster": "watermelon",
+      "tagline": "Watermelon, grapes and carrot in one cool pour.",
+      "ingredients": ["Watermelon", "Grapes", "Carrot"],
+      "ingredient_details": [
+        { "name": "Watermelon", "benefit": "Lycopene and pure summer hydration." },
+        { "name": "Grapes", "benefit": "Resveratrol antioxidants; quick natural energy." },
+        { "name": "Carrot", "benefit": "Beta-carotene for clear skin and sharp eyes." }
+      ],
+      "benefits": ["Antioxidants", "Hydration", "Skin glow", "Quick energy"],
+      "story": "An unlikely trio that landed on the menu after a Saturday family taste-test. Won every round.",
+      "pairing": "Hot afternoons. Picnic baskets. Sunday lunch.",
+      "best_for": ["Hydration", "Family", "Glow"],
+      "variants": [ { "size_ml": 330, "price_ngn": 4500 }, { "size_ml": 650, "price_ngn": 4500 } ]
+    },
+    {
+      "slug": "creamy-paradise",
+      "name": "Creamy Paradise",
+      "category": "special",
+      "cluster": "berry",
+      "tagline": "Strawberry, banana and pineapple — smooth, ripe, indulgent.",
+      "ingredients": ["Strawberry", "Banana", "Pineapple"],
+      "ingredient_details": [
+        { "name": "Strawberry", "benefit": "Antioxidants, vitamin C, mood lift." },
+        { "name": "Banana", "benefit": "Potassium and natural creaminess." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." }
+      ],
+      "benefits": ["Satisfying", "Mood lift", "Natural creaminess", "Kid-approved"],
+      "story": "The bottle that wins over juice-sceptics on the first sip. Banana brings the body; strawberry brings the moment.",
+      "pairing": "After-school treat or weekend dessert swap.",
+      "best_for": ["Kids", "Treat", "Celebrations"],
+      "variants": [ { "size_ml": 330, "price_ngn": 4500 }, { "size_ml": 650, "price_ngn": 4500 } ]
+    },
+    {
+      "slug": "nourish-blend",
+      "name": "Nourish Blend",
+      "category": "special",
+      "cluster": "root",
+      "tagline": "Beetroot, mango, carrot and watermelon — full-spectrum nourishment.",
+      "ingredients": ["Beetroot", "Mango", "Carrot", "Watermelon"],
+      "ingredient_details": [
+        { "name": "Beetroot", "benefit": "Iron and nitrates for blood and stamina." },
+        { "name": "Mango", "benefit": "Vitamin A & C, tropical creaminess." },
+        { "name": "Carrot", "benefit": "Beta-carotene for clear skin and sharp eyes." },
+        { "name": "Watermelon", "benefit": "Lycopene and pure summer hydration." }
+      ],
+      "benefits": ["Iron", "Vitamin A", "Skin", "Stamina"],
+      "story": "Four roots and fruits that read like a multivitamin and drink like a dessert. Built for postpartum mums and tired professionals in equal measure.",
+      "pairing": "Mid-afternoon. After workouts. Any tired day.",
+      "best_for": ["Recovery", "Mums", "Stamina"],
+      "variants": [ { "size_ml": 330, "price_ngn": 4500 }, { "size_ml": 650, "price_ngn": 4500 } ]
+    },
+    {
+      "slug": "tropical-mango",
+      "name": "Tropical Mango",
+      "category": "special",
+      "cluster": "tropical",
+      "tagline": "Sun-ripe Nigerian mango with a pineapple lift.",
+      "ingredients": ["Mango", "Pineapple"],
+      "ingredient_details": [
+        { "name": "Mango", "benefit": "Vitamin A & C, tropical creaminess." },
+        { "name": "Pineapple", "benefit": "Bromelain — anti-inflammatory and energy." }
+      ],
+      "benefits": ["Vitamin A & C", "Tropical comfort", "Pure ripeness", "Mood lift"],
+      "story": "Pressed only when mango season is at its loudest. Two ingredients, no compromise.",
+      "pairing": "Sunday brunch, beach days, summer mornings.",
+      "best_for": ["Seasonal", "Pure flavour", "Brunch"],
+      "variants": [ { "size_ml": 330, "price_ngn": 4500 }, { "size_ml": 650, "price_ngn": 4500 } ]
+    },
+    {
+      "slug": "pure-green",
+      "name": "Pure Green",
+      "category": "special",
+      "cluster": "green",
+      "tagline": "Cucumber, spinach, celery, kale and apple — the clean reset.",
+      "ingredients": ["Cucumber", "Spinach", "Celery", "Kale", "Apple"],
+      "ingredient_details": [
+        { "name": "Cucumber", "benefit": "97% water — pure hydration." },
+        { "name": "Spinach", "benefit": "Iron, folate, deep-green cleansing." },
+        { "name": "Celery", "benefit": "Hydrating, mineral-rich, cooling." },
+        { "name": "Kale", "benefit": "Dense nutrient profile, alkalising greens." },
+        { "name": "Apple", "benefit": "Soluble fibre, slow-burn sweetness." }
+      ],
+      "benefits": ["Iron & folate", "Alkalising", "Skin clarity", "Deep cleanse"],
+      "story": "Five greens, one honest apple. The bottle we drink on the days we want to feel lighter by evening.",
+      "pairing": "Empty stomach in the morning, or alongside a light salad.",
+      "best_for": ["Cleanse", "Glow", "Discipline"],
+      "variants": [ { "size_ml": 330, "price_ngn": 4500 }, { "size_ml": 650, "price_ngn": 4500 } ]
+    }
+  ]
+}
