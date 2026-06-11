@@ -1,54 +1,85 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import {
+  LayoutDashboard,
+  Bell,
+  ReceiptText,
+  CupSoda,
+  Store,
+  Factory,
+  Boxes,
+  IdCard,
+  Wallet,
+  Tags,
+  Milk,
+  Map as MapIcon,
+  User,
+  ClipboardList,
+  Undo2,
+  Truck,
+  Users,
+  ScrollText,
+  Smartphone,
+  Settings,
+  PenLine,
+  ShoppingCart,
+  Search,
+  ChevronRight,
+  type LucideIcon,
+} from "lucide-react";
 import { useAuthUser } from "../lib/auth.js";
 import type { Capability } from "@ms/shared";
 
 interface NavLink {
   to: string;
   label: string;
-  icon: string;
+  Icon: LucideIcon;
   cap: Capability;
 }
 
 const NAV_OWNER: NavLink[] = [
-  { to: "/owner/dashboard", label: "Dashboard", icon: "📊", cap: "reports.view" },
-  { to: "/owner/review", label: "Needs review", icon: "🔔", cap: "orders.manage" },
-  { to: "/owner/orders", label: "Orders", icon: "🧾", cap: "orders.view" },
-  { to: "/owner/products", label: "Products", icon: "🥤", cap: "products.manage" },
-  { to: "/owner/branches", label: "Branches", icon: "🏪", cap: "branches.manage" },
-  { to: "/owner/factories", label: "Factories", icon: "🏭", cap: "branches.manage" },
-  { to: "/owner/inventory", label: "Inventory", icon: "📦", cap: "reports.view" },
-  { to: "/owner/adjustments", label: "Adjustments", icon: "🪪", cap: "stock.read" },
-  { to: "/owner/bookkeeping", label: "Bookkeeping", icon: "💰", cap: "expenses.view" },
-  { to: "/owner/vendors", label: "Vendors", icon: "🏷️", cap: "expenses.view" },
-  { to: "/owner/packaging", label: "Packaging", icon: "🧴", cap: "packaging.view" },
-  { to: "/owner/zones", label: "Delivery zones", icon: "🗺️", cap: "zones.manage" },
-  { to: "/owner/customers", label: "Customers", icon: "👤", cap: "customers.view" },
-  { to: "/owner/closes", label: "Daily closes", icon: "📋", cap: "close.approve" },
-  { to: "/owner/returns", label: "Returns", icon: "↩️", cap: "returns.approve" },
+  { to: "/owner/dashboard", label: "Dashboard", Icon: LayoutDashboard, cap: "reports.view" },
+  { to: "/owner/review", label: "Needs review", Icon: Bell, cap: "orders.manage" },
+  { to: "/owner/orders", label: "Orders", Icon: ReceiptText, cap: "orders.view" },
+  { to: "/owner/products", label: "Products", Icon: CupSoda, cap: "products.manage" },
+  { to: "/owner/branches", label: "Branches", Icon: Store, cap: "branches.manage" },
+  { to: "/owner/factories", label: "Factories", Icon: Factory, cap: "branches.manage" },
+  { to: "/owner/inventory", label: "Inventory", Icon: Boxes, cap: "reports.view" },
+  { to: "/owner/adjustments", label: "Adjustments", Icon: IdCard, cap: "stock.read" },
+  { to: "/owner/bookkeeping", label: "Bookkeeping", Icon: Wallet, cap: "expenses.view" },
+  { to: "/owner/vendors", label: "Vendors", Icon: Tags, cap: "expenses.view" },
+  { to: "/owner/packaging", label: "Packaging", Icon: Milk, cap: "packaging.view" },
+  { to: "/owner/zones", label: "Delivery zones", Icon: MapIcon, cap: "zones.manage" },
+  { to: "/owner/customers", label: "Customers", Icon: User, cap: "customers.view" },
+  { to: "/owner/closes", label: "Daily closes", Icon: ClipboardList, cap: "close.approve" },
+  { to: "/owner/returns", label: "Returns", Icon: Undo2, cap: "returns.approve" },
 ];
 const NAV_OPS: NavLink[] = [
-  { to: "/factory/production-runs", label: "Production runs", icon: "🏭", cap: "production.manage" },
-  { to: "/factory/inventory", label: "Factory inventory", icon: "📦", cap: "stock.read" },
-  { to: "/owner/transfers", label: "Transfers", icon: "🚚", cap: "transfers.create" },
+  { to: "/factory/production-runs", label: "Production runs", Icon: Factory, cap: "production.manage" },
+  { to: "/factory/inventory", label: "Factory inventory", Icon: Boxes, cap: "stock.read" },
+  { to: "/owner/transfers", label: "Transfers", Icon: Truck, cap: "transfers.create" },
 ];
 const NAV_ADMIN: NavLink[] = [
-  { to: "/owner/users", label: "Admin users", icon: "👥", cap: "users.manage" },
-  { to: "/owner/audit-log", label: "Audit log", icon: "📜", cap: "audit.view" },
-  { to: "/owner/devices", label: "Devices", icon: "📱", cap: "devices.view" },
-  { to: "/owner/settings", label: "Settings", icon: "⚙️", cap: "settings.manage" },
-  { to: "/owner/blog", label: "Blog", icon: "✍️", cap: "blog.manage" },
+  { to: "/owner/users", label: "Admin users", Icon: Users, cap: "users.manage" },
+  { to: "/owner/audit-log", label: "Audit log", Icon: ScrollText, cap: "audit.view" },
+  { to: "/owner/devices", label: "Devices", Icon: Smartphone, cap: "devices.view" },
+  { to: "/owner/settings", label: "Settings", Icon: Settings, cap: "settings.manage" },
+  { to: "/owner/blog", label: "Blog", Icon: PenLine, cap: "blog.manage" },
 ];
 
 interface ShellProps {
   children: ReactNode;
   title: string;
+  /** Optional breadcrumb area label shown above the title (e.g. "Owner"). */
+  crumb?: string;
   actions?: ReactNode;
 }
 
-export function Shell({ children, title, actions }: ShellProps): JSX.Element {
+export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Element {
   const user = useAuthUser();
   const can = (cap: Capability): boolean => user.capabilities.includes(cap);
+  const initial = (user.email?.[0] ?? "?").toUpperCase();
+
   const renderSection = (heading: string, items: NavLink[]): JSX.Element | null => {
     const visible = items.filter((i) => can(i.cap));
     if (visible.length === 0) return null;
@@ -62,7 +93,9 @@ export function Shell({ children, title, actions }: ShellProps): JSX.Element {
             className="app-nav__link"
             activeProps={{ className: "app-nav__link is-active" }}
           >
-            <span className="app-nav__icon">{item.icon}</span>
+            <span className="app-nav__icon">
+              <item.Icon strokeWidth={1.9} />
+            </span>
             <span>{item.label}</span>
           </Link>
         ))}
@@ -95,7 +128,9 @@ export function Shell({ children, title, actions }: ShellProps): JSX.Element {
                 className="app-nav__link"
                 activeProps={{ className: "app-nav__link is-active" }}
               >
-                <span className="app-nav__icon">🛒</span>
+                <span className="app-nav__icon">
+                  <ShoppingCart strokeWidth={1.9} />
+                </span>
                 <span>Branch POS</span>
               </Link>
             </>
@@ -121,9 +156,29 @@ export function Shell({ children, title, actions }: ShellProps): JSX.Element {
 
       <main className="app-main">
         <header className="app-head">
-          <h1 className="app-head__title">{title}</h1>
+          <div className="app-head__titles">
+            {crumb ? (
+              <div className="app-head__crumb">
+                <span>{crumb}</span>
+                <ChevronRight size={12} strokeWidth={2.4} />
+                <span>{title}</span>
+              </div>
+            ) : null}
+            <div className="app-head__title">{title}</div>
+          </div>
           <div style={{ flex: 1 }} />
+          <label className="app-head__search">
+            <Search />
+            <input className="input" type="search" placeholder="Search…" aria-label="Search" />
+          </label>
           {actions}
+          <div className="app-head__user">
+            <span className="app-head__avatar">{initial}</span>
+            <span className="app-head__usermeta">
+              <span className="app-head__username">{user.email?.split("@")[0]}</span>
+              <span className="app-head__userrole">{user.role}</span>
+            </span>
+          </div>
         </header>
         <div className="app-body">{children}</div>
       </main>
