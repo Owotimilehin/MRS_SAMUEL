@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { sql, eq, and, isNull } from "drizzle-orm";
-import { branch, type DbClient } from "@ms/db";
+import { sql, eq, and, asc, isNull } from "drizzle-orm";
+import { branch, bundle, subscriptionPlan, type DbClient } from "@ms/db";
 
 type CatalogVariantRow = {
   product_id: string;
@@ -11,6 +11,29 @@ type CatalogVariantRow = {
   [key: string]: unknown;
 };
 
+type Palette = { surface: string; accent: string; text: string };
+type IngredientDetail = { name: string; benefit: string };
+
+type ProductContentRow = {
+  id: string;
+  name: string;
+  slug: string;
+  category: string;
+  ingredients: string[];
+  image_url: string | null;
+  tagline: string | null;
+  story: string | null;
+  pairing: string | null;
+  note: string | null;
+  benefits: string[];
+  best_for: string[];
+  ingredient_details: IngredientDetail[];
+  palette: Palette | null;
+  bottle_url: string | null;
+  cluster_url: string | null;
+  fruit_url: string | null;
+};
+
 interface CatalogProductOut {
   id: string;
   name: string;
@@ -18,9 +41,39 @@ interface CatalogProductOut {
   category: string;
   ingredients: string[];
   image_url: string | null;
+  tagline: string | null;
+  story: string | null;
+  pairing: string | null;
+  note: string | null;
+  benefits: string[];
+  best_for: string[];
+  ingredient_details: IngredientDetail[];
+  palette: Palette | null;
+  bottle_url: string | null;
+  cluster_url: string | null;
+  fruit_url: string | null;
   price_ngn: number;
   variants: Array<{ id: string; size_ml: number; sku: string; price_ngn: number }>;
 }
+
+// Shared product SELECT: marketing content + colour palette + resolved media
+// URLs (bottle / cluster / fruit) via the media_asset library. Used by both the
+// list and the per-slug detail endpoint so they always agree on shape.
+const PRODUCT_COLUMNS = sql`
+  p.id, p.name, p.slug, p.category, p.ingredients, p.image_url,
+  p.tagline, p.story, p.pairing, p.note,
+  p.benefits, p.best_for, p.ingredient_details, p.palette,
+  bot.url AS bottle_url,
+  clu.url AS cluster_url,
+  fru.url AS fruit_url
+`;
+
+const PRODUCT_JOINS = sql`
+  FROM product p
+  LEFT JOIN media_asset bot ON bot.id = p.bottle_asset_id
+  LEFT JOIN media_asset clu ON clu.id = p.cluster_asset_id
+  LEFT JOIN media_asset fru ON fru.id = p.fruit_asset_id
+`;
 
 /**
  * Public, unauthenticated catalog endpoints used by the customer-facing
@@ -30,24 +83,11 @@ interface CatalogProductOut {
 export function publicCatalogRoutes(db: DbClient) {
   const r = new Hono();
 
-  r.get("/products", async (c) => {
-    // Pull every active variant + its current price in one query, then group
-    // by product on the way out. The legacy `price_ngn` field on the product
-    // row stays — it's the smallest-variant price (the headline "from" price).
-    const productRows = await db.execute<{
-      id: string;
-      name: string;
-      slug: string;
-      category: string;
-      ingredients: string[];
-      image_url: string | null;
-    }>(sql`
-      SELECT p.id, p.name, p.slug, p.category, p.ingredients, p.image_url
-      FROM product p
-      WHERE p.deleted_at IS NULL AND p.is_active = TRUE
-      ORDER BY p.display_order ASC
-    `);
-
+  // Pull every active variant + its current price for the given product ids,
+  // grouped by product. Unpriced variants are dropped (not sellable).
+  async function variantsByProduct(productIds: string[]) {
+    const byProduct = new Map<string, Array<CatalogProductOut["variants"][number]>>();
+    if (productIds.length === 0) return byProduct;
     const variantRows = await db.execute<CatalogVariantRow>(sql`
       SELECT pv.product_id,
              pv.id   AS variant_id,
@@ -58,33 +98,77 @@ export function publicCatalogRoutes(db: DbClient) {
       LEFT JOIN product_price pp
         ON pp.variant_id = pv.id AND pp.valid_to IS NULL
       WHERE pv.deleted_at IS NULL AND pv.is_active = TRUE
+        AND pv.product_id IN ${sql`(${sql.join(productIds.map((id) => sql`${id}`), sql`, `)})`}
       ORDER BY pv.product_id, pv.size_ml ASC
     `);
-
-    const byProduct = new Map<string, Array<CatalogProductOut["variants"][number]>>();
     for (const v of variantRows) {
       if (v.price_ngn == null) continue; // unpriced variants are hidden from the public site
       const list = byProduct.get(v.product_id) ?? [];
       list.push({ id: v.variant_id, size_ml: v.size_ml, sku: v.sku, price_ngn: v.price_ngn });
       byProduct.set(v.product_id, list);
     }
+    return byProduct;
+  }
+
+  function toOut(p: ProductContentRow, variants: CatalogProductOut["variants"]): CatalogProductOut {
+    return {
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      category: p.category,
+      ingredients: p.ingredients,
+      image_url: p.image_url,
+      tagline: p.tagline,
+      story: p.story,
+      pairing: p.pairing,
+      note: p.note,
+      benefits: p.benefits ?? [],
+      best_for: p.best_for ?? [],
+      ingredient_details: p.ingredient_details ?? [],
+      palette: p.palette,
+      bottle_url: p.bottle_url,
+      cluster_url: p.cluster_url,
+      fruit_url: p.fruit_url,
+      price_ngn: variants[0]!.price_ngn, // smallest size (ORDER BY size_ml ASC)
+      variants,
+    };
+  }
+
+  r.get("/products", async (c) => {
+    const productRows = await db.execute<ProductContentRow>(sql`
+      SELECT ${PRODUCT_COLUMNS}
+      ${PRODUCT_JOINS}
+      WHERE p.deleted_at IS NULL AND p.is_active = TRUE
+      ORDER BY p.display_order ASC
+    `);
+
+    const byProduct = await variantsByProduct(productRows.map((p) => p.id));
 
     const out: CatalogProductOut[] = [];
     for (const p of productRows) {
       const variants = byProduct.get(p.id) ?? [];
       if (variants.length === 0) continue; // a product with no priced variants is not sellable
-      out.push({
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        category: p.category,
-        ingredients: p.ingredients,
-        image_url: p.image_url,
-        price_ngn: variants[0]!.price_ngn, // smallest size (ORDER BY size_ml ASC)
-        variants,
-      });
+      out.push(toOut(p, variants));
     }
     return c.json({ data: out });
+  });
+
+  r.get("/products/:slug", async (c) => {
+    const slug = c.req.param("slug");
+    const rows = await db.execute<ProductContentRow>(sql`
+      SELECT ${PRODUCT_COLUMNS}
+      ${PRODUCT_JOINS}
+      WHERE p.slug = ${slug} AND p.deleted_at IS NULL AND p.is_active = TRUE
+      LIMIT 1
+    `);
+    const p = rows[0];
+    if (!p) return c.json({ error: { code: "not_found", message: "product not found" } }, 404);
+    const byProduct = await variantsByProduct([p.id]);
+    const variants = byProduct.get(p.id) ?? [];
+    if (variants.length === 0) {
+      return c.json({ error: { code: "not_found", message: "product not available" } }, 404);
+    }
+    return c.json({ data: toOut(p, variants) });
   });
 
   r.get("/branches", async (c) => {
@@ -121,6 +205,51 @@ export function publicCatalogRoutes(db: DbClient) {
       })),
     );
     return c.json({ data: zones });
+  });
+
+  // Product bundles / gift boxes shown on the shop page (read-only; the order
+  // CTA is WhatsApp — bundles are not part of the stock/order pipeline yet).
+  r.get("/bundles", async (c) => {
+    const rows = await db
+      .select()
+      .from(bundle)
+      .where(eq(bundle.isActive, true))
+      .orderBy(asc(bundle.displayOrder));
+    return c.json({
+      data: rows.map((b) => ({
+        id: b.id,
+        slug: b.slug,
+        name: b.name,
+        price_ngn: b.priceNgn,
+        description: b.description,
+        contents_label: b.contentsLabel,
+        badge: b.badge,
+        image_url: b.imageUrl,
+      })),
+    });
+  });
+
+  // Subscription plans shown on the subscription page (read-only; CTA is WhatsApp
+  // plus a lead POST to /v1/public/subscriptions).
+  r.get("/subscription-plans", async (c) => {
+    const rows = await db
+      .select()
+      .from(subscriptionPlan)
+      .where(eq(subscriptionPlan.isActive, true))
+      .orderBy(asc(subscriptionPlan.displayOrder));
+    return c.json({
+      data: rows.map((p) => ({
+        id: p.id,
+        slug: p.slug,
+        name: p.name,
+        price_ngn: p.priceNgn,
+        period: p.period,
+        bottles_label: p.bottlesLabel,
+        description: p.description,
+        perks: p.perks,
+        popular: p.popular,
+      })),
+    });
   });
 
   return r;

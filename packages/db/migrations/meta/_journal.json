@@ -239,6 +239,48 @@
       "when": 1781200000000,
       "tag": "0034_production_run_item_order",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781300000000,
+      "tag": "0035_sale_order_delivery_quote_ref",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781400000000,
+      "tag": "0036_sale_order_delivery_address",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781500000000,
+      "tag": "0037_customer_phone_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1781600000000,
+      "tag": "0038_product_content_and_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781700000000,
+      "tag": "0039_blog_content_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1781800000000,
+      "tag": "0040_storefront_marketing",
+      "breakpoints": true
     }
   ]
 }
