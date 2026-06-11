@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Check, ArrowRight, Gift, Truck, Building2 } from "lucide-react";
+import { ArrowRight, Gift, Building2 } from "lucide-react";
 import { getFruitFor } from "@/lib/visuals";
 import { fetchProducts, fetchBundles } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";

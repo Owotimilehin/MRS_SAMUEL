@@ -15,9 +15,6 @@ import {
 import type { Product } from "@/lib/api/mappers";
 import { ProductDetail } from "@/components/ProductDetail";
 import splashBurst from "@/assets/decor/splash-burst.png";
-import fruitMango from "@/assets/decor/fruit-mango.png";
-import fruitOrangeSlice from "@/assets/decor/fruit-orange-slice.png";
-import fruitBerryMix from "@/assets/decor/fruit-berry-mix.png";
 import leafMint from "@/assets/decor/leaf-mint.png";
 import heroVideo from "@/assets/hero-video.mp4.asset.json";
 

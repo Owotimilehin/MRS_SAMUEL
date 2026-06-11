@@ -5,6 +5,7 @@
  * Exercises the real provider code (not raw curl): quote → requestDelivery →
  * cancelDelivery, plus a webhook parse round-trip with a signed payload.
  */
+/* eslint-disable no-console -- manual smoke script, prints to stdout */
 import crypto from "node:crypto";
 import { ShipbubbleLiveProvider } from "../src/delivery/shipbubble-live.js";
 import { shipbubbleConfigFromEnv } from "@ms/domain";
