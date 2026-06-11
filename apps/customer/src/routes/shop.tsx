@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Check, ArrowRight, Gift, Truck, Building2 } from "lucide-react";
 import { getFruitFor } from "@/lib/visuals";
-import { fetchProducts } from "@/lib/api/server-fns";
+import { fetchProducts, fetchBundles } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { formatNaira } from "@/lib/cart";
@@ -17,43 +17,15 @@ export const Route = createFileRoute("/shop")({
       { property: "og:description", content: "Starter packs, detox bundles, gift boxes, and single bottles." },
     ],
   }),
-  loader: async () => ({ products: await fetchProducts() }),
+  loader: async () => {
+    const [products, bundles] = await Promise.all([fetchProducts(), fetchBundles()]);
+    return { products, bundles };
+  },
   component: Page,
 });
 
-const bundles = [
-  {
-    name: "Starter 6-Pack",
-    price: 14000,
-    desc: "Six bottles, your pick of any classic flavours. The easiest way to discover a new favourite.",
-    items: "6 × 330ml",
-    badge: "Most loved",
-  },
-  {
-    name: "Detox 12-Pack",
-    price: 27500,
-    desc: "Twelve bottles built around our Detox, Immune Booster and Blood Booster. A clean two-week reset.",
-    items: "12 × 330ml",
-    badge: "Reset",
-  },
-  {
-    name: "Family 20-Pack",
-    price: 44000,
-    desc: "Twenty bottles, mixed sizes — enough fresh juice for a household for two full weeks.",
-    items: "20 × 330ml + 650ml",
-    badge: "Best value",
-  },
-  {
-    name: "Mrs. Samuel Gift Box",
-    price: 18500,
-    desc: "Four Specials wrapped beautifully — Pink Paradise, Guyabano Delight and two seasonal picks. Birthdays. Baby showers. Sorry-I-missed-it.",
-    items: "4 × 650ml + card",
-    badge: "Gift",
-  },
-];
-
 function Page() {
-  const { products } = Route.useLoaderData();
+  const { products, bundles } = Route.useLoaderData();
   return (
     <SiteShell>
       <PageHero

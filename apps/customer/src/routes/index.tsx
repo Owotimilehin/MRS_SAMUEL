@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import type { Product } from "@/lib/api/mappers";
-import { fetchProducts, fetchBlogPosts } from "@/lib/api/server-fns";
+import { fetchProducts, fetchBlogPosts, fetchSubscriptionPlans } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";
 import { Hero } from "@/components/Hero";
 import { ProductCard } from "@/components/ProductCard";
@@ -34,14 +34,18 @@ export const Route = createFileRoute("/")({
     ],
   }),
   loader: async () => {
-    const [products, posts] = await Promise.all([fetchProducts(), fetchBlogPosts()]);
-    return { products, posts };
+    const [products, posts, plans] = await Promise.all([
+      fetchProducts(),
+      fetchBlogPosts(),
+      fetchSubscriptionPlans(),
+    ]);
+    return { products, posts, plans };
   },
   component: Page,
 });
 
 function Page() {
-  const { products, posts } = Route.useLoaderData();
+  const { products, posts, plans } = Route.useLoaderData();
   const [selected, setSelected] = useState<Product | null>(null);
   const classics = products.filter((p) => p.category === "Classic").slice(0, 8);
   const specials = products.filter((p) => p.category === "Special");
@@ -99,7 +103,7 @@ function Page() {
       <Benefits />
       <StepProcess />
       <Categories />
-      <Subscription />
+      <Subscription plans={plans} />
       <Story />
       <Sustainability />
       <Testimonials />
