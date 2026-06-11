@@ -121,11 +121,15 @@ export interface ApiOrderTracking {
   delivery_fee_ngn: number;
   channel: string;
   created_at: string;
+  scheduled_delivery_at: string | null;
+  delivery_state: string | null;
   delivery: {
     status: string;
     rider_name: string | null;
     rider_phone: string | null;
-    eta_minutes: number | null;
+    rider_vehicle: string | null;
     tracking_url: string | null;
+    eta_minutes: number | null;
+    provider: string;
   } | null;
 }
