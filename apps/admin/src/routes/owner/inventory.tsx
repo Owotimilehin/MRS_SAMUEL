@@ -224,6 +224,7 @@ export function InventoryPage(): JSX.Element {
   return (
     <Shell
       title="Inventory"
+      crumb="Owner"
       actions={
         <div style={{ display: "flex", gap: 6 }}>
           <button
@@ -253,6 +254,14 @@ export function InventoryPage(): JSX.Element {
         </div>
       }
     >
+      <div className="page-head ed-rise">
+        <div className="page-head__titles">
+          <div className="page-head__eyebrow">Stock</div>
+          <h1 className="page-head__title">Inventory</h1>
+          <p className="page-head__sub">On-hand stock across branches and the factory.</p>
+        </div>
+      </div>
+
       {error && (
         <div
           className="card"
