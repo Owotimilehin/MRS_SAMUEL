@@ -94,6 +94,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   return (
     <Shell
       title={data ? `Order ${data.orderNumber}` : "Order"}
+      crumb="Owner"
       actions={
         <Link to="/owner/orders" className="btn btn--subtle btn--sm">
           ← All orders
@@ -110,16 +111,12 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
           </Link>
         </section>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
+        <div
+          className="ed-rise"
+          style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 18, alignItems: "start" }}
+        >
           <section className="card">
-            <header
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                marginBottom: 14,
-              }}
-            >
+            <header className="card__head" style={{ alignItems: "flex-start" }}>
               <div>
                 <div className="t-eyebrow" style={{ marginBottom: 4 }}>
                   {data.channel} · {branchName}
@@ -134,7 +131,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                 {(data.scheduledDeliveryAt ||
                   (data.deliveryState && data.deliveryState !== "Lagos")) && (
                   <div style={{ marginTop: 6, fontSize: 13, color: "var(--warning)" }}>
-                    📦 Manual fulfilment — Bolt not dispatched.
+                    Manual fulfilment — Bolt not dispatched.
                     {data.scheduledDeliveryAt && (
                       <>
                         {" "}Scheduled for{" "}
