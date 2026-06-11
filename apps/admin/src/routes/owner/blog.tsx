@@ -12,10 +12,16 @@ interface Post {
   excerpt: string | null;
   bodyMd: string;
   coverUrl: string | null;
+  author: string | null;
+  readMins: number | null;
+  category: string | null;
+  cluster: string | null;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+const CLUSTER_OPTIONS = ["citrus", "berry", "tropical", "green", "root", "watermelon"] as const;
 
 function slugify(s: string): string {
   return s
@@ -210,6 +216,10 @@ function PostForm({
   const [excerpt, setExcerpt] = useState(post?.excerpt ?? "");
   const [body, setBody] = useState(post?.bodyMd ?? "");
   const [coverUrl, setCoverUrl] = useState(post?.coverUrl ?? "");
+  const [author, setAuthor] = useState(post?.author ?? "");
+  const [readMins, setReadMins] = useState(post?.readMins != null ? String(post.readMins) : "");
+  const [category, setCategory] = useState(post?.category ?? "");
+  const [cluster, setCluster] = useState(post?.cluster ?? "");
   const [publish, setPublish] = useState(!!post?.publishedAt);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -228,6 +238,10 @@ function PostForm({
             excerpt: excerpt || null,
             body_md: body,
             cover_url: coverUrl || null,
+            author: author || null,
+            read_mins: readMins ? Number(readMins) : null,
+            category: category || null,
+            cluster: cluster || null,
             published: publish,
           }),
         });
@@ -239,6 +253,10 @@ function PostForm({
             excerpt: excerpt || null,
             body_md: body,
             cover_url: coverUrl || null,
+            author: author || null,
+            read_mins: readMins ? Number(readMins) : null,
+            category: category || null,
+            cluster: cluster || null,
             published: publish,
           }),
         });
@@ -295,6 +313,53 @@ function PostForm({
             onChange={(e) => setExcerpt(e.target.value)}
             placeholder="One-line summary shown on the blog index card."
           />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 12 }}>
+          <div className="field">
+            <label className="field__label">Author</label>
+            <input
+              className="input"
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+              placeholder="Mrs. Samuel"
+            />
+          </div>
+          <div className="field">
+            <label className="field__label">Read mins</label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={120}
+              value={readMins}
+              onChange={(e) => setReadMins(e.target.value)}
+              placeholder="4"
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="field">
+            <label className="field__label">Category</label>
+            <input
+              className="input"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="Story / Wellness / …"
+            />
+          </div>
+          <div className="field">
+            <label className="field__label">Cluster (hero art)</label>
+            <select className="input" value={cluster} onChange={(e) => setCluster(e.target.value)}>
+              <option value="">— none —</option>
+              {CLUSTER_OPTIONS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="field">

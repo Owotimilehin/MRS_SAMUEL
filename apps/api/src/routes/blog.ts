@@ -12,6 +12,10 @@ const CreatePost = z.object({
   excerpt: z.string().max(500).nullable().optional(),
   body_md: z.string().min(1),
   cover_url: z.string().url().nullable().optional(),
+  author: z.string().max(120).nullable().optional(),
+  read_mins: z.number().int().positive().max(120).nullable().optional(),
+  category: z.string().max(60).nullable().optional(),
+  cluster: z.string().max(40).nullable().optional(),
   published: z.boolean().optional().default(false),
 });
 
@@ -20,6 +24,10 @@ const PatchPost = z.object({
   excerpt: z.string().max(500).nullable().optional(),
   body_md: z.string().min(1).optional(),
   cover_url: z.string().url().nullable().optional(),
+  author: z.string().max(120).nullable().optional(),
+  read_mins: z.number().int().positive().max(120).nullable().optional(),
+  category: z.string().max(60).nullable().optional(),
+  cluster: z.string().max(40).nullable().optional(),
   published: z.boolean().optional(),
 });
 
@@ -67,6 +75,10 @@ export function blogRoutes(db: DbClient) {
         excerpt: body.excerpt ?? null,
         bodyMd: body.body_md,
         coverUrl: body.cover_url ?? null,
+        author: body.author ?? null,
+        readMins: body.read_mins ?? null,
+        category: body.category ?? null,
+        cluster: body.cluster ?? null,
         authorUserId: auth.userId,
         publishedAt: body.published ? new Date() : null,
       })
@@ -96,6 +108,10 @@ export function blogRoutes(db: DbClient) {
     if (body.excerpt !== undefined) patch["excerpt"] = body.excerpt;
     if (body.body_md !== undefined) patch["bodyMd"] = body.body_md;
     if (body.cover_url !== undefined) patch["coverUrl"] = body.cover_url;
+    if (body.author !== undefined) patch["author"] = body.author;
+    if (body.read_mins !== undefined) patch["readMins"] = body.read_mins;
+    if (body.category !== undefined) patch["category"] = body.category;
+    if (body.cluster !== undefined) patch["cluster"] = body.cluster;
     if (body.published !== undefined) {
       patch["publishedAt"] = body.published ? before.publishedAt ?? new Date() : null;
     }
