@@ -1,6 +1,9 @@
 // apps/customer/src/lib/api/mappers.ts
 import type { ApiProduct, ApiBlogSummary, ApiBlogPost, ApiBundle, ApiSubscriptionPlan } from "./types";
-import { clusterForSlug, DEFAULT_BOTTLE, type Cluster, type Size } from "@/lib/visuals";
+import { CLUSTERS, clusterForSlug, DEFAULT_BOTTLE, type Cluster, type Size } from "@/lib/visuals";
+
+const isCluster = (s: string | null): s is Cluster =>
+  s != null && Object.prototype.hasOwnProperty.call(CLUSTERS, s);
 
 export interface Ingredient {
   name: string;
@@ -93,7 +96,7 @@ export function toUiPostSummary(api: ApiBlogSummary): BlogPostSummary {
     date: formatDate(api.published_at),
     readMins: api.read_mins ?? 4,
     category: api.category ?? "Story",
-    cover: (api.cluster as Cluster) ?? "tropical",
+    cover: isCluster(api.cluster) ? api.cluster : "tropical",
   };
 }
 

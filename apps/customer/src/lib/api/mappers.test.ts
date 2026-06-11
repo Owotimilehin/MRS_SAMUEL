@@ -1,7 +1,7 @@
 // apps/customer/src/lib/api/mappers.test.ts
 import { describe, it, expect } from "vitest";
-import { toUiProduct } from "./mappers";
-import type { ApiProduct } from "./types";
+import { toUiProduct, toUiPostSummary } from "./mappers";
+import type { ApiProduct, ApiBlogSummary } from "./types";
 
 const api: ApiProduct = {
   id: "p1", name: "Sunrise Blend", slug: "sunrise", category: "regular",
@@ -44,5 +44,27 @@ describe("toUiProduct", () => {
     const p = toUiProduct({ ...api, image_url: null, bottle_url: null });
     expect(typeof p.image).toBe("string");
     expect(p.image.length).toBeGreaterThan(0);
+  });
+});
+
+describe("toUiPostSummary", () => {
+  const base: ApiBlogSummary = {
+    id: "b1", slug: "s", title: "T", excerpt: "e", cover_url: null,
+    published_at: "2026-05-01T00:00:00.000Z", author: "Mr X", read_mins: 6,
+    category: "Wellness", cluster: "root",
+  };
+
+  it("passes through a valid cluster", () => {
+    expect(toUiPostSummary(base).cover).toBe("root");
+  });
+
+  it("falls back to tropical for an unknown cluster", () => {
+    expect(toUiPostSummary({ ...base, cluster: "not-a-cluster" }).cover).toBe("tropical");
+  });
+
+  it("defaults author/read_mins when null", () => {
+    const p = toUiPostSummary({ ...base, author: null, read_mins: null });
+    expect(p.author).toBe("Mrs. Samuel");
+    expect(p.readMins).toBe(4);
   });
 });
