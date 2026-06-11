@@ -2,7 +2,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { apiFetch, ApiError } from "./client";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals(); // stubGlobal("fetch") is NOT undone by restoreAllMocks
+});
 
 describe("apiFetch", () => {
   it("unwraps the { data } envelope on success", async () => {
