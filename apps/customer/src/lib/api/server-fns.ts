@@ -83,6 +83,7 @@ export interface PlaceOrderInput {
   delivery_fee_ngn: number;
   delivery_quote_id?: string;
   delivery_state?: string;
+  scheduled_delivery_at?: string;
   customer: { name: string; phone: string; email?: string; address: string };
   items: Array<{ variant_id: string; quantity: number }>;
   notes?: string;

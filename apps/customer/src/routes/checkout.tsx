@@ -1,589 +1,360 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
-import { cart as cartApi } from "../store/cart.js";
-import { Link } from "@tanstack/react-router";
-import { useCart } from "../store/cart.js";
-import { api, ngn } from "../lib/api.js";
-import { BRAND } from "../data/menu.js";
-import { Button, Eyebrow } from "../components/ui/index.js";
-import { TurnstileWidget, TURNSTILE_SITEKEY } from "../components/TurnstileWidget.js";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { motion } from "framer-motion";
+import {
+  ArrowLeft, Check, Lock, Truck, ShoppingBag, AlertCircle, Loader2, CalendarClock,
+} from "lucide-react";
+import { SiteShell } from "@/components/SiteShell";
+import { useCart, formatNaira } from "@/lib/cart";
+import { fetchBranches, requestQuote, placeOrder as placeOrderFn } from "@/lib/api/server-fns";
+import { ApiError } from "@/lib/api/client";
+import type { ApiDeliveryOption } from "@/lib/api/types";
+import { NIGERIA_STATES } from "@/lib/nigeria-states";
+import { WINDOWS, scheduledIso, isWindowAvailable, type DeliveryWindow } from "@/lib/schedule";
 
-// Lazy: the address picker pulls in mapbox-gl (~1.7 MB). Keep it out of the
-// main bundle so it only loads when a customer reaches checkout.
-const AddressAutocomplete = lazy(() =>
-  import("../components/AddressAutocomplete.js").then((m) => ({
-    default: m.AddressAutocomplete,
-  })),
-);
+export const Route = createFileRoute("/checkout")({
+  head: () => ({
+    meta: [
+      { title: "Checkout — Mrs. Samuel Fruit Juice" },
+      { name: "description", content: "Complete your Mrs. Samuel juice order. Lagos delivery now or scheduled; nationwide arranged separately. Pay securely with OPay." },
+    ],
+  }),
+  loader: async () => ({ branches: await fetchBranches() }),
+  component: Page,
+});
 
-interface Branch {
-  id: string;
-  name: string;
-  delivery_zones: { name: string; fee_ngn: number }[];
-}
-interface CreateOrderResp {
-  data: {
-    id: string;
-    order_number: string;
-    total_ngn: number;
-    payment: {
-      authorization_url: string;
-      reference: string;
-    };
-  };
+// Light client-side Nigerian-phone check; the API is the authority.
+function validNgPhone(raw: string): boolean {
+  const s = raw.replace(/[\s-]/g, "");
+  return /^(\+?234|0)\d{9,10}$/.test(s);
 }
 
+function todayLagos(): string {
+  // YYYY-MM-DD for "today" in Lagos (UTC+1).
+  return new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 
-// Lagos first (default); the rest alphabetical. Any value other than "Lagos"
-// makes the order "outside Lagos" — delivery is ₦0 and arranged out-of-band.
-const NG_STATES = [
-  "Lagos",
-  "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue",
-  "Borno", "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu",
-  "Abuja (FCT)", "Gombe", "Imo", "Jigawa", "Kaduna", "Kano", "Katsina",
-  "Kebbi", "Kogi", "Kwara", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun",
-  "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara",
-] as const;
+function Page() {
+  const { branches } = Route.useLoaderData();
+  const { items, subtotal, clear } = useCart();
+  const branchId = branches[0]?.id ?? null;
 
-export function CheckoutPage(): JSX.Element {
-  // Re-fetch the cart on mount so a refresh / direct visit shows live state.
-  useEffect(() => {
-    void cartApi.refresh().catch(() => undefined);
-  }, []);
+  // --- form ---
+  const [form, setForm] = useState({
+    name: "", phone: "", email: "", address: "", notes: "",
+    state: "Lagos" as string,
+    when: "now" as "now" | "schedule",
+    date: todayLagos(),
+    window: "afternoon" as DeliveryWindow,
+  });
+  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((p) => ({ ...p, [k]: v }));
 
-  const items = useCart((s) => s.items);
-  const subtotal = useCart((s) => s.subtotal());
-  const clear = useCart((s) => s.clear);
+  const outsideLagos = form.state !== "Lagos";
+  const scheduled = form.when === "schedule";
 
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [loadingRef, setLoadingRef] = useState(true);
-  const [refError, setRefError] = useState<string | null>(null);
+  // --- live delivery quote (Lagos + now only) ---
+  const [quoting, setQuoting] = useState(false);
+  const [options, setOptions] = useState<ApiDeliveryOption[]>([]);
+  const [quoteNotice, setQuoteNotice] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [notes, setNotes] = useState("");
-  const [deliveryState, setDeliveryState] = useState("Lagos");
-  const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Turnstile bot check — only enforced when a sitekey is baked into the build.
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const turnstileRequired = !!TURNSTILE_SITEKEY;
-
-  // Live delivery quote (Bolt). Refreshed when address or coords change.
-  const [quote, setQuote] = useState<{
-    provider: string;
-    provider_quote_id: string | null;
-    fee_ngn: number;
-    eta_minutes: number;
-    notice?: string;
-  } | null>(null);
-  const [quoteLoading, setQuoteLoading] = useState(false);
+  const wantQuote = !outsideLagos && !scheduled && form.address.trim().length >= 5 && !!branchId;
 
   useEffect(() => {
-    let cancelled = false;
-    setLoadingRef(true);
-    void (async () => {
-      try {
-        const b = await api<{ data: Branch[] }>("/catalog/branches");
-        if (cancelled) return;
-        setBranches(b.data);
-      } catch (err) {
-        if (!cancelled) {
-          setRefError(err instanceof Error ? err.message : String(err));
-        }
-      } finally {
-        if (!cancelled) setLoadingRef(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Server cart already exposes variant UUIDs — no slug-matching needed.
-  // Order submit reads from the cookie-keyed cart on the server, so we don't
-  // even need to send items[]; the API resolves them from the cart row.
-  // Single active kitchen — auto-picked, no branch UI. Its delivery zones are
-  // kept only as the static fallback fee when the live Bolt quote is down.
-  const branch = branches[0] ?? null;
-  const branchId = branch?.id ?? "";
-  const fallbackFee =
-    branch && branch.delivery_zones.length > 0
-      ? Math.min(...branch.delivery_zones.map((z) => z.fee_ngn))
-      : null;
-  const outsideLagos = deliveryState !== "Lagos";
-
-  // Live delivery-fee quote. Refreshes when address text is stable for 800ms
-  // OR coords change. Requires a branch + an address. Aborts on stale calls.
-  useEffect(() => {
-    if (outsideLagos || !branchId || !address || address.trim().length < 4) {
-      setQuote(null);
+    if (!wantQuote) {
+      setOptions([]); setQuoteNotice(null); setSelectedId(null); setQuoting(false);
       return;
     }
-    setQuoteLoading(true);
-    const abort = new AbortController();
-    const handle = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const body: Record<string, unknown> = {
-            branch_id: branchId,
-            dropoff_address: address,
-          };
-          if (coords) {
-            body["dropoff_lat"] = coords.lat;
-            body["dropoff_lng"] = coords.lng;
-          }
-          const res = await fetch("/v1/public/orders/quote", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(body),
-            signal: abort.signal,
-          });
-          if (!res.ok) throw new Error(`quote ${res.status}`);
-          const data = (await res.json()) as {
-            data: {
-              provider: string;
-              provider_quote_id: string | null;
-              fee_ngn: number;
-              eta_minutes: number;
-              notice?: string;
-            };
-          };
-          if (!abort.signal.aborted) setQuote(data.data);
-        } catch (err) {
-          if (!abort.signal.aborted) {
-            // Quote failed entirely — fall back silently to the static zone fee.
-            setQuote(null);
-            console.warn("delivery quote failed", err);
-          }
-        } finally {
-          if (!abort.signal.aborted) setQuoteLoading(false);
-        }
-      })();
-    }, 800);
-    return () => {
-      window.clearTimeout(handle);
-      abort.abort();
-    };
-  }, [outsideLagos, branchId, address, coords?.lat, coords?.lng]);
+    let alive = true;
+    setQuoting(true);
+    const t = setTimeout(() => {
+      requestQuote({ data: { branch_id: branchId as string, dropoff_address: form.address, delivery_state: form.state } })
+        .then((q) => {
+          if (!alive) return;
+          setOptions(q.options);
+          setQuoteNotice(q.options.length === 0 ? (q.notice ?? "No couriers available right now — no delivery charge applied.") : null);
+          setSelectedId(q.options[0]?.id ?? null);
+        })
+        .catch((e: unknown) => {
+          if (!alive) return;
+          setOptions([]); setSelectedId(null);
+          setQuoteNotice(e instanceof ApiError ? e.message : "Live delivery is unavailable right now — no delivery charge applied.");
+        })
+        .finally(() => { if (alive) setQuoting(false); });
+    }, 600);
+    return () => { alive = false; clearTimeout(t); };
+  }, [wantQuote, branchId, form.address, form.state]);
 
-  // Outside Lagos → ₦0 (arranged out-of-band). In Lagos → the live Bolt quote,
-  // falling back to the branch's static zone fee if the quote is unavailable.
-  const lagosFee = quote?.fee_ngn ?? fallbackFee;
-  const deliveryFee = outsideLagos ? 0 : lagosFee ?? 0;
-  // Lagos orders need a known fee before the customer can pay.
-  const feeReady = outsideLagos || lagosFee != null;
+  const selectedOption = options.find((o) => o.id === selectedId) ?? null;
+  const deliveryFee = outsideLagos || scheduled ? 0 : (selectedOption?.fee_ngn ?? 0);
   const total = subtotal + deliveryFee;
 
-  const scheduledIso =
-    scheduleMode === "later" && scheduledAt ? new Date(scheduledAt).toISOString() : null;
-  const scheduledValid =
-    scheduleMode === "now" ||
-    (scheduledIso != null && new Date(scheduledIso).getTime() > Date.now());
-  const minDateTime = (() => {
-    const d = new Date(Date.now() + 60_000);
-    const pad = (n: number): string => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  })();
-  // Pickup branch is the single active kitchen (needed even outside Lagos).
-  const pickupBranchId = branchId;
+  // --- placing the order ---
+  const [placing, setPlacing] = useState(false);
+  const [placeError, setPlaceError] = useState<string | null>(null);
+  const idemRef = useRef<string>("");
 
-  async function submit(e: FormEvent): Promise<void> {
-    e.preventDefault();
-    if (submitting || !pickupBranchId || !scheduledValid || (!outsideLagos && !feeReady)) return;
-    setSubmitting(true);
-    setError(null);
+  const scheduleValid = !scheduled || isWindowAvailable(form.date, form.window);
+  const orderItems = useMemo(
+    () => items.map((i) => ({ variant_id: i.variantId, quantity: i.qty })),
+    [items],
+  );
+  const canPlace =
+    items.length > 0 &&
+    !!branchId &&
+    form.name.trim() !== "" &&
+    validNgPhone(form.phone) &&
+    form.address.trim().length >= 3 &&
+    scheduleValid &&
+    !placing &&
+    !quoting;
+
+  async function submit(retry = false) {
+    if (!branchId || items.length === 0) return;
+    if (!retry) idemRef.current = crypto.randomUUID();
+    setPlacing(true);
+    setPlaceError(null);
+
+    const phone = form.phone.replace(/[\s-]/g, "");
     try {
-      // No items[] payload — the server reads the cart from the ms_cart cookie.
-      const res = await api<CreateOrderResp>("/orders", {
-        method: "POST",
-        body: JSON.stringify({
-          branch_id: pickupBranchId,
+      const res = await placeOrderFn({
+        data: {
+          branch_id: branchId,
           delivery_fee_ngn: deliveryFee,
-          delivery_state: deliveryState,
-          ...(quote?.provider_quote_id && !outsideLagos
-            ? { delivery_quote_id: quote.provider_quote_id }
-            : {}),
-          ...(scheduledIso ? { scheduled_delivery_at: scheduledIso } : {}),
-          ...(turnstileToken ? { turnstile_token: turnstileToken } : {}),
+          delivery_state: form.state,
+          ...(selectedOption && !outsideLagos && !scheduled ? { delivery_quote_id: selectedOption.id } : {}),
+          ...(scheduled ? { scheduled_delivery_at: scheduledIso(form.date, form.window) } : {}),
           customer: {
-            name,
+            name: form.name.trim(),
             phone,
-            email: email || undefined,
-            address,
-            ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
+            ...(form.email.trim() ? { email: form.email.trim() } : {}),
+            address: form.address.trim(),
           },
-          notes: notes || undefined,
-        }),
+          items: orderItems,
+          ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
+          idempotency_key: idemRef.current,
+        },
       });
-      // Stash details for the tracking page
+      // Stash phone so the tracking page can read the order back after OPay.
       try {
-        sessionStorage.setItem(
-          `ms_order_phone_${res.data.order_number}`,
-          phone,
-        );
+        localStorage.setItem(`ms_track_${res.order_number}`, JSON.stringify({ phone }));
       } catch {
-        /* private mode — fine, the user can re-enter */
+        /* ignore storage failures */
       }
       clear();
-      window.location.href = res.data.payment.authorization_url;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setSubmitting(false);
+      window.location.href = res.payment.authorization_url;
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "idempotency_in_flight") {
+        setTimeout(() => submit(true), 1500); // first attempt still settling — replay same key
+        return;
+      }
+      if (e instanceof ApiError && e.code === "idempotency_key_reused") {
+        await submit(false); // body changed under the same key — fresh attempt
+        return;
+      }
+      if (e instanceof ApiError && (e.code === "conflict" || e.status === 422)) {
+        // Stock/validation conflict — the API message explains (e.g. "only N left").
+        setPlaceError(`${e.message} Adjust your basket and try again.`);
+      } else {
+        setPlaceError(e instanceof ApiError ? e.message : "Something went wrong placing your order. Please try again.");
+      }
+      setPlacing(false);
     }
   }
 
+  // ---------- render ----------
   if (items.length === 0) {
     return (
-      <div className="ms-shell">
-        <div className="ms-container">
-          <CheckoutHeader />
-          <main className="ms-checkout">
-            <div className="ms-cart__empty">
-              <Eyebrow>Checkout</Eyebrow>
-              <h1 className="ms-section-title">Your basket is empty.</h1>
-              <p className="ms-section-sub">Add a bottle first, then come back to check out.</p>
-              <Link to="/" className="btn btn--primary">
-                Browse the menu
-              </Link>
-            </div>
-          </main>
+      <SiteShell>
+        <div className="px-5 max-w-3xl mx-auto pt-40 pb-32 text-center">
+          <div className="text-7xl mb-4">🥤</div>
+          <h1 className="font-display text-4xl text-[color:var(--brand)]">Your basket is empty</h1>
+          <p className="mt-3 text-[color:var(--brand)]/70">Pick a juice or a bundle to get started.</p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link to="/juices" className="rounded-full bg-[color:var(--brand)] text-white px-6 py-3 text-sm font-semibold">Browse juices</Link>
+            <Link to="/shop" className="rounded-full bg-white ring-1 ring-black/10 text-[color:var(--brand)] px-6 py-3 text-sm font-semibold">Bundles</Link>
+          </div>
         </div>
-      </div>
+      </SiteShell>
     );
   }
 
   return (
-    <div className="ms-shell">
-      <div className="ms-container">
-        <CheckoutHeader />
-        <main className="ms-checkout">
-          <header style={{ marginBottom: 22 }}>
-            <Eyebrow>Checkout</Eyebrow>
-            <h1 className="ms-section-title">Where should we deliver?</h1>
-            <p className="ms-section-sub">
-              {outsideLagos
-                ? "Book and pay now — we'll arrange delivery to your state and confirm logistics separately."
-                : scheduleMode === "later"
-                  ? "Book and pay now — we'll prepare your order fresh and deliver it at your chosen time."
-                  : "We'll take a deposit now and dispatch within the hour. Pay with card or transfer on the next screen."}
-            </p>
-          </header>
+    <SiteShell>
+      <div className="px-5 sm:px-10 max-w-6xl mx-auto pt-32 sm:pt-36 pb-24">
+        <Link to="/juices" className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--brand)]/70 hover:text-[color:var(--brand-orange)]">
+          <ArrowLeft className="h-4 w-4" /> Continue shopping
+        </Link>
+        <div className="mt-6 flex items-center justify-between gap-3">
+          <h1 className="font-display text-4xl sm:text-5xl text-[color:var(--brand)]">Checkout</h1>
+          <div className="hidden sm:flex items-center gap-2 text-xs text-[color:var(--brand)]/60"><Lock className="h-3.5 w-3.5" /> Secure order</div>
+        </div>
 
-          {refError && (
-            <div className="ms-checkout__error" role="alert">
-              Couldn't load delivery options — {refError}
-            </div>
-          )}
+        {!branchId && (
+          <div className="mt-10 rounded-2xl bg-white ring-1 ring-black/5 p-8 text-center text-[color:var(--brand)]/80">
+            Online ordering is temporarily unavailable. Please try again later or order on WhatsApp.
+          </div>
+        )}
 
-          <form onSubmit={submit} className="ms-checkout__grid">
-            <section className="ms-checkout__form">
-              <h2 className="ms-checkout__h2">Delivery</h2>
-
-              <Field label="When?">
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    className={`btn btn--sm ${scheduleMode === "now" ? "btn--primary" : "btn--subtle"}`}
-                    onClick={() => setScheduleMode("now")}
-                  >
-                    Deliver now
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn btn--sm ${scheduleMode === "later" ? "btn--primary" : "btn--subtle"}`}
-                    onClick={() => setScheduleMode("later")}
-                  >
-                    Schedule for later
-                  </button>
+        {branchId && (
+          <div className="mt-8 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-8">
+            {/* LEFT: form */}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-[1.5rem] bg-white ring-1 ring-black/5 p-6 sm:p-8 space-y-8">
+              {/* Contact */}
+              <section>
+                <h2 className="font-display text-2xl text-[color:var(--brand)]">Delivery details</h2>
+                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Full name" value={form.name} onChange={(v) => set("name", v)} placeholder="Adaeze Okeke" />
+                  <Field label="Phone" value={form.phone} onChange={(v) => set("phone", v)} placeholder="0800 000 0000" invalid={form.phone !== "" && !validNgPhone(form.phone)} hint="Enter a valid Nigerian number" />
+                  <Field label="Email (optional)" value={form.email} onChange={(v) => set("email", v)} placeholder="you@email.com" className="sm:col-span-2" />
+                  <Field label="Delivery address" value={form.address} onChange={(v) => set("address", v)} placeholder="House no, street, area" className="sm:col-span-2" />
+                  <label className="block sm:col-span-2">
+                    <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">Delivery state</span>
+                    <select value={form.state} onChange={(e) => set("state", e.target.value)} className="w-full rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm text-[color:var(--brand)] ring-1 ring-black/5 focus:ring-2 focus:ring-[color:var(--brand-orange)] focus:outline-none">
+                      {NIGERIA_STATES.map((s) => (<option key={s} value={s}>{s}</option>))}
+                    </select>
+                  </label>
+                  <Field label="Notes (optional)" value={form.notes} onChange={(v) => set("notes", v)} placeholder="Gate code, landmark…" className="sm:col-span-2" />
                 </div>
-                {scheduleMode === "later" && (
-                  <input
-                    className="ms-checkout__input"
-                    style={{ marginTop: 8 }}
-                    type="datetime-local"
-                    min={minDateTime}
-                    value={scheduledAt}
-                    onChange={(e) => setScheduledAt(e.target.value)}
-                    required
-                  />
-                )}
-                {scheduleMode === "later" && !scheduledValid && scheduledAt && (
-                  <div className="ms-checkout__hint" style={{ color: "var(--warning)" }}>
-                    Pick a time in the future.
+              </section>
+
+              {/* When */}
+              <section>
+                <h2 className="font-display text-2xl text-[color:var(--brand)]">When?</h2>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <Toggle active={form.when === "now"} onClick={() => set("when", "now")} icon={<Truck className="h-4 w-4" />} title="Deliver now" desc={outsideLagos ? "Arranged after checkout" : "Live courier today"} />
+                  <Toggle active={form.when === "schedule"} onClick={() => set("when", "schedule")} icon={<CalendarClock className="h-4 w-4" />} title="Schedule" desc="Pick a day & window" />
+                </div>
+                {scheduled && (
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="block">
+                      <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">Date</span>
+                      <input type="date" min={todayLagos()} value={form.date} onChange={(e) => set("date", e.target.value)} className="w-full rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm text-[color:var(--brand)] ring-1 ring-black/5 focus:ring-2 focus:ring-[color:var(--brand-orange)] focus:outline-none" />
+                    </label>
+                    <div>
+                      <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">Window</span>
+                      <div className="grid grid-cols-3 gap-2">
+                        {WINDOWS.map((w) => {
+                          const avail = isWindowAvailable(form.date, w.id);
+                          const active = form.window === w.id;
+                          return (
+                            <button key={w.id} disabled={!avail} onClick={() => set("window", w.id)} className={`rounded-xl px-2 py-2 text-xs font-semibold ring-1 transition ${active ? "bg-[color:var(--brand)] text-white ring-transparent" : "bg-white text-[color:var(--brand)] ring-black/10"} ${!avail ? "opacity-40 cursor-not-allowed" : ""}`}>
+                              {w.label.split(" · ")[0]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {!scheduleValid && <p className="mt-1 text-xs text-[color:var(--brand-orange)]">That window has passed — pick a later one.</p>}
+                    </div>
                   </div>
                 )}
-              </Field>
+              </section>
 
-              <Field label="Delivery state" required>
-                <select
-                  className="ms-checkout__input"
-                  value={deliveryState}
-                  onChange={(e) => setDeliveryState(e.target.value)}
-                  required
-                >
-                  {NG_STATES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-                {outsideLagos && (
-                  <div className="ms-checkout__hint">
-                    Outside Lagos — we'll arrange delivery to {deliveryState} and confirm
-                    logistics separately. No delivery fee charged now.
+              {/* Delivery cost */}
+              <section>
+                <h2 className="font-display text-2xl text-[color:var(--brand)]">Delivery</h2>
+                {outsideLagos ? (
+                  <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
+                    <span className="font-semibold text-[color:var(--brand)]">Outside Lagos.</span> We'll arrange delivery to {form.state} and confirm logistics with you separately. No delivery fee is charged now.
+                  </p>
+                ) : scheduled ? (
+                  <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
+                    <span className="font-semibold text-[color:var(--brand)]">Scheduled.</span> We'll deliver on {form.date}, {WINDOWS.find((w) => w.id === form.window)?.label}. No rider fee is charged now.
+                  </p>
+                ) : quoting ? (
+                  <div className="mt-3 flex items-center gap-2 text-sm text-[color:var(--brand)]/60"><Loader2 className="h-4 w-4 animate-spin" /> Finding couriers…</div>
+                ) : options.length > 0 ? (
+                  <div className="mt-3 grid gap-2">
+                    {options.map((o) => {
+                      const active = o.id === selectedId;
+                      return (
+                        <button key={o.id} onClick={() => setSelectedId(o.id)} className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left ring-2 transition ${active ? "ring-[color:var(--brand-orange)] bg-[color:var(--brand-orange)]/5" : "ring-black/5 hover:ring-black/15"}`}>
+                          <div>
+                            <div className="font-semibold text-[color:var(--brand)]">{o.courier_name}</div>
+                            <div className="text-xs text-[color:var(--brand)]/60">{o.eta_minutes != null ? `~${o.eta_minutes} min` : "ETA on dispatch"}{o.on_demand ? " · on-demand" : ""}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-[color:var(--brand)]">{formatNaira(o.fee_ngn)}</span>
+                            {active && <Check className="h-4 w-4 text-[color:var(--brand-orange)]" />}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
+                ) : (
+                  <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
+                    {form.address.trim().length >= 5 ? (quoteNotice ?? "No delivery fee is charged now.") : "Enter your address to see delivery options."}
+                  </p>
                 )}
-              </Field>
+              </section>
+            </motion.div>
 
-              <Field label="Address" required>
-                <Suspense
-                  fallback={<div className="ms-checkout__input" aria-busy="true">Loading address search…</div>}
-                >
-                  <AddressAutocomplete
-                    value={{ address, lat: coords?.lat ?? null, lng: coords?.lng ?? null }}
-                    onChange={(v) => {
-                      setAddress(v.address);
-                      setCoords(v.lat != null && v.lng != null ? { lat: v.lat, lng: v.lng } : null);
-                    }}
-                  />
-                </Suspense>
-              </Field>
-              <Field label="Notes for the rider (optional)">
-                <textarea
-                  className="ms-checkout__input"
-                  rows={2}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Gate code, landmark, etc."
-                />
-              </Field>
-
-              <h2 className="ms-checkout__h2" style={{ marginTop: 22 }}>
-                Your details
-              </h2>
-              <div className="ms-checkout__row">
-                <Field label="Full name" required>
-                  <input
-                    className="ms-checkout__input"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    autoComplete="name"
-                  />
-                </Field>
-                <Field label="Phone" required>
-                  <input
-                    className="ms-checkout__input"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                    inputMode="tel"
-                    autoComplete="tel"
-                    placeholder="+234…"
-                  />
-                </Field>
-              </div>
-              <Field label="Email (optional)">
-                <input
-                  className="ms-checkout__input"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
-                />
-              </Field>
-            </section>
-
-            <aside className="ms-checkout__summary">
-              <h2 className="ms-cart__summary-title">Order</h2>
-              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+            {/* RIGHT: summary */}
+            <aside className="rounded-[1.5rem] bg-[color:var(--brand)] text-white p-6 sm:p-7 h-fit lg:sticky lg:top-28">
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-white/60"><ShoppingBag className="h-3.5 w-3.5" /> Order summary</div>
+              <div className="mt-5 space-y-3">
                 {items.map((it) => (
-                  <li key={it.product_id} className="ms-checkout__sumline">
-                    <span>
-                      {it.name} <span style={{ color: "var(--ink-soft)" }}>× {it.quantity}</span>
-                    </span>
-                    <span className="tabular-nums">{ngn(it.unit_price_ngn * it.quantity)}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="ms-cart__divider" />
-              <div className="ms-cart__row">
-                <span>Subtotal</span>
-                <span className="tabular-nums">{ngn(subtotal)}</span>
-              </div>
-              <div className="ms-cart__row">
-                <span>
-                  Delivery
-                  {quote?.provider === "bolt" && (
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "var(--accent)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                      }}
-                    >
-                      · Bolt
-                    </span>
-                  )}
-                  {quoteLoading && (
-                    <span style={{ marginLeft: 6, fontSize: 12, color: "var(--ink-soft)" }}>
-                      updating…
-                    </span>
-                  )}
-                </span>
-                <span className="tabular-nums">{feeReady ? ngn(deliveryFee) : "—"}</span>
-              </div>
-              {outsideLagos ? (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--ink-soft)",
-                    marginTop: -4,
-                    marginBottom: 6,
-                  }}
-                >
-                  Delivery to {deliveryState} arranged separately — ₦0 charged now.
-                </div>
-              ) : scheduleMode === "later" && scheduledIso ? (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--accent)",
-                    fontWeight: 600,
-                    marginTop: -4,
-                    marginBottom: 6,
-                  }}
-                >
-                  Scheduled for{" "}
-                  {new Date(scheduledIso).toLocaleString("en-NG", {
-                    weekday: "short",
-                    day: "numeric",
-                    month: "short",
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </div>
-              ) : (
-                quote?.eta_minutes && (
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--ink-soft)",
-                      marginTop: -4,
-                      marginBottom: 6,
-                    }}
-                  >
-                    ETA ~{quote.eta_minutes} min from confirmation
+                  <div key={it.id} className="flex items-center gap-3 text-sm">
+                    <div className="grid h-12 w-12 place-items-center rounded-lg shrink-0 bg-white/10"><img src={it.product.image} alt="" className="h-10 w-10 object-contain" /></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">{it.product.name}</div>
+                      <div className="text-xs text-white/60">{it.size} · ×{it.qty}</div>
+                    </div>
+                    <div className="font-semibold">{formatNaira(it.unitPrice * it.qty)}</div>
                   </div>
-                )
-              )}
-              {quote?.notice && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--warning)",
-                    marginTop: -4,
-                    marginBottom: 6,
-                  }}
-                >
-                  {quote.notice}
+                ))}
+              </div>
+              <div className="mt-5 pt-5 border-t border-white/10 space-y-2 text-sm">
+                <Row label="Subtotal" value={formatNaira(subtotal)} />
+                <Row label="Delivery" value={outsideLagos || scheduled ? "₦0" : selectedOption ? formatNaira(deliveryFee) : "—"} />
+                <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-[0.2em] text-white/60">Total</span>
+                  <span className="font-display text-2xl font-semibold">{formatNaira(total)}</span>
                 </div>
-              )}
-              <div className="ms-cart__divider" />
-              <div className="ms-cart__row">
-                <span style={{ fontWeight: 700 }}>Total</span>
-                <span className="tabular-nums" style={{ fontWeight: 800, fontSize: 22 }}>
-                  {ngn(total)}
-                </span>
               </div>
 
-              {error && (
-                <div className="ms-checkout__error" style={{ marginTop: 12 }}>
-                  {error}
+              {placeError && (
+                <div className="mt-4 rounded-xl bg-white/10 p-3 text-sm">
+                  <div className="flex items-center gap-2 font-semibold"><AlertCircle className="h-4 w-4" /> {placeError}</div>
+                  <button onClick={() => submit(false)} className="mt-2 text-xs font-semibold underline">Retry payment</button>
                 </div>
               )}
 
-              <TurnstileWidget onToken={setTurnstileToken} />
-
-              <Button
-                variant="primary"
-                className="ms-cart__cta"
-                style={{ marginTop: 16 }}
-                disabled={
-                  submitting ||
-                  loadingRef ||
-                  !pickupBranchId ||
-                  !name ||
-                  !phone ||
-                  !address ||
-                  !scheduledValid ||
-                  (turnstileRequired && !turnstileToken) ||
-                  (!outsideLagos && !feeReady)
-                }
-                {...({ type: "submit" } as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+              <button
+                disabled={!canPlace}
+                onClick={() => submit(false)}
+                className="mt-5 w-full rounded-full bg-[color:var(--brand-orange)] text-white px-6 py-4 text-sm font-bold disabled:opacity-40 hover:opacity-90 transition flex items-center justify-center gap-2"
               >
-                {submitting ? "Creating order…" : `Pay ${ngn(total)}`}
-              </Button>
-              <p className="ms-cart__fineprint">
-                You'll be taken to a secure OPay page. Prefer WhatsApp?{" "}
-                <a
-                  href={`https://wa.me/${BRAND.whatsapp}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "var(--accent)", fontWeight: 600 }}
-                >
-                  Order there instead
-                </a>
-                .
-              </p>
+                {placing ? (<><Loader2 className="h-4 w-4 animate-spin" /> Redirecting to payment…</>) : (<>Place order — {formatNaira(total)}</>)}
+              </button>
+              <p className="mt-2 text-center text-[11px] text-white/50">You'll pay securely via OPay.</p>
             </aside>
-          </form>
-        </main>
+          </div>
+        )}
       </div>
-    </div>
+    </SiteShell>
   );
 }
 
-function CheckoutHeader(): JSX.Element {
+function Row({ label, value }: { label: string; value: string }) {
+  return (<div className="flex items-center justify-between text-white/80"><span>{label}</span><span className="font-semibold text-white">{value}</span></div>);
+}
+
+function Toggle({ active, onClick, icon, title, desc }: { active: boolean; onClick: () => void; icon: ReactNode; title: string; desc: string }) {
   return (
-    <nav className="ms-nav">
-      <Link to="/" className="ms-brand">
-        <span className="ms-brand__logo">
-          <img src="/assets/brand-logo.png" alt={BRAND.name} />
-        </span>
-      </Link>
-      <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-soft)" }}>
-        Checkout
-      </span>
-      <div />
-    </nav>
+    <button onClick={onClick} className={`flex items-start gap-3 rounded-2xl px-4 py-3 text-left ring-2 transition ${active ? "ring-[color:var(--brand-orange)] bg-[color:var(--brand-orange)]/5" : "ring-black/5 hover:ring-black/15"}`}>
+      <span className={`grid h-9 w-9 place-items-center rounded-full ${active ? "bg-[color:var(--brand-orange)] text-white" : "bg-black/5 text-[color:var(--brand)]"}`}>{icon}</span>
+      <div><div className="font-semibold text-[color:var(--brand)]">{title}</div><div className="text-xs text-[color:var(--brand)]/60">{desc}</div></div>
+    </button>
   );
 }
 
-function Field({
-  label,
-  required,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-}): JSX.Element {
+function Field({ label, value, onChange, placeholder, className, invalid, hint }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; className?: string; invalid?: boolean; hint?: string }) {
   return (
-    <label className="ms-checkout__field">
-      <span className="ms-checkout__label">
-        {label}
-        {required && <span style={{ color: "var(--accent)" }}> *</span>}
-      </span>
-      {children}
+    <label className={`block ${className ?? ""}`}>
+      <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">{label}</span>
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={`w-full rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm text-[color:var(--brand)] placeholder-[color:var(--brand)]/40 ring-1 focus:ring-2 focus:outline-none transition ${invalid ? "ring-[color:var(--brand-orange)]/60 focus:ring-[color:var(--brand-orange)]" : "ring-black/5 focus:ring-[color:var(--brand-orange)]"}`} />
+      {invalid && hint && <span className="mt-1 block text-xs text-[color:var(--brand-orange)]">{hint}</span>}
     </label>
   );
 }
