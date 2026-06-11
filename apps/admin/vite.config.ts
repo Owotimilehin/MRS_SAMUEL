@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       // Don't precache imagery the user might not visit; keep cache lean.
       includeAssets: ["favicon.ico"],
       manifest: {
@@ -21,6 +21,11 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
+        // Take control immediately on a new deploy so the next normal reload
+        // serves the fresh build — no hard-refresh / tab-close needed.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             urlPattern: /\/v1\/sync\/pull/,
