@@ -6,13 +6,19 @@ import { test, expect, type Page } from "@playwright/test";
 // Fails on any error boundary text or console/page error so silent render
 // crashes are caught (static link audits never see those).
 
-const CUSTOMER = "http://localhost:3002";
+const CUSTOMER = process.env.E2E_CUSTOMER ?? "http://localhost:3002";
+
+// Third-party / infra noise that is not an app defect. Cloudflare injects a RUM
+// beacon (/cdn-cgi/rum) when served through the tunnel; fast client navigation
+// aborts in-flight beacons and resource loads (ERR_ABORTED), which surface as
+// console "Failed to fetch" / "Failed to load resource" — ignore those.
+const IGNORE_CONSOLE = /cdn-cgi\/rum|Failed to fetch|Failed to load resource|ERR_ABORTED/i;
 
 function trackErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => {
-    if (m.type() === "error") errors.push(`console: ${m.text()}`);
+    if (m.type() === "error" && !IGNORE_CONSOLE.test(m.text())) errors.push(`console: ${m.text()}`);
   });
   return errors;
 }
