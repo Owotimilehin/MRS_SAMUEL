@@ -1,23 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { Search } from "lucide-react";
 import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { downloadCsv } from "../../lib/csv.js";
 
-interface Branch {
-  id: string;
-  name: string;
-}
-interface RawSale {
-  id: string;
-  orderNumber: string;
-  customerId: string | null;
-  totalNgn: number;
-  createdAtLocal: string;
-}
 interface CustomerSummary {
-  customerId: string;
+  id: string;
+  name: string | null;
+  phone: string | null;
   orders: number;
   lifetimeNgn: number;
   lastOrderAt: string;
@@ -36,40 +29,9 @@ export function CustomersPage(): JSX.Element {
     setLoading(true);
     void (async () => {
       try {
-        const br = await api<{ data: Branch[] }>("/branches");
-        const allSales = await Promise.all(
-          br.data.map((b) =>
-            api<{ data: RawSale[] }>(`/branches/${b.id}/sales`).then((r) => r.data),
-          ),
-        );
+        const res = await api<{ data: CustomerSummary[] }>("/customers");
         if (cancelled) return;
-        const flat = allSales.flat();
-        const byCustomer = new Map<string, CustomerSummary>();
-        for (const s of flat) {
-          if (!s.customerId) continue;
-          const ex = byCustomer.get(s.customerId);
-          if (ex) {
-            ex.orders += 1;
-            ex.lifetimeNgn += s.totalNgn;
-            if (s.createdAtLocal > ex.lastOrderAt) {
-              ex.lastOrderAt = s.createdAtLocal;
-              ex.lastOrderNumber = s.orderNumber;
-            }
-          } else {
-            byCustomer.set(s.customerId, {
-              customerId: s.customerId,
-              orders: 1,
-              lifetimeNgn: s.totalNgn,
-              lastOrderAt: s.createdAtLocal,
-              lastOrderNumber: s.orderNumber,
-            });
-          }
-        }
-        setRows(
-          Array.from(byCustomer.values()).sort((a, b) =>
-            a.lastOrderAt > b.lastOrderAt ? -1 : 1,
-          ),
-        );
+        setRows(res.data);
         setError(null);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -89,8 +51,8 @@ export function CustomersPage(): JSX.Element {
       if (filter === "new7d" && r.lastOrderAt < sevenAgo) return false;
       if (q.trim()) {
         const t = q.trim().toLowerCase();
-        if (!r.customerId.toLowerCase().includes(t) && !r.lastOrderNumber.toLowerCase().includes(t))
-          return false;
+        const hay = `${r.name ?? ""} ${r.phone ?? ""} ${r.lastOrderNumber}`.toLowerCase();
+        if (!hay.includes(t)) return false;
       }
       return true;
     });
@@ -99,6 +61,7 @@ export function CustomersPage(): JSX.Element {
   return (
     <Shell
       title="Customers"
+      crumb="Owner"
       actions={
         <button
           type="button"
@@ -108,7 +71,8 @@ export function CustomersPage(): JSX.Element {
             downloadCsv(
               `customers-${new Date().toISOString().slice(0, 10)}`,
               filtered.map((r) => ({
-                customer_id: r.customerId,
+                name: r.name ?? "",
+                phone: r.phone ?? "",
                 orders: r.orders,
                 lifetime_ngn: r.lifetimeNgn,
                 last_order: r.lastOrderAt,
@@ -121,24 +85,27 @@ export function CustomersPage(): JSX.Element {
         </button>
       }
     >
-      <section className="card">
-        <header
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            flexWrap: "wrap",
-            marginBottom: 14,
-          }}
-        >
+      <div className="page-head ed-rise">
+        <div className="page-head__titles">
+          <div className="page-head__eyebrow">People</div>
+          <h1 className="page-head__title">Customers</h1>
+          <p className="page-head__sub">Everyone who has ordered from Mrs. Samuel.</p>
+        </div>
+      </div>
+
+      <div className="toolbar ed-rise">
+        <span className="toolbar__search">
+          <Search />
           <input
             className="input"
-            placeholder="Search customer or order number…"
-            style={{ flex: "1 1 240px", maxWidth: 320 }}
+            type="search"
+            placeholder="Search name, phone or order number…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          <div className="t-tabs" role="tablist">
+        </span>
+        <span className="toolbar__spacer" />
+        <div className="t-tabs" role="tablist">
             {(["all", "repeat", "new7d"] as const).map((f) => (
               <button
                 key={f}
@@ -163,12 +130,12 @@ export function CustomersPage(): JSX.Element {
               </button>
             ))}
           </div>
-          <span style={{ color: "var(--ink-soft)", fontSize: 13, marginLeft: "auto" }}>
-            {filtered.length} of {rows.length}
-          </span>
-        </header>
+        <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+          {filtered.length} of {rows.length}
+        </span>
+      </div>
 
-        {error && (
+      {error && (
           <div role="alert" className="empty" style={{ color: "var(--danger)" }}>
             {error}
           </div>
@@ -179,47 +146,60 @@ export function CustomersPage(): JSX.Element {
         ) : filtered.length === 0 ? (
           <div className="empty">
             <div className="empty__title">No customers yet</div>
-            Customers will appear here once their orders land.
+            Customers appear here once a sale is rung up with their phone or name.
           </div>
         ) : (
-          <div className="table-wrap" style={{ border: 0 }}>
+          <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Customer ID</th>
+                  <th>Customer</th>
+                  <th>Phone</th>
                   <th className="table__num">Orders</th>
                   <th className="table__num">Lifetime</th>
                   <th>Last order</th>
-                  <th>Last order #</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {filtered.slice(0, 200).map((r) => (
-                  <tr key={r.customerId}>
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>
+                      {r.name ?? <span style={{ color: "var(--ink-soft)" }}>—</span>}
+                    </td>
                     <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>
-                      {r.customerId.slice(0, 8)}…
+                      {r.phone ?? "—"}
                     </td>
                     <td className="table__num">{r.orders}</td>
                     <td className="table__num" style={{ fontWeight: 700 }}>
                       {ngn(r.lifetimeNgn)}
                     </td>
-                    <td>{formatDateTime(r.lastOrderAt)}</td>
-                    <td style={{ fontWeight: 600 }}>{r.lastOrderNumber}</td>
+                    <td>
+                      {formatDateTime(r.lastOrderAt)}
+                      <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
+                        · {r.lastOrderNumber}
+                      </span>
+                    </td>
+                    <td className="table__num">
+                      <Link
+                        to="/owner/customers/$customerId"
+                        params={{ customerId: r.id }}
+                        className="pill pill--ink"
+                      >
+                        Open
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {filtered.length > 200 && (
+              <p style={{ color: "var(--ink-soft)", fontSize: 13, marginTop: 12 }}>
+                Showing first 200 of {filtered.length}. Use search to narrow down.
+              </p>
+            )}
           </div>
         )}
-
-        <p style={{ color: "var(--ink-soft)", fontSize: 12, marginTop: 14 }}>
-          For contact details on any customer, open one of their orders from{" "}
-          <a href="/owner/orders" style={{ color: "var(--accent)", fontWeight: 600 }}>
-            Orders
-          </a>
-          .
-        </p>
-      </section>
     </Shell>
   );
 }

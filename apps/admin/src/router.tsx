@@ -73,6 +73,10 @@ const OrderDetailPage = lazyNamed<{ saleId: string }>(
   "OrderDetailPage",
 );
 const CustomersPage = lazyNamed(() => import("./routes/owner/customers.js"), "CustomersPage");
+const CustomerDetailPage = lazyNamed<{ customerId: string }>(
+  () => import("./routes/owner/customer-detail.js"),
+  "CustomerDetailPage",
+);
 const ZonesPage = lazyNamed(() => import("./routes/owner/zones.js"), "ZonesPage");
 const OwnerReturnsPage = lazyNamed(
   () => import("./routes/owner/returns.js"),
@@ -297,6 +301,14 @@ const customersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/owner/customers",
   component: () => guarded(<L><CustomersPage /></L>),
+});
+const customerDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/customers/$customerId",
+  component: () => {
+    const params = useParams({ from: "/owner/customers/$customerId" });
+    return guarded(<L><CustomerDetailPage customerId={params.customerId} /></L>);
+  },
 });
 const zonesRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -549,6 +561,7 @@ const routeTree = rootRoute.addChildren([
   ordersRoute,
   orderDetailRoute,
   customersRoute,
+  customerDetailRoute,
   zonesRoute,
   ownerReturnsRoute,
   ownerReturnDetailRoute,
