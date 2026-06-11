@@ -127,8 +127,10 @@ export function Hero({ products }: { products: Product[] }) {
     return () => window.removeEventListener("keydown", handler);
   }, [prev, next]);
 
+  if (total === 0) return null; // no catalog → skip the carousel (all hooks already ran)
+
   const leftProduct = products[(activeIndex - 1 + total) % total];
-  const centerProduct = products[activeIndex];
+  const centerProduct = products[activeIndex % total];
   const rightProduct = products[(activeIndex + 1) % total];
 
   return (
