@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { Search } from "lucide-react";
 import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
@@ -107,6 +108,7 @@ export function OrdersPage(): JSX.Element {
   return (
     <Shell
       title="Orders"
+      crumb="Owner"
       actions={
         <button
           type="button"
@@ -130,68 +132,69 @@ export function OrdersPage(): JSX.Element {
         </button>
       }
     >
-      <section className="card">
-        <header
-          style={{
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
-            marginBottom: 14,
-          }}
-        >
+      <div className="page-head ed-rise">
+        <div className="page-head__titles">
+          <div className="page-head__eyebrow">Sales</div>
+          <h1 className="page-head__title">Orders</h1>
+          <p className="page-head__sub">Every order across branches and channels.</p>
+        </div>
+      </div>
+
+      <div className="toolbar ed-rise">
+        <span className="toolbar__search">
+          <Search />
           <input
             className="input"
-            style={{ flex: "1 1 200px", maxWidth: 260 }}
+            type="search"
             placeholder="Search order number…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          <select
-            className="input"
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
-          >
-            <option value="all">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <select
-            className="input"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">All statuses</option>
-            <option value="confirmed">Pending pay</option>
-            <option value="paid">Paid</option>
-            <option value="handed_over">Handed over</option>
-            <option value="delivered">Delivered</option>
-            <option value="cancelled">Cancelled</option>
-            <option value="failed">Failed</option>
-          </select>
-          <select
-            className="input"
-            value={channelFilter}
-            onChange={(e) => setChannelFilter(e.target.value)}
-          >
-            <option value="all">All channels</option>
-            {channels.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <span
-            style={{ color: "var(--ink-soft)", fontSize: 13, marginLeft: "auto" }}
-          >
-            {filtered.length} of {sales.length}
-          </span>
-        </header>
+        </span>
+        <span className="toolbar__spacer" />
+        <select
+          className="select"
+          value={branchFilter}
+          onChange={(e) => setBranchFilter(e.target.value)}
+        >
+          <option value="all">All branches</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+        <select
+          className="select"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="all">All statuses</option>
+          <option value="confirmed">Pending pay</option>
+          <option value="paid">Paid</option>
+          <option value="handed_over">Handed over</option>
+          <option value="delivered">Delivered</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="failed">Failed</option>
+        </select>
+        <select
+          className="select"
+          value={channelFilter}
+          onChange={(e) => setChannelFilter(e.target.value)}
+        >
+          <option value="all">All channels</option>
+          {channels.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+          {filtered.length} of {sales.length}
+        </span>
+      </div>
 
-        {error && (
+      {error && (
           <div role="alert" className="empty" style={{ color: "var(--danger)" }}>
             {error}
           </div>
@@ -216,7 +219,7 @@ export function OrdersPage(): JSX.Element {
             </button>
           </div>
         ) : (
-          <div className="table-wrap" style={{ border: 0 }}>
+          <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -272,7 +275,6 @@ export function OrdersPage(): JSX.Element {
             )}
           </div>
         )}
-      </section>
     </Shell>
   );
 }
