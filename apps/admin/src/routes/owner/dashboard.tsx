@@ -115,6 +115,7 @@ export function DashboardPage(): JSX.Element {
   return (
     <Shell
       title="Dashboard"
+      crumb="Owner"
       actions={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <label className="t-eyebrow" style={{ color: "var(--ink-soft)" }}>
@@ -140,6 +141,16 @@ export function DashboardPage(): JSX.Element {
         </div>
       }
     >
+      <div className="page-head ed-rise">
+        <div className="page-head__titles">
+          <div className="page-head__eyebrow">Overview</div>
+          <h1 className="page-head__title">Store performance</h1>
+          <p className="page-head__sub">
+            Revenue, orders and items that need your attention across every branch.
+          </p>
+        </div>
+      </div>
+
       {error && (
         <div
           className="card"
@@ -152,10 +163,11 @@ export function DashboardPage(): JSX.Element {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: 14,
-          marginBottom: 24,
+          gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+          gap: 16,
+          marginBottom: 26,
         }}
+        className="ed-rise"
       >
         <Stat label="Net revenue" value={ngn(totals.net)} hint={`${from} → ${to}`} tone="accent" />
         <Stat label="Gross" value={ngn(totals.gross)} hint={`${totals.orders} orders`} />
@@ -177,7 +189,7 @@ export function DashboardPage(): JSX.Element {
         }}
       >
         <section className="card">
-          <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+          <header className="card__head">
             <h2 className="t-h2">Branch performance</h2>
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
               <button
@@ -243,7 +255,7 @@ export function DashboardPage(): JSX.Element {
         </section>
 
         <section className="card">
-          <h2 className="t-h2" style={{ marginBottom: 12 }}>Top products</h2>
+          <div className="card__head"><h2 className="t-h2">Top products</h2></div>
           {loading ? (
             <InlineLoader />
           ) : topProducts.length === 0 ? (
@@ -280,7 +292,7 @@ export function DashboardPage(): JSX.Element {
       </div>
 
       <section className="card">
-        <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+        <header className="card__head">
           <h2 className="t-h2">Recent variances</h2>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <button
