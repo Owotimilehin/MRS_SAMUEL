@@ -286,6 +286,22 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `${p["run_date"]} · ${p["bottle_count"] ?? "?"} bottles\n` +
           `👉 ${ADMIN_URL}/factory/production-runs/${p["production_run_id"]}`,
       };
+    case "contact.message_received":
+      return {
+        chatIds: [owner],
+        text:
+          `✉️ *New contact message*\n` +
+          `${p["name"]} · ${p["subject"]}\n` +
+          `${p["email"]}${p["phone"] ? ` · ${p["phone"]}` : ""}`,
+      };
+    case "subscription.requested":
+      return {
+        chatIds: [owner],
+        text:
+          `🔔 *Subscription enquiry*\n` +
+          `${p["name"]} · ${p["phone"]}\n` +
+          `Plan: ${p["plan_slug"]}`,
+      };
     default:
       // Unknown event — tell the owner so we never silently drop something new.
       return {
