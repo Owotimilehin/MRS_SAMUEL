@@ -5,6 +5,7 @@ import { Modal } from "../../components/Modal.js";
 import { api, ApiError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { PalettePicker, AssetPicker, type Palette } from "../../components/ProductEditor.js";
 
 interface Variant {
   id: string;
@@ -65,12 +66,21 @@ export function ProductsPage(): JSX.Element {
   return (
     <Shell
       title="Products"
+      crumb="Owner"
       actions={
         <button type="button" className="btn btn--primary btn--sm" onClick={() => setShowCreate(true)}>
           + New flavour
         </button>
       }
     >
+      <div className="page-head ed-rise">
+        <div className="page-head__titles">
+          <div className="page-head__eyebrow">Catalogue</div>
+          <h1 className="page-head__title">Products</h1>
+          <p className="page-head__sub">Flavours, sizes and pricing.</p>
+        </div>
+      </div>
+
       {error && (
         <div
           className="card"
@@ -178,7 +188,7 @@ export function ProductsPage(): JSX.Element {
       )}
 
       {showCreate && (
-        <Modal onClose={() => setShowCreate(false)} title="New flavour">
+        <Modal onClose={() => setShowCreate(false)} title="New flavour" maxWidth={680}>
           <CreateForm
             onSaved={() => {
               setShowCreate(false);
@@ -213,6 +223,10 @@ function CreateForm({ onSaved }: { onSaved: () => void }): JSX.Element {
   const [category, setCategory] = useState<"regular" | "special" | "punch">("regular");
   const [shelfHours, setShelfHours] = useState("48");
   const [ingredients, setIngredients] = useState("");
+  const [tagline, setTagline] = useState("");
+  const [palette, setPalette] = useState<Palette | null>(null);
+  const [bottleAssetId, setBottleAssetId] = useState<string | null>(null);
+  const [bottleUrl, setBottleUrl] = useState<string | null>(null);
   // Default to the two house sizes; owner can adjust, add, or remove.
   const [variants, setVariants] = useState<VariantDraft[]>([
     { size_ml: "330", price_ngn: "2500" },
@@ -270,6 +284,10 @@ function CreateForm({ onSaved }: { onSaved: () => void }): JSX.Element {
           shelf_life_hours: Number(shelfHours),
           display_order: 0,
           variants: parsed,
+          tagline: tagline || undefined,
+          palette: palette ?? undefined,
+          bottle_asset_id: bottleAssetId ?? undefined,
+          image_url: bottleUrl ?? undefined,
         }),
       });
       onSaved();
@@ -396,6 +414,38 @@ function CreateForm({ onSaved }: { onSaved: () => void }): JSX.Element {
           placeholder="orange, ginger"
         />
       </div>
+
+      <div className="field">
+        <label className="field__label">Tagline</label>
+        <input
+          className="input"
+          value={tagline}
+          onChange={(e) => setTagline(e.target.value)}
+          placeholder="A short line for the flavour card"
+        />
+      </div>
+
+      <fieldset style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14 }}>
+        <legend style={{ fontSize: 13, fontWeight: 700, padding: "0 6px" }}>Colour</legend>
+        <PalettePicker value={palette} onChange={setPalette} />
+      </fieldset>
+
+      <fieldset style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14 }}>
+        <legend style={{ fontSize: 13, fontWeight: 700, padding: "0 6px" }}>Bottle image</legend>
+        <AssetPicker
+          kind="bottle"
+          label="Pick or upload a bottle"
+          value={bottleAssetId}
+          onChange={(id, url) => {
+            setBottleAssetId(id);
+            setBottleUrl(url);
+          }}
+        />
+        <p style={{ fontSize: 12, color: "var(--ink-soft)", margin: "8px 0 0" }}>
+          You can add the full story, benefits & decorations after creating, via{" "}
+          <strong>Edit details</strong>.
+        </p>
+      </fieldset>
       {error && <div className="field__error">{error}</div>}
       <button type="submit" className="btn btn--primary btn--block" disabled={submitting}>
         {submitting ? "Saving…" : "Create flavour"}
