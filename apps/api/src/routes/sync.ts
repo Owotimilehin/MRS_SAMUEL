@@ -58,10 +58,16 @@ export function syncRoutes(db: DbClient) {
       .select()
       .from(productVariant)
       .where(isNull(productVariant.deletedAt));
+    // All currently-active prices (validTo IS NULL), NOT date-filtered. The
+    // till needs every product's current price to ring up; a delta window
+    // (gte validFrom, since) silently drops prices set before a fresh device's
+    // first sync, leaving those products at ₦0 on the till. Active prices are a
+    // small bounded set (~one per variant), so sending them all every pull is
+    // cheap and keeps the offline price table correct after any cache clear.
     const prices = await db
       .select()
       .from(productPrice)
-      .where(gte(productPrice.validFrom, since));
+      .where(isNull(productPrice.validTo));
 
     const transfers = await db
       .select()
