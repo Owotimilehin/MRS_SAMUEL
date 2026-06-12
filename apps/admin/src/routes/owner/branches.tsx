@@ -248,8 +248,8 @@ function CreateBranchModal({
               <input
                 className="input"
                 value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                pattern="^[A-Z0-9_-]+$"
+                onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]+/g, ""))}
+                pattern="^[A-Z0-9_\-]+$"
                 required
               />
             </div>

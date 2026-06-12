@@ -62,6 +62,9 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [acting, setActing] = useState(false);
+  // id → url map so we can show the cluster/fruit thumbnails (the product only
+  // stores their asset ids, not urls). Best-effort; thumbnails just fall back.
+  const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -88,6 +91,17 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await api<{ data: { id: string; url: string }[] }>(`/media`);
+        setAssetUrls(Object.fromEntries(res.data.map((a) => [a.id, a.url])));
+      } catch {
+        /* thumbnails are best-effort */
+      }
+    })();
+  }, []);
 
   function showFlash(msg: string): void {
     setFlash(msg);
@@ -360,6 +374,65 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
               </p>
             </section>
           </div>
+
+          {/* The rich storefront content the create/edit forms capture. Read-only
+              here; click "Edit details" to change it. */}
+          <section className="card" style={{ marginTop: 18 }}>
+            <div className="card__head">
+              <h2 className="t-h2">Storefront content</h2>
+            </div>
+            <Field label="Story" value={textOrDash(product.story)} />
+            <Field label="Pairing" value={textOrDash(product.pairing)} />
+            <Field label="Note" value={textOrDash(product.note)} />
+            <Field
+              label="Benefits"
+              value={product.benefits.length > 0 ? <Chips items={product.benefits} /> : "—"}
+            />
+            <Field
+              label="Best for"
+              value={product.bestFor.length > 0 ? <Chips items={product.bestFor} /> : "—"}
+            />
+            <Field
+              label="Ingredient details"
+              value={
+                product.ingredientDetails.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {product.ingredientDetails.map((d, i) => (
+                      <div key={i} style={{ fontSize: 13 }}>
+                        <strong>{d.name}</strong>
+                        {d.benefit ? <span style={{ color: "var(--ink-soft)" }}> — {d.benefit}</span> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  "—"
+                )
+              }
+            />
+            <Field
+              label="Images"
+              value={
+                <div style={{ display: "flex", gap: 14, alignItems: "flex-end" }}>
+                  <AssetThumb
+                    caption="Bottle"
+                    url={
+                      (product.bottleAssetId && assetUrls[product.bottleAssetId]) ||
+                      product.imageUrl ||
+                      undefined
+                    }
+                  />
+                  <AssetThumb
+                    caption="Cluster"
+                    url={product.clusterAssetId ? assetUrls[product.clusterAssetId] : undefined}
+                  />
+                  <AssetThumb
+                    caption="Fruit"
+                    url={product.fruitAssetId ? assetUrls[product.fruitAssetId] : undefined}
+                  />
+                </div>
+              }
+            />
+          </section>
         </>
       )}
 
@@ -607,6 +680,52 @@ function EditDetailsForm({
         {submitting ? "Saving…" : "Save details"}
       </button>
     </form>
+  );
+}
+
+function textOrDash(v: string | null | undefined): string {
+  return v && v.trim() ? v : "—";
+}
+
+function Chips({ items }: { items: string[] }): JSX.Element {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {items.map((it, i) => (
+        <span key={i} className="pill">
+          {it}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function AssetThumb({ caption, url }: { caption: string; url: string | undefined }): JSX.Element {
+  return (
+    <div style={{ textAlign: "center" }}>
+      {url ? (
+        <img
+          src={url}
+          alt={caption}
+          style={{ height: 56, width: 56, objectFit: "contain", display: "block" }}
+        />
+      ) : (
+        <div
+          style={{
+            height: 56,
+            width: 56,
+            display: "grid",
+            placeItems: "center",
+            borderRadius: 8,
+            border: "1px dashed var(--line)",
+            color: "var(--ink-soft)",
+            fontSize: 18,
+          }}
+        >
+          —
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 4 }}>{caption}</div>
+    </div>
   );
 }
 
