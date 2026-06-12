@@ -118,20 +118,22 @@ export function DashboardPage(): JSX.Element {
       crumb="Owner"
       actions={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <label className="t-eyebrow" style={{ color: "var(--ink-soft)" }}>
+          <label className="t-eyebrow" htmlFor="dash-from" style={{ color: "var(--ink-soft)" }}>
             From
           </label>
           <input
+            id="dash-from"
             type="date"
             className="input"
             style={{ width: 150, height: 36 }}
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
-          <label className="t-eyebrow" style={{ color: "var(--ink-soft)" }}>
+          <label className="t-eyebrow" htmlFor="dash-to" style={{ color: "var(--ink-soft)" }}>
             To
           </label>
           <input
+            id="dash-to"
             type="date"
             className="input"
             style={{ width: 150, height: 36 }}
@@ -329,7 +331,7 @@ export function DashboardPage(): JSX.Element {
                   <th>Date</th>
                   <th>Branch</th>
                   <th className="table__num">Variance</th>
-                  <th />
+                  <th><span className="sr-only">View</span></th>
                 </tr>
               </thead>
               <tbody>

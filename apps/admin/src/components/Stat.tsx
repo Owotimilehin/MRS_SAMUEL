@@ -12,13 +12,15 @@ interface StatProps {
 }
 
 export function Stat({ label, value, hint, tone = "default", delta, children }: StatProps): JSX.Element {
+  // Use the AA-on-white "ink" shades — the base status hues fail WCAG contrast
+  // as the small bold label text.
   const labelColor =
     tone === "good"
-      ? "var(--success)"
+      ? "var(--success-ink)"
       : tone === "warn"
-        ? "var(--warning)"
+        ? "var(--warning-ink)"
         : tone === "bad"
-          ? "var(--danger)"
+          ? "var(--danger-ink)"
           : tone === "accent"
             ? "var(--accent)"
             : "var(--ink-soft)";

@@ -24,6 +24,12 @@
   --success: #10B981;
   --warning: #F59E0B;
   --danger: #DC2626;
+  /* AA-on-white text shades of the status colours. The base hues above are
+     tuned for fills/borders and fail WCAG 4.5:1 as small text — use these for
+     coloured label/value text instead. */
+  --success-ink: #047857;
+  --warning-ink: #B45309;
+  --danger-ink: #B91C1C;
 
   /* Green tint used for soft fills/rings (rgb of --accent) */
   --accent-rgb: 27, 87, 51;
@@ -345,6 +351,20 @@ h1, h2, h3, h4,
 .pill--success { background: rgba(16,185,129,0.14); color: #047857; }
 .pill--warning { background: rgba(245,158,11,0.16); color: #92400E; }
 .pill--danger { background: rgba(220,38,38,0.12); color: var(--danger); }
+
+/* Visually hidden but exposed to screen readers (e.g. an icon-only column
+   header). Standard clip pattern. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .pill--ink { background: rgba(20,24,31,0.08); color: var(--ink); }
 .pill--grad { background: var(--grad); color: #fff; }
 
