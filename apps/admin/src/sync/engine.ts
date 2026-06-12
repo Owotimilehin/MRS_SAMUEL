@@ -160,9 +160,17 @@ interface PullResponse {
       ingredients: string[];
       isActive: boolean;
     }>;
+    variants: Array<{
+      id: string;
+      productId: string;
+      sizeMl: number;
+      sku: string;
+      isActive: boolean;
+    }>;
     prices: Array<{
       id: string;
       productId: string;
+      variantId: string | null;
       priceNgn: number;
       validFrom: string;
       validTo: string | null;
@@ -207,9 +215,22 @@ export async function pullDeltas(branchId: string): Promise<void> {
   if (!res.ok) return;
   const body = (await res.json()) as PullResponse;
 
+  // Map variant id -> size so price rows can carry their can size locally.
+  const sizeByVariant = new Map<string, number>(
+    body.data.variants.map((v) => [v.id, v.sizeMl]),
+  );
+
   await local.transaction(
     "rw",
-    [local.products, local.prices, local.ledger, local.transfers, local.sales, local.meta],
+    [
+      local.products,
+      local.variants,
+      local.prices,
+      local.ledger,
+      local.transfers,
+      local.sales,
+      local.meta,
+    ],
     async () => {
       for (const p of body.data.products) {
         await local.products.put({
@@ -221,10 +242,21 @@ export async function pullDeltas(branchId: string): Promise<void> {
           is_active: p.isActive,
         });
       }
+      for (const v of body.data.variants) {
+        await local.variants.put({
+          id: v.id,
+          product_id: v.productId,
+          size_ml: v.sizeMl,
+          sku: v.sku,
+          is_active: v.isActive,
+        });
+      }
       for (const pr of body.data.prices) {
         await local.prices.put({
           id: pr.id,
           product_id: pr.productId,
+          variant_id: pr.variantId,
+          size_ml: pr.variantId ? sizeByVariant.get(pr.variantId) ?? null : null,
           price_ngn: pr.priceNgn,
           valid_from: pr.validFrom,
           valid_to: pr.validTo,

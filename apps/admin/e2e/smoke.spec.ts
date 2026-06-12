@@ -9,8 +9,8 @@ import { test, expect } from "@playwright/test";
 
 test("login takes owner to the dashboard, products page loads", async ({ page }) => {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill("owner@example.com");
-  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
+  await page.locator("#email").fill("owner@example.com");
+  await page.locator("#password").fill("ChangeMe!Owner-1234");
   await page.getByRole("button", { name: /sign in/i }).click();
 
   await page.waitForURL(/\/owner\/dashboard|\/$/, { timeout: 5_000 });
@@ -22,8 +22,8 @@ test("login takes owner to the dashboard, products page loads", async ({ page })
 
 test("transfers page lists transfers (may be empty)", async ({ page }) => {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill("owner@example.com");
-  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
+  await page.locator("#email").fill("owner@example.com");
+  await page.locator("#password").fill("ChangeMe!Owner-1234");
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/owner|\/$/, { timeout: 5_000 });
 
@@ -33,8 +33,8 @@ test("transfers page lists transfers (may be empty)", async ({ page }) => {
 
 test("owner inventory cells are clickable (Adjust modal trigger)", async ({ page }) => {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill("owner@example.com");
-  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
+  await page.locator("#email").fill("owner@example.com");
+  await page.locator("#password").fill("ChangeMe!Owner-1234");
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/owner|\/$/, { timeout: 5_000 });
   await page.goto("/owner/inventory");
@@ -44,8 +44,8 @@ test("owner inventory cells are clickable (Adjust modal trigger)", async ({ page
 
 test("owner sees the Bookkeeping page", async ({ page }) => {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill("owner@example.com");
-  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
+  await page.locator("#email").fill("owner@example.com");
+  await page.locator("#password").fill("ChangeMe!Owner-1234");
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/owner|\/$/, { timeout: 5_000 });
   await page.goto("/owner/bookkeeping");
@@ -53,19 +53,17 @@ test("owner sees the Bookkeeping page", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^P&L$/i })).toBeVisible();
 });
 
-test("login page renders the cinematic sunrise structure", async ({ page }) => {
+test("login page renders the operations-portal structure", async ({ page }) => {
   await page.goto("/login");
 
-  // New landmarks present.
-  await expect(page.locator(".login-cinematic__card")).toBeVisible();
-  await expect(page.locator(".login-cinematic__wordmark-accent")).toHaveText("Samuel");
-  await expect(page.locator(".login-cinematic__title")).toContainText("Welcome back.");
-  await expect(page.locator(".login-cinematic__bottle")).toBeAttached();
-
-  // All previous-iteration landmarks are gone.
-  await expect(page.locator(".login__card")).toHaveCount(0);
-  await expect(page.locator(".login__brand")).toHaveCount(0);
-  await expect(page.locator(".login__deco--bottle")).toHaveCount(0);
+  // Current landmarks (the `login__*` split-stage design).
+  await expect(page.locator(".login")).toBeVisible();
+  await expect(page.locator(".login__brand")).toBeVisible();
+  await expect(page.locator(".login__title")).toContainText("Welcome back.");
+  await expect(page.locator(".login__form")).toBeVisible();
+  await expect(page.locator("#email")).toBeVisible();
+  await expect(page.locator("#password")).toBeVisible();
+  await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible();
 
   // No "v1" anywhere on the page.
   await expect(page.getByText(/\bv1\b/i)).toHaveCount(0);
@@ -73,10 +71,12 @@ test("login page renders the cinematic sunrise structure", async ({ page }) => {
 
 test("owner sees the Packaging page", async ({ page }) => {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill("owner@example.com");
-  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
+  await page.locator("#email").fill("owner@example.com");
+  await page.locator("#password").fill("ChangeMe!Owner-1234");
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/owner|\/$/, { timeout: 5_000 });
   await page.goto("/owner/packaging");
+  // The page opens on the Stock tab; "Add material" lives under Materials.
+  await page.getByRole("button", { name: /^materials$/i }).click();
   await expect(page.getByRole("button", { name: /add material/i })).toBeVisible({ timeout: 5_000 });
 });

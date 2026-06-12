@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
-import { local, localAvailableForProduct, type ProductRow } from "../../db/local.js";
+import {
+  local,
+  localAvailableForProduct,
+  type ProductRow,
+  type VariantRow,
+  type PriceRow,
+} from "../../db/local.js";
 import { createLocalSale } from "../../sync/local-sale.js";
 import { ngn } from "../../lib/format.js";
 
@@ -10,13 +16,25 @@ type PaymentMethod = "cash" | "card" | "transfer";
 
 interface CartLine {
   product_id: string;
+  variant_id: string;
+  size_ml: number;
   quantity: number;
   unit_price_ngn: number;
 }
 
+// A single sellable line on the till: one can size of one flavour, priced.
+interface Sellable {
+  product: ProductRow;
+  variant: VariantRow;
+  price: number;
+}
+
+const sizeLabel = (ml: number): string => (ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`);
+
 export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const products = useLiveQuery(() => local.products.toArray(), [], [] as ProductRow[]);
-  const prices = useLiveQuery(() => local.prices.toArray(), [], []);
+  const variants = useLiveQuery(() => local.variants.toArray(), [], [] as VariantRow[]);
+  const prices = useLiveQuery(() => local.prices.toArray(), [], [] as PriceRow[]);
 
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -30,41 +48,75 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const priceFor = (productId: string): number => {
-    const ps = prices
-      .filter((p) => p.product_id === productId && !p.valid_to)
-      .sort((a, b) => (a.valid_from > b.valid_from ? -1 : 1));
-    return ps[0]?.price_ngn ?? 0;
+  // Price for an exact can size: most recent open price for that variant,
+  // falling back to a product-level (variant-less) price for legacy rows.
+  const priceForVariant = (productId: string, variantId: string): number => {
+    const open = prices.filter((p) => !p.valid_to);
+    const byNewest = (a: PriceRow, b: PriceRow): number =>
+      a.valid_from > b.valid_from ? -1 : 1;
+    const exact = open.filter((p) => p.variant_id === variantId).sort(byNewest);
+    if (exact[0]) return exact[0].price_ngn;
+    const fallback = open
+      .filter((p) => p.product_id === productId && p.variant_id == null)
+      .sort(byNewest);
+    return fallback[0]?.price_ngn ?? 0;
   };
 
-  const filtered = useMemo(() => {
-    const list = products.filter((p) => p.is_active);
-    if (!search) return list;
-    const q = search.toLowerCase();
-    return list.filter((p) => p.name.toLowerCase().includes(q) || p.slug.includes(q));
-  }, [products, search]);
+  // Expand the catalog into one sellable per (active flavour × active size).
+  const sellables = useMemo<Sellable[]>(() => {
+    const byProduct = new Map(products.map((p) => [p.id, p]));
+    return variants
+      .filter((v) => v.is_active)
+      .map((v) => {
+        const product = byProduct.get(v.product_id);
+        if (!product || !product.is_active) return null;
+        return { product, variant: v, price: priceForVariant(product.id, v.id) };
+      })
+      .filter((s): s is Sellable => s !== null)
+      .sort(
+        (a, b) =>
+          a.product.name.localeCompare(b.product.name) || a.variant.size_ml - b.variant.size_ml,
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, variants, prices]);
 
-  function addToCart(p: ProductRow): void {
-    const price = priceFor(p.id);
+  const filtered = useMemo(() => {
+    if (!search) return sellables;
+    const q = search.toLowerCase();
+    return sellables.filter(
+      (s) => s.product.name.toLowerCase().includes(q) || s.product.slug.includes(q),
+    );
+  }, [sellables, search]);
+
+  function addToCart(s: Sellable): void {
     setCart((c) => {
-      const existing = c.find((l) => l.product_id === p.id);
+      const existing = c.find((l) => l.variant_id === s.variant.id);
       if (existing) {
         return c.map((l) =>
-          l.product_id === p.id ? { ...l, quantity: l.quantity + 1 } : l,
+          l.variant_id === s.variant.id ? { ...l, quantity: l.quantity + 1 } : l,
         );
       }
-      return [...c, { product_id: p.id, quantity: 1, unit_price_ngn: price }];
+      return [
+        ...c,
+        {
+          product_id: s.product.id,
+          variant_id: s.variant.id,
+          size_ml: s.variant.size_ml,
+          quantity: 1,
+          unit_price_ngn: s.price,
+        },
+      ];
     });
   }
-  function updateQty(productId: string, qty: number): void {
+  function updateQty(variantId: string, qty: number): void {
     setCart((c) =>
       qty <= 0
-        ? c.filter((l) => l.product_id !== productId)
-        : c.map((l) => (l.product_id === productId ? { ...l, quantity: qty } : l)),
+        ? c.filter((l) => l.variant_id !== variantId)
+        : c.map((l) => (l.variant_id === variantId ? { ...l, quantity: qty } : l)),
     );
   }
-  function removeLine(productId: string): void {
-    setCart((c) => c.filter((l) => l.product_id !== productId));
+  function removeLine(variantId: string): void {
+    setCart((c) => c.filter((l) => l.variant_id !== variantId));
   }
   function clearCart(): void {
     setCart([]);
@@ -77,12 +129,17 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     setSubmitting(true);
     setError(null);
     try {
-      // Pre-flight: check local availability for every line
+      // Pre-flight: branch stock is tracked per flavour (not per size), so sum
+      // the quantities of every size of the same flavour before comparing.
+      const wantByProduct = new Map<string, number>();
       for (const l of cart) {
-        const have = await localAvailableForProduct(branchId, l.product_id);
-        if (have < l.quantity) {
-          const p = products.find((x) => x.id === l.product_id);
-          throw new Error(`Insufficient stock for ${p?.name ?? l.product_id} (${have} available)`);
+        wantByProduct.set(l.product_id, (wantByProduct.get(l.product_id) ?? 0) + l.quantity);
+      }
+      for (const [productId, want] of wantByProduct) {
+        const have = await localAvailableForProduct(branchId, productId);
+        if (have < want) {
+          const p = products.find((x) => x.id === productId);
+          throw new Error(`Insufficient stock for ${p?.name ?? productId} (${have} available)`);
         }
       }
       const itemCount = cart.reduce((n, l) => n + l.quantity, 0);
@@ -162,13 +219,12 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 gap: 12,
               }}
             >
-              {filtered.map((p) => (
+              {filtered.map((s) => (
                 <ProductTile
-                  key={p.id}
-                  product={p}
+                  key={s.variant.id}
+                  sellable={s}
                   branchId={branchId}
-                  price={priceFor(p.id)}
-                  onPick={() => addToCart(p)}
+                  onPick={() => addToCart(s)}
                 />
               ))}
             </div>
@@ -202,7 +258,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 const p = products.find((x) => x.id === l.product_id);
                 return (
                   <li
-                    key={l.product_id}
+                    key={l.variant_id}
                     style={{
                       display: "grid",
                       gridTemplateColumns: "1fr auto",
@@ -215,6 +271,10 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {p?.name ?? l.product_id.slice(0, 8)}
+                        <span style={{ color: "var(--ink-soft)", fontWeight: 500 }}>
+                          {" · "}
+                          {sizeLabel(l.size_ml)}
+                        </span>
                       </div>
                       <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
                         {ngn(l.unit_price_ngn)} × {l.quantity}
@@ -228,7 +288,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                         type="button"
                         className="btn btn--subtle btn--sm"
                         style={{ width: 30, padding: 0, height: 28 }}
-                        onClick={() => updateQty(l.product_id, l.quantity - 1)}
+                        onClick={() => updateQty(l.variant_id, l.quantity - 1)}
                       >
                         −
                       </button>
@@ -237,20 +297,20 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                         className="input"
                         style={{ width: 56, height: 28, textAlign: "center" }}
                         value={l.quantity}
-                        onChange={(e) => updateQty(l.product_id, Number(e.target.value))}
+                        onChange={(e) => updateQty(l.variant_id, Number(e.target.value))}
                       />
                       <button
                         type="button"
                         className="btn btn--subtle btn--sm"
                         style={{ width: 30, padding: 0, height: 28 }}
-                        onClick={() => updateQty(l.product_id, l.quantity + 1)}
+                        onClick={() => updateQty(l.variant_id, l.quantity + 1)}
                       >
                         +
                       </button>
                       <div style={{ flex: 1 }} />
                       <button
                         type="button"
-                        onClick={() => removeLine(l.product_id)}
+                        onClick={() => removeLine(l.variant_id)}
                         style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--ink-soft)", fontSize: 18 }}
                         aria-label="Remove"
                       >
@@ -286,8 +346,9 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
               />
             </div>
             <div className="field">
-              <label className="field__label">Channel</label>
+              <label className="field__label" htmlFor="sell-channel">Channel</label>
               <select
+                id="sell-channel"
                 className="select"
                 value={channel}
                 onChange={(e) => setChannel(e.target.value as Channel)}
@@ -298,8 +359,9 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
               </select>
             </div>
             <div className="field">
-              <label className="field__label">Payment</label>
+              <label className="field__label" htmlFor="sell-payment">Payment</label>
               <select
+                id="sell-payment"
                 className="select"
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
@@ -342,16 +404,17 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
 }
 
 function ProductTile({
-  product,
+  sellable,
   branchId,
-  price,
   onPick,
 }: {
-  product: ProductRow;
+  sellable: Sellable;
   branchId: string;
-  price: number;
   onPick: () => void;
 }): JSX.Element {
+  const { product, variant, price } = sellable;
+  // Stock is tracked per flavour, not per size — every size of a flavour draws
+  // from the same on-hand pool, so all its tiles show the same count.
   const available = useLiveQuery(
     () => localAvailableForProduct(branchId, product.id),
     [branchId, product.id],
@@ -375,8 +438,14 @@ function ProductTile({
         borderRadius: 14,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
         <span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.25 }}>{product.name}</span>
+        <span
+          className="pill"
+          style={{ flexShrink: 0, fontSize: 11, fontWeight: 700 }}
+        >
+          {sizeLabel(variant.size_ml)}
+        </span>
       </div>
       <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>
         {product.category}

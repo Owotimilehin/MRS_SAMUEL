@@ -68,8 +68,8 @@ const BRANCH_ROUTES = [
 /** Sign in once before each test. */
 async function signIn(page: Page): Promise<void> {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill("owner@example.com");
-  await page.getByLabel(/password/i).fill("ChangeMe!Owner-1234");
+  await page.locator("#email").fill("owner@example.com");
+  await page.locator("#password").fill("ChangeMe!Owner-1234");
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/owner|\/branch|\/factory|\/$/, { timeout: 8_000 });
 }
@@ -214,10 +214,14 @@ test.describe("Layout sanity — login & public root", () => {
       // submit button is reachable.
       const submit = page.getByRole("button", { name: /sign in/i });
       await expect(submit).toBeVisible();
-      const submitBg = await submit.evaluate(
-        (el) => getComputedStyle(el).backgroundColor,
-      );
-      expect(submitBg).not.toBe("rgba(0, 0, 0, 0)");
+      // The CTA must be visibly filled — accept either a solid colour or a
+      // gradient (the button uses a green linear-gradient, so backgroundColor
+      // is transparent while backgroundImage carries the fill).
+      const { bgColor, bgImage } = await submit.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { bgColor: s.backgroundColor, bgImage: s.backgroundImage };
+      });
+      expect(bgColor !== "rgba(0, 0, 0, 0)" || bgImage.includes("gradient")).toBe(true);
 
       await expect(page).toHaveScreenshot(`login-${viewport.name}.png`, {
         fullPage: true,

@@ -17,9 +17,22 @@ export interface ProductRow {
   is_active: boolean;
 }
 
+export interface VariantRow {
+  id: string;
+  product_id: string;
+  size_ml: number;
+  sku: string;
+  is_active: boolean;
+}
+
 export interface PriceRow {
   id: string;
   product_id: string;
+  // The exact can size this price applies to. Older devices may carry rows
+  // without it (legacy product-level pricing); the till treats a null variant
+  // price as the product's fallback.
+  variant_id: string | null;
+  size_ml: number | null;
   price_ngn: number;
   valid_from: string;
   valid_to: string | null;
@@ -87,6 +100,7 @@ export interface SyncMetaRow {
 
 export class BranchDB extends Dexie {
   products!: Table<ProductRow, string>;
+  variants!: Table<VariantRow, string>;
   prices!: Table<PriceRow, string>;
   ledger!: Table<LedgerRow, string>;
   transfers!: Table<IncomingTransferRow, string>;
@@ -113,6 +127,15 @@ export class BranchDB extends Dexie {
     // existing devices migrate automatically with no upgrade callback needed.
     this.version(2).stores({
       outbox: "id, status, next_attempt_at, depends_on, created_at_local",
+    });
+    // v3: the till is now variant-aware. Add a `variants` mirror and index
+    // prices by variant_id so a size selection maps to the right price. Dexie
+    // adds the new store + index on the bump; existing price rows are missing
+    // `variant_id`/`size_ml` until the next pull rewrites them, which is safe —
+    // the till falls back to product-level pricing for legacy rows.
+    this.version(3).stores({
+      variants: "id, product_id, size_ml",
+      prices: "id, product_id, variant_id, valid_from",
     });
   }
 }

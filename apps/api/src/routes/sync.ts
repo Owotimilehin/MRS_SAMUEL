@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { and, eq, isNull, gte, inArray } from "drizzle-orm";
 import {
   product,
+  productVariant,
   productPrice,
   stockTransfer,
   stockTransferItem,
@@ -49,6 +50,14 @@ export function syncRoutes(db: DbClient) {
     // parent ids first, then fetch children with `inArray`) avoids raw SQL.
 
     const products = await db.select().from(product).where(isNull(product.deletedAt));
+    // Active can-sizes per product. The till needs these to let staff pick a
+    // size and book the right variant price (the offline price table keys on
+    // variant_id). Not date-filtered — variants change rarely and the device
+    // needs the full set, not just recently-touched rows.
+    const variants = await db
+      .select()
+      .from(productVariant)
+      .where(isNull(productVariant.deletedAt));
     const prices = await db
       .select()
       .from(productPrice)
@@ -96,6 +105,7 @@ export function syncRoutes(db: DbClient) {
     return c.json({
       data: {
         products,
+        variants,
         prices,
         transfers,
         transfer_items: transferItems,

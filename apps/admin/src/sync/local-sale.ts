@@ -4,6 +4,10 @@ interface CreateLocalSaleInput {
   branchId: string;
   items: Array<{
     product_id: string;
+    // The exact can size sold. Sent to the server so it books that variant's
+    // price instead of defaulting to the smallest can.
+    variant_id: string;
+    size_ml: number;
     quantity: number;
     unit_price_ngn: number;
   }>;
@@ -91,6 +95,7 @@ export async function createLocalSale(
           channel: input.channel,
           items: input.items.map((i) => ({
             product_id: i.product_id,
+            variant_id: i.variant_id,
             quantity: i.quantity,
           })),
           payment_method: input.payment_method,
