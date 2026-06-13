@@ -2,9 +2,9 @@ import { sql, and, eq } from "drizzle-orm";
 import { stockLedger, type DbExecutor } from "@ms/db";
 
 /**
- * Per-variant balance at a location. Key is `${productId}:${variantId ?? "null"}`
- * so legacy NULL-variant rows form their own bucket and never merge with sized
- * rows. Values are >= 0 (the per-variant trigger guarantees it).
+ * Per-variant balance at a location. Returns one row per `(productId, variantId)`
+ * bucket, so legacy NULL-variant rows form their own bucket and never merge with
+ * sized rows. Balances are >= 0 (the per-variant trigger guarantees it).
  */
 export async function balanceByVariantAt(
   db: DbExecutor,
