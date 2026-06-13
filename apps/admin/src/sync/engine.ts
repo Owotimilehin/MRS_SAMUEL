@@ -295,6 +295,21 @@ export async function pullDeltas(branchId: string): Promise<void> {
           idempotency_key: s.idempotencyKey,
         });
       }
+      // Reconcile the full-set tables. products / variants / prices are sent as
+      // the COMPLETE active set on every pull (server filters deletedAt IS NULL /
+      // validTo IS NULL — see sync.ts), so anything the server no longer returns
+      // has been retired (a removed size or flavour, or a closed price). Drop it
+      // locally so it stops appearing on an already-synced till. Guard on a
+      // non-empty catalog so a malformed/partial response can never wipe the till.
+      if (body.data.products.length > 0) {
+        const liveProducts = new Set(body.data.products.map((p) => p.id));
+        const liveVariants = new Set(body.data.variants.map((v) => v.id));
+        const livePrices = new Set(body.data.prices.map((pr) => pr.id));
+        await local.products.filter((p) => !liveProducts.has(p.id)).delete();
+        await local.variants.filter((v) => !liveVariants.has(v.id)).delete();
+        await local.prices.filter((pr) => !livePrices.has(pr.id)).delete();
+      }
+
       await local.meta.put({
         id: "default",
         last_pull_at: body.next_cursor,
