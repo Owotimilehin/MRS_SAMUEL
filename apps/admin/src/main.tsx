@@ -9,6 +9,35 @@ import "./index.css";
 
 installTelemetry("admin");
 
+// Keep the installed app current without a hard refresh. The generated sw.js
+// uses skipWaiting + clientsClaim, so a new build activates and takes control
+// immediately; we reload the page the moment that happens (but only on an
+// UPDATE, never the first install). We also poll for a new build every 60s so a
+// long-open POS/admin session upgrades itself shortly after a deploy.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        setInterval(() => void registration.update(), 60_000);
+        registration.addEventListener("updatefound", () => {
+          const incoming = registration.installing;
+          if (!incoming) return;
+          incoming.addEventListener("statechange", () => {
+            // controller present => a worker already ran => this is an update,
+            // not the first install, so it's safe to reload to the new bundle.
+            if (incoming.state === "activated" && navigator.serviceWorker.controller) {
+              window.location.reload();
+            }
+          });
+        });
+      })
+      .catch(() => {
+        /* SW registration is best-effort; the app works without it */
+      });
+  });
+}
+
 const queryClient = new QueryClient();
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("missing #root");

@@ -7,6 +7,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      // We register the worker ourselves in main.tsx (with a periodic update
+      // check), so don't also auto-inject registerSW.js.
+      injectRegister: false,
       // Don't precache imagery the user might not visit; keep cache lean.
       includeAssets: ["favicon.ico"],
       manifest: {
