@@ -81,12 +81,14 @@ export function reportRoutes(db: DbClient) {
     const rows = await db.execute<{
       branch_id: string;
       product_id: string;
+      variant_id: string | null;
       balance: number;
     }>(sql`
-      SELECT location_id AS branch_id, product_id, COALESCE(SUM(delta), 0)::int AS balance
+      SELECT location_id AS branch_id, product_id, variant_id,
+             COALESCE(SUM(delta), 0)::int AS balance
       FROM stock_ledger
       WHERE location_type = 'branch'
-      GROUP BY location_id, product_id
+      GROUP BY location_id, product_id, variant_id
     `);
     return c.json({ data: rows });
   });

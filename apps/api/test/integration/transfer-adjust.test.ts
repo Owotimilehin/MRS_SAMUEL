@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 interface Branch { id: string; name: string }
@@ -141,11 +141,11 @@ describe("transfer adjust + variance_note", () => {
 
     // Branch should hold 10 from the clean receive (plus 18 from the previous
     // test's receive — both went to the same branch).
-    const before = await call<{ data: Record<string, number> }>(
+    const before = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    const beforeQty = before.body.data[product.id] ?? 0;
+    const beforeQty = stockBalance(before.body.data, product.id);
 
     const adj = await call<{ data: { quantityReceived: number } }>(
       "PATCH",
@@ -155,20 +155,20 @@ describe("transfer adjust + variance_note", () => {
     expect(adj.status).toBe(200);
     expect(adj.body.data.quantityReceived).toBe(12);
 
-    const after = await call<{ data: Record<string, number> }>(
+    const after = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
     // +2 ledger correction
-    expect(after.body.data[product.id]).toBe(beforeQty + 2);
+    expect(stockBalance(after.body.data, product.id)).toBe(beforeQty + 2);
   });
 
   it("owner adjusts sent count; factory ledger reflects the corrected total", async () => {
-    const factoryBefore = await call<{ data: Record<string, number> }>(
+    const factoryBefore = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    const beforeFactoryQty = factoryBefore.body.data[product.id] ?? 0;
+    const beforeFactoryQty = stockBalance(factoryBefore.body.data, product.id);
 
     const { id, itemId } = await newDispatchedTransfer(5);
 
@@ -179,11 +179,11 @@ describe("transfer adjust + variance_note", () => {
       reason: "Manifest understated dispatched count by 2",
     });
 
-    const factoryAfter = await call<{ data: Record<string, number> }>(
+    const factoryAfter = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    expect(factoryAfter.body.data[product.id]).toBe(beforeFactoryQty - 5 - 2);
+    expect(stockBalance(factoryAfter.body.data, product.id)).toBe(beforeFactoryQty - 5 - 2);
   });
 
   it("non-authenticated request cannot adjust counts", async () => {

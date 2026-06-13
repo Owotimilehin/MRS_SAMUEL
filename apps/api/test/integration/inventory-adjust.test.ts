@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 interface Factory { id: string; name: string }
@@ -86,11 +86,11 @@ describe("inventory adjust", () => {
     expect(res.status).toBe(201);
     expect(res.body.data.items_recorded).toBe(1);
 
-    const after = await call<{ data: Record<string, number> }>(
+    const after = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    expect(after.body.data[product.id]).toBe(95);
+    expect(stockBalance(after.body.data, product.id)).toBe(95);
   });
 
   it("reason other_with_note rejects an empty note", async () => {
@@ -144,11 +144,11 @@ describe("inventory adjust", () => {
   });
 
   it("delta == 0 records the header but no ledger lines", async () => {
-    const beforeBal = await call<{ data: Record<string, number> }>(
+    const beforeBal = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    const before = beforeBal.body.data[product.id] ?? 0;
+    const before = stockBalance(beforeBal.body.data, product.id);
 
     const res = await call<{ data: { items_recorded: number } }>(
       "POST",
@@ -163,11 +163,11 @@ describe("inventory adjust", () => {
     expect(res.status).toBe(201);
     expect(res.body.data.items_recorded).toBe(0);
 
-    const afterBal = await call<{ data: Record<string, number> }>(
+    const afterBal = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    expect(afterBal.body.data[product.id]).toBe(before);
+    expect(stockBalance(afterBal.body.data, product.id)).toBe(before);
   });
 
   it("unauthenticated caller cannot adjust", async () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 /**
@@ -179,8 +179,10 @@ describe("Phase 3 customer-site online order flow", () => {
     const stock = await fetch(`${baseUrl}/v1/stock/branch/${branchId}`, {
       headers: { cookie: cookies },
     });
-    const stockBody = (await stock.json()) as { data: Record<string, number> };
-    expect(stockBody.data[productId]).toBe(17); // 20 received - 3 sold
+    const stockBody = (await stock.json()) as {
+      data: Array<{ product_id: string; variant_id: string | null; balance: number }>;
+    };
+    expect(stockBalance(stockBody.data, productId)).toBe(17); // 20 received - 3 sold
   });
 
   it("stores scheduled_delivery_at when the customer schedules for later", async () => {

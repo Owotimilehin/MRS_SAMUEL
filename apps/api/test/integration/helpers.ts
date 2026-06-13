@@ -58,6 +58,21 @@ export async function loginAs(
   return res.headers.get("set-cookie") ?? "";
 }
 
+/**
+ * Sum the per-variant balance rows returned by `/v1/stock/...` and
+ * `/v1/reports/branch-stock` for a given product, across all variant
+ * buckets (incl. the NULL/legacy bucket). Tests that only ever produce
+ * variant-less stock for a product can treat this as that product's total.
+ */
+export function stockBalance(
+  rows: Array<{ product_id: string; variant_id?: string | null; balance: number }>,
+  productId: string,
+): number {
+  return rows
+    .filter((r) => r.product_id === productId)
+    .reduce((sum, r) => sum + r.balance, 0);
+}
+
 export async function seedUser(
   db: ReturnType<typeof createDbClient>,
   opts: {

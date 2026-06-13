@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 interface Branch { id: string; name: string }
@@ -108,11 +108,11 @@ describe("Phase 2 walk-up sale flow", () => {
   });
 
   it("walk-up: confirm 2 bottles → pay cash → hand over; ledger decrements", async () => {
-    const stockBefore = await call<{ data: Record<string, number> }>(
+    const stockBefore = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    expect(stockBefore.body.data[product.id]).toBe(10);
+    expect(stockBalance(stockBefore.body.data, product.id)).toBe(10);
 
     const confirm = await call<{ data: SaleOrder }>(
       "POST",
@@ -129,13 +129,13 @@ describe("Phase 2 walk-up sale flow", () => {
     expect(confirm.body.data.totalNgn).toBe(5000);
 
     // Reservation should hold the stock — available should be 8 now.
-    const stockReserved = await call<{ data: Record<string, number> }>(
+    const stockReserved = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
     // /v1/stock returns LEDGER sum, which is still 10 (no ledger row yet).
     // The reservation effect is invisible to /stock but real to availableAtBranch.
-    expect(stockReserved.body.data[product.id]).toBe(10);
+    expect(stockBalance(stockReserved.body.data, product.id)).toBe(10);
 
     const pay = await call<{ data: SaleOrder }>(
       "PATCH",
@@ -151,11 +151,11 @@ describe("Phase 2 walk-up sale flow", () => {
     expect(handOver.body.data.status).toBe("handed_over");
 
     // After payment the ledger has decremented.
-    const stockAfter = await call<{ data: Record<string, number> }>(
+    const stockAfter = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    expect(stockAfter.body.data[product.id]).toBe(8);
+    expect(stockBalance(stockAfter.body.data, product.id)).toBe(8);
   });
 
   it("reservation prevents over-selling: 2nd confirm rejected when stock reserved", async () => {
@@ -205,22 +205,22 @@ describe("Phase 2 walk-up sale flow", () => {
     );
     await call("PATCH", `/v1/branches/${branch.id}/sales/${confirm.body.data.id}/pay`);
 
-    const before = await call<{ data: Record<string, number> }>(
+    const before = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
     // Branch had 10, sold 2, sold 1 → 7
-    expect(before.body.data[product.id]).toBe(7);
+    expect(stockBalance(before.body.data, product.id)).toBe(7);
 
     await call("PATCH", `/v1/branches/${branch.id}/sales/${confirm.body.data.id}/cancel`, {
       reason: "duplicate_order",
     });
 
-    const after = await call<{ data: Record<string, number> }>(
+    const after = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    expect(after.body.data[product.id]).toBe(8);
+    expect(stockBalance(after.body.data, product.id)).toBe(8);
   });
 
   it("idempotency: same key + same payload returns the same sale row", async () => {

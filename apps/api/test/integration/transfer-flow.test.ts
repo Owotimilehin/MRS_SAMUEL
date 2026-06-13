@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 interface Branch { id: string; name: string }
@@ -88,11 +88,11 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
 
   it("production run completes and factory stock goes from 0 to 50", async () => {
     // Stock at factory should start at 0
-    const before = await call<{ data: Record<string, number> }>(
+    const before = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    expect(before.body.data[product.id] ?? 0).toBe(0);
+    expect(stockBalance(before.body.data, product.id)).toBe(0);
 
     // Create + complete production run of 50
     const create = await call<{ data: { id: string } }>("POST", "/v1/production-runs", {
@@ -105,11 +105,11 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
     const complete = await call("PATCH", `/v1/production-runs/${create.body.data.id}/complete`);
     expect(complete.status).toBe(200);
 
-    const after = await call<{ data: Record<string, number> }>(
+    const after = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    expect(after.body.data[product.id]).toBe(50);
+    expect(stockBalance(after.body.data, product.id)).toBe(50);
   });
 
   it("clean receive: send 20, branch counts 20, transfer auto-completes", async () => {
@@ -123,11 +123,11 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
     const id = create.body.data.id;
 
     // Factory stock should be 30 (50 produced - 20 dispatched)
-    const factoryStock = await call<{ data: Record<string, number> }>(
+    const factoryStock = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    expect(factoryStock.body.data[product.id]).toBe(30);
+    expect(stockBalance(factoryStock.body.data, product.id)).toBe(30);
 
     await call("PATCH", `/v1/transfers/${id}/arrive`);
 
@@ -141,11 +141,11 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
     expect(receive.body.data.status).toBe("completed");
 
     // Branch stock should now be 20
-    const branchStock = await call<{ data: Record<string, number> }>(
+    const branchStock = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    expect(branchStock.body.data[product.id]).toBe(20);
+    expect(stockBalance(branchStock.body.data, product.id)).toBe(20);
   });
 
   it("variance receive: 10 sent, 8 received → received_with_variance + needs review", async () => {
@@ -183,20 +183,20 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
     expect(approve.body.data.status).toBe("completed");
 
     // Branch stock is 20 (clean) + 8 (variance) = 28
-    const branchStock = await call<{ data: Record<string, number> }>(
+    const branchStock = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    expect(branchStock.body.data[product.id]).toBe(28);
+    expect(stockBalance(branchStock.body.data, product.id)).toBe(28);
   });
 
   it("reject path reverses the factory ledger", async () => {
     // Factory stock is currently 30 - 10 = 20 after the previous variance dispatch.
-    const before = await call<{ data: Record<string, number> }>(
+    const before = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    const beforeBalance = before.body.data[product.id]!;
+    const beforeBalance = stockBalance(before.body.data, product.id);
 
     const create = await call<{ data: Transfer }>("POST", "/v1/transfers", {
       factory_id: factory.id,
@@ -206,22 +206,22 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
     const id = create.body.data.id;
     await call("PATCH", `/v1/transfers/${id}/arrive`);
 
-    const after = await call<{ data: Record<string, number> }>(
+    const after = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    expect(after.body.data[product.id]).toBe(beforeBalance - 5);
+    expect(stockBalance(after.body.data, product.id)).toBe(beforeBalance - 5);
 
     const reject = await call<{ data: Transfer }>("PATCH", `/v1/transfers/${id}/reject`, {
       reason: "wrong delivery address",
     });
     expect(reject.body.data.status).toBe("rejected");
 
-    const final = await call<{ data: Record<string, number> }>(
+    const final = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/factory/${factory.id}`,
     );
-    expect(final.body.data[product.id]).toBe(beforeBalance);
+    expect(stockBalance(final.body.data, product.id)).toBe(beforeBalance);
   });
 
   it("send blocked when factory stock insufficient", async () => {

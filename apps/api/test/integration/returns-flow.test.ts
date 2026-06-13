@@ -3,7 +3,7 @@ import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import {
   outboxEvent,
@@ -148,11 +148,11 @@ describe("Phase 4 returns flow", () => {
 
   it("cash + restock disposition auto-completes and restocks ledger", async () => {
     const sale = await buildPaidSale({ quantity: 2, paymentMethod: "cash" });
-    const stockBefore = await call<{ data: Record<string, number> }>(
+    const stockBefore = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    const before = stockBefore.body.data[product.id]!;
+    const before = stockBalance(stockBefore.body.data, product.id);
 
     const res = await call<{ data: ReturnRow }>(
       "POST",
@@ -174,20 +174,20 @@ describe("Phase 4 returns flow", () => {
     expect(res.body.data.status).toBe("completed");
     expect(res.body.data.refundAmountNgn).toBe(2500);
 
-    const stockAfter = await call<{ data: Record<string, number> }>(
+    const stockAfter = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    expect(stockAfter.body.data[product.id]).toBe(before + 1);
+    expect(stockBalance(stockAfter.body.data, product.id)).toBe(before + 1);
   });
 
   it("quality_issue + wasted disposition flags pending_approval until owner approves", async () => {
     const sale = await buildPaidSale({ quantity: 2, paymentMethod: "cash" });
-    const stockBefore = await call<{ data: Record<string, number> }>(
+    const stockBefore = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    const before = stockBefore.body.data[product.id]!;
+    const before = stockBalance(stockBefore.body.data, product.id);
 
     const res = await call<{ data: ReturnRow }>(
       "POST",
@@ -210,11 +210,11 @@ describe("Phase 4 returns flow", () => {
     expect(res.body.data.status).toBe("pending_approval");
 
     // Pending: ledger should be unchanged.
-    const stockMid = await call<{ data: Record<string, number> }>(
+    const stockMid = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    expect(stockMid.body.data[product.id]).toBe(before);
+    expect(stockBalance(stockMid.body.data, product.id)).toBe(before);
 
     // Outbox should carry the review event.
     const events = await db
@@ -237,11 +237,11 @@ describe("Phase 4 returns flow", () => {
     expect(approve.body.data.status).toBe("completed");
 
     // After approval: two ledger rows — +1 in, -1 waste → net zero stock change.
-    const stockAfter = await call<{ data: Record<string, number> }>(
+    const stockAfter = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    expect(stockAfter.body.data[product.id]).toBe(before);
+    expect(stockBalance(stockAfter.body.data, product.id)).toBe(before);
 
     const ledgerRows = await db
       .select()
@@ -255,11 +255,11 @@ describe("Phase 4 returns flow", () => {
 
   it("replacement disposition creates a free sale order with outbound ledger", async () => {
     const sale = await buildPaidSale({ quantity: 2, paymentMethod: "cash" });
-    const stockBefore = await call<{ data: Record<string, number> }>(
+    const stockBefore = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    const before = stockBefore.body.data[product.id]!;
+    const before = stockBalance(stockBefore.body.data, product.id);
 
     const res = await call<{ data: ReturnRow }>(
       "POST",
@@ -281,11 +281,11 @@ describe("Phase 4 returns flow", () => {
     expect(res.body.data.status).toBe("completed");
 
     // Net ledger: +1 (restocked) -1 (replacement leaving) = 0
-    const stockAfter = await call<{ data: Record<string, number> }>(
+    const stockAfter = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
       `/v1/stock/branch/${branch.id}`,
     );
-    expect(stockAfter.body.data[product.id]).toBe(before);
+    expect(stockBalance(stockAfter.body.data, product.id)).toBe(before);
 
     // A new free SaleOrder should exist.
     const freeOrders = await db
