@@ -105,3 +105,59 @@ describe("stock_ledger non-negative balance trigger", () => {
     await sql`DELETE FROM stock_ledger WHERE location_id = ${fakeLocation}::uuid`;
   });
 });
+
+describe("stock_ledger non-negative balance trigger (per-variant, 0041)", () => {
+  it("enforces the floor per (location, product, variant), not per flavour", async () => {
+    if (!available) return;
+    const fakeLocation = "88888888-8888-8888-8888-888888888888";
+    const production = "99999999-9999-9999-9999-999999999999";
+    const sale = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+    // Create a fresh product with two active variants so this test is
+    // self-contained and doesn't depend on seeded data shapes.
+    const [prod] = await sql<{ id: string }[]>`
+      INSERT INTO product (name, slug, category)
+      VALUES ('Per-Variant Test Flavour', 'per-variant-test-flavour-' || gen_random_uuid(), 'regular')
+      RETURNING id
+    `;
+
+    const [variantA] = await sql<{ id: string }[]>`
+      INSERT INTO product_variant (product_id, size_ml, sku)
+      VALUES (${prod.id}::uuid, 330, 'PVT-330-' || gen_random_uuid())
+      RETURNING id
+    `;
+    const [variantB] = await sql<{ id: string }[]>`
+      INSERT INTO product_variant (product_id, size_ml, sku)
+      VALUES (${prod.id}::uuid, 650, 'PVT-650-' || gen_random_uuid())
+      RETURNING id
+    `;
+
+    try {
+      // +5 production run for variantA only. variantB stays at 0.
+      await sql`
+        INSERT INTO stock_ledger (location_type, location_id, product_id, variant_id, delta, source_type, source_id)
+        VALUES ('factory', ${fakeLocation}::uuid, ${prod.id}::uuid, ${variantA.id}::uuid, 5, 'production_run', ${production}::uuid)
+      `;
+
+      // Flavour total is 5, but variantB's own balance is 0 — a -1 for
+      // variantB must be rejected even though the pooled flavour total
+      // would still be non-negative.
+      await expect(async () => {
+        await sql`
+          INSERT INTO stock_ledger (location_type, location_id, product_id, variant_id, delta, source_type, source_id)
+          VALUES ('factory', ${fakeLocation}::uuid, ${prod.id}::uuid, ${variantB.id}::uuid, -1, 'sale', ${sale}::uuid)
+        `;
+      }).rejects.toMatchObject({ code: "23514" });
+
+      // -5 against variantA (balance 5) is fine.
+      await sql`
+        INSERT INTO stock_ledger (location_type, location_id, product_id, variant_id, delta, source_type, source_id)
+        VALUES ('factory', ${fakeLocation}::uuid, ${prod.id}::uuid, ${variantA.id}::uuid, -5, 'sale', ${sale}::uuid)
+      `;
+    } finally {
+      await sql`DELETE FROM stock_ledger WHERE location_id = ${fakeLocation}::uuid`;
+      await sql`DELETE FROM product_variant WHERE product_id = ${prod.id}::uuid`;
+      await sql`DELETE FROM product WHERE id = ${prod.id}::uuid`;
+    }
+  });
+});

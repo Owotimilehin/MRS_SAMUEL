@@ -281,6 +281,13 @@
       "when": 1781800000000,
       "tag": "0040_storefront_marketing",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1781900000000,
+      "tag": "0041_stock_ledger_per_variant",
+      "breakpoints": true
     }
   ]
 }
