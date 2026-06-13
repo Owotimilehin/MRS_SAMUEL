@@ -50,5 +50,8 @@ export const stockLedger = pgTable(
     idxLocProduct: index("idx_ledger_loc_product").on(t.locationType, t.locationId, t.productId),
     idxOccurred: index("idx_ledger_occurred").on(t.occurredAt),
     idxVariant: index("idx_ledger_variant").on(t.variantId),
+    idxLocProductVariant: index("idx_ledger_loc_product_variant").on(
+      t.locationType, t.locationId, t.productId, t.variantId,
+    ),
   }),
 );
