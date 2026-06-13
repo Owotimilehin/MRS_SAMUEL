@@ -6,7 +6,7 @@ import type { Size } from "@/lib/visuals";
 import { CLUSTERS } from "@/lib/visuals";
 import { fetchProductBySlug, fetchProducts } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";
-import { useCart, formatNaira } from "@/lib/cart";
+import { useCart, formatNaira, isPreorderSize, quickAddSize } from "@/lib/cart";
 
 export const Route = createFileRoute("/juices/$id")({
   loader: async ({ params }) => {
@@ -45,10 +45,14 @@ function Page() {
   const { product: p, related } = Route.useLoaderData();
   const { add, setOpen } = useCart();
   const navigate = useNavigate();
-  const [size, setSize] = useState<Size>("330ml");
+  // Default to the deliverable big can; the small can is preorder-only.
+  const [size, setSize] = useState<Size>(quickAddSize(p));
   const [qty, setQty] = useState(1);
 
   const clusterImg = CLUSTERS[p.cluster];
+  const preorder = isPreorderSize(size);
+  // Only offer sizes the product actually sells.
+  const sizes = (["330ml", "650ml"] as const).filter((s) => p.variantIds[s]);
 
   return (
     <SiteShell>
@@ -97,15 +101,20 @@ function Page() {
 
             {/* Size + Qty + Add */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              {(["330ml", "650ml"] as const).map((s) => (
+              {sizes.map((s) => (
                 <button
                   key={s}
                   onClick={() => setSize(s)}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  className={`relative rounded-full px-4 py-2 text-sm font-semibold transition ${
                     size === s ? "bg-[color:var(--brand)] text-white" : "bg-white ring-1 ring-black/10 text-[color:var(--brand)]"
                   }`}
                 >
                   {s} · {formatNaira(p.prices[s])}
+                  {isPreorderSize(s) && (
+                    <span className="ml-2 rounded-full bg-[color:var(--brand-orange)]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--brand-orange)]">
+                      Preorder
+                    </span>
+                  )}
                 </button>
               ))}
               <div className="ml-1 flex items-center gap-2 rounded-full bg-white ring-1 ring-black/10 px-2 py-1">
@@ -137,7 +146,13 @@ function Page() {
                 <Zap className="h-4 w-4" /> Buy now
               </button>
             </div>
-            <p className="mt-3 text-xs text-[color:var(--brand)]/60">Free delivery on orders over ₦20,000 · Lagos same-day</p>
+            {preorder ? (
+              <p className="mt-3 text-xs font-medium text-[color:var(--brand-orange)]">
+                Small (330ml) cans are made to order — you'll pick a delivery day at checkout.
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-[color:var(--brand)]/60">Free delivery on orders over ₦20,000 · Lagos same-day</p>
+            )}
           </div>
         </div>
       </section>

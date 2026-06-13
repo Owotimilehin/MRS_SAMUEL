@@ -36,7 +36,7 @@ function todayLagos(): string {
 
 function Page() {
   const { branches } = Route.useLoaderData();
-  const { items, subtotal, clear } = useCart();
+  const { items, subtotal, clear, hasPreorder } = useCart();
   const branchId = branches[0]?.id ?? null;
 
   // --- form ---
@@ -51,6 +51,13 @@ function Page() {
 
   const outsideLagos = form.state !== "Lagos";
   const scheduled = form.when === "schedule";
+
+  // Preorder (small 330ml) items are made to order — they can't ship same-day,
+  // so a basket containing one is locked to the scheduled-delivery path.
+  useEffect(() => {
+    if (hasPreorder && form.when !== "schedule") set("when", "schedule");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPreorder]);
 
   // --- live delivery quote (Lagos + now only) ---
   const [quoting, setQuoting] = useState(false);
@@ -226,8 +233,13 @@ function Page() {
               {/* When */}
               <section>
                 <h2 className="font-display text-2xl text-[color:var(--brand)]">When?</h2>
+                {hasPreorder && (
+                  <p className="mt-2 rounded-xl bg-[color:var(--brand-orange)]/10 px-4 py-2.5 text-sm text-[color:var(--brand-orange)]">
+                    Your basket has a small (330ml) preorder can — these are pressed to order, so please pick a delivery day below.
+                  </p>
+                )}
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <Toggle active={form.when === "now"} onClick={() => set("when", "now")} icon={<Truck className="h-4 w-4" />} title="Deliver now" desc={outsideLagos ? "Arranged after checkout" : "Live courier today"} />
+                  <Toggle active={form.when === "now"} disabled={hasPreorder} onClick={() => set("when", "now")} icon={<Truck className="h-4 w-4" />} title="Deliver now" desc={hasPreorder ? "Not available for preorder" : outsideLagos ? "Arranged after checkout" : "Live courier today"} />
                   <Toggle active={form.when === "schedule"} onClick={() => set("when", "schedule")} icon={<CalendarClock className="h-4 w-4" />} title="Schedule" desc="Pick a day & window" />
                 </div>
                 {scheduled && (
@@ -345,9 +357,9 @@ function Row({ label, value }: { label: string; value: string }) {
   return (<div className="flex items-center justify-between text-white/80"><span>{label}</span><span className="font-semibold text-white">{value}</span></div>);
 }
 
-function Toggle({ active, onClick, icon, title, desc }: { active: boolean; onClick: () => void; icon: ReactNode; title: string; desc: string }) {
+function Toggle({ active, onClick, icon, title, desc, disabled }: { active: boolean; onClick: () => void; icon: ReactNode; title: string; desc: string; disabled?: boolean }) {
   return (
-    <button onClick={onClick} className={`flex items-start gap-3 rounded-2xl px-4 py-3 text-left ring-2 transition ${active ? "ring-[color:var(--brand-orange)] bg-[color:var(--brand-orange)]/5" : "ring-black/5 hover:ring-black/15"}`}>
+    <button onClick={onClick} disabled={disabled} className={`flex items-start gap-3 rounded-2xl px-4 py-3 text-left ring-2 transition ${disabled ? "opacity-40 cursor-not-allowed ring-black/5" : active ? "ring-[color:var(--brand-orange)] bg-[color:var(--brand-orange)]/5" : "ring-black/5 hover:ring-black/15"}`}>
       <span className={`grid h-9 w-9 place-items-center rounded-full ${active ? "bg-[color:var(--brand-orange)] text-white" : "bg-black/5 text-[color:var(--brand)]"}`}>{icon}</span>
       <div><div className="font-semibold text-[color:var(--brand)]">{title}</div><div className="text-xs text-[color:var(--brand)]/60">{desc}</div></div>
     </button>

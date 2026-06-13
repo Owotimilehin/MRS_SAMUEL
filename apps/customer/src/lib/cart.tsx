@@ -2,6 +2,19 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
 
+// Small (330ml) cans are made to order — preorder only. They can't ship same-day,
+// so checkout forces a scheduled delivery day when the basket holds one.
+export const PREORDER_SIZE: Size = "330ml";
+export const isPreorderSize = (size: Size): boolean => size === PREORDER_SIZE;
+
+/** The size a one-tap "quick add" should use: the deliverable big can if the
+ *  product sells it, otherwise whatever single size exists (e.g. Lemon Sip 330ml). */
+export function quickAddSize(product: Product): Size {
+  if (product.variantIds["650ml"]) return "650ml";
+  if (product.variantIds["330ml"]) return "330ml";
+  return "650ml";
+}
+
 export interface CartItem {
   id: string;
   product: Product;
@@ -9,6 +22,7 @@ export interface CartItem {
   variantId: string;
   unitPrice: number;
   qty: number;
+  preorder: boolean;
 }
 
 interface CartCtx {
@@ -21,6 +35,7 @@ interface CartCtx {
   setOpen: (v: boolean) => void;
   subtotal: number;
   count: number;
+  hasPreorder: boolean;
 }
 
 const Ctx = createContext<CartCtx | null>(null);
@@ -34,7 +49,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setItems(JSON.parse(raw) as CartItem[]);
+      if (raw) {
+        const saved = JSON.parse(raw) as CartItem[];
+        // Backfill preorder for carts saved before the field existed.
+        setItems(saved.map((i) => ({ ...i, preorder: i.preorder ?? isPreorderSize(i.size) })));
+      }
     } catch {
       /* ignore corrupt cart */
     }
@@ -56,7 +75,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems((prev) => {
       const exist = prev.find((i) => i.id === id);
       if (exist) return prev.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i));
-      return [...prev, { id, product, size, variantId, unitPrice, qty: 1 }];
+      return [...prev, { id, product, size, variantId, unitPrice, qty: 1, preorder: isPreorderSize(size) }];
     });
     setOpen(true);
   };
@@ -68,9 +87,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const subtotal = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
   const count = items.reduce((s, i) => s + i.qty, 0);
+  const hasPreorder = items.some((i) => i.preorder);
 
   return (
-    <Ctx.Provider value={{ items, add, remove, setQty, clear, open, setOpen, subtotal, count }}>
+    <Ctx.Provider value={{ items, add, remove, setQty, clear, open, setOpen, subtotal, count, hasPreorder }}>
       {children}
     </Ctx.Provider>
   );

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
 import { getFruitFor } from "@/lib/visuals";
-import { useCart, formatNaira } from "@/lib/cart";
+import { useCart, formatNaira, isPreorderSize, quickAddSize } from "@/lib/cart";
 
 const ALL_SIZES: Size[] = ["330ml", "650ml"];
 
@@ -21,7 +21,7 @@ export function ProductDetail({ product, onClose }: Props) {
   const sizes = product ? ALL_SIZES.filter((s) => product.variantIds[s]) : ALL_SIZES;
 
   useEffect(() => {
-    if (product) setSize(ALL_SIZES.find((s) => product.variantIds[s]) ?? "330ml");
+    if (product) setSize(quickAddSize(product));
   }, [product]);
 
   return (
@@ -135,7 +135,14 @@ export function ProductDetail({ product, onClose }: Props) {
                           color: "var(--brand)",
                         }}
                       >
-                        <div className="text-xs font-semibold opacity-60">{s}</div>
+                        <div className="text-xs font-semibold opacity-60">
+                          {s}
+                          {isPreorderSize(s) && (
+                            <span className="ml-1.5 rounded-full bg-[color:var(--brand-orange)]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[color:var(--brand-orange)]">
+                              Preorder
+                            </span>
+                          )}
+                        </div>
                         <div className="font-display text-xl font-semibold">
                           {formatNaira(product.prices[s])}
                         </div>
@@ -143,6 +150,11 @@ export function ProductDetail({ product, onClose }: Props) {
                     );
                   })}
                 </div>
+                {isPreorderSize(size) && (
+                  <p className="mt-2 text-xs font-medium text-[color:var(--brand-orange)]">
+                    Small cans are made to order — pick a delivery day at checkout.
+                  </p>
+                )}
               </div>
 
               <motion.button

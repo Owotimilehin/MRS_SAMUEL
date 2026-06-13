@@ -4,8 +4,9 @@ import { getFruitFor } from "@/lib/visuals";
 import { fetchProducts } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
-import { ArrowRight } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 import { motion } from "framer-motion";
+import { useCart, quickAddSize } from "@/lib/cart";
 import clusterTropical from "@/assets/decor/cluster-tropical.png";
 
 export const Route = createFileRoute("/juices/")({
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/juices/")({
 
 function Page() {
   const { products } = Route.useLoaderData();
+  const { add } = useCart();
   const [filter, setFilter] = useState<"All" | "Classic" | "Special">("All");
   const [ingFilter, setIngFilter] = useState<string | null>(null);
 
@@ -131,11 +133,21 @@ function Page() {
                   </div>
                   <div className="mt-1 flex items-center justify-between">
                     <div className="font-display text-xl font-semibold" style={{ color: p.palette.accent }}>
-                      ₦{p.prices["330ml"].toLocaleString("en-NG")}
+                      From ₦{Math.min(...Object.values(p.prices)).toLocaleString("en-NG")}
                     </div>
-                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[color:var(--brand)]/70 group-hover:text-[color:var(--brand-orange)] transition">
-                      Read more <ArrowRight className="h-3.5 w-3.5" />
-                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        add(p, quickAddSize(p));
+                      }}
+                      className="grid h-10 w-10 place-items-center rounded-full text-white transition hover:scale-105 active:scale-95"
+                      style={{ background: p.palette.accent }}
+                      aria-label={`Add ${p.name} to cart`}
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </Link>

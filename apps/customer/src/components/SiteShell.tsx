@@ -4,6 +4,7 @@ import { Send, Instagram } from "lucide-react";
 import { AnimatedBackground } from "@/components/AnimatedBackground";
 import { Nav } from "@/components/Nav";
 import { CartDrawer } from "@/components/CartDrawer";
+import { FloatingCart } from "@/components/FloatingCart";
 import logoWhite from "@/assets/logo-white.png";
 
 export function SiteShell({ children }: { children: ReactNode }) {
@@ -15,6 +16,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
       <Newsletter />
       <Footer />
       <CartDrawer />
+      <FloatingCart />
     </>
   );
 }

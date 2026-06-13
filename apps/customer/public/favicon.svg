@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Mrs. Samuel Fruit Juice">
+  <rect width="64" height="64" rx="14" fill="#15512b"/>
+  <path d="M32 9 C21 27 16 35 16 43 a16 16 0 1 0 32 0 C48 35 43 27 32 9 Z" fill="#f4a522"/>
+  <circle cx="25" cy="44" r="4.5" fill="#fff6e6" opacity="0.85"/>
+</svg>
