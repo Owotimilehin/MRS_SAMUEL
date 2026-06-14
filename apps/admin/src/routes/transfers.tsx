@@ -40,8 +40,15 @@ interface Product {
   name: string;
 }
 
+interface Variant {
+  id: string;
+  size_ml: number | null;
+  sku?: string | null;
+}
+
 interface DraftItem {
   product_id: string;
+  variant_id: string;
   quantity_sent: number;
   unit_cost_ngn: number;
 }
@@ -226,12 +233,40 @@ function CreateTransferModal({
   const [items, setItems] = useState<DraftItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [variantsByProduct, setVariantsByProduct] = useState<Record<string, Variant[]>>({});
+
+  async function ensureVariants(productId: string): Promise<Variant[]> {
+    if (variantsByProduct[productId]) return variantsByProduct[productId]!;
+    try {
+      const res = await api<{ data: { variants?: Variant[] } }>(`/products/${productId}`);
+      const list = res.data.variants ?? [];
+      setVariantsByProduct((s) => ({ ...s, [productId]: list }));
+      return list;
+    } catch {
+      setVariantsByProduct((s) => ({ ...s, [productId]: [] }));
+      return [];
+    }
+  }
 
   function addItem(): void {
-    const used = new Set(items.map((i) => i.product_id));
-    const next = products.find((p) => !used.has(p.id));
+    // Allow same flavour multiple times — dedupe is per (product_id, variant_id) pair.
+    // Here we simply allow duplicates (user can pick the size per row after adding).
+    const next = products[0];
     if (!next) return;
-    setItems((it) => [...it, { product_id: next.id, quantity_sent: 50, unit_cost_ngn: 0 }]);
+    const existing = variantsByProduct[next.id] ?? [];
+    const firstVariant = existing[0]?.id ?? "";
+    setItems((it) => [...it, { product_id: next.id, variant_id: firstVariant, quantity_sent: 50, unit_cost_ngn: 0 }]);
+    void ensureVariants(next.id).then((vs) => {
+      if (vs[0]) {
+        setItems((it) =>
+          it.map((row, idx) =>
+            idx === it.length - 1 && row.product_id === next.id && !row.variant_id
+              ? { ...row, variant_id: vs[0]!.id }
+              : row,
+          ),
+        );
+      }
+    });
   }
   function updateItem(idx: number, patch: Partial<DraftItem>): void {
     setItems((it) => it.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
@@ -255,6 +290,7 @@ function CreateTransferModal({
           driver_name: driver || undefined,
           items: items.map((it) => ({
             product_id: it.product_id,
+            variant_id: it.variant_id || undefined,
             quantity_sent: Number(it.quantity_sent),
             unit_cost_ngn: it.unit_cost_ngn ? Number(it.unit_cost_ngn) : undefined,
           })),
@@ -356,6 +392,7 @@ function CreateTransferModal({
                   <thead>
                     <tr>
                       <th>Product</th>
+                      <th>Size</th>
                       <th className="table__num">Quantity</th>
                       <th className="table__num">Unit cost (₦)</th>
                       <th />
@@ -368,13 +405,39 @@ function CreateTransferModal({
                           <select
                             className="select"
                             value={it.product_id}
-                            onChange={(e) => updateItem(idx, { product_id: e.target.value })}
+                            onChange={(e) => {
+                              const pid = e.target.value;
+                              updateItem(idx, { product_id: pid, variant_id: "" });
+                              void ensureVariants(pid).then((vs) => {
+                                if (vs[0]) {
+                                  updateItem(idx, { variant_id: vs[0].id });
+                                }
+                              });
+                            }}
                           >
                             {products.map((p) => (
                               <option key={p.id} value={p.id}>
                                 {p.name}
                               </option>
                             ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            className="select"
+                            value={it.variant_id}
+                            disabled={!it.product_id || (variantsByProduct[it.product_id]?.length ?? 0) === 0}
+                            onChange={(e) => updateItem(idx, { variant_id: e.target.value })}
+                          >
+                            {(variantsByProduct[it.product_id] ?? []).length === 0 ? (
+                              <option value="">—</option>
+                            ) : (
+                              (variantsByProduct[it.product_id] ?? []).map((v) => (
+                                <option key={v.id} value={v.id}>
+                                  {v.size_ml ? `${v.size_ml}ml` : (v.sku ?? v.id.slice(0, 6))}
+                                </option>
+                              ))
+                            )}
                           </select>
                         </td>
                         <td>
@@ -417,7 +480,7 @@ function CreateTransferModal({
                     type="button"
                     className="btn btn--subtle btn--sm"
                     onClick={addItem}
-                    disabled={items.length >= products.length}
+                    disabled={products.length === 0}
                   >
                     + Add product
                   </button>
