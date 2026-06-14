@@ -28,6 +28,7 @@ export interface Product {
   image: string;
   prices: { "330ml": number; "650ml": number };
   variantIds: Partial<Record<Size, string>>;
+  preorderBySize: Partial<Record<Size, boolean>>;
   note?: string;
 }
 
@@ -36,10 +37,12 @@ const FALLBACK_PALETTE = { surface: "#fdf3e7", accent: "#f6a623", text: "#3a2a18
 export function toUiProduct(api: ApiProduct): Product {
   const prices: Record<string, number> = {};
   const variantIds: Partial<Record<Size, string>> = {};
+  const preorderBySize: Partial<Record<Size, boolean>> = {};
   for (const v of api.variants) {
     const label = `${v.size_ml}ml` as Size;
     prices[label] = v.price_ngn;
     variantIds[label] = v.id;
+    preorderBySize[label] = v.preorder_only;
   }
   // Guarantee both keys exist so existing UI that reads prices["330ml"]/["650ml"]
   // never renders NaN. Fall back to the cheapest known price.
@@ -61,6 +64,7 @@ export function toUiProduct(api: ApiProduct): Product {
     image: api.image_url ?? api.bottle_url ?? DEFAULT_BOTTLE,
     prices: { "330ml": prices["330ml"] ?? cheapest, "650ml": prices["650ml"] ?? cheapest },
     variantIds,
+    preorderBySize,
     ...(api.note ? { note: api.note } : {}),
   };
 }

@@ -8,6 +8,7 @@ type CatalogVariantRow = {
   size_ml: number;
   sku: string;
   price_ngn: number | null;
+  preorder_only: boolean;
   [key: string]: unknown;
 };
 
@@ -53,7 +54,7 @@ interface CatalogProductOut {
   cluster_url: string | null;
   fruit_url: string | null;
   price_ngn: number;
-  variants: Array<{ id: string; size_ml: number; sku: string; price_ngn: number }>;
+  variants: Array<{ id: string; size_ml: number; sku: string; price_ngn: number; preorder_only: boolean }>;
 }
 
 // Shared product SELECT: marketing content + colour palette + resolved media
@@ -93,6 +94,7 @@ export function publicCatalogRoutes(db: DbClient) {
              pv.id   AS variant_id,
              pv.size_ml,
              pv.sku,
+             pv.preorder_only,
              pp.price_ngn
       FROM product_variant pv
       LEFT JOIN product_price pp
@@ -104,7 +106,7 @@ export function publicCatalogRoutes(db: DbClient) {
     for (const v of variantRows) {
       if (v.price_ngn == null) continue; // unpriced variants are hidden from the public site
       const list = byProduct.get(v.product_id) ?? [];
-      list.push({ id: v.variant_id, size_ml: v.size_ml, sku: v.sku, price_ngn: v.price_ngn });
+      list.push({ id: v.variant_id, size_ml: v.size_ml, sku: v.sku, price_ngn: v.price_ngn, preorder_only: v.preorder_only });
       byProduct.set(v.product_id, list);
     }
     return byProduct;

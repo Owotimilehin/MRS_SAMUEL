@@ -52,8 +52,8 @@ function Page() {
   const outsideLagos = form.state !== "Lagos";
   const scheduled = form.when === "schedule";
 
-  // Preorder (small 330ml) items are made to order — they can't ship same-day,
-  // so a basket containing one is locked to the scheduled-delivery path.
+  // Preorder items are made to order — they can't ship same-day, so a basket
+  // containing one is locked to the scheduled-delivery path.
   useEffect(() => {
     if (hasPreorder && form.when !== "schedule") set("when", "schedule");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,7 +235,7 @@ function Page() {
                 <h2 className="font-display text-2xl text-[color:var(--brand)]">When?</h2>
                 {hasPreorder && (
                   <p className="mt-2 rounded-xl bg-[color:var(--brand-orange)]/10 px-4 py-2.5 text-sm text-[color:var(--brand-orange)]">
-                    Your basket has a small (330ml) preorder can — these are pressed to order, so please pick a delivery day below.
+                    Your basket has a preorder item — these are pressed to order, so please pick a delivery day below.
                   </p>
                 )}
                 <div className="mt-4 grid grid-cols-2 gap-3">

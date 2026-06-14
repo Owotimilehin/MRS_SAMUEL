@@ -140,7 +140,7 @@ export function ProductDetail({ product, onClose }: Props) {
                       >
                         <div className="text-xs font-semibold opacity-60">
                           {s}
-                          {isPreorderSize(s) && (
+                          {isPreorderSize(product, s) && (
                             <span className="ml-1.5 rounded-full bg-[color:var(--brand-orange)]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[color:var(--brand-orange)]">
                               Preorder
                             </span>
@@ -153,9 +153,9 @@ export function ProductDetail({ product, onClose }: Props) {
                     );
                   })}
                 </div>
-                {isPreorderSize(size) && (
+                {isPreorderSize(product, size) && (
                   <p className="mt-2 text-xs font-medium text-[color:var(--brand-orange)]">
-                    Small cans are made to order — pick a delivery day at checkout.
+                    This size is made to order — pick a delivery day at checkout.
                   </p>
                 )}
               </div>

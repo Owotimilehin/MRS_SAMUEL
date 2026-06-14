@@ -6,6 +6,7 @@ export interface ApiVariant {
   size_ml: number;
   sku: string;
   price_ngn: number;
+  preorder_only: boolean;
 }
 
 export interface ApiPalette {

@@ -2,14 +2,20 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
 
-// Small (330ml) cans are made to order — preorder only. They can't ship same-day,
-// so checkout forces a scheduled delivery day when the basket holds one.
-export const PREORDER_SIZE: Size = "330ml";
-export const isPreorderSize = (size: Size): boolean => size === PREORDER_SIZE;
+// Some sizes are made to order — preorder only (driven by the variant's
+// `preorder_only` flag from the API). They can't ship same-day, so checkout
+// forces a scheduled delivery day when the basket holds one.
+export const isPreorderSize = (product: Product, size: Size): boolean =>
+  product.preorderBySize[size] ?? false;
 
-/** The size a one-tap "quick add" should use: the deliverable big can if the
- *  product sells it, otherwise whatever single size exists (e.g. Lemon Sip 330ml). */
+/** The size a one-tap "quick add" should use: the largest deliverable
+ *  (non-preorder) size the product sells, otherwise whatever single size
+ *  exists (e.g. a product sold only as a preorder-only size). */
 export function quickAddSize(product: Product): Size {
+  const deliverable = (["650ml", "330ml"] as const).find(
+    (s) => product.variantIds[s] && !isPreorderSize(product, s),
+  );
+  if (deliverable) return deliverable;
   if (product.variantIds["650ml"]) return "650ml";
   if (product.variantIds["330ml"]) return "330ml";
   return "650ml";
@@ -52,7 +58,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (raw) {
         const saved = JSON.parse(raw) as CartItem[];
         // Backfill preorder for carts saved before the field existed.
-        setItems(saved.map((i) => ({ ...i, preorder: i.preorder ?? isPreorderSize(i.size) })));
+        setItems(saved.map((i) => ({ ...i, preorder: i.preorder ?? isPreorderSize(i.product, i.size) })));
       }
     } catch {
       /* ignore corrupt cart */
@@ -75,7 +81,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems((prev) => {
       const exist = prev.find((i) => i.id === id);
       if (exist) return prev.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i));
-      return [...prev, { id, product, size, variantId, unitPrice, qty: 1, preorder: isPreorderSize(size) }];
+      return [...prev, { id, product, size, variantId, unitPrice, qty: 1, preorder: isPreorderSize(product, size) }];
     });
     setOpen(true);
   };

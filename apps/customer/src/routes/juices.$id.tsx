@@ -50,7 +50,7 @@ function Page() {
   const [qty, setQty] = useState(1);
 
   const clusterImg = CLUSTERS[p.cluster];
-  const preorder = isPreorderSize(size);
+  const preorder = isPreorderSize(p, size);
   // Only offer sizes the product actually sells.
   const sizes = (["330ml", "650ml"] as const).filter((s) => p.variantIds[s]);
 
@@ -110,7 +110,7 @@ function Page() {
                   }`}
                 >
                   {s} · {formatNaira(p.prices[s])}
-                  {isPreorderSize(s) && (
+                  {isPreorderSize(p, s) && (
                     <span className="ml-2 rounded-full bg-[color:var(--brand-orange)]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--brand-orange)]">
                       Preorder
                     </span>
@@ -148,7 +148,7 @@ function Page() {
             </div>
             {preorder ? (
               <p className="mt-3 text-xs font-medium text-[color:var(--brand-orange)]">
-                Small (330ml) cans are made to order — you'll pick a delivery day at checkout.
+                This size is made to order — you'll pick a delivery day at checkout.
               </p>
             ) : (
               <p className="mt-3 text-xs text-[color:var(--brand)]/60">Free delivery on orders over ₦20,000 · Lagos same-day</p>
