@@ -2,6 +2,7 @@ import { pgTable, uuid, integer, text, timestamp, pgEnum } from "drizzle-orm/pg-
 import { factory } from "./factory.js";
 import { branch } from "./branch.js";
 import { product } from "./product.js";
+import { productVariant } from "./product-variant.js";
 import { adminUser } from "./admin-user.js";
 
 export const stockTransferStatus = pgEnum("stock_transfer_status", [
@@ -61,6 +62,7 @@ export const stockTransferItem = pgTable("stock_transfer_item", {
     .notNull()
     .references(() => stockTransfer.id, { onDelete: "cascade" }),
   productId: uuid("product_id").notNull().references(() => product.id, { onDelete: "restrict" }),
+  variantId: uuid("variant_id").references(() => productVariant.id, { onDelete: "restrict" }),
   quantitySent: integer("quantity_sent").notNull(),
   quantityReceived: integer("quantity_received"),
   varianceReason: stockTransferVarianceReason("variance_reason"),

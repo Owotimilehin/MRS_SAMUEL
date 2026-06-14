@@ -302,6 +302,13 @@
       "when": 1782100000000,
       "tag": "0043_backfill_bottle_materials",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1782200000000,
+      "tag": "0044_transfer_item_variant",
+      "breakpoints": true
     }
   ]
 }
