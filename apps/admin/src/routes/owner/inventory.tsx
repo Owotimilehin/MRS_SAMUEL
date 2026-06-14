@@ -4,15 +4,24 @@ import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useAuthUser } from "../../lib/auth.js";
 
-interface BranchStockRow {
-  branch_id: string;
+// Per-variant stock row as returned by /stock/factory/:id and /reports/branch-stock.
+interface StockRow {
   product_id: string;
+  variant_id: string | null;
   balance: number;
+}
+interface BranchStockRow extends StockRow {
+  branch_id: string;
 }
 interface Product {
   id: string;
   name: string;
   category: string;
+}
+interface Variant {
+  id: string;
+  product_id: string;
+  size_ml: number;
 }
 interface Branch {
   id: string;
@@ -22,12 +31,22 @@ interface Factory {
   id: string;
   name: string;
 }
+// One displayed line: a flavour at a specific can size, or its legacy
+// "unassigned" (NULL-variant) bucket that predates per-size tracking.
+interface GridRow {
+  productId: string;
+  productName: string;
+  variantId: string | null;
+  label: string;
+  unassigned: boolean;
+}
 interface AdjustTarget {
   locationType: "factory" | "branch";
   locationId: string;
   locationName: string;
   productId: string;
-  productName: string;
+  variantId: string | null;
+  label: string;
   currentQty: number;
 }
 
@@ -41,13 +60,18 @@ const REASONS: Array<{ value: string; label: string }> = [
   { value: "other_with_note", label: "Other (specify)" },
 ];
 
+const sizeLabel = (ml: number): string => (ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`);
+const heatKey = (locId: string, productId: string, variantId: string | null): string =>
+  `${locId}|${productId}|${variantId ?? "null"}`;
+
 export function InventoryPage(): JSX.Element {
   const user = useAuthUser();
   const isOwner = user.role === "owner";
 
   const [branchStock, setBranchStock] = useState<BranchStockRow[]>([]);
-  const [factoryStock, setFactoryStock] = useState<Record<string, Record<string, number>>>({});
+  const [factoryStock, setFactoryStock] = useState<Record<string, StockRow[]>>({});
   const [products, setProducts] = useState<Product[]>([]);
+  const [variants, setVariants] = useState<Variant[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [factories, setFactories] = useState<Factory[]>([]);
   const [view, setView] = useState<"branch" | "factory">("branch");
@@ -73,16 +97,26 @@ export function InventoryPage(): JSX.Element {
         setProducts(p.data);
         setBranches(b.data);
         setFactories(f.data);
-        const fs = await Promise.all(
-          f.data.map((row) =>
-            api<{ data: Record<string, number> }>(`/stock/factory/${row.id}`).then((r) => ({
-              id: row.id,
-              data: r.data,
-            })),
+
+        // Variants come from each product's detail; flatten into one list so the
+        // grid can show every (flavour × size) even at zero stock.
+        const variantLists = await Promise.all(
+          p.data.map((prod) =>
+            api<{ data: { variants?: Array<{ id: string; size_ml: number }> } }>(`/products/${prod.id}`)
+              .then((r) => (r.data.variants ?? []).map((v) => ({ id: v.id, product_id: prod.id, size_ml: v.size_ml })))
+              .catch(() => [] as Variant[]),
           ),
         );
         if (cancelled) return;
-        const next: Record<string, Record<string, number>> = {};
+        setVariants(variantLists.flat());
+
+        const fs = await Promise.all(
+          f.data.map((row) =>
+            api<{ data: StockRow[] }>(`/stock/factory/${row.id}`).then((r) => ({ id: row.id, data: r.data })),
+          ),
+        );
+        if (cancelled) return;
+        const next: Record<string, StockRow[]> = {};
         for (const x of fs) next[x.id] = x.data;
         setFactoryStock(next);
         setError(null);
@@ -97,13 +131,64 @@ export function InventoryPage(): JSX.Element {
     };
   }, []);
 
+  // Balance lookup keyed by (location, product, variant).
   const branchHeat = useMemo(() => {
-    const byBranchProduct = new Map<string, number>();
-    for (const row of branchStock) {
-      byBranchProduct.set(`${row.branch_id}|${row.product_id}`, row.balance);
-    }
-    return byBranchProduct;
+    const m = new Map<string, number>();
+    for (const row of branchStock) m.set(heatKey(row.branch_id, row.product_id, row.variant_id), row.balance);
+    return m;
   }, [branchStock]);
+  const factoryHeat = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const [fid, rows] of Object.entries(factoryStock)) {
+      for (const row of rows) m.set(heatKey(fid, row.product_id, row.variant_id), row.balance);
+    }
+    return m;
+  }, [factoryStock]);
+
+  const variantsByProduct = useMemo(() => {
+    const m = new Map<string, Variant[]>();
+    for (const v of [...variants].sort((a, b) => a.size_ml - b.size_ml)) {
+      const arr = m.get(v.product_id) ?? [];
+      arr.push(v);
+      m.set(v.product_id, arr);
+    }
+    return m;
+  }, [variants]);
+
+  // Products that still carry legacy NULL-bucket stock somewhere — they get an
+  // extra "(unassigned — recount)" row prompting staff to count it into sizes.
+  const productsWithNullStock = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of branchStock) if (r.variant_id === null && r.balance !== 0) s.add(r.product_id);
+    for (const rows of Object.values(factoryStock))
+      for (const r of rows) if (r.variant_id === null && r.balance !== 0) s.add(r.product_id);
+    return s;
+  }, [branchStock, factoryStock]);
+
+  const gridRows = useMemo<GridRow[]>(() => {
+    const rows: GridRow[] = [];
+    for (const p of products) {
+      for (const v of variantsByProduct.get(p.id) ?? []) {
+        rows.push({
+          productId: p.id,
+          productName: p.name,
+          variantId: v.id,
+          label: `${p.name} · ${sizeLabel(v.size_ml)}`,
+          unassigned: false,
+        });
+      }
+      if (productsWithNullStock.has(p.id)) {
+        rows.push({
+          productId: p.id,
+          productName: p.name,
+          variantId: null,
+          label: `${p.name} · (unassigned — recount)`,
+          unassigned: true,
+        });
+      }
+    }
+    return rows;
+  }, [products, variantsByProduct, productsWithNullStock]);
 
   function cellTone(qty: number): string {
     if (qty <= 0) return "var(--danger)";
@@ -115,6 +200,32 @@ export function InventoryPage(): JSX.Element {
     if (qty <= 10) return "rgba(245,158,11,0.10)";
     if (qty <= 30) return "rgba(252,191,73,0.08)";
     return "transparent";
+  }
+
+  function applyLocal(
+    locationType: "factory" | "branch",
+    locationId: string,
+    productId: string,
+    variantId: string | null,
+    newQuantity: number,
+  ): void {
+    if (locationType === "factory") {
+      setFactoryStock((s) => {
+        const rows = [...(s[locationId] ?? [])];
+        const i = rows.findIndex((r) => r.product_id === productId && r.variant_id === variantId);
+        if (i >= 0) rows[i] = { ...rows[i]!, balance: newQuantity };
+        else rows.push({ product_id: productId, variant_id: variantId, balance: newQuantity });
+        return { ...s, [locationId]: rows };
+      });
+    } else {
+      setBranchStock((rows) => {
+        const i = rows.findIndex(
+          (r) => r.branch_id === locationId && r.product_id === productId && r.variant_id === variantId,
+        );
+        if (i >= 0) return rows.map((r, idx) => (idx === i ? { ...r, balance: newQuantity } : r));
+        return [...rows, { branch_id: locationId, product_id: productId, variant_id: variantId, balance: newQuantity }];
+      });
+    }
   }
 
   async function runAdjust(payload: {
@@ -133,41 +244,19 @@ export function InventoryPage(): JSX.Element {
         items: [
           {
             product_id: adjustTarget.productId,
+            variant_id: adjustTarget.variantId,
             new_quantity: payload.newQuantity,
           },
         ],
       }),
     });
-    if (adjustTarget.locationType === "factory") {
-      setFactoryStock((s) => ({
-        ...s,
-        [adjustTarget.locationId]: {
-          ...(s[adjustTarget.locationId] ?? {}),
-          [adjustTarget.productId]: payload.newQuantity,
-        },
-      }));
-    } else {
-      setBranchStock((rows) => {
-        const targetExists = rows.some(
-          (r) => r.branch_id === adjustTarget.locationId && r.product_id === adjustTarget.productId,
-        );
-        if (targetExists) {
-          return rows.map((r) =>
-            r.branch_id === adjustTarget.locationId && r.product_id === adjustTarget.productId
-              ? { ...r, balance: payload.newQuantity }
-              : r,
-          );
-        }
-        return [
-          ...rows,
-          {
-            branch_id: adjustTarget.locationId,
-            product_id: adjustTarget.productId,
-            balance: payload.newQuantity,
-          },
-        ];
-      });
-    }
+    applyLocal(
+      adjustTarget.locationType,
+      adjustTarget.locationId,
+      adjustTarget.productId,
+      adjustTarget.variantId,
+      payload.newQuantity,
+    );
     setFlash("Adjustment recorded");
     setAdjustTarget(null);
     setTimeout(() => setFlash(null), 2500);
@@ -182,8 +271,7 @@ export function InventoryPage(): JSX.Element {
     locationType: "factory" | "branch",
     locationId: string,
     locationName: string,
-    productId: string,
-    productName: string,
+    row: GridRow,
     qty: number,
     key: string,
   ): JSX.Element {
@@ -192,32 +280,84 @@ export function InventoryPage(): JSX.Element {
       color: cellTone(qty),
       background: cellBg(qty),
     };
+    // The unassigned NULL bucket is recount-only — adjusting it directly would
+    // re-pool sizes, so it's read-only; staff recount into the sized rows.
+    const clickable = isOwner && !row.unassigned;
     return (
       <td
         key={key}
         className="table__num"
-        style={
-          isOwner
-            ? { ...baseStyle, cursor: "pointer" }
-            : baseStyle
-        }
+        style={clickable ? { ...baseStyle, cursor: "pointer" } : baseStyle}
         onClick={
-          isOwner
+          clickable
             ? () =>
                 openAdjust({
                   locationType,
                   locationId,
                   locationName,
-                  productId,
-                  productName,
+                  productId: row.productId,
+                  variantId: row.variantId,
+                  label: row.label,
                   currentQty: qty,
                 })
             : undefined
         }
-        title={isOwner ? "Click to adjust" : undefined}
+        title={clickable ? "Click to adjust" : undefined}
       >
         {locationType === "factory" ? qty.toLocaleString() : qty}
       </td>
+    );
+  }
+
+  function renderGrid(
+    locationType: "factory" | "branch",
+    locations: Array<{ id: string; name: string }>,
+    heat: Map<string, number>,
+  ): JSX.Element {
+    return (
+      <div className="table-wrap" style={{ overflowX: "auto" }}>
+        <table className="table">
+          <thead>
+            <tr>
+              <th style={{ position: "sticky", left: 0, background: "var(--surface-sunken)" }}>Flavour · size</th>
+              {locations.map((l) => (
+                <th key={l.id} className="table__num">
+                  {l.name}
+                </th>
+              ))}
+              <th className="table__num">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {gridRows.map((row) => {
+              const cells = locations.map((l) => heat.get(heatKey(l.id, row.productId, row.variantId)) ?? 0);
+              const total = cells.reduce((sum, q) => sum + q, 0);
+              return (
+                <tr key={`${row.productId}|${row.variantId ?? "null"}`}>
+                  <td
+                    style={{
+                      position: "sticky",
+                      left: 0,
+                      background: "var(--shell)",
+                      fontWeight: row.unassigned ? 400 : 600,
+                      color: row.unassigned ? "var(--ink-soft)" : "var(--ink)",
+                      fontStyle: row.unassigned ? "italic" : "normal",
+                    }}
+                  >
+                    {row.label}
+                  </td>
+                  {cells.map((q, idx) =>
+                    renderCell(locationType, locations[idx]!.id, locations[idx]!.name, row, q, locations[idx]!.id),
+                  )}
+                  <td className="table__num" style={{ fontWeight: 800, color: cellTone(total) }}>
+                    {locationType === "factory" ? total.toLocaleString() : total}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     );
   }
 
@@ -258,7 +398,7 @@ export function InventoryPage(): JSX.Element {
         <div className="page-head__titles">
           <div className="page-head__eyebrow">Stock</div>
           <h1 className="page-head__title">Inventory</h1>
-          <p className="page-head__sub">On-hand stock across branches and the factory.</p>
+          <p className="page-head__sub">On-hand stock per can size across branches and the factory.</p>
         </div>
       </div>
 
@@ -277,98 +417,16 @@ export function InventoryPage(): JSX.Element {
         branches.length === 0 ? (
           <div className="empty">No branches yet.</div>
         ) : (
-          <div className="table-wrap" style={{ overflowX: "auto" }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th style={{ position: "sticky", left: 0, background: "var(--surface-sunken)" }}>Product</th>
-                  {branches.map((b) => (
-                    <th key={b.id} className="table__num">
-                      {b.name}
-                    </th>
-                  ))}
-                  <th className="table__num">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p) => {
-                  const cells = branches.map((b) => branchHeat.get(`${b.id}|${p.id}`) ?? 0);
-                  const total = cells.reduce((sum, q) => sum + q, 0);
-                  return (
-                    <tr key={p.id}>
-                      <td style={{ position: "sticky", left: 0, background: "var(--shell)", fontWeight: 600 }}>
-                        {p.name}
-                      </td>
-                      {cells.map((q, idx) =>
-                        renderCell(
-                          "branch",
-                          branches[idx]!.id,
-                          branches[idx]!.name,
-                          p.id,
-                          p.name,
-                          q,
-                          branches[idx]!.id,
-                        ),
-                      )}
-                      <td className="table__num" style={{ fontWeight: 800, color: cellTone(total) }}>
-                        {total}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          renderGrid("branch", branches, branchHeat)
         )
       ) : factories.length === 0 ? (
         <div className="empty">No factories configured.</div>
       ) : (
-        <div className="table-wrap" style={{ overflowX: "auto" }}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th style={{ position: "sticky", left: 0, background: "var(--surface-sunken)" }}>Product</th>
-                {factories.map((f) => (
-                  <th key={f.id} className="table__num">
-                    {f.name}
-                  </th>
-                ))}
-                <th className="table__num">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((p) => {
-                const cells = factories.map((f) => factoryStock[f.id]?.[p.id] ?? 0);
-                const total = cells.reduce((sum, q) => sum + q, 0);
-                return (
-                  <tr key={p.id}>
-                    <td style={{ position: "sticky", left: 0, background: "var(--shell)", fontWeight: 600 }}>
-                      {p.name}
-                    </td>
-                    {cells.map((q, idx) =>
-                      renderCell(
-                        "factory",
-                        factories[idx]!.id,
-                        factories[idx]!.name,
-                        p.id,
-                        p.name,
-                        q,
-                        factories[idx]!.id,
-                      ),
-                    )}
-                    <td className="table__num" style={{ fontWeight: 800, color: cellTone(total) }}>
-                      {total.toLocaleString()}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        renderGrid("factory", factories, factoryHeat)
       )}
       <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 12 }}>
-        Red = out of stock · amber = low (≤10) · pale = caution (≤30).
-        {isOwner && " Click any cell to adjust the on-hand for that product at that location."}
+        Red = out of stock · amber = low (≤10) · pale = caution (≤30). Each row is one can size.
+        {isOwner && " Click any sized cell to adjust its on-hand. An italic “(unassigned — recount)” row is legacy stock not yet counted into sizes."}
       </p>
 
       {flash && (
@@ -388,41 +446,19 @@ export function InventoryPage(): JSX.Element {
       )}
 
       {adjustTarget && (
-        <AdjustModal
-          target={adjustTarget}
-          onClose={() => setAdjustTarget(null)}
-          onSubmit={runAdjust}
-        />
+        <AdjustModal target={adjustTarget} onClose={() => setAdjustTarget(null)} onSubmit={runAdjust} />
       )}
 
       {bulkOpen && (
         <BulkAdjustModal
           factories={factories}
           branches={branches}
-          products={products}
-          factoryStock={factoryStock}
+          gridRows={gridRows}
           branchHeat={branchHeat}
+          factoryHeat={factoryHeat}
           onClose={() => setBulkOpen(false)}
           onSaved={async (locType, locId, items) => {
-            // Apply locally so the heatmap updates without a refetch.
-            if (locType === "factory") {
-              setFactoryStock((s) => {
-                const next = { ...(s[locId] ?? {}) };
-                for (const it of items) next[it.productId] = it.newQty;
-                return { ...s, [locId]: next };
-              });
-            } else {
-              setBranchStock((rows) => {
-                const map = new Map(rows.map((r) => [`${r.branch_id}|${r.product_id}`, r]));
-                for (const it of items) {
-                  const key = `${locId}|${it.productId}`;
-                  const existing = map.get(key);
-                  if (existing) existing.balance = it.newQty;
-                  else map.set(key, { branch_id: locId, product_id: it.productId, balance: it.newQty });
-                }
-                return Array.from(map.values());
-              });
-            }
+            for (const it of items) applyLocal(locType, locId, it.productId, it.variantId, it.newQty);
             setBulkOpen(false);
             setFlash(`Bulk adjustment recorded · ${items.length} line${items.length === 1 ? "" : "s"}`);
             setTimeout(() => setFlash(null), 3000);
@@ -436,44 +472,45 @@ export function InventoryPage(): JSX.Element {
 function BulkAdjustModal({
   factories,
   branches,
-  products,
-  factoryStock,
+  gridRows,
   branchHeat,
+  factoryHeat,
   onClose,
   onSaved,
 }: {
   factories: Factory[];
   branches: Branch[];
-  products: Product[];
-  factoryStock: Record<string, Record<string, number>>;
+  gridRows: GridRow[];
   branchHeat: Map<string, number>;
+  factoryHeat: Map<string, number>;
   onClose: () => void;
   onSaved: (
     locType: "factory" | "branch",
     locId: string,
-    items: Array<{ productId: string; newQty: number }>,
+    items: Array<{ productId: string; variantId: string | null; newQty: number }>,
   ) => Promise<void>;
 }): JSX.Element {
   const [locType, setLocType] = useState<"factory" | "branch">("factory");
-  const [locId, setLocId] = useState<string>(
-    factories[0]?.id ?? branches[0]?.id ?? "",
-  );
+  const [locId, setLocId] = useState<string>(factories[0]?.id ?? branches[0]?.id ?? "");
   const [reasonCode, setReasonCode] = useState<string>("physical_recount");
   const [reasonNote, setReasonNote] = useState<string>("");
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset target when type flips.
   useEffect(() => {
     if (locType === "factory") setLocId(factories[0]?.id ?? "");
     else setLocId(branches[0]?.id ?? "");
     setOverrides({});
   }, [locType, factories, branches]);
 
-  function currentQty(productId: string): number {
-    if (locType === "factory") return factoryStock[locId]?.[productId] ?? 0;
-    return branchHeat.get(`${locId}|${productId}`) ?? 0;
+  // Only sized rows are bulk-adjustable; the unassigned bucket is recount-only.
+  const rows = useMemo(() => gridRows.filter((r) => !r.unassigned), [gridRows]);
+  const rowKey = (r: GridRow): string => `${r.productId}|${r.variantId ?? "null"}`;
+
+  function currentQty(r: GridRow): number {
+    const heat = locType === "factory" ? factoryHeat : branchHeat;
+    return heat.get(heatKey(locId, r.productId, r.variantId)) ?? 0;
   }
 
   const locName =
@@ -490,16 +527,16 @@ function BulkAdjustModal({
       setError("Add a note for 'Other'");
       return;
     }
-    const items: Array<{ productId: string; newQty: number }> = [];
-    for (const p of products) {
-      const newQ = overrides[p.id];
+    const items: Array<{ productId: string; variantId: string | null; newQty: number }> = [];
+    for (const r of rows) {
+      const newQ = overrides[rowKey(r)];
       if (newQ === undefined) continue;
-      if (newQ === currentQty(p.id)) continue;
+      if (newQ === currentQty(r)) continue;
       if (newQ < 0) {
-        setError(`Quantity for ${p.name} can't be negative`);
+        setError(`Quantity for ${r.label} can't be negative`);
         return;
       }
-      items.push({ productId: p.id, newQty: newQ });
+      items.push({ productId: r.productId, variantId: r.variantId, newQty: newQ });
     }
     if (items.length === 0) {
       setError("Nothing changed — adjust at least one row");
@@ -515,7 +552,11 @@ function BulkAdjustModal({
           location_id: locId,
           reason_code: reasonCode,
           reason_note: reasonNote.trim() || undefined,
-          items: items.map((i) => ({ product_id: i.productId, new_quantity: i.newQty })),
+          items: items.map((i) => ({
+            product_id: i.productId,
+            variant_id: i.variantId,
+            new_quantity: i.newQty,
+          })),
         }),
       });
       await onSaved(locType, locId, items);
@@ -556,7 +597,7 @@ function BulkAdjustModal({
         <header style={{ marginBottom: 14 }}>
           <h2 className="t-h2">Bulk adjust</h2>
           <p style={{ color: "var(--ink-soft)", fontSize: 13, margin: "4px 0 0" }}>
-            Type the new on-hand for each row that changed. Unchanged rows are skipped.
+            Type the new on-hand for each can size that changed. Unchanged rows are skipped.
           </p>
         </header>
 
@@ -575,12 +616,7 @@ function BulkAdjustModal({
           </div>
           <div className="field">
             <label className="field__label" htmlFor="bulk-loc-id">Location</label>
-            <select
-              id="bulk-loc-id"
-              className="select"
-              value={locId}
-              onChange={(e) => setLocId(e.target.value)}
-            >
+            <select id="bulk-loc-id" className="select" value={locId} onChange={(e) => setLocId(e.target.value)}>
               {(locType === "factory" ? factories : branches).map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
@@ -590,19 +626,12 @@ function BulkAdjustModal({
           </div>
           <div className="field">
             <label className="field__label" htmlFor="bulk-reason">Reason (applies to all)</label>
-            <select
-              id="bulk-reason"
-              className="select"
-              value={reasonCode}
-              onChange={(e) => setReasonCode(e.target.value)}
-            >
-              <option value="physical_recount">Physical recount</option>
-              <option value="damaged">Damaged</option>
-              <option value="spoilage">Spoilage</option>
-              <option value="theft">Theft / loss</option>
-              <option value="found">Found extra</option>
-              <option value="opening_balance">Opening balance</option>
-              <option value="other_with_note">Other (specify)</option>
+            <select id="bulk-reason" className="select" value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
+              {REASONS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -625,19 +654,19 @@ function BulkAdjustModal({
           <table className="table">
             <thead>
               <tr>
-                <th>Product</th>
+                <th>Flavour · size</th>
                 <th className="table__num">Current</th>
                 <th className="table__num">New on-hand</th>
               </tr>
             </thead>
             <tbody>
-              {products.map((p) => {
-                const cur = currentQty(p.id);
-                const newQ = overrides[p.id] ?? cur;
+              {rows.map((r) => {
+                const cur = currentQty(r);
+                const newQ = overrides[rowKey(r)] ?? cur;
                 const changed = newQ !== cur;
                 return (
-                  <tr key={p.id}>
-                    <td>{p.name}</td>
+                  <tr key={rowKey(r)}>
+                    <td>{r.label}</td>
                     <td className="table__num" style={{ color: "var(--ink-soft)" }}>{cur}</td>
                     <td className="table__num">
                       <input
@@ -647,7 +676,7 @@ function BulkAdjustModal({
                         value={newQ}
                         onChange={(e) => {
                           const v = Number(e.target.value);
-                          setOverrides((o) => ({ ...o, [p.id]: Number.isFinite(v) ? v : 0 }));
+                          setOverrides((o) => ({ ...o, [rowKey(r)]: Number.isFinite(v) ? v : 0 }));
                         }}
                         style={{
                           width: 100,
@@ -673,12 +702,7 @@ function BulkAdjustModal({
           <button type="button" className="btn btn--subtle" onClick={onClose} disabled={submitting}>
             Cancel
           </button>
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={() => void handleSubmit()}
-            disabled={submitting}
-          >
+          <button type="button" className="btn btn--primary" onClick={() => void handleSubmit()} disabled={submitting}>
             {submitting ? "Submitting…" : `Adjust ${locName || ""}`}
           </button>
         </div>
@@ -715,9 +739,7 @@ function AdjustModal({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/would_go_negative|stock would go negative/i.test(msg)) {
-        setError(
-          `Can't go below 0 — ${target.locationName} currently shows ${target.currentQty}.`,
-        );
+        setError(`Can't go below 0 — ${target.locationName} currently shows ${target.currentQty}.`);
       } else {
         setError(msg);
       }
@@ -742,19 +764,12 @@ function AdjustModal({
     >
       <div
         className="card"
-        style={{
-          width: "100%",
-          maxWidth: 460,
-          background: "var(--shell)",
-          boxShadow: "var(--shadow-float)",
-        }}
+        style={{ width: "100%", maxWidth: 460, background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <header style={{ marginBottom: 14 }}>
-          <h2 className="t-h2">Adjust {target.productName}</h2>
-          <p style={{ color: "var(--ink-soft)", fontSize: 13, margin: "4px 0 0" }}>
-            at {target.locationName}
-          </p>
+          <h2 className="t-h2">Adjust {target.label}</h2>
+          <p style={{ color: "var(--ink-soft)", fontSize: 13, margin: "4px 0 0" }}>at {target.locationName}</p>
         </header>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -783,12 +798,7 @@ function AdjustModal({
             <label className="field__label" htmlFor="adjust-reason">
               Reason
             </label>
-            <select
-              id="adjust-reason"
-              className="select"
-              value={reasonCode}
-              onChange={(e) => setReasonCode(e.target.value)}
-            >
+            <select id="adjust-reason" className="select" value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
               {REASONS.map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
