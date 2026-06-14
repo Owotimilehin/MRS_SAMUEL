@@ -17,4 +17,9 @@ describe("assertNonProdDb", () => {
       assertNonProdDb("postgres://u:p@localhost:54219/test", ["138.68.165.230"]),
     ).not.toThrow();
   });
+  it("is armed by default — blocks the baked-in prod host with no denylist arg", () => {
+    expect(() =>
+      assertNonProdDb("postgres://u:p@138.68.165.230:5432/ms"),
+    ).toThrow(/production database/i);
+  });
 });
