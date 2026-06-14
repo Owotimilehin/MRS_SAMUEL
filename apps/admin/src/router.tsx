@@ -71,6 +71,7 @@ const SubscriptionsPage = lazyNamed(() => import("./routes/owner/subscriptions.j
 const BundlesPage = lazyNamed(() => import("./routes/owner/bundles.js"), "BundlesPage");
 const LeadsPage = lazyNamed(() => import("./routes/owner/leads.js"), "LeadsPage");
 const OrdersPage = lazyNamed(() => import("./routes/owner/orders.js"), "OrdersPage");
+const PreordersPage = lazyNamed(() => import("./routes/owner/preorders.js"), "PreordersPage");
 const OrderDetailPage = lazyNamed<{ saleId: string }>(
   () => import("./routes/owner/order-detail.js"),
   "OrderDetailPage",
@@ -291,6 +292,11 @@ const ordersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/owner/orders",
   component: () => guarded(<L><OrdersPage /></L>),
+});
+const preordersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/preorders",
+  component: () => guarded(<L><PreordersPage /></L>),
 });
 const orderDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -577,6 +583,7 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   reviewRoute,
   ordersRoute,
+  preordersRoute,
   orderDetailRoute,
   customersRoute,
   customerDetailRoute,

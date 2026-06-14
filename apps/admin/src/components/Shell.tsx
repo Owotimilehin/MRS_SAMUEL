@@ -28,6 +28,7 @@ import {
   CalendarClock,
   Gift,
   Inbox,
+  Hourglass,
   type LucideIcon,
 } from "lucide-react";
 import { useAuthUser } from "../lib/auth.js";
@@ -44,6 +45,7 @@ const NAV_OWNER: NavLink[] = [
   { to: "/owner/dashboard", label: "Dashboard", Icon: LayoutDashboard, cap: "reports.view" },
   { to: "/owner/review", label: "Needs review", Icon: Bell, cap: "orders.manage" },
   { to: "/owner/orders", label: "Orders", Icon: ReceiptText, cap: "orders.view" },
+  { to: "/owner/preorders", label: "Preorders", Icon: Hourglass, cap: "orders.manage" },
   { to: "/owner/products", label: "Products", Icon: CupSoda, cap: "products.manage" },
   { to: "/owner/branches", label: "Branches", Icon: Store, cap: "branches.manage" },
   { to: "/owner/factories", label: "Factories", Icon: Factory, cap: "branches.manage" },
