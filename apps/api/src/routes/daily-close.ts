@@ -7,7 +7,7 @@ import {
   outboxEvent,
   type DbClient,
 } from "@ms/db";
-import { expectedCashForDay, expectedStockForDay } from "@ms/domain";
+import { cashSalesForDay, expectedCashForDay, expectedStockForDay } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
@@ -170,8 +170,11 @@ export function dailyCloseRoutes(db: DbClient) {
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const date = c.req.query("date") ?? new Date().toISOString().slice(0, 10);
     const cash = await expectedCashForDay(db, branchId, new Date(date));
+    const cashSales = await cashSalesForDay(db, branchId, new Date(date));
     const stock = await expectedStockForDay(db, branchId);
-    return c.json({ data: { expected_cash_ngn: cash, expected_stock: stock } });
+    return c.json({
+      data: { expected_cash_ngn: cash, expected_stock: stock, cash_sales: cashSales },
+    });
   });
 
   r.get("/", async (c) => {

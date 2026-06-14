@@ -34,6 +34,55 @@ export async function expectedCashForDay(
   return gross - refunds;
 }
 
+/** One cash sale contributing to a day's expected cash, for the close screen. */
+export interface CashSaleLine {
+  order_number: string;
+  channel: string;
+  status: string;
+  total_ngn: number;
+  created_at_local: string;
+}
+
+/**
+ * The individual cash sales that make up `expectedCashForDay`'s gross figure —
+ * same filter, itemised. The close screen shows these so staff can see exactly
+ * which sales produced "System expected ₦X" instead of assuming it's phantom.
+ */
+export async function cashSalesForDay(
+  db: DbExecutor,
+  branchId: string,
+  businessDate: Date,
+): Promise<CashSaleLine[]> {
+  const start = new Date(businessDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  const rows = await db.execute<{
+    order_number: string;
+    channel: string;
+    status: string;
+    total_ngn: number | string;
+    created_at_local: string;
+  }>(sql`
+    SELECT order_number, channel, status, total_ngn::int AS total_ngn,
+           created_at_local::text AS created_at_local
+    FROM sale_order
+    WHERE branch_id = ${branchId} AND payment_method = 'cash'
+      AND status IN ('paid','handed_over','delivered')
+      AND created_at_local >= ${start.toISOString()}
+      AND created_at_local <  ${end.toISOString()}
+    ORDER BY created_at_local
+  `);
+  return rows.map((r) => ({
+    order_number: r.order_number,
+    channel: r.channel,
+    status: r.status,
+    total_ngn: Number(r.total_ngn),
+    created_at_local: r.created_at_local,
+  }));
+}
+
 /**
  * Current expected stock balance per product at a branch (ledger sum).
  */

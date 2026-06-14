@@ -7,10 +7,19 @@ import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 
+interface CashSale {
+  order_number: string;
+  channel: string;
+  status: string;
+  total_ngn: number;
+  created_at_local: string;
+}
+
 interface PreviewBody {
   data: {
     expected_cash_ngn: number;
     expected_stock: Record<string, number>;
+    cash_sales: CashSale[];
   };
 }
 
@@ -62,6 +71,8 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
     id.slice(0, 8);
 
   const expectedCash = preview?.expected_cash_ngn ?? 0;
+  const cashSales = preview?.cash_sales ?? [];
+  const [showSales, setShowSales] = useState(false);
   const counted = (Number(cash) || 0) + (Number(transfers) || 0);
   const variance = counted - expectedCash;
 
@@ -233,6 +244,53 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
 
           <div className="card card--soft" style={{ padding: 12 }}>
             <Row label="System expected" value={ngn(expectedCash)} />
+            <div style={{ marginTop: -2, marginBottom: 4 }}>
+              {cashSales.length === 0 ? (
+                <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+                  No cash sales recorded today.
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowSales((s) => !s)}
+                  style={{
+                    background: "transparent",
+                    border: 0,
+                    padding: 0,
+                    cursor: "pointer",
+                    fontSize: 12,
+                    color: "var(--accent)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {showSales ? "Hide" : "Show"} {cashSales.length} cash{" "}
+                  {cashSales.length === 1 ? "sale" : "sales"} →
+                </button>
+              )}
+              {showSales && cashSales.length > 0 && (
+                <ul style={{ margin: "6px 0 0", padding: 0, listStyle: "none", fontSize: 12 }}>
+                  {cashSales.map((s) => (
+                    <li
+                      key={s.order_number}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        padding: "3px 0",
+                        borderTop: "1px solid var(--line)",
+                        color: "var(--ink-soft)",
+                      }}
+                    >
+                      <span>
+                        {s.order_number}
+                        <span style={{ opacity: 0.7 }}> · {s.channel}</span>
+                      </span>
+                      <span className="tabular-nums">{ngn(s.total_ngn)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <Row label="You counted" value={ngn(counted)} />
             <Row
               label="Variance"
