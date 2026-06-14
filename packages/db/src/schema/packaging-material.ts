@@ -1,4 +1,10 @@
-import { pgTable, uuid, text, integer, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, boolean, timestamp, index, pgEnum } from "drizzle-orm/pg-core";
+
+export const packagingMaterialKind = pgEnum("packaging_material_kind", [
+  "bottle",
+  "bag",
+  "other",
+]);
 
 /**
  * Catalog of packaging materials a factory can consume. MVP seeds two rows
@@ -14,6 +20,7 @@ export const packagingMaterial = pgTable(
     name: text("name").notNull(),
     unitLabel: text("unit_label").notNull(),
     sizeMl: integer("size_ml"),
+    kind: packagingMaterialKind("kind").notNull().default("other"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
