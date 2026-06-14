@@ -8,6 +8,7 @@ import {
   product,
   productPrice,
   productVariant,
+  packagingMaterial,
   mediaAsset,
   bundle,
   subscriptionPlan,
@@ -16,6 +17,7 @@ import argon2 from "argon2";
 import { eq, and, isNull } from "drizzle-orm";
 import { readFileSync } from "node:fs";
 import { PALETTES, VISUALS } from "./seed-data/visuals.js";
+import { bottleMaterialIdForSize } from "./lib/bottle-material.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required");
@@ -65,6 +67,18 @@ async function seedBranch(): Promise<void> {
     closesAt: "20:00:00",
   });
   console.warn("branch Ajao Estate seeded");
+}
+
+async function seedBottleMaterials(): Promise<void> {
+  for (const [name, sizeMl] of [["330ml Glass Bottle", 330], ["650ml Glass Bottle", 650]] as const) {
+    const existing = await db
+      .select()
+      .from(packagingMaterial)
+      .where(eq(packagingMaterial.sizeMl, sizeMl));
+    if (existing.length > 0) continue;
+    await db.insert(packagingMaterial).values({ name, unitLabel: "bottle", sizeMl, isActive: true });
+  }
+  console.warn("bottle materials seeded");
 }
 
 interface CatalogProduct {
@@ -199,6 +213,19 @@ async function seedProducts(): Promise<void> {
   console.warn(
     `products seeded: ${createdProducts} new (${catalog.products.length} total); variants: ${createdVariants}; prices: ${createdPrices}; media assets: ${createdAssets}`,
   );
+}
+
+async function linkVariantBottles(): Promise<void> {
+  const variants = await db.select().from(productVariant).where(isNull(productVariant.bottleMaterialId));
+  let linked = 0;
+  for (const v of variants) {
+    const materialId = await bottleMaterialIdForSize(db, v.sizeMl);
+    if (materialId) {
+      await db.update(productVariant).set({ bottleMaterialId: materialId }).where(eq(productVariant.id, v.id));
+      linked++;
+    }
+  }
+  console.warn(`variant bottle links: ${linked} of ${variants.length} unlinked variants linked`);
 }
 
 interface BlogSeed {
@@ -597,7 +624,9 @@ async function main(): Promise<void> {
   await seedOwner();
   await seedFactory();
   await seedBranch();
+  await seedBottleMaterials();
   await seedProducts();
+  await linkVariantBottles();
   await seedBlogPosts();
   await seedStorefront();
 }
