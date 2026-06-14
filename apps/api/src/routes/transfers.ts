@@ -5,6 +5,9 @@ import {
   stockTransfer,
   stockTransferItem,
   stockLedger,
+  packagingStockLedger,
+  packagingMaterial,
+  packagingBalanceAt,
   outboxEvent,
   product,
   productVariant,
@@ -24,13 +27,19 @@ const CreateDraft = z.object({
   branch_id: z.string().uuid(),
   items: z
     .array(
-      z.object({
-        product_id: z.string().uuid(),
-        variant_id: z.string().uuid().nullish(),
-        quantity_sent: z.number().int().positive(),
-        unit_cost_ngn: z.number().int().nonnegative().optional(),
-        notes: z.string().optional(),
-      }),
+      z
+        .object({
+          // A line is EITHER a product (juice) OR a packaging material (bag).
+          product_id: z.string().uuid().nullish(),
+          variant_id: z.string().uuid().nullish(),
+          packaging_material_id: z.string().uuid().nullish(),
+          quantity_sent: z.number().int().positive(),
+          unit_cost_ngn: z.number().int().nonnegative().optional(),
+          notes: z.string().optional(),
+        })
+        .refine((i) => (i.product_id != null) !== (i.packaging_material_id != null), {
+          message: "each line must be a product XOR a packaging material",
+        }),
     )
     .min(1),
   vehicle_info: z.string().optional(),
@@ -202,6 +211,9 @@ export function transferRoutes(db: DbClient) {
         product_id: stockTransferItem.productId,
         variant_id: stockTransferItem.variantId,
         size_ml: productVariant.sizeMl,
+        packaging_material_id: stockTransferItem.packagingMaterialId,
+        material_name: packagingMaterial.name,
+        material_kind: packagingMaterial.kind,
         quantity_sent: stockTransferItem.quantitySent,
         quantity_received: stockTransferItem.quantityReceived,
         variance_reason: stockTransferItem.varianceReason,
@@ -211,6 +223,7 @@ export function transferRoutes(db: DbClient) {
       })
       .from(stockTransferItem)
       .leftJoin(productVariant, eq(productVariant.id, stockTransferItem.variantId))
+      .leftJoin(packagingMaterial, eq(packagingMaterial.id, stockTransferItem.packagingMaterialId))
       .where(eq(stockTransferItem.stockTransferId, id));
     return c.json({ data: { ...t, items } });
   });
@@ -222,17 +235,40 @@ export function transferRoutes(db: DbClient) {
     const body = CreateDraft.parse(await c.req.json());
     const auth = c.get("auth");
 
+    // Split the lines: juices move through stock_ledger, bags through the
+    // packaging ledger. Each line is one or the other (validated by zod + a DB
+    // CHECK), so a line with no product_id is a packaging-material line.
+    const productItems = body.items.filter((i) => i.product_id != null);
+    const materialItems = body.items.filter((i) => i.packaging_material_id != null);
+
     const created = await db.transaction(async (tx) => {
       // Verify factory has enough stock before reserving a transfer number
       // (so failed attempts don't burn sequence values).
       const check = await checkFactoryStockAvailableByVariant(
         tx,
         body.factory_id,
-        body.items.map((i) => ({ productId: i.product_id, variantId: i.variant_id ?? null, quantity: i.quantity_sent })),
+        productItems.map((i) => ({ productId: i.product_id!, variantId: i.variant_id ?? null, quantity: i.quantity_sent })),
       );
       if (!check.ok) {
         throw new BusinessError("conflict", "insufficient factory stock", 422, {
           insufficient: check.insufficient,
+        });
+      }
+
+      // Same pre-flight for bags: you can't ship more than the factory holds.
+      // Aggregate per material so multiple lines of one bag are checked together.
+      const bagWant = new Map<string, number>();
+      for (const m of materialItems) {
+        bagWant.set(m.packaging_material_id!, (bagWant.get(m.packaging_material_id!) ?? 0) + m.quantity_sent);
+      }
+      const bagShort: Array<{ packaging_material_id: string; available: number; requested: number }> = [];
+      for (const [materialId, want] of bagWant) {
+        const have = await packagingBalanceAt(tx, { locationType: "factory", locationId: body.factory_id }, materialId);
+        if (have < want) bagShort.push({ packaging_material_id: materialId, available: have, requested: want });
+      }
+      if (bagShort.length > 0) {
+        throw new BusinessError("conflict", "insufficient factory bag stock", 422, {
+          insufficient_packaging: bagShort,
         });
       }
 
@@ -254,7 +290,7 @@ export function transferRoutes(db: DbClient) {
         .returning();
       if (!t) throw new BusinessError("internal_error", "insert returned no rows", 500);
 
-      for (const it of body.items) {
+      for (const it of productItems) {
         await tx.insert(stockTransferItem).values({
           stockTransferId: t.id,
           productId: it.product_id,
@@ -266,8 +302,30 @@ export function transferRoutes(db: DbClient) {
         await tx.insert(stockLedger).values({
           locationType: "factory",
           locationId: t.factoryId,
-          productId: it.product_id,
+          productId: it.product_id!,
           variantId: it.variant_id ?? null,
+          delta: -it.quantity_sent,
+          sourceType: "transfer_dispatch",
+          sourceId: t.id,
+          recordedByUserId: auth.userId,
+          note: `Dispatch ${t.transferNumber}`,
+        });
+      }
+
+      // Bag lines: record the line and debit the factory packaging ledger.
+      for (const it of materialItems) {
+        await tx.insert(stockTransferItem).values({
+          stockTransferId: t.id,
+          packagingMaterialId: it.packaging_material_id,
+          quantitySent: it.quantity_sent,
+          unitCostNgn: it.unit_cost_ngn ?? null,
+          notes: it.notes ?? null,
+        });
+        await tx.insert(packagingStockLedger).values({
+          locationType: "factory",
+          locationId: t.factoryId,
+          factoryId: t.factoryId,
+          packagingMaterialId: it.packaging_material_id!,
           delta: -it.quantity_sent,
           sourceType: "transfer_dispatch",
           sourceId: t.id,
@@ -383,17 +441,31 @@ export function transferRoutes(db: DbClient) {
           .where(eq(stockTransferItem.id, it.id));
 
         if (inp.quantity_received > 0) {
-          await tx.insert(stockLedger).values({
-            locationType: "branch",
-            locationId: t.branchId,
-            productId: it.productId,
-            variantId: it.variantId ?? null,
-            delta: inp.quantity_received,
-            sourceType: "transfer_receive",
-            sourceId: id,
-            recordedByUserId: auth.userId,
-            note: `Receive ${t.transferNumber}`,
-          });
+          if (it.packagingMaterialId) {
+            // Bag line → credit the branch packaging ledger.
+            await tx.insert(packagingStockLedger).values({
+              locationType: "branch",
+              locationId: t.branchId,
+              packagingMaterialId: it.packagingMaterialId,
+              delta: inp.quantity_received,
+              sourceType: "transfer_receive",
+              sourceId: id,
+              recordedByUserId: auth.userId,
+              note: `Receive ${t.transferNumber}`,
+            });
+          } else {
+            await tx.insert(stockLedger).values({
+              locationType: "branch",
+              locationId: t.branchId,
+              productId: it.productId!,
+              variantId: it.variantId ?? null,
+              delta: inp.quantity_received,
+              sourceType: "transfer_receive",
+              sourceId: id,
+              recordedByUserId: auth.userId,
+              note: `Receive ${t.transferNumber}`,
+            });
+          }
         }
       }
 
@@ -499,19 +571,34 @@ export function transferRoutes(db: DbClient) {
         .select()
         .from(stockTransferItem)
         .where(eq(stockTransferItem.stockTransferId, id));
-      // Reverse the factory ledger so the rejected stock returns to inventory.
+      // Reverse the factory ledger so the rejected stock returns to inventory —
+      // juices to the stock ledger, bags to the packaging ledger.
       for (const it of items) {
-        await tx.insert(stockLedger).values({
-          locationType: "factory",
-          locationId: t.factoryId,
-          productId: it.productId,
-          variantId: it.variantId ?? null,
-          delta: it.quantitySent,
-          sourceType: "transfer_reject_reverse",
-          sourceId: id,
-          recordedByUserId: auth.userId,
-          note: `Reject reverse ${t.transferNumber}: ${reason}`,
-        });
+        if (it.packagingMaterialId) {
+          await tx.insert(packagingStockLedger).values({
+            locationType: "factory",
+            locationId: t.factoryId,
+            factoryId: t.factoryId,
+            packagingMaterialId: it.packagingMaterialId,
+            delta: it.quantitySent,
+            sourceType: "transfer_reject_reverse",
+            sourceId: id,
+            recordedByUserId: auth.userId,
+            note: `Reject reverse ${t.transferNumber}: ${reason}`,
+          });
+        } else {
+          await tx.insert(stockLedger).values({
+            locationType: "factory",
+            locationId: t.factoryId,
+            productId: it.productId!,
+            variantId: it.variantId ?? null,
+            delta: it.quantitySent,
+            sourceType: "transfer_reject_reverse",
+            sourceId: id,
+            recordedByUserId: auth.userId,
+            note: `Reject reverse ${t.transferNumber}: ${reason}`,
+          });
+        }
       }
 
       const [u] = await tx
@@ -573,6 +660,15 @@ export function transferRoutes(db: DbClient) {
         .from(stockTransferItem)
         .where(and(eq(stockTransferItem.id, itemId), eq(stockTransferItem.stockTransferId, id)));
       if (!it) throw new BusinessError("not_found", "transfer item not found", 404);
+      // Bags are tracked-only; after-the-fact count corrections on bag lines
+      // aren't supported yet (would need a packaging count_correction source).
+      if (it.packagingMaterialId) {
+        throw new BusinessError(
+          "validation_failed",
+          "count adjustments aren't supported on bag (packaging) lines",
+          422,
+        );
+      }
 
       const oldQty = body.side === "sent" ? it.quantitySent : (it.quantityReceived ?? 0);
       const delta = body.new_quantity - oldQty;
@@ -591,7 +687,7 @@ export function transferRoutes(db: DbClient) {
         await tx.insert(stockLedger).values({
           locationType: "factory",
           locationId: t.factoryId,
-          productId: it.productId,
+          productId: it.productId!,
           variantId: it.variantId ?? null,
           delta: -delta,
           sourceType: "count_correction",
@@ -608,7 +704,7 @@ export function transferRoutes(db: DbClient) {
         await tx.insert(stockLedger).values({
           locationType: "branch",
           locationId: t.branchId,
-          productId: it.productId,
+          productId: it.productId!,
           variantId: it.variantId ?? null,
           delta,
           sourceType: "count_correction",

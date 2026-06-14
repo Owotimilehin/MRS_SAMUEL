@@ -40,15 +40,25 @@ interface Product {
   name: string;
 }
 
+interface BagMaterial {
+  id: string;
+  name: string;
+  kind: string;
+}
+
 interface Variant {
   id: string;
   size_ml: number | null;
   sku?: string | null;
 }
 
+// A draft line is EITHER a product (juice) OR a bag (packaging material). The
+// `kind` discriminates which fields are meaningful.
 interface DraftItem {
+  kind: "product" | "bag";
   product_id: string;
   variant_id: string;
+  packaging_material_id: string;
   quantity_sent: number;
   unit_cost_ngn: number;
 }
@@ -73,6 +83,7 @@ export function TransfersPage(): JSX.Element {
   const [factories, setFactories] = useState<Factory[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [bags, setBags] = useState<BagMaterial[]>([]);
   const [filter, setFilter] = useState<TransferStatus | "">("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,16 +93,18 @@ export function TransfersPage(): JSX.Element {
     setLoading(true);
     try {
       const qs = filter ? `?status=${filter}` : "";
-      const [t, f, b, p] = await Promise.all([
+      const [t, f, b, p, bag] = await Promise.all([
         api<{ data: Transfer[] }>(`/transfers${qs}`),
         api<{ data: Factory[] }>(`/factories`),
         api<{ data: Branch[] }>(`/branches`),
         api<{ data: Product[] }>(`/products`),
+        api<{ data: BagMaterial[] }>(`/packaging/materials?kind=bag`),
       ]);
       setRows(t.data);
       setFactories(f.data);
       setBranches(b.data);
       setProducts(p.data);
+      setBags(bag.data);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -202,6 +215,7 @@ export function TransfersPage(): JSX.Element {
           factories={factories}
           branches={branches}
           products={products}
+          bags={bags}
           onClose={() => setShowCreate(false)}
           onSaved={() => {
             setShowCreate(false);
@@ -217,12 +231,14 @@ function CreateTransferModal({
   factories,
   branches,
   products,
+  bags,
   onClose,
   onSaved,
 }: {
   factories: Factory[];
   branches: Branch[];
   products: Product[];
+  bags: BagMaterial[];
   onClose: () => void;
   onSaved: () => void;
 }): JSX.Element {
@@ -255,7 +271,10 @@ function CreateTransferModal({
     if (!next) return;
     const existing = variantsByProduct[next.id] ?? [];
     const firstVariant = existing[0]?.id ?? "";
-    setItems((it) => [...it, { product_id: next.id, variant_id: firstVariant, quantity_sent: 50, unit_cost_ngn: 0 }]);
+    setItems((it) => [
+      ...it,
+      { kind: "product", product_id: next.id, variant_id: firstVariant, packaging_material_id: "", quantity_sent: 50, unit_cost_ngn: 0 },
+    ]);
     void ensureVariants(next.id).then((vs) => {
       if (vs[0]) {
         setItems((it) =>
@@ -268,6 +287,14 @@ function CreateTransferModal({
       }
     });
   }
+  function addBag(): void {
+    const first = bags[0];
+    if (!first) return;
+    setItems((it) => [
+      ...it,
+      { kind: "bag", product_id: "", variant_id: "", packaging_material_id: first.id, quantity_sent: 50, unit_cost_ngn: 0 },
+    ]);
+  }
   function updateItem(idx: number, patch: Partial<DraftItem>): void {
     setItems((it) => it.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
   }
@@ -279,10 +306,10 @@ function CreateTransferModal({
     e.preventDefault();
     if (items.length === 0 || !factoryId || !branchId) return;
     const missingSizeItem = items.some(
-      (it) => (variantsByProduct[it.product_id]?.length ?? 0) > 0 && !it.variant_id,
+      (it) => it.kind === "product" && (variantsByProduct[it.product_id]?.length ?? 0) > 0 && !it.variant_id,
     );
     if (missingSizeItem) {
-      setError("Pick a size for every line before sending.");
+      setError("Pick a size for every product line before sending.");
       return;
     }
     setSubmitting(true);
@@ -295,12 +322,20 @@ function CreateTransferModal({
           branch_id: branchId,
           vehicle_info: vehicle || undefined,
           driver_name: driver || undefined,
-          items: items.map((it) => ({
-            product_id: it.product_id,
-            variant_id: it.variant_id || undefined,
-            quantity_sent: Number(it.quantity_sent),
-            unit_cost_ngn: it.unit_cost_ngn ? Number(it.unit_cost_ngn) : undefined,
-          })),
+          items: items.map((it) =>
+            it.kind === "bag"
+              ? {
+                  packaging_material_id: it.packaging_material_id,
+                  quantity_sent: Number(it.quantity_sent),
+                  unit_cost_ngn: it.unit_cost_ngn ? Number(it.unit_cost_ngn) : undefined,
+                }
+              : {
+                  product_id: it.product_id,
+                  variant_id: it.variant_id || undefined,
+                  quantity_sent: Number(it.quantity_sent),
+                  unit_cost_ngn: it.unit_cost_ngn ? Number(it.unit_cost_ngn) : undefined,
+                },
+          ),
         }),
       });
       onSaved();
@@ -388,9 +423,17 @@ function CreateTransferModal({
           <div className="field">
             <label className="field__label">Items</label>
             {items.length === 0 ? (
-              <div className="empty" style={{ padding: 18 }}>
+              <div className="empty" style={{ padding: 18, display: "flex", gap: 8, justifyContent: "center" }}>
                 <button type="button" className="btn btn--subtle btn--sm" onClick={addItem}>
                   + Add product
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--subtle btn--sm"
+                  onClick={addBag}
+                  disabled={bags.length === 0}
+                >
+                  + Add bag
                 </button>
               </div>
             ) : (
@@ -409,43 +452,61 @@ function CreateTransferModal({
                     {items.map((it, idx) => (
                       <tr key={idx}>
                         <td>
-                          <select
-                            className="select"
-                            value={it.product_id}
-                            onChange={(e) => {
-                              const pid = e.target.value;
-                              updateItem(idx, { product_id: pid, variant_id: "" });
-                              void ensureVariants(pid).then((vs) => {
-                                if (vs[0]) {
-                                  updateItem(idx, { variant_id: vs[0].id });
-                                }
-                              });
-                            }}
-                          >
-                            {products.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
+                          {it.kind === "bag" ? (
+                            <select
+                              className="select"
+                              value={it.packaging_material_id}
+                              onChange={(e) => updateItem(idx, { packaging_material_id: e.target.value })}
+                            >
+                              {bags.map((bag) => (
+                                <option key={bag.id} value={bag.id}>
+                                  🛍 {bag.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <select
+                              className="select"
+                              value={it.product_id}
+                              onChange={(e) => {
+                                const pid = e.target.value;
+                                updateItem(idx, { product_id: pid, variant_id: "" });
+                                void ensureVariants(pid).then((vs) => {
+                                  if (vs[0]) {
+                                    updateItem(idx, { variant_id: vs[0].id });
+                                  }
+                                });
+                              }}
+                            >
+                              {products.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                         </td>
                         <td>
-                          <select
-                            className="select"
-                            value={it.variant_id}
-                            disabled={!it.product_id || (variantsByProduct[it.product_id]?.length ?? 0) === 0}
-                            onChange={(e) => updateItem(idx, { variant_id: e.target.value })}
-                          >
-                            {(variantsByProduct[it.product_id] ?? []).length === 0 ? (
-                              <option value="">—</option>
-                            ) : (
-                              (variantsByProduct[it.product_id] ?? []).map((v) => (
-                                <option key={v.id} value={v.id}>
-                                  {v.size_ml ? `${v.size_ml}ml` : (v.sku ?? v.id.slice(0, 6))}
-                                </option>
-                              ))
-                            )}
-                          </select>
+                          {it.kind === "bag" ? (
+                            <span style={{ color: "var(--ink-soft)" }}>Bag</span>
+                          ) : (
+                            <select
+                              className="select"
+                              value={it.variant_id}
+                              disabled={!it.product_id || (variantsByProduct[it.product_id]?.length ?? 0) === 0}
+                              onChange={(e) => updateItem(idx, { variant_id: e.target.value })}
+                            >
+                              {(variantsByProduct[it.product_id] ?? []).length === 0 ? (
+                                <option value="">—</option>
+                              ) : (
+                                (variantsByProduct[it.product_id] ?? []).map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {v.size_ml ? `${v.size_ml}ml` : (v.sku ?? v.id.slice(0, 6))}
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          )}
                         </td>
                         <td>
                           <input
@@ -482,7 +543,7 @@ function CreateTransferModal({
                     ))}
                   </tbody>
                 </table>
-                <div style={{ padding: 10, borderTop: "1px solid var(--line)" }}>
+                <div style={{ padding: 10, borderTop: "1px solid var(--line)", display: "flex", gap: 8 }}>
                   <button
                     type="button"
                     className="btn btn--subtle btn--sm"
@@ -490,6 +551,14 @@ function CreateTransferModal({
                     disabled={products.length === 0}
                   >
                     + Add product
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--subtle btn--sm"
+                    onClick={addBag}
+                    disabled={bags.length === 0}
+                  >
+                    + Add bag
                   </button>
                 </div>
               </div>

@@ -9,6 +9,10 @@ export const packagingLedgerSourceType = pgEnum("packaging_ledger_source_type", 
   "consumption",
   "adjustment",
   "opening_balance",
+  // Bag movements between factory and branch (Workstream A2b).
+  "transfer_dispatch",
+  "transfer_receive",
+  "transfer_reject_reverse",
 ]);
 
 /**

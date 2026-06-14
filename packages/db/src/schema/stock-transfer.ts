@@ -3,6 +3,7 @@ import { factory } from "./factory.js";
 import { branch } from "./branch.js";
 import { product } from "./product.js";
 import { productVariant } from "./product-variant.js";
+import { packagingMaterial } from "./packaging-material.js";
 import { adminUser } from "./admin-user.js";
 
 export const stockTransferStatus = pgEnum("stock_transfer_status", [
@@ -61,8 +62,13 @@ export const stockTransferItem = pgTable("stock_transfer_item", {
   stockTransferId: uuid("stock_transfer_id")
     .notNull()
     .references(() => stockTransfer.id, { onDelete: "cascade" }),
-  productId: uuid("product_id").notNull().references(() => product.id, { onDelete: "restrict" }),
+  // A line is EITHER a product (juice) OR a packaging material (bag) — never
+  // both, never neither (DB CHECK stock_transfer_item_product_xor_material).
+  productId: uuid("product_id").references(() => product.id, { onDelete: "restrict" }),
   variantId: uuid("variant_id").references(() => productVariant.id, { onDelete: "restrict" }),
+  packagingMaterialId: uuid("packaging_material_id").references(() => packagingMaterial.id, {
+    onDelete: "restrict",
+  }),
   quantitySent: integer("quantity_sent").notNull(),
   quantityReceived: integer("quantity_received"),
   varianceReason: stockTransferVarianceReason("variance_reason"),

@@ -22,6 +22,9 @@ interface TransferItem {
   productId: string;
   variantId?: string | null;
   size_ml?: number | null;
+  // Bag lines (A2b) carry a packaging material instead of a product.
+  packaging_material_id?: string | null;
+  material_name?: string | null;
   quantitySent: number;
   quantityReceived: number | null;
   varianceReason: string | null;
@@ -392,7 +395,9 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                     ? receipt.map((d, idx) => (
                         <tr key={d.item_id}>
                           <td>
-                            {productName(data.items[idx]?.productId ?? "")}
+                            {data.items[idx]?.material_name
+                              ? `🛍 ${data.items[idx]!.material_name}`
+                              : productName(data.items[idx]?.productId ?? "")}
                             {data.items[idx]?.size_ml != null && (
                               <span style={{ color: "var(--ink-soft)", fontSize: 12, marginLeft: 4 }}>
                                 · {data.items[idx]!.size_ml}ml
@@ -476,7 +481,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                         return (
                           <tr key={it.id}>
                             <td>
-                              {productName(it.productId)}
+                              {it.material_name ? `🛍 ${it.material_name}` : productName(it.productId)}
                               {it.size_ml != null && (
                                 <span style={{ color: "var(--ink-soft)", fontSize: 12, marginLeft: 4 }}>
                                   · {it.size_ml}ml
