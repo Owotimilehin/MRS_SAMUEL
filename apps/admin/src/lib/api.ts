@@ -4,6 +4,8 @@
  * - Auto-attaches an Idempotency-Key for every mutation
  * - Throws an Error with the server-provided message on non-2xx
  */
+import { toast } from "./toast.js";
+
 export const API_BASE = "/v1";
 
 /** crypto.randomUUID() requires a secure context (HTTPS or localhost). In
@@ -221,9 +223,21 @@ function waitBeforeRetry(attempt: number): Promise<void> {
  * dedupes a request that actually landed. The friendly error only surfaces if
  * every attempt is exhausted.
  */
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function api<T>(
+  path: string,
+  init: RequestInit = {},
+  opts: { silentError?: boolean } = {},
+): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(method);
+  // A failed user action (save, dispatch, adjust…) pops an app-wide toast so the
+  // error surfaces where the eye is, not as a banner at the top of the page.
+  // Pass { silentError: true } when the caller renders its own inline message
+  // (e.g. field-level form validation) and a toast would be redundant.
+  const fail = (e: ApiError): never => {
+    if (isMutation && !opts.silentError) toast.error(e.message);
+    throw e;
+  };
   const headers = new Headers(init.headers);
   if (!headers.has("content-type") && init.body !== undefined) {
     headers.set("content-type", "application/json");
@@ -243,7 +257,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       res = await fetch(API_BASE + path, { ...init, credentials: "include", headers });
     } catch {
       // Network/DNS/offline — fetch rejects before any response.
-      if (last) throw new ApiError(0, "network_error", describeByCode("network_error", 0, undefined));
+      if (last) fail(new ApiError(0, "network_error", describeByCode("network_error", 0, undefined)));
       await waitBeforeRetry(attempt);
       continue;
     }
@@ -273,7 +287,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       const message =
         describeValidation(code, body.error?.details) ??
         describeByCode(code, res.status, body.error?.message);
-      throw new ApiError(res.status, code, message, body.error?.details);
+      fail(new ApiError(res.status, code, message, body.error?.details));
     }
 
     if (res.status === 204) return undefined as T;

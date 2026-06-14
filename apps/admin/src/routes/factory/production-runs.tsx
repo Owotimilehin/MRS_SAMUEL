@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { Stat } from "../../components/Stat.js";
 import { api } from "../../lib/api.js";
+import { toast } from "../../lib/toast.js";
 import { formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 
@@ -42,16 +43,18 @@ export function ProductionRunsPage(): JSX.Element {
   const [history, setHistory] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [flash, setFlash] = useState<string | null>(null);
   const [variantsByProduct, setVariantsByProduct] = useState<Record<string, Variant[]>>({});
   const [bottleStock, setBottleStock] = useState<BottleStock[]>([]);
-  const [draftRow, setDraftRow] = useState<{ productId: string; variantId: string; qty: number; batch: string }>({
-    productId: "",
-    variantId: "",
-    qty: 50,
-    batch: "",
-  });
+  // The add-flavour form now works batch-first: the factory enters the total
+  // volume produced for one flavour, then divides it into per-size bottle
+  // counts. `counts` is keyed by variantId. `totalLitres` is the produced
+  // volume (a guide/sanity-check — only bottle counts are persisted).
+  const [draft, setDraft] = useState<{
+    productId: string;
+    totalLitres: string;
+    counts: Record<string, number>;
+    batch: string;
+  }>({ productId: "", totalLitres: "", counts: {}, batch: "" });
 
   // Fetch variants for a product on demand and cache. Used when the factory
   // picks a flavour from the dropdown.
@@ -82,16 +85,12 @@ export function ProductionRunsPage(): JSX.Element {
         if (f.data[0]) setFactoryId(f.data[0].id);
         const firstProduct = p.data[0];
         if (firstProduct) {
-          setDraftRow((d) => ({ ...d, productId: firstProduct.id }));
-          // Pre-load variants for the first product so the Size dropdown
-          // is populated immediately.
-          void ensureVariants(firstProduct.id).then((vs) => {
-            const first = vs[0];
-            if (first) setDraftRow((d) => (d.productId === firstProduct.id && !d.variantId ? { ...d, variantId: first.id } : d));
-          });
+          setDraft((d) => ({ ...d, productId: firstProduct.id }));
+          // Pre-load variants so the size allocation rows appear immediately.
+          void ensureVariants(firstProduct.id);
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -110,7 +109,7 @@ export function ProductionRunsPage(): JSX.Element {
         );
         if (!cancelled) setRun(res.data);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
       }
     })();
     return () => { cancelled = true; };
@@ -125,7 +124,7 @@ export function ProductionRunsPage(): JSX.Element {
       );
       setHistory(res.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -156,45 +155,49 @@ export function ProductionRunsPage(): JSX.Element {
 
   async function startDraft(): Promise<void> {
     if (!factoryId) return;
-    setBusy(true); setError(null);
+    setBusy(true);
     try {
       const res = await api<{ data: Run }>(`/production-runs`, {
         method: "POST",
         body: JSON.stringify({ factory_id: factoryId, run_date: runDate }),
       });
       setRun(res.data);
-      setFlash("Draft started — add flavours as each batch is done");
-      setTimeout(() => setFlash(null), 2500);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally { setBusy(false); }
+      toast.success("Draft started — add flavours as each batch is done");
+    } catch { /* api() already toasted */ } finally { setBusy(false); }
   }
 
-  async function appendItem(): Promise<void> {
-    if (!run || !draftRow.productId || draftRow.qty <= 0) return;
-    setBusy(true); setError(null);
+  // Append every size allocated for the chosen flavour in one call. Sizes left
+  // at 0 are skipped. The total-volume field is a guide only — what's persisted
+  // is the per-size bottle counts.
+  async function appendAllocation(): Promise<void> {
+    if (!run || !draft.productId) return;
+    const items = (variantsByProduct[draft.productId] ?? [])
+      .map((v) => ({ v, qty: Number(draft.counts[v.id] ?? 0) }))
+      .filter((x) => x.qty > 0)
+      .map((x) => ({
+        product_id: draft.productId,
+        variant_id: x.v.id,
+        quantity_produced: x.qty,
+        batch_code: draft.batch || undefined,
+      }));
+    if (items.length === 0) {
+      toast.error("Enter at least one bottle count before adding.");
+      return;
+    }
+    setBusy(true);
     try {
       const res = await api<{ data: Run }>(`/production-runs/${run.id}/items`, {
         method: "POST",
-        body: JSON.stringify({
-          items: [{
-            product_id: draftRow.productId,
-            variant_id: draftRow.variantId || undefined,
-            quantity_produced: Number(draftRow.qty),
-            batch_code: draftRow.batch || undefined,
-          }],
-        }),
+        body: JSON.stringify({ items }),
       });
       setRun(res.data);
-      setDraftRow((d) => ({ ...d, qty: 50, batch: "" }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally { setBusy(false); }
+      setDraft((d) => ({ ...d, totalLitres: "", counts: {}, batch: "" }));
+    } catch { /* api() already toasted */ } finally { setBusy(false); }
   }
 
   async function patchItem(itemId: string, patch: { quantity_produced?: number; batch_code?: string | null }): Promise<void> {
     if (!run) return;
-    setBusy(true); setError(null);
+    setBusy(true);
     try {
       await api(`/production-runs/${run.id}/items/${itemId}`, {
         method: "PATCH",
@@ -204,37 +207,30 @@ export function ProductionRunsPage(): JSX.Element {
         `/production-runs/open?factory_id=${factoryId}&run_date=${runDate}`,
       );
       setRun(res.data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally { setBusy(false); }
+    } catch { /* api() already toasted */ } finally { setBusy(false); }
   }
 
   async function deleteItem(itemId: string): Promise<void> {
     if (!run) return;
     if (!confirm("Remove this flavour from the run?")) return;
-    setBusy(true); setError(null);
+    setBusy(true);
     try {
       await api(`/production-runs/${run.id}/items/${itemId}`, { method: "DELETE" });
       setRun((r) => (r ? { ...r, items: r.items.filter((i) => i.id !== itemId) } : r));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally { setBusy(false); }
+    } catch { /* api() already toasted */ } finally { setBusy(false); }
   }
 
   async function completeRun(): Promise<void> {
     if (!run) return;
-    setBusy(true); setError(null);
+    setBusy(true);
     try {
       const done = await api<{ data: Run }>(`/production-runs/${run.id}/complete`, { method: "PATCH" });
       // Merge so `items` survives even if the API ever omits it — guards the
       // render against `run.items` being undefined.
       setRun((r) => (r ? { ...r, ...done.data, items: done.data.items ?? r.items } : done.data));
       void loadHistory();
-      setFlash("Run completed — stock posted to factory ledger");
-      setTimeout(() => setFlash(null), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally { setBusy(false); }
+      toast.success("Run completed — stock posted to factory ledger");
+    } catch { /* api() already toasted */ } finally { setBusy(false); }
   }
 
   const productName = (id: string): string =>
@@ -249,19 +245,19 @@ export function ProductionRunsPage(): JSX.Element {
     .flatMap((h) => h.items)
     .reduce((sum, it) => sum + it.quantityProduced, 0);
 
+  // Live volume math for the allocation form: bottles × size → litres bottled.
+  const draftVariants = variantsByProduct[draft.productId] ?? [];
+  const bottledMl = draftVariants.reduce(
+    (sum, v) => sum + (v.size_ml ?? 0) * Number(draft.counts[v.id] ?? 0),
+    0,
+  );
+  const bottledL = bottledMl / 1000;
+  const totalL = Number(draft.totalLitres) || 0;
+  const remainingL = totalL - bottledL;
+  const overAllocated = totalL > 0 && remainingL < -1e-9;
+
   return (
     <Shell title="Production runs">
-      {error && (
-        <div className="card" style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}>
-          {error}
-        </div>
-      )}
-      {flash && (
-        <div className="card" style={{ borderColor: "rgba(16,185,129,0.35)", color: "var(--success)", marginBottom: 16 }}>
-          {flash}
-        </div>
-      )}
-
       <section className="card" style={{ marginBottom: 18 }}>
         <div className="card__head">
           <h2 className="t-h2">Bottle stock{selectedFactoryName ? ` — ${selectedFactoryName}` : ""}</h2>
@@ -385,60 +381,91 @@ export function ProductionRunsPage(): JSX.Element {
                 )}
 
                 {run.status === "draft" && (
-                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr auto", gap: 8, alignItems: "end" }}>
-                    <div className="field">
-                      <label className="field__label">Add flavour</label>
-                      <select
-                        className="select"
-                        value={draftRow.productId}
-                        onChange={(e) => {
-                          const pid = e.target.value;
-                          setDraftRow((d) => ({ ...d, productId: pid, variantId: "" }));
-                          void ensureVariants(pid).then((vs) => {
-                            if (vs.length > 0) {
-                              const first = vs[0]!;
-                              setDraftRow((d) => (d.productId === pid && !d.variantId ? { ...d, variantId: first.id } : d));
-                            }
-                          });
-                        }}
-                      >
-                        {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
+                  <div className="card" style={{ background: "var(--surface-soft)", padding: 14 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8, alignItems: "end", marginBottom: 12 }}>
+                      <div className="field">
+                        <label className="field__label">Add flavour</label>
+                        <select
+                          className="select"
+                          value={draft.productId}
+                          onChange={(e) => {
+                            const pid = e.target.value;
+                            setDraft((d) => ({ ...d, productId: pid, counts: {} }));
+                            void ensureVariants(pid);
+                          }}
+                        >
+                          {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="field">
+                        <label className="field__label">Total produced (L)</label>
+                        <input
+                          className="input" type="number" min={0} step="0.1"
+                          placeholder="e.g. 50"
+                          value={draft.totalLitres}
+                          style={{ textAlign: "right" }}
+                          onChange={(e) => setDraft((d) => ({ ...d, totalLitres: e.target.value }))}
+                        />
+                      </div>
+                      <div className="field">
+                        <label className="field__label">Batch</label>
+                        <input className="input" placeholder="optional" value={draft.batch} onChange={(e) => setDraft((d) => ({ ...d, batch: e.target.value }))} />
+                      </div>
                     </div>
-                    <div className="field">
-                      <label className="field__label">Size</label>
-                      <select
-                        className="select"
-                        value={draftRow.variantId}
-                        onChange={(e) => setDraftRow((d) => ({ ...d, variantId: e.target.value }))}
-                        disabled={!draftRow.productId || (variantsByProduct[draftRow.productId]?.length ?? 0) === 0}
-                      >
-                        {(variantsByProduct[draftRow.productId] ?? []).length === 0 ? (
-                          <option value="">—</option>
-                        ) : (
-                          (variantsByProduct[draftRow.productId] ?? []).map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {v.size_ml ? `${v.size_ml}ml` : (v.sku ?? v.id.slice(0, 6))}
-                            </option>
-                          ))
-                        )}
-                      </select>
+
+                    <label className="field__label" style={{ display: "block", marginBottom: 6 }}>Divide into bottles</label>
+                    {draftVariants.length === 0 ? (
+                      <div className="empty" style={{ padding: 14 }}>This flavour has no sizes yet.</div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {draftVariants.map((v) => {
+                          const count = Number(draft.counts[v.id] ?? 0);
+                          const litres = ((v.size_ml ?? 0) * count) / 1000;
+                          return (
+                            <div key={v.id} style={{ display: "grid", gridTemplateColumns: "100px 120px 1fr", gap: 10, alignItems: "center" }}>
+                              <span style={{ fontWeight: 600 }}>{v.size_ml ? `${v.size_ml}ml` : (v.sku ?? "—")}</span>
+                              <input
+                                className="input" type="number" min={0}
+                                value={draft.counts[v.id] ?? ""}
+                                placeholder="0"
+                                style={{ textAlign: "right" }}
+                                onChange={(e) =>
+                                  setDraft((d) => ({ ...d, counts: { ...d.counts, [v.id]: Math.max(0, Number(e.target.value) || 0) } }))
+                                }
+                              />
+                              <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>{count > 0 ? `= ${litres.toFixed(2)} L` : ""}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Volume reconciliation: how much of the produced total is bottled. */}
+                    <div
+                      style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "baseline",
+                        marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)",
+                        fontSize: 13.5,
+                        color: overAllocated ? "var(--danger)" : "var(--ink)",
+                      }}
+                    >
+                      <span>Bottled <strong>{bottledL.toFixed(2)} L</strong>{totalL > 0 ? ` of ${totalL.toFixed(2)} L` : ""}</span>
+                      <span style={{ fontWeight: 600 }}>
+                        {totalL <= 0
+                          ? ""
+                          : overAllocated
+                            ? `${Math.abs(remainingL).toFixed(2)} L over`
+                            : `${remainingL.toFixed(2)} L left`}
+                      </span>
                     </div>
-                    <div className="field">
-                      <label className="field__label">Quantity</label>
-                      <input
-                        className="input" type="number" min={1}
-                        value={draftRow.qty}
-                        style={{ textAlign: "right" }}
-                        onChange={(e) => setDraftRow((d) => ({ ...d, qty: Number(e.target.value) }))}
-                      />
-                    </div>
-                    <div className="field">
-                      <label className="field__label">Batch</label>
-                      <input className="input" placeholder="optional" value={draftRow.batch} onChange={(e) => setDraftRow((d) => ({ ...d, batch: e.target.value }))} />
-                    </div>
-                    <button className="btn btn--subtle" disabled={busy || !draftRow.productId || draftRow.qty <= 0} onClick={() => void appendItem()}>
-                      {busy ? "…" : "+ Append"}
+
+                    <button
+                      className="btn btn--subtle"
+                      style={{ marginTop: 12 }}
+                      disabled={busy || !draft.productId || bottledMl <= 0 || overAllocated}
+                      onClick={() => void appendAllocation()}
+                    >
+                      {busy ? "…" : overAllocated ? "Over the produced total" : "+ Add to run"}
                     </button>
                   </div>
                 )}
