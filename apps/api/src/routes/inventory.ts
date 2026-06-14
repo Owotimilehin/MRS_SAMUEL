@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, gte, lte, sql, inArray, desc } from "drizzle-orm";
+import { eq, and, gte, lte, sql, inArray, desc, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
   stockAdjustment,
@@ -33,6 +33,9 @@ const AdjustBody = z
       .array(
         z.object({
           product_id: z.string().uuid(),
+          // Optional can size. Omitted/null = the legacy product-level (NULL)
+          // bucket; a uuid targets one variant's own balance independently.
+          variant_id: z.string().uuid().nullish(),
           new_quantity: z.number().int().nonnegative(),
         }),
       )
@@ -60,7 +63,9 @@ export function inventoryRoutes(db: DbClient) {
       if (!b) throw new BusinessError("not_found", "branch not found", 404);
     }
 
-    const productIds = body.items.map((i) => i.product_id);
+    // Dedupe: a per-size adjust sends one item per (product, variant), so the
+    // same product_id repeats across its sizes. Validate the DISTINCT products.
+    const productIds = [...new Set(body.items.map((i) => i.product_id))];
     const rows = await db
       .select({ id: product.id, name: product.name })
       .from(product)
@@ -85,6 +90,7 @@ export function inventoryRoutes(db: DbClient) {
 
       const lines: Array<{
         product_id: string;
+        variant_id: string | null;
         product_name: string;
         old_quantity: number;
         new_quantity: number;
@@ -92,6 +98,7 @@ export function inventoryRoutes(db: DbClient) {
       }> = [];
 
       for (const item of body.items) {
+        const variantId = item.variant_id ?? null;
         const balRow = await tx
           .select({ bal: sql<number>`COALESCE(SUM(${stockLedger.delta}), 0)::int` })
           .from(stockLedger)
@@ -100,6 +107,9 @@ export function inventoryRoutes(db: DbClient) {
               eq(stockLedger.locationType, body.location_type),
               eq(stockLedger.locationId, body.location_id),
               eq(stockLedger.productId, item.product_id),
+              // Key the old balance to the same bucket we will write to, so each
+              // can size adjusts independently and the NULL bucket stays separate.
+              variantId ? eq(stockLedger.variantId, variantId) : isNull(stockLedger.variantId),
             ),
           );
         const oldQty = Number(balRow[0]?.bal ?? 0);
@@ -111,6 +121,7 @@ export function inventoryRoutes(db: DbClient) {
             locationType: body.location_type,
             locationId: body.location_id,
             productId: item.product_id,
+            variantId,
             delta,
             sourceType: "adjustment",
             sourceId: header.id,
@@ -128,6 +139,7 @@ export function inventoryRoutes(db: DbClient) {
             throw new BusinessError("conflict", "stock would go negative", 422, {
               reason: "would_go_negative",
               product_id: item.product_id,
+              variant_id: variantId,
               current_quantity: oldQty,
               attempted_new_quantity: item.new_quantity,
             });
@@ -137,6 +149,7 @@ export function inventoryRoutes(db: DbClient) {
 
         lines.push({
           product_id: item.product_id,
+          variant_id: variantId,
           product_name: nameById.get(item.product_id) ?? item.product_id,
           old_quantity: oldQty,
           new_quantity: item.new_quantity,

@@ -93,6 +93,44 @@ describe("inventory adjust", () => {
     expect(stockBalance(after.body.data, product.id)).toBe(95);
   });
 
+  it("adjusts two sizes of one flavour independently", async () => {
+    const created = await call<{ data: { id: string; variants: Array<{ id: string; size_ml: number }> } }>(
+      "POST",
+      "/v1/products",
+      {
+        name: "Adj Dual",
+        slug: "adj-dual",
+        category: "regular",
+        ingredients: ["x"],
+        variants: [
+          { size_ml: 330, price_ngn: 2500 },
+          { size_ml: 650, price_ngn: 3500 },
+        ],
+      },
+    );
+    const dual = created.body.data;
+    const v330 = dual.variants.find((v) => v.size_ml === 330)!.id;
+    const v650 = dual.variants.find((v) => v.size_ml === 650)!.id;
+
+    await call("POST", "/v1/inventory/adjust", {
+      location_type: "factory",
+      location_id: factory.id,
+      reason_code: "opening_balance",
+      items: [
+        { product_id: dual.id, variant_id: v330, new_quantity: 10 },
+        { product_id: dual.id, variant_id: v650, new_quantity: 4 },
+      ],
+    });
+
+    const s = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
+      "GET",
+      `/v1/stock/factory/${factory.id}`,
+    );
+    const rows = s.body.data.filter((r) => r.product_id === dual.id);
+    expect(rows.find((r) => r.variant_id === v330)!.balance).toBe(10);
+    expect(rows.find((r) => r.variant_id === v650)!.balance).toBe(4);
+  });
+
   it("reason other_with_note rejects an empty note", async () => {
     const missing = await call("POST", "/v1/inventory/adjust", {
       location_type: "factory",
