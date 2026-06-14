@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
+import { Stat } from "../../components/Stat.js";
 import { api } from "../../lib/api.js";
 import { formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -25,6 +26,12 @@ interface Run {
   notes: string | null;
   items: RunItem[];
 }
+interface BottleStock {
+  material_id: string;
+  name: string;
+  size_ml: number | null;
+  balance: number;
+}
 
 export function ProductionRunsPage(): JSX.Element {
   const [factories, setFactories] = useState<Factory[]>([]);
@@ -38,6 +45,7 @@ export function ProductionRunsPage(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [variantsByProduct, setVariantsByProduct] = useState<Record<string, Variant[]>>({});
+  const [bottleStock, setBottleStock] = useState<BottleStock[]>([]);
   const [draftRow, setDraftRow] = useState<{ productId: string; variantId: string; qty: number; batch: string }>({
     productId: "",
     variantId: "",
@@ -124,6 +132,26 @@ export function ProductionRunsPage(): JSX.Element {
   useEffect(() => {
     void loadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [factoryId]);
+
+  // Load per-size bottle stock balances for the selected factory.
+  useEffect(() => {
+    if (!factoryId) { setBottleStock([]); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await api<{ data: BottleStock[] }>(`/packaging/stock?factory_id=${factoryId}`);
+        if (cancelled) return;
+        setBottleStock(
+          res.data
+            .filter((m) => m.size_ml != null)
+            .sort((a, b) => (a.size_ml ?? 0) - (b.size_ml ?? 0)),
+        );
+      } catch {
+        if (!cancelled) setBottleStock([]);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [factoryId]);
 
   async function startDraft(): Promise<void> {
@@ -213,6 +241,12 @@ export function ProductionRunsPage(): JSX.Element {
     products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
   const sizeLabel = (ml: number | null): string => (ml ? `${ml}ml` : "—");
 
+  const selectedFactoryName = factories.find((f) => f.id === factoryId)?.name;
+  const producedToday = history
+    .filter((h) => h.runDate === runDate)
+    .flatMap((h) => h.items)
+    .reduce((sum, it) => sum + it.quantityProduced, 0);
+
   return (
     <Shell title="Production runs">
       {error && (
@@ -225,6 +259,28 @@ export function ProductionRunsPage(): JSX.Element {
           {flash}
         </div>
       )}
+
+      <section className="card" style={{ marginBottom: 18 }}>
+        <div className="card__head">
+          <h2 className="t-h2">Bottle stock{selectedFactoryName ? ` — ${selectedFactoryName}` : ""}</h2>
+        </div>
+        {bottleStock.length === 0 ? (
+          <div className="empty">No bottle stock recorded for this factory yet.</div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 14,
+            }}
+          >
+            {bottleStock.map((b) => (
+              <Stat key={b.material_id} label={`${b.size_ml}ml bottles`} value={String(b.balance)} />
+            ))}
+            <Stat label="Produced today" value={String(producedToday)} tone="accent" />
+          </div>
+        )}
+      </section>
 
       <section className="card" style={{ marginBottom: 18 }}>
         <h2 className="t-h2" style={{ marginBottom: 12 }}>Today's run</h2>
