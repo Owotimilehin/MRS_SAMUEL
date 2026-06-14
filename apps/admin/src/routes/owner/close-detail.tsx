@@ -4,6 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface StockCount {
   id: string;
@@ -54,9 +55,7 @@ export function CloseDetailPage({
   const [products, setProducts] = useState<Product[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -69,9 +68,8 @@ export function CloseDetailPage({
       setData(d.data);
       setProducts(p.data);
       setBranches(b.data);
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -86,11 +84,10 @@ export function CloseDetailPage({
     setActing(true);
     try {
       await api(`/branches/${branchId}/daily-close/${closeId}/approve`, { method: "PATCH" });
-      setFlash("Close approved");
-      setTimeout(() => setFlash(null), 2500);
+      toast.success("Close approved");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(false);
     }
@@ -104,11 +101,10 @@ export function CloseDetailPage({
         method: "PATCH",
         body: JSON.stringify({ reason }),
       });
-      setFlash("Close disputed");
-      setTimeout(() => setFlash(null), 2500);
+      toast.success("Close disputed");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(false);
     }
@@ -126,27 +122,8 @@ export function CloseDetailPage({
         </Link>
       }
     >
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
-      {flash && (
-        <div
-          className="card"
-          style={{
-            background: "rgba(16,185,129,0.10)",
-            borderColor: "rgba(16,185,129,0.25)",
-            color: "#047857",
-            marginBottom: 16,
-          }}
-        >
-          {flash}
-        </div>
-      )}
+      
+      
 
       {loading || !data ? (
         <InlineLoader />

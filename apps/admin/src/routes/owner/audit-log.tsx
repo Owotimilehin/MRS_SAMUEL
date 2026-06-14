@@ -13,6 +13,7 @@ import {
   type BranchLookup,
 } from "../../lib/audit-humanize.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface Facets {
   entity_types: string[];
@@ -60,7 +61,6 @@ export function AuditLogPage(): JSX.Element {
   const [users, setUsers] = useState<UserLookup[]>([]);
   const [branches, setBranches] = useState<BranchLookup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AuditRow | null>(null);
   const [showRaw, setShowRaw] = useState(false);
 
@@ -72,7 +72,6 @@ export function AuditLogPage(): JSX.Element {
 
   async function load(): Promise<void> {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams();
       if (entityType) params.set("entity_type", entityType);
@@ -84,7 +83,7 @@ export function AuditLogPage(): JSX.Element {
       const res = await api<{ data: AuditRow[] }>(`/audit-log?${params}`);
       setRows(res.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -128,14 +127,7 @@ export function AuditLogPage(): JSX.Element {
         </button>
       }
     >
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
+      
 
       <div
         className="card"

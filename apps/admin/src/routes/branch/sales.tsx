@@ -5,6 +5,7 @@ import { Stat } from "../../components/Stat.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface Sale {
   id: string;
@@ -35,7 +36,6 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
   const [sales, setSales] = useState<Sale[]>([]);
   const [filter, setFilter] = useState<"today" | "all">("today");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,10 +45,9 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
         const res = await api<{ data: Sale[] }>(`/branches/${branchId}/sales`);
         if (!cancelled) {
           setSales(res.data);
-          setError(null);
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -72,14 +71,7 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
 
   return (
     <BranchShell branchId={branchId} title="Today's sales">
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
+      
 
       <div
         style={{

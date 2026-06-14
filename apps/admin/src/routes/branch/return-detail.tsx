@@ -4,6 +4,7 @@ import { BranchShell } from "../../components/BranchShell.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface ReturnItem {
   id: string;
@@ -59,9 +60,7 @@ export function ReturnDetailPage({
   const [ret, setRet] = useState<ReturnDetail | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -72,9 +71,8 @@ export function ReturnDetailPage({
       ]);
       setRet(r.data);
       setProducts(p.data);
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -90,11 +88,10 @@ export function ReturnDetailPage({
     setActing(true);
     try {
       await api(`/branches/${branchId}/returns/${returnId}/cancel`, { method: "PATCH" });
-      setFlash("Return cancelled");
-      setTimeout(() => setFlash(null), 2500);
+      toast.success("Return cancelled");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(false);
     }
@@ -112,27 +109,8 @@ export function ReturnDetailPage({
         </Link>
       }
     >
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
-      {flash && (
-        <div
-          className="card"
-          style={{
-            background: "rgba(16,185,129,0.10)",
-            borderColor: "rgba(16,185,129,0.25)",
-            color: "#047857",
-            marginBottom: 16,
-          }}
-        >
-          {flash}
-        </div>
-      )}
+      
+      
 
       {loading || !ret ? (
         <InlineLoader />

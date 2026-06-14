@@ -4,6 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { formatDate, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface RunItem {
   id: string;
@@ -43,9 +44,7 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
   const [factories, setFactories] = useState<Factory[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -58,9 +57,8 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
       setRun(r.data);
       setFactories(f.data);
       setProducts(p.data);
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -75,11 +73,10 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
     setActing(true);
     try {
       await api(`/production-runs/${runId}/complete`, { method: "PATCH" });
-      setFlash("Run completed — bottles posted to factory ledger");
-      setTimeout(() => setFlash(null), 3000);
+      toast.success("Run completed — bottles posted to factory ledger");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(false);
     }
@@ -100,27 +97,8 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
         </Link>
       }
     >
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
-      {flash && (
-        <div
-          className="card"
-          style={{
-            background: "rgba(16,185,129,0.10)",
-            borderColor: "rgba(16,185,129,0.25)",
-            color: "#047857",
-            marginBottom: 16,
-          }}
-        >
-          {flash}
-        </div>
-      )}
+      
+      
 
       {loading || !run ? (
         <InlineLoader />

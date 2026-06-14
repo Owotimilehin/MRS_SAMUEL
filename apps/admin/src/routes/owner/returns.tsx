@@ -4,6 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { api, ApiError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface ReturnRow {
   id: string;
@@ -33,7 +34,6 @@ export function OwnerReturnsPage(): JSX.Element {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [rows, setRows] = useState<ReturnRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "pending" | "completed" | "threshold">("all");
 
   async function load(): Promise<void> {
@@ -51,9 +51,8 @@ export function OwnerReturnsPage(): JSX.Element {
       setRows(
         all.flat().sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1)),
       );
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -122,11 +121,7 @@ export function OwnerReturnsPage(): JSX.Element {
           </span>
         </header>
 
-        {error && (
-          <div role="alert" className="empty" style={{ color: "var(--danger)" }}>
-            {error}
-          </div>
-        )}
+        
 
         {loading ? (
           <InlineLoader />

@@ -4,6 +4,7 @@ import { BranchShell } from "../../components/BranchShell.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface CloseRow {
   id: string;
@@ -27,7 +28,6 @@ function statusPill(s: CloseRow["status"]): JSX.Element {
 export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Element {
   const [rows, setRows] = useState<CloseRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,10 +41,9 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
             a.businessDate < b.businessDate ? 1 : -1,
           );
           setRows(sorted);
-          setError(null);
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -68,14 +67,7 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
         </Link>
       }
     >
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
+      
 
       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
         <span className="pill pill--success">Approved · {approved}</span>

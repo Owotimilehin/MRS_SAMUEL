@@ -6,6 +6,7 @@ import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { downloadCsv } from "../../lib/csv.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface RevenueRow {
   branch_id: string;
@@ -55,12 +56,10 @@ export function DashboardPage(): JSX.Element {
   const [branches, setBranches] = useState<BranchRow[]>([]);
   const [reviewCount, setReviewCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setError(null);
     void (async () => {
       try {
         const [rev, top, vari, br, rev2] = await Promise.all([
@@ -80,7 +79,7 @@ export function DashboardPage(): JSX.Element {
         );
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          toast.error(err instanceof Error ? err.message : String(err));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -153,14 +152,7 @@ export function DashboardPage(): JSX.Element {
         </div>
       </div>
 
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
+      
 
       <div
         style={{

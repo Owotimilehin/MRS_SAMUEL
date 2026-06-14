@@ -5,6 +5,7 @@ import { api } from "../lib/api.js";
 import { ngn, formatDateTime } from "../lib/format.js";
 import { useAuthUser } from "../lib/auth.js";
 import { InlineLoader } from "../components/Spinner.js";
+import { toast } from "../lib/toast.js";
 
 type TransferStatus =
   | "dispatched"
@@ -95,9 +96,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
   const [receiving, setReceiving] = useState(false);
   const [receipt, setReceipt] = useState<
     Array<{
@@ -131,9 +130,8 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
           sent: i.quantitySent,
         })),
       );
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -146,14 +144,13 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
 
   async function action(path: string, body?: unknown): Promise<void> {
     setActing(true);
-    setError(null);
     try {
       const init: RequestInit = { method: "PATCH" };
       if (body !== undefined) init.body = JSON.stringify(body);
       await api(path, init);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(false);
     }
@@ -163,7 +160,6 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
     e.preventDefault();
     const missingReason = receipt.find((d) => d.quantity_received !== d.sent && !d.variance_reason);
     if (missingReason) {
-      setError("Pick a variance reason for every line that doesn't match");
       return;
     }
     const missingNote = receipt.find(
@@ -173,11 +169,9 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
         !d.variance_note.trim(),
     );
     if (missingNote) {
-      setError("Add a note for every line marked 'Other'");
       return;
     }
     setActing(true);
-    setError(null);
     try {
       await api(`/transfers/${transferId}/receive`, {
         method: "PATCH",
@@ -193,12 +187,11 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
           })),
         }),
       });
-      setFlash("Receipt recorded");
+      toast.success("Receipt recorded");
       setReceiving(false);
-      setTimeout(() => setFlash(null), 2500);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(false);
     }
@@ -213,26 +206,22 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
     if (raw === null) return;
     const nextQty = Number(raw);
     if (!Number.isFinite(nextQty) || nextQty < 0) {
-      setError("Quantity must be a non-negative number");
       return;
     }
     const reason = window.prompt("Reason for the correction (visible in audit log)");
     if (!reason || reason.trim().length < 3) {
-      setError("Reason is required (min 3 chars)");
       return;
     }
     setActing(true);
-    setError(null);
     try {
       await api(`/transfers/${transferId}/items/${it.id}/adjust`, {
         method: "PATCH",
         body: JSON.stringify({ side, new_quantity: nextQty, reason: reason.trim() }),
       });
-      setFlash(`Count adjusted (${side})`);
-      setTimeout(() => setFlash(null), 2500);
+      toast.success(`Count adjusted (${side})`);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(false);
     }
@@ -272,27 +261,8 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
         </Link>
       }
     >
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
-      {flash && (
-        <div
-          className="card"
-          style={{
-            background: "rgba(16,185,129,0.10)",
-            borderColor: "rgba(16,185,129,0.25)",
-            color: "#047857",
-            marginBottom: 16,
-          }}
-        >
-          {flash}
-        </div>
-      )}
+      
+      
 
       {loading || !data ? (
         <InlineLoader />

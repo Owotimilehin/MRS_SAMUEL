@@ -4,6 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface VarianceRow {
   daily_close_id: string;
@@ -20,7 +21,6 @@ export function OwnerClosesPage(): JSX.Element {
   const [variances, setVariances] = useState<VarianceRow[]>([]);
   const [branches, setBranches] = useState<BranchRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [from, setFrom] = useState(() =>
     new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10),
   );
@@ -34,9 +34,8 @@ export function OwnerClosesPage(): JSX.Element {
       ]);
       setVariances(vari.data);
       setBranches(br.data);
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -67,14 +66,7 @@ export function OwnerClosesPage(): JSX.Element {
         </div>
       }
     >
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
+      
 
       {loading ? (
         <InlineLoader />

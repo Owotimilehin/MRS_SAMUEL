@@ -3,6 +3,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 const REASON_LABEL: Record<string, string> = {
   physical_recount: "Physical recount",
@@ -46,7 +47,6 @@ export function AdjustmentsPage(): JSX.Element {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -58,7 +58,7 @@ export function AdjustmentsPage(): JSX.Element {
         setFactories(f.data);
         setBranches(b.data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        toast.error(err instanceof Error ? err.message : String(err));
       }
     })();
   }, []);
@@ -70,9 +70,8 @@ export function AdjustmentsPage(): JSX.Element {
       if (locationType) qs.set("location_type", locationType);
       const res = await api<{ data: Adjustment[] }>(`/inventory/adjustments?${qs}`);
       setRows(res.data);
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -99,11 +98,7 @@ export function AdjustmentsPage(): JSX.Element {
 
   return (
     <Shell title="Adjustments history">
-      {error && (
-        <div className="card" style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}>
-          {error}
-        </div>
-      )}
+      
 
       <div style={{ display: "flex", gap: 12, alignItems: "end", marginBottom: 16, flexWrap: "wrap" }}>
         <div className="field">

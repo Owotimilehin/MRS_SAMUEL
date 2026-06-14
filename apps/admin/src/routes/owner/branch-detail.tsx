@@ -4,6 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface DeliveryZone {
   name: string;
@@ -27,7 +28,6 @@ interface Branch {
 export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Element {
   const [branch, setBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
@@ -37,7 +37,6 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
   const [closesAt, setClosesAt] = useState("");
   const [zones, setZones] = useState<DeliveryZone[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
   const [geoStatus, setGeoStatus] = useState<string | null>(null);
 
   async function load(): Promise<void> {
@@ -53,9 +52,8 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
       setLat(res.data.lat ?? "");
       setLng(res.data.lng ?? "");
       setZones(res.data.deliveryZones);
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -69,7 +67,6 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
   async function save(e: FormEvent): Promise<void> {
     e.preventDefault();
     setSubmitting(true);
-    setError(null);
     try {
       await api(`/branches/${branchId}`, {
         method: "PATCH",
@@ -84,11 +81,10 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
           delivery_zones: zones,
         }),
       });
-      setFlash("Branch saved");
-      setTimeout(() => setFlash(null), 2500);
+      toast.success("Branch saved");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
     }
@@ -103,27 +99,8 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
         </Link>
       }
     >
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
-      {flash && (
-        <div
-          className="card"
-          style={{
-            background: "rgba(16,185,129,0.10)",
-            borderColor: "rgba(16,185,129,0.25)",
-            color: "#047857",
-            marginBottom: 16,
-          }}
-        >
-          {flash}
-        </div>
-      )}
+      
+      
 
       {loading || !branch ? (
         <InlineLoader />

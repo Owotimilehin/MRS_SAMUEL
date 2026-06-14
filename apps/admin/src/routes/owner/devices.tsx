@@ -3,6 +3,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface Device {
   device_id: string;
@@ -37,7 +38,6 @@ export function DevicesPage(): JSX.Element {
   const [devices, setDevices] = useState<Device[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -48,9 +48,8 @@ export function DevicesPage(): JSX.Element {
       ]);
       setDevices(d.data);
       setBranches(b.data);
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -75,11 +74,7 @@ export function DevicesPage(): JSX.Element {
       }
     >
       <section className="card">
-        {error && (
-          <div role="alert" className="empty" style={{ color: "var(--danger)" }}>
-            {error}
-          </div>
-        )}
+        
         {loading ? (
           <InlineLoader />
         ) : devices.length === 0 ? (

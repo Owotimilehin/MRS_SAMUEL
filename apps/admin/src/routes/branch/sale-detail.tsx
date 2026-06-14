@@ -4,6 +4,7 @@ import { BranchShell } from "../../components/BranchShell.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface SaleItem {
   id: string;
@@ -106,9 +107,7 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
   const [sale, setSale] = useState<Sale | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -119,9 +118,8 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
       ]);
       setSale(s.data);
       setProducts(p.data);
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -134,18 +132,14 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
 
   async function action(path: string, body?: unknown, successMsg?: string): Promise<void> {
     setActing(true);
-    setError(null);
     try {
       const init: RequestInit = { method: "PATCH" };
       if (body !== undefined) init.body = JSON.stringify(body);
       await api(path, init);
-      if (successMsg) {
-        setFlash(successMsg);
-        setTimeout(() => setFlash(null), 2500);
-      }
+      if (successMsg) toast.success(successMsg);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(false);
     }
@@ -160,7 +154,6 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
     const idx = Number(reason) - 1;
     const picked = CANCEL_REASONS[idx];
     if (!picked) {
-      setError("Invalid cancellation reason");
       return;
     }
     await action(`/branches/${branchId}/sales/${saleId}/cancel`, { reason: picked.value }, "Order cancelled");
@@ -183,27 +176,8 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
         </Link>
       }
     >
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
-      {flash && (
-        <div
-          className="card"
-          style={{
-            background: "rgba(16,185,129,0.10)",
-            borderColor: "rgba(16,185,129,0.25)",
-            color: "#047857",
-            marginBottom: 16,
-          }}
-        >
-          {flash}
-        </div>
-      )}
+      
+      
 
       {loading || !sale ? (
         <InlineLoader />

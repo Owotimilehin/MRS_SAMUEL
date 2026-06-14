@@ -5,7 +5,7 @@ import { getFruitFor } from "@/lib/visuals";
 import { fetchProducts, fetchBundles } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
-import { formatNaira } from "@/lib/cart";
+import { formatNaira, quickAddSize } from "@/lib/cart";
 import bottleSunrise from "@/assets/bottle-sunrise.png";
 
 export const Route = createFileRoute("/shop")({
@@ -86,7 +86,7 @@ function Page() {
               </div>
               <div className="p-3 sm:p-4">
                 <h3 className="font-display text-sm sm:text-base text-[color:var(--brand)] line-clamp-1">{p.name}</h3>
-                <div className="mt-1 text-sm font-semibold" style={{ color: p.palette.accent }}>{formatNaira(p.prices["330ml"])}</div>
+                <div className="mt-1 text-sm font-semibold" style={{ color: p.palette.accent }}>{formatNaira(p.prices[quickAddSize(p)])}</div>
               </div>
             </Link>
           ))}

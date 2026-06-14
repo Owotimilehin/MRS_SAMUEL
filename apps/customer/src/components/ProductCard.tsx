@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { ShoppingCart } from "lucide-react";
 import type { Product } from "@/lib/api/mappers";
 import { getFruitFor } from "@/lib/visuals";
+import { quickAddSize } from "@/lib/cart";
 
 interface Props {
   product: Product;
@@ -73,7 +74,7 @@ export function ProductCard({ product, onClick, index }: Props) {
             className="font-display text-xl font-semibold"
             style={{ color: palette.accent }}
           >
-            ₦{product.prices["330ml"].toLocaleString("en-NG")}
+            ₦{product.prices[quickAddSize(product)].toLocaleString("en-NG")}
           </div>
           <button
             onClick={onClick}

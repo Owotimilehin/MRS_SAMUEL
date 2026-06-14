@@ -14,7 +14,10 @@ interface Props {
 }
 
 export function ProductDetail({ product, onClose }: Props) {
-  const [size, setSize] = useState<Size>("330ml");
+  // 650ml is the default size. The effect below refines this to the product's
+  // actual default (650ml if it sells it, else its only size) once a product
+  // opens — starting at 650ml avoids a flash of the 330ml selection.
+  const [size, setSize] = useState<Size>("650ml");
   const { add } = useCart();
 
   // Only the sizes the API actually sells (have a variant) are offered.

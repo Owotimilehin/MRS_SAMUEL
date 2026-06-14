@@ -5,6 +5,7 @@ import { local } from "../../db/local.js";
 import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface PreviewBody {
   data: {
@@ -28,13 +29,10 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [flash, setFlash] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setError(null);
     void (async () => {
       try {
         const res = await api<PreviewBody>(
@@ -49,7 +47,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
           setCounts(init);
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -87,7 +85,6 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
   async function submit(): Promise<void> {
     if (!preview) return;
     setSubmitting(true);
-    setError(null);
     try {
       // Server requires variance_reason on lines that don't match
       const missing = stockRows.find((r) => r.variance !== 0 && !r.reason);
@@ -108,12 +105,12 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
           })),
         }),
       });
-      setFlash("Daily close submitted. Awaiting owner approval.");
+      toast.success("Daily close submitted. Awaiting owner approval.");
       setCash("");
       setTransfers("");
       setNotes("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
     }
@@ -121,27 +118,8 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
 
   return (
     <BranchShell branchId={branchId} title="Daily close">
-      {flash && (
-        <div
-          className="card"
-          style={{
-            background: "rgba(16,185,129,0.10)",
-            borderColor: "rgba(16,185,129,0.25)",
-            color: "#047857",
-            marginBottom: 16,
-          }}
-        >
-          {flash}
-        </div>
-      )}
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
+      
+      
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
         <section className="card">

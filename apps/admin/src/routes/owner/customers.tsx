@@ -6,6 +6,7 @@ import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { downloadCsv } from "../../lib/csv.js";
+import { toast } from "../../lib/toast.js";
 
 interface CustomerSummary {
   id: string;
@@ -20,7 +21,6 @@ interface CustomerSummary {
 export function CustomersPage(): JSX.Element {
   const [rows, setRows] = useState<CustomerSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "repeat" | "new7d">("all");
 
@@ -32,9 +32,8 @@ export function CustomersPage(): JSX.Element {
         const res = await api<{ data: CustomerSummary[] }>("/customers");
         if (cancelled) return;
         setRows(res.data);
-        setError(null);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -135,11 +134,7 @@ export function CustomersPage(): JSX.Element {
         </span>
       </div>
 
-      {error && (
-          <div role="alert" className="empty" style={{ color: "var(--danger)" }}>
-            {error}
-          </div>
-        )}
+      
 
         {loading ? (
           <InlineLoader />

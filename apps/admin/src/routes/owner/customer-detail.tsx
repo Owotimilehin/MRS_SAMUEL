@@ -4,6 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface CustomerOrder {
   id: string;
@@ -40,7 +41,6 @@ function statusPill(status: string): JSX.Element {
 export function CustomerDetailPage({ customerId }: { customerId: string }): JSX.Element {
   const [data, setData] = useState<CustomerDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,9 +50,8 @@ export function CustomerDetailPage({ customerId }: { customerId: string }): JSX.
         const res = await api<{ data: CustomerDetail }>(`/customers/${customerId}`);
         if (cancelled) return;
         setData(res.data);
-        setError(null);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -79,11 +78,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }): JSX.
         </div>
       </div>
 
-      {error && (
-        <div role="alert" className="empty" style={{ color: "var(--danger)" }}>
-          {error}
-        </div>
-      )}
+      
 
       {loading ? (
         <InlineLoader />

@@ -4,6 +4,7 @@ import { BranchShell } from "../../components/BranchShell.js";
 import { local } from "../../db/local.js";
 import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface Product {
   id: string;
@@ -15,7 +16,6 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
   const products = useLiveQuery(() => local.products.toArray(), [], []);
   const [serverBalances, setServerBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,10 +30,9 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
           const totals: Record<string, number> = {};
           for (const x of res.data) totals[x.product_id] = (totals[x.product_id] ?? 0) + x.balance;
           setServerBalances(totals);
-          setError(null);
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -75,14 +74,7 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
 
   return (
     <BranchShell branchId={branchId} title="Stock">
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
+      
       <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
         <span className={oosCount > 0 ? "pill pill--danger" : "pill"}>Out of stock · {oosCount}</span>
         <span className={lowCount > 0 ? "pill pill--warning" : "pill"}>Low · {lowCount}</span>

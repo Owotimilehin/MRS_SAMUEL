@@ -3,6 +3,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface TransferVariance {
   id: string;
@@ -31,17 +32,15 @@ interface ReviewResp {
 export function ReviewPage(): JSX.Element {
   const [data, setData] = useState<ReviewResp["data"] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
 
   async function load(): Promise<void> {
     setLoading(true);
-    setError(null);
     try {
       const res = await api<ReviewResp>(`/review`);
       setData(res.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -57,7 +56,7 @@ export function ReviewPage(): JSX.Element {
       await api(`/transfers/${id}/approve`, { method: "PATCH" });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(null);
     }
@@ -69,7 +68,7 @@ export function ReviewPage(): JSX.Element {
       await api(`/returns/${id}/approve`, { method: "PATCH" });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(null);
     }
@@ -86,7 +85,7 @@ export function ReviewPage(): JSX.Element {
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setActing(null);
     }
@@ -104,14 +103,7 @@ export function ReviewPage(): JSX.Element {
         </span>
       }
     >
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
+      
 
       <section style={{ marginBottom: 24 }}>
         <header style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>

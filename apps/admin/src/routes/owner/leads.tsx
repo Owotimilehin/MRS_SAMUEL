@@ -3,6 +3,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface SubLead {
   id: string;
@@ -28,7 +29,6 @@ export function LeadsPage(): JSX.Element {
   const [subs, setSubs] = useState<SubLead[]>([]);
   const [contacts, setContacts] = useState<ContactMsg[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -39,9 +39,8 @@ export function LeadsPage(): JSX.Element {
       ]);
       setSubs(s.data);
       setContacts(c.data);
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -70,11 +69,7 @@ export function LeadsPage(): JSX.Element {
         </button>
       </div>
 
-      {error && (
-        <div className="card" style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}>
-          {error}
-        </div>
-      )}
+      
 
       {loading ? (
         <InlineLoader />

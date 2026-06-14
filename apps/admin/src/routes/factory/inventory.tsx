@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { toast } from "../../lib/toast.js";
 
 interface Factory { id: string; name: string }
 interface Product { id: string; name: string; category: string }
@@ -11,7 +12,6 @@ export function FactoryInventoryPage(): JSX.Element {
   const [products, setProducts] = useState<Product[]>([]);
   const [stock, setStock] = useState<Record<string, Record<string, number>>>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,9 +40,8 @@ export function FactoryInventoryPage(): JSX.Element {
         const next: Record<string, Record<string, number>> = {};
         for (const x of balances) next[x.id] = x.data;
         setStock(next);
-        setError(null);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -60,14 +59,7 @@ export function FactoryInventoryPage(): JSX.Element {
 
   return (
     <Shell title="Factory inventory">
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
+      
 
       {loading ? (
         <InlineLoader />
