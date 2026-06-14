@@ -116,6 +116,9 @@ export function saleRoutes(db: DbClient) {
 
       // Snapshot current price + check stock per line
       let subtotal = 0;
+      // Any preorder_only or out-of-stock line makes the whole order a preorder:
+      // skip reservations now, defer the stock deduction to fulfilment.
+      let orderIsPreorder = false;
       const lines: {
         productId: string;
         variantId: string;
@@ -129,6 +132,7 @@ export function saleRoutes(db: DbClient) {
         // callers can still send product_id which maps to the smallest can).
         let variantId: string | undefined = it.variant_id;
         let productId: string;
+        let preorderOnly = false;
         if (variantId) {
           const [v] = await tx
             .select()
@@ -138,6 +142,7 @@ export function saleRoutes(db: DbClient) {
             throw new BusinessError("not_found", `variant ${variantId} not found`, 404);
           }
           productId = v.productId;
+          preorderOnly = v.preorderOnly;
           if (it.product_id && it.product_id !== v.productId) {
             throw new BusinessError(
               "validation_failed",
@@ -159,6 +164,7 @@ export function saleRoutes(db: DbClient) {
             throw new BusinessError("not_found", `no variant for product ${productId}`, 404);
           }
           variantId = v.id;
+          preorderOnly = v.preorderOnly;
         }
 
         const [price] = await tx
@@ -174,13 +180,10 @@ export function saleRoutes(db: DbClient) {
           branchId,
           productId,
         });
-        if (available < it.quantity) {
-          throw new BusinessError("conflict", "insufficient stock", 422, {
-            product_id: productId,
-            variant_id: variantId,
-            available,
-            requested: it.quantity,
-          });
+        // Out of stock (or a preorder_only variant) becomes a preorder line
+        // instead of blocking — fulfilled later once stock is produced.
+        if (preorderOnly || available < it.quantity) {
+          orderIsPreorder = true;
         }
         lines.push({
           productId,
@@ -202,6 +205,7 @@ export function saleRoutes(db: DbClient) {
         channel: body.channel,
         customerId,
         status: "confirmed" as const,
+        isPreorder: orderIsPreorder,
         subtotalNgn: subtotal,
         deliveryFeeNgn: body.delivery_fee_ngn,
         totalNgn: total,
@@ -228,14 +232,17 @@ export function saleRoutes(db: DbClient) {
           unitPriceNgn: l.unitPriceNgn,
           lineTotalNgn: l.unitPriceNgn * l.quantity,
         });
-        await tx.insert(stockReservation).values({
-          saleOrderId: order.id,
-          branchId,
-          productId: l.productId,
-          variantId: l.variantId,
-          quantity: l.quantity,
-          expiresAt,
-        });
+        // Preorders deduct at fulfilment, so there's nothing to reserve now.
+        if (!orderIsPreorder) {
+          await tx.insert(stockReservation).values({
+            saleOrderId: order.id,
+            branchId,
+            productId: l.productId,
+            variantId: l.variantId,
+            quantity: l.quantity,
+            expiresAt,
+          });
+        }
       }
       return order;
     });
@@ -265,24 +272,29 @@ export function saleRoutes(db: DbClient) {
         throw new BusinessError("forbidden", "online sales pay via webhook", 403);
       }
 
-      const items = await tx
-        .select()
-        .from(saleOrderItem)
-        .where(eq(saleOrderItem.saleOrderId, id));
-      for (const it of items) {
-        await tx.insert(stockLedger).values({
-          locationType: "branch",
-          locationId: o.branchId,
-          productId: it.productId,
-          variantId: it.variantId ?? null,
-          delta: -it.quantity,
-          sourceType: "sale",
-          sourceId: id,
-          recordedByUserId: auth.userId,
-          note: `Sale ${o.orderNumber}`,
-        });
+      // A preorder is prepaid but NOT yet made — payment must not move stock.
+      // The deduction is deferred to the Preorders queue fulfilment step. A
+      // normal sale deducts stock and clears its reservation right here.
+      if (!o.isPreorder) {
+        const items = await tx
+          .select()
+          .from(saleOrderItem)
+          .where(eq(saleOrderItem.saleOrderId, id));
+        for (const it of items) {
+          await tx.insert(stockLedger).values({
+            locationType: "branch",
+            locationId: o.branchId,
+            productId: it.productId,
+            variantId: it.variantId ?? null,
+            delta: -it.quantity,
+            sourceType: "sale",
+            sourceId: id,
+            recordedByUserId: auth.userId,
+            note: `Sale ${o.orderNumber}`,
+          });
+        }
+        await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, id));
       }
-      await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, id));
       await tx.insert(payment).values({
         saleOrderId: id,
         method: o.paymentMethod,

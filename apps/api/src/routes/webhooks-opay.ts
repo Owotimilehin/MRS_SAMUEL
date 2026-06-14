@@ -74,23 +74,27 @@ export function opayWebhookRoutes(db: DbClient) {
         return;
       }
 
-      const items = await tx
-        .select()
-        .from(saleOrderItem)
-        .where(eq(saleOrderItem.saleOrderId, o.id));
-      for (const it of items) {
-        await tx.insert(stockLedger).values({
-          locationType: "branch",
-          locationId: o.branchId,
-          productId: it.productId,
-          variantId: it.variantId ?? null,
-          delta: -it.quantity,
-          sourceType: "sale",
-          sourceId: o.id,
-          note: `Online sale ${o.orderNumber}`,
-        });
+      // A preorder is prepaid but not yet made — capture payment WITHOUT moving
+      // stock. The deduction happens later when staff fulfil it (preorders.ts).
+      if (!o.isPreorder) {
+        const items = await tx
+          .select()
+          .from(saleOrderItem)
+          .where(eq(saleOrderItem.saleOrderId, o.id));
+        for (const it of items) {
+          await tx.insert(stockLedger).values({
+            locationType: "branch",
+            locationId: o.branchId,
+            productId: it.productId,
+            variantId: it.variantId ?? null,
+            delta: -it.quantity,
+            sourceType: "sale",
+            sourceId: o.id,
+            note: `Online sale ${o.orderNumber}`,
+          });
+        }
+        await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, o.id));
       }
-      await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, o.id));
       await tx.insert(payment).values({
         saleOrderId: o.id,
         method: "card",
@@ -105,7 +109,9 @@ export function opayWebhookRoutes(db: DbClient) {
         .set({ status: "paid", paymentStatus: "paid", updatedAt: new Date() })
         .where(eq(saleOrder.id, o.id));
       await tx.insert(outboxEvent).values({
-        eventType: "sale.paid_online",
+        // A paid preorder awaits fulfilment (not delivery yet) — distinct event
+        // so the owner is alerted it has joined the Preorders queue.
+        eventType: o.isPreorder ? "sale.preorder_paid" : "sale.paid_online",
         payload: {
           sale_order_id: o.id,
           order_number: o.orderNumber,
@@ -118,11 +124,11 @@ export function opayWebhookRoutes(db: DbClient) {
           delivery_state: o.deliveryState ?? null,
         },
       });
-      // Bypass: scheduled (future) OR outside-Lagos orders skip automated Bolt
-      // dispatch entirely; the owner fulfils them out-of-band. Only immediate,
-      // in-Lagos orders request a ride.
+      // Bypass: preorders (not made yet), scheduled (future), OR outside-Lagos
+      // orders skip automated Bolt dispatch entirely; they're fulfilled out of
+      // band. Only immediate, in-Lagos, in-stock orders request a ride now.
       const outsideLagos = isOutsideLagos(o.deliveryState);
-      const bypass = o.scheduledDeliveryAt != null || outsideLagos;
+      const bypass = o.isPreorder || o.scheduledDeliveryAt != null || outsideLagos;
       if (!bypass) {
         await tx.insert(outboxEvent).values({
           eventType: "delivery.request",

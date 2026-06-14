@@ -319,6 +319,11 @@ export function publicOrderRoutes(db: DbClient) {
       if (!customerId) throw new BusinessError("internal_error", "customer resolve failed", 500);
 
       let subtotal = 0;
+      // A line is a preorder line when its variant is preorder_only OR the branch
+      // is currently out of stock for it. Any preorder line makes the whole order
+      // a preorder: it skips reservations now and defers the stock deduction to
+      // fulfilment (see preorders.ts), but still requires payment.
+      let orderIsPreorder = false;
       const lines: {
         productId: string;
         variantId: string;
@@ -335,6 +340,7 @@ export function publicOrderRoutes(db: DbClient) {
         const itAny = it as { variant_id?: string; product_id?: string; quantity: number };
         let variantId: string | undefined = itAny.variant_id;
         let productId: string;
+        let preorderOnly = false;
         if (variantId) {
           const [v] = await tx
             .select()
@@ -344,6 +350,7 @@ export function publicOrderRoutes(db: DbClient) {
             throw new BusinessError("not_found", `variant ${variantId} not found`, 404);
           }
           productId = v.productId;
+          preorderOnly = v.preorderOnly;
           // If a caller sends both, the supplied product_id must match the variant's parent.
           if (itAny.product_id && itAny.product_id !== v.productId) {
             throw new BusinessError(
@@ -366,6 +373,7 @@ export function publicOrderRoutes(db: DbClient) {
             throw new BusinessError("not_found", `no variant for product ${productId}`, 404);
           }
           variantId = v.id;
+          preorderOnly = v.preorderOnly;
         }
 
         const [p] = await tx
@@ -381,13 +389,10 @@ export function publicOrderRoutes(db: DbClient) {
           branchId: body.branch_id,
           productId,
         });
-        if (available < it.quantity) {
-          throw new BusinessError("conflict", "insufficient stock", 422, {
-            product_id: productId,
-            variant_id: variantId,
-            available,
-            requested: it.quantity,
-          });
+        // Out of stock no longer blocks — it becomes a preorder line (made to
+        // order, fulfilled later). preorder_only variants are always preorders.
+        if (preorderOnly || available < it.quantity) {
+          orderIsPreorder = true;
         }
         lines.push({
           productId,
@@ -408,6 +413,7 @@ export function publicOrderRoutes(db: DbClient) {
           channel: "online",
           customerId,
           status: "confirmed",
+          isPreorder: orderIsPreorder,
           subtotalNgn: subtotal,
           deliveryFeeNgn: deliveryFeeFinal,
           totalNgn: total,
@@ -438,14 +444,17 @@ export function publicOrderRoutes(db: DbClient) {
           unitPriceNgn: l.unit,
           lineTotalNgn: l.unit * l.quantity,
         });
-        await tx.insert(stockReservation).values({
-          saleOrderId: o.id,
-          branchId: body.branch_id,
-          productId: l.productId,
-          variantId: l.variantId,
-          quantity: l.quantity,
-          expiresAt,
-        });
+        // Preorders deduct stock at fulfilment, not now — so nothing to reserve.
+        if (!orderIsPreorder) {
+          await tx.insert(stockReservation).values({
+            saleOrderId: o.id,
+            branchId: body.branch_id,
+            productId: l.productId,
+            variantId: l.variantId,
+            quantity: l.quantity,
+            expiresAt,
+          });
+        }
       }
       // Tell the owner (and anyone else subscribed) that a new online order
       // just landed and is waiting on payment.

@@ -20,6 +20,7 @@ import { transferRoutes } from "./routes/transfers.js";
 import { reviewRoutes } from "./routes/review.js";
 import { factoryRoutes } from "./routes/factories.js";
 import { saleRoutes } from "./routes/sales.js";
+import { preorderRoutes } from "./routes/preorders.js";
 import { customerRoutes } from "./routes/customers.js";
 import { syncRoutes } from "./routes/sync.js";
 import { publicCatalogRoutes } from "./routes/public-catalog.js";
@@ -90,6 +91,7 @@ export function buildApp(): Hono {
   app.route("/v1/factories", factoryRoutes(db));
   // Nested branch routes: /v1/branches/:branchId/sales/...
   app.route("/v1/branches/:branchId/sales", saleRoutes(db));
+  app.route("/v1/preorders", preorderRoutes(db));
   app.route("/v1/branches/:branchId/returns", returnRoutes(db));
   app.route("/v1/branches/:branchId/daily-close", dailyCloseRoutes(db));
   app.route("/v1/reports", reportRoutes(db));
