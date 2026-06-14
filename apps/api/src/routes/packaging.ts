@@ -125,6 +125,9 @@ export function packagingRoutes(db: DbClient) {
     if (!locationType || !locationId) {
       throw new BusinessError("validation_failed", "location_type+location_id (or factory_id) required", 400);
     }
+    if (locationType !== "factory" && locationType !== "branch") {
+      throw new BusinessError("validation_failed", "location_type must be 'factory' or 'branch'", 400);
+    }
 
     const balances = await db.execute<{ packaging_material_id: string; balance: number }>(sql`
       SELECT packaging_material_id, COALESCE(SUM(delta), 0)::int AS balance
@@ -288,30 +291,33 @@ export function packagingRoutes(db: DbClient) {
     if (!locationType || !locationId || !materialId) {
       throw new BusinessError("validation_failed", "location (factory_id or location_type+location_id) and material_id required", 400);
     }
+    if (locationType !== "factory" && locationType !== "branch") {
+      throw new BusinessError("validation_failed", "location_type must be 'factory' or 'branch'", 400);
+    }
     const rows = await db
       .select()
       .from(packagingStockLedger)
       .where(
         and(
-          eq(packagingStockLedger.locationType, locationType as "factory" | "branch"),
+          eq(packagingStockLedger.locationType, locationType),
           eq(packagingStockLedger.locationId, locationId),
           eq(packagingStockLedger.packagingMaterialId, materialId),
         ),
       )
       .orderBy(desc(packagingStockLedger.occurredAt))
       .limit(200);
-    const data = rows.map((r) => ({
-      id: r.id,
-      factory_id: r.factoryId,
-      location_type: r.locationType,
-      location_id: r.locationId,
-      packaging_material_id: r.packagingMaterialId,
-      delta: r.delta,
-      source_type: r.sourceType,
-      source_id: r.sourceId,
-      occurred_at: r.occurredAt,
-      recorded_by_user_id: r.recordedByUserId,
-      note: r.note,
+    const data = rows.map((row) => ({
+      id: row.id,
+      factory_id: row.factoryId,
+      location_type: row.locationType,
+      location_id: row.locationId,
+      packaging_material_id: row.packagingMaterialId,
+      delta: row.delta,
+      source_type: row.sourceType,
+      source_id: row.sourceId,
+      occurred_at: row.occurredAt,
+      recorded_by_user_id: row.recordedByUserId,
+      note: row.note,
     }));
     return c.json({ data });
   });

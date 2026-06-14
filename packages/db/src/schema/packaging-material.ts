@@ -7,9 +7,9 @@ export const packagingMaterialKind = pgEnum("packaging_material_kind", [
 ]);
 
 /**
- * Catalog of packaging materials a factory can consume. MVP seeds two rows
- * (330ml glass bottle, 650ml glass bottle); caps + labels go in later as
- * additional rows without code changes.
+ * Catalog of packaging materials. `kind` classifies each row: 'bottle' (sized,
+ * consumed by production), 'bag' (unsized, consumed at the POS), or 'other'.
+ * Seeded: 330ml/650ml glass bottles + Small/Medium/Large bags (0043/0044).
  *
  * `size_ml` is nullable so non-sized materials (caps, labels) coexist.
  */

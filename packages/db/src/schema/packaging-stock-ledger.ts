@@ -12,11 +12,15 @@ export const packagingLedgerSourceType = pgEnum("packaging_ledger_source_type", 
 ]);
 
 /**
- * Append-only movement log for packaging stock. Balance at a factory for a
- * material = SUM(delta) where (factory_id, packaging_material_id) match.
+ * Append-only movement log for packaging stock. Location-aware since 0044:
+ * balance at a location for a material = SUM(delta) where
+ * (location_type, location_id, packaging_material_id) match. `location_type`
+ * is 'factory' or 'branch' (bottles live at factories; bags can live at
+ * either). `factory_id` is retained for factory rows for back-compat.
  *
- * INVARIANT: an AFTER INSERT trigger (in the 0032 migration) recomputes the
- * running balance and raises check_violation if it would go negative.
+ * INVARIANT: an AFTER INSERT trigger (function re-keyed in the 0044 migration)
+ * recomputes the running balance per (location_type, location_id, material)
+ * and raises check_violation if it would go negative.
  */
 export const packagingStockLedger = pgTable(
   "packaging_stock_ledger",
