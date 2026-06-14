@@ -278,6 +278,13 @@ function CreateTransferModal({
   async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();
     if (items.length === 0 || !factoryId || !branchId) return;
+    const missingSizeItem = items.some(
+      (it) => (variantsByProduct[it.product_id]?.length ?? 0) > 0 && !it.variant_id,
+    );
+    if (missingSizeItem) {
+      setError("Pick a size for every line before sending.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
