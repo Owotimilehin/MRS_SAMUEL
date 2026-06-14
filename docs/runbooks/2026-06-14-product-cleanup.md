@@ -30,6 +30,8 @@ The admin Products + Inventory lists should show only the 20 menu flavours.
 - The API rejects bare-id product names on create/update
   (`looksLikeBareId` in `@ms/shared`, wired into `apps/api/src/routes/products.ts`).
 - The seed entrypoint and the API integration-test bootstrap refuse a prod
-  `DATABASE_URL` (`assertNonProdDb` in `@ms/db`). Set `PROD_DB_HOSTS` (e.g.
-  `138.68.165.230`) on every non-prod machine, or `MS_DB_IS_PROD=1` on the prod
-  host, so neither seed nor tests can ever write to prod again.
+  `DATABASE_URL` (`assertNonProdDb` in `@ms/db`). The known prod host
+  (`138.68.165.230`) is baked into the default denylist, so the guard is **armed
+  out-of-the-box** — no env setup required. To protect additional prod hosts,
+  extend (don't replace) the denylist via `PROD_DB_HOSTS` (comma-separated), or
+  set `MS_DB_IS_PROD=1` on the prod host itself.
