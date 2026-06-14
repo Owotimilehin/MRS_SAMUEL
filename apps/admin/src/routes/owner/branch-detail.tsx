@@ -37,6 +37,7 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
   const [closesAt, setClosesAt] = useState("");
   const [zones, setZones] = useState<DeliveryZone[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [geoStatus, setGeoStatus] = useState<string | null>(null);
 
   async function load(): Promise<void> {
@@ -90,13 +91,44 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
     }
   }
 
+  async function remove(): Promise<void> {
+    if (!branch) return;
+    if (
+      !window.confirm(
+        `Delete the "${branch.name}" branch? It will be archived and hidden everywhere. ` +
+          `Past sales and closes stay readable. This is blocked if the branch still holds stock.`,
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api(`/branches/${branchId}`, { method: "DELETE" });
+      toast.success("Branch deleted");
+      window.location.assign("/owner/branches");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+      setDeleting(false);
+    }
+  }
+
   return (
     <Shell
       title={branch?.name ?? "Branch"}
       actions={
-        <Link to="/owner/branches" className="btn btn--subtle btn--sm">
-          ← All branches
-        </Link>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn--danger btn--sm"
+            disabled={deleting || loading || !branch}
+            onClick={() => void remove()}
+          >
+            {deleting ? "Deleting…" : "Delete branch"}
+          </button>
+          <Link to="/owner/branches" className="btn btn--subtle btn--sm">
+            ← All branches
+          </Link>
+        </div>
       }
     >
       

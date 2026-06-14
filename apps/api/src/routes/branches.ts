@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, isNull } from "drizzle-orm";
+import { eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { branch, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
@@ -90,6 +90,49 @@ export function branchRoutes(db: DbClient) {
 
     await writeAudit(db, c, {
       action: "branch.update",
+      entityType: "branch",
+      entityId: id,
+      before,
+      after,
+    });
+    return c.json({ data: after });
+  });
+
+  // Soft-delete a branch. We never hard-delete — sales, closes and ledger rows
+  // reference the branch and must stay readable. Setting deletedAt drops it from
+  // the GET list (which filters isNull(deletedAt)) and isActive=false hides it
+  // everywhere else. Guarded: refuse while the branch still holds on-hand stock
+  // so inventory is never orphaned — the owner must transfer or write it off first.
+  r.delete("/:id", requireCapability("branches.manage"), async (c) => {
+    const id = c.req.param("id");
+    const [before] = await db.select().from(branch).where(eq(branch.id, id));
+    if (!before) throw new BusinessError("not_found", "branch not found", 404);
+    if (before.deletedAt) throw new BusinessError("conflict", "branch already deleted", 409);
+
+    const onHand = await db.execute<{ qty: number | string | null }>(sql`
+      SELECT COALESCE(SUM(delta), 0)::int AS qty
+      FROM stock_ledger
+      WHERE location_type = 'branch' AND location_id = ${id}
+    `);
+    const remaining = Number(onHand[0]?.qty ?? 0);
+    if (remaining > 0) {
+      throw new BusinessError(
+        "conflict",
+        `branch still holds ${remaining} unit(s) of stock — transfer or write it off before deleting`,
+        409,
+        { on_hand: remaining },
+      );
+    }
+
+    const [after] = await db
+      .update(branch)
+      .set({ deletedAt: new Date(), isActive: false, updatedAt: new Date() })
+      .where(eq(branch.id, id))
+      .returning();
+    if (!after) throw new BusinessError("internal_error", "delete update returned no rows", 500);
+
+    await writeAudit(db, c, {
+      action: "branch.delete",
       entityType: "branch",
       entityId: id,
       before,
