@@ -288,6 +288,13 @@
       "when": 1781900000000,
       "tag": "0041_stock_ledger_per_variant",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1782000000000,
+      "tag": "0042_revert_per_flavour_floor",
+      "breakpoints": true
     }
   ]
 }
