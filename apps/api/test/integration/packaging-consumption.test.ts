@@ -113,7 +113,7 @@ describe("packaging consumption on production run completion", () => {
     expect(row?.balance).toBe(1000 - 200);
   });
 
-  it("completion with variant_id but NO bottle_material_id link → no consumption, no error", async () => {
+  it("completion with variant_id but NO bottle_material_id link → 422 bottle_not_linked, no consumption", async () => {
     const { productVariant: pv, createDbClient } = await import("@ms/db");
     const { eq } = await import("drizzle-orm");
     const db = createDbClient(process.env.DATABASE_URL!);
@@ -124,29 +124,40 @@ describe("packaging consumption on production run completion", () => {
       run_date: "2026-06-06",
       items: [{ product_id: productId, variant_id: variantId, quantity_produced: 50 }],
     });
-    const complete = await call("PATCH", `/v1/production-runs/${create.body.data.id}/complete`);
-    expect(complete.status).toBe(200);
+    const complete = await call<{ error?: { code: string; details?: { reason?: string } } }>(
+      "PATCH",
+      `/v1/production-runs/${create.body.data.id}/complete`,
+    );
+    expect(complete.status).toBe(422);
+    expect(complete.body.error?.details?.reason ?? "").toBe("bottle_not_linked");
 
-    // Balance unchanged from previous test (800).
+    // Balance unchanged from previous test (800) — nothing posted.
     const stock = await call<{ data: Array<{ material_id: string; balance: number }> }>(
       "GET",
       `/v1/packaging/stock?factory_id=${factory.id}`,
     );
     const row = stock.body.data.find((r) => r.material_id === materialId);
     expect(row?.balance).toBe(800);
+
+    const detail = await call<{ data: { status: string } }>("GET", `/v1/production-runs/${create.body.data.id}`);
+    expect(detail.body.data.status).toBe("draft");
 
     // Re-link for subsequent tests.
     await db.update(pv).set({ bottleMaterialId: materialId }).where(eq(pv.id, variantId));
   });
 
-  it("completion with NULL variant_id → no consumption, no error", async () => {
+  it("completion with NULL variant_id → 422 missing_variant, no consumption", async () => {
     const create = await call<{ data: { id: string } }>("POST", "/v1/production-runs", {
       factory_id: factory.id,
       run_date: "2026-06-07",
       items: [{ product_id: productId, quantity_produced: 30 }],
     });
-    const complete = await call("PATCH", `/v1/production-runs/${create.body.data.id}/complete`);
-    expect(complete.status).toBe(200);
+    const complete = await call<{ error?: { code: string; details?: { reason?: string } } }>(
+      "PATCH",
+      `/v1/production-runs/${create.body.data.id}/complete`,
+    );
+    expect(complete.status).toBe(422);
+    expect(complete.body.error?.details?.reason ?? "").toBe("missing_variant");
 
     const stock = await call<{ data: Array<{ material_id: string; balance: number }> }>(
       "GET",
@@ -154,6 +165,9 @@ describe("packaging consumption on production run completion", () => {
     );
     const row = stock.body.data.find((r) => r.material_id === materialId);
     expect(row?.balance).toBe(800);
+
+    const detail = await call<{ data: { status: string } }>("GET", `/v1/production-runs/${create.body.data.id}`);
+    expect(detail.body.data.status).toBe("draft");
   });
 
   it("completion that would push packaging stock negative → 422 packaging_insufficient", async () => {

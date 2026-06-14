@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   productionRun,
@@ -124,6 +124,72 @@ export function productionRunRoutes(db: DbClient) {
         throw new BusinessError("validation_failed", "production run has no items — add at least one flavour first", 422);
       }
 
+      // Every line must have a size (variant) so the bottle material is known.
+      const missingSize = items.filter((it) => !it.variantId);
+      if (missingSize.length > 0) {
+        throw new BusinessError(
+          "validation_failed",
+          "every flavour line needs a size before completing — set a size on each line",
+          422,
+          { reason: "missing_variant" },
+        );
+      }
+
+      // Resolve each line's variant + bottle material, then aggregate required
+      // bottles per material.
+      const variantIds = [...new Set(items.map((it) => it.variantId!))];
+      const variants = await tx
+        .select()
+        .from(productVariant)
+        .where(inArray(productVariant.id, variantIds));
+      const variantById = new Map(variants.map((v) => [v.id, v]));
+
+      const requiredByMaterial = new Map<string, number>();
+      const unlinkedSizes = new Set<number>();
+      for (const it of items) {
+        const v = variantById.get(it.variantId!);
+        if (!v) throw new BusinessError("validation_failed", "variant not found for a line", 422);
+        if (!v.bottleMaterialId) {
+          unlinkedSizes.add(v.sizeMl);
+          continue;
+        }
+        requiredByMaterial.set(
+          v.bottleMaterialId,
+          (requiredByMaterial.get(v.bottleMaterialId) ?? 0) + it.quantityProduced,
+        );
+      }
+      if (unlinkedSizes.size > 0) {
+        throw new BusinessError(
+          "validation_failed",
+          `no bottle is linked to size(s) ${[...unlinkedSizes].sort((a, b) => a - b).join(", ")}ml — link a bottle on the Packaging tab first`,
+          422,
+          { reason: "bottle_not_linked" },
+        );
+      }
+
+      // Pre-flight: check the factory has enough of each bottle BEFORE posting.
+      const shortfalls: { material_id: string; needed: number; available: number }[] = [];
+      for (const [materialId, needed] of requiredByMaterial) {
+        const [bal] = await tx.execute<{ balance: number }>(sql`
+          SELECT COALESCE(SUM(delta), 0)::int AS balance
+          FROM packaging_stock_ledger
+          WHERE factory_id = ${run.factoryId}::uuid
+            AND packaging_material_id = ${materialId}::uuid
+        `);
+        const available = Number(bal?.balance ?? 0);
+        if (available < needed) {
+          shortfalls.push({ material_id: materialId, needed, available });
+        }
+      }
+      if (shortfalls.length > 0) {
+        throw new BusinessError(
+          "conflict",
+          "not enough bottles in stock to complete this run",
+          422,
+          { reason: "packaging_insufficient", shortfalls },
+        );
+      }
+
       for (const it of items) {
         await tx.insert(stockLedger).values({
           locationType: "factory",
@@ -137,28 +203,20 @@ export function productionRunRoutes(db: DbClient) {
         });
       }
 
-      // Packaging consumption — only fires when the item has a variant_id
-      // AND that variant has a bottle_material_id linkage. Legacy items
-      // (variant_id IS NULL) silently skip. The packaging_stock_ledger
-      // trigger fires at commit time, so the negative-balance rejection is
-      // re-shaped to a 422 in the OUTER try/catch around db.transaction
-      // below — not here.
-      for (const it of items) {
-        if (!it.variantId) continue;
-        const [variant] = await tx
-          .select()
-          .from(productVariant)
-          .where(eq(productVariant.id, it.variantId));
-        if (!variant?.bottleMaterialId) continue;
-
+      // Post one consumption row per material (negative delta = bottles used).
+      // Every line is required to have a variant + linked bottle material by
+      // the guard above, and the pre-flight check already confirmed enough
+      // stock — the packaging_stock_ledger trigger remains a race backstop,
+      // reshaped to a 422 in the OUTER try/catch around db.transaction below.
+      for (const [materialId, qty] of requiredByMaterial) {
         await tx.insert(packagingStockLedger).values({
           factoryId: run.factoryId,
-          packagingMaterialId: variant.bottleMaterialId,
-          delta: -it.quantityProduced,
+          packagingMaterialId: materialId,
+          delta: -qty,
           sourceType: "consumption",
           sourceId: id,
           recordedByUserId: auth.userId,
-          note: `Run ${id} consumed ${it.quantityProduced} bottles`,
+          note: `Run ${id} consumed ${qty} bottles`,
         });
       }
 

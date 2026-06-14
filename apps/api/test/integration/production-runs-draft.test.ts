@@ -5,7 +5,7 @@ import { v4 as uuid } from "uuid";
 import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
-interface Product { id: string; slug: string }
+interface Product { id: string; slug: string; variants: Array<{ id: string; size_ml: number }> }
 interface Factory { id: string; name: string }
 interface RunItem {
   id: string;
@@ -39,6 +39,8 @@ describe("production runs — draft + append flow", () => {
   let factory: Factory;
   let prodA: Product;
   let prodB: Product;
+  let variantAId: string;
+  let variantBId: string;
 
   const idem = () => ({ "idempotency-key": uuid() });
 
@@ -75,6 +77,25 @@ describe("production runs — draft + append flow", () => {
     const [fac] = await tdb.db.insert(factoryTable).values({ name: "Test Factory" }).returning();
     factory = fac as Factory;
 
+    // A 330ml bottle material must exist BEFORE the products are created so
+    // their (legacy, defaulted-to-330ml) variants auto-link to it (Task 3).
+    // Completion now hard-guards on bottle stock, so give the factory plenty.
+    const material = await call<{ data: { id: string } }>("POST", "/v1/packaging/materials", {
+      name: "Draft-flow 330ml glass bottle",
+      unit_label: "bottle",
+      size_ml: 330,
+    });
+    const materialId = material.body.data.id;
+    await call("POST", "/v1/packaging/purchases", {
+      factory_id: factory.id,
+      packaging_material_id: materialId,
+      quantity: 1000,
+      unit_cost_ngn: 40,
+      total_cost_ngn: 40000,
+      purchase_date: "2026-06-01",
+      feed_bookkeeping: false,
+    });
+
     const a = await call<{ data: Product }>("POST", "/v1/products", {
       name: "Sunrise A",
       slug: "sunrise-a",
@@ -83,6 +104,7 @@ describe("production runs — draft + append flow", () => {
       initial_price_ngn: 2500,
     });
     prodA = a.body.data;
+    variantAId = prodA.variants.find((v) => v.size_ml === 330)!.id;
     const b = await call<{ data: Product }>("POST", "/v1/products", {
       name: "Sunrise B",
       slug: "sunrise-b",
@@ -91,6 +113,7 @@ describe("production runs — draft + append flow", () => {
       initial_price_ngn: 2500,
     });
     prodB = b.body.data;
+    variantBId = prodB.variants.find((v) => v.size_ml === 330)!.id;
   }, 120_000);
 
   afterAll(async () => {
@@ -125,7 +148,7 @@ describe("production runs — draft + append flow", () => {
 
     // 4. Append flavour A
     const appendA = await call<{ data: Run }>("POST", `/v1/production-runs/${runId}/items`, {
-      items: [{ product_id: prodA.id, quantity_produced: 50, batch_code: "A1" }],
+      items: [{ product_id: prodA.id, variant_id: variantAId, quantity_produced: 50, batch_code: "A1" }],
     });
     expect(appendA.status).toBe(200);
     expect(appendA.body.data.items).toHaveLength(1);
@@ -133,7 +156,7 @@ describe("production runs — draft + append flow", () => {
 
     // 5. Append flavour B
     const appendB = await call<{ data: Run }>("POST", `/v1/production-runs/${runId}/items`, {
-      items: [{ product_id: prodB.id, quantity_produced: 30 }],
+      items: [{ product_id: prodB.id, variant_id: variantBId, quantity_produced: 30 }],
     });
     expect(appendB.status).toBe(200);
     expect(appendB.body.data.items).toHaveLength(2);
