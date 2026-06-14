@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { eq, isNull, and, desc, asc } from "drizzle-orm";
 import { z } from "zod";
-import { product, productPrice, productVariant, type DbClient } from "@ms/db";
+import { product, productPrice, productVariant, bottleMaterialIdForSize, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -121,6 +121,7 @@ interface VariantWithPrice {
   sku: string;
   is_active: boolean;
   current_price_ngn: number | null;
+  bottle_material_id: string | null;
 }
 
 async function loadVariantsForProduct(
@@ -147,6 +148,7 @@ async function loadVariantsForProduct(
       sku: v.sku,
       is_active: v.isActive,
       current_price_ngn: price?.priceNgn ?? null,
+      bottle_material_id: v.bottleMaterialId ?? null,
     });
   }
   return out;
@@ -238,12 +240,14 @@ export function productRoutes(db: DbClient) {
       const variantsCreated: { id: string; size_ml: number; price_ngn: number }[] = [];
       for (const v of variants) {
         const sku = "sku" in v && v.sku ? v.sku : `${body.slug}-${v.size_ml}ml`;
+        const bottleMaterialId = await bottleMaterialIdForSize(tx, v.size_ml);
         const [vRow] = await tx
           .insert(productVariant)
           .values({
             productId: row.id,
             sizeMl: v.size_ml,
             sku,
+            bottleMaterialId: bottleMaterialId ?? null,
           })
           .returning();
         if (!vRow) throw new BusinessError("internal_error", "variant insert failed", 500);

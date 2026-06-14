@@ -108,4 +108,27 @@ describe("products + prices", () => {
     const detailBody = (await detail.json()) as { data: { current_price_ngn: number } };
     expect(detailBody.data.current_price_ngn).toBe(1500);
   });
+
+  it("links a new variant to the bottle material matching its size", async () => {
+    const create = await fetch(`${baseUrl}/v1/products`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookies, "idempotency-key": uuid() },
+      body: JSON.stringify({
+        name: "Linktest Juice",
+        slug: "linktest-juice",
+        category: "regular",
+        variants: [{ size_ml: 330, price_ngn: 2500 }],
+      }),
+    });
+    expect(create.status).toBe(201);
+    const { data } = (await create.json()) as { data: { id: string } };
+
+    const detail = await fetch(`${baseUrl}/v1/products/${data.id}`, { headers: { cookie: cookies } });
+    const body = (await detail.json()) as {
+      data: { variants: { size_ml: number; bottle_material_id: string | null }[] };
+    };
+    const v = body.data.variants.find((x) => x.size_ml === 330);
+    expect(v).toBeTruthy();
+    expect(v?.bottle_material_id).toBeTruthy();
+  });
 });
