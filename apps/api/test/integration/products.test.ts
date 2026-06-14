@@ -64,6 +64,26 @@ describe("products + prices", () => {
     expect(detailBody.data.current_price_ngn).toBe(1500);
   });
 
+  it("rejects a product whose name looks like a bare id", async () => {
+    const res = await fetch(`${baseUrl}/v1/products`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: cookies,
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({
+        name: "0a5c7c72",
+        slug: "junk-flavour",
+        category: "regular",
+        initial_price_ngn: 2500,
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("validation_failed");
+  });
+
   it("publishes a new price and current_price_ngn updates", async () => {
     const create = await fetch(`${baseUrl}/v1/products`, {
       method: "POST",
