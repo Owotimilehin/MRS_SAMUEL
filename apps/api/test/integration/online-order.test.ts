@@ -60,7 +60,35 @@ describe("Phase 3 customer-site online order flow", () => {
         initial_price_ngn: 2500,
       }),
     });
-    productId = ((await pRes.json()) as { data: { id: string } }).data.id;
+    const pData = ((await pRes.json()) as {
+      data: { id: string; variants: Array<{ id: string; size_ml: number }> };
+    }).data;
+    productId = pData.id;
+    // The legacy create defaults to a 330ml variant, auto-linked to the 330ml
+    // bottle material (seeded by migration 0043 in every testcontainer).
+    const variantId = pData.variants.find((v) => v.size_ml === 330)!.id;
+
+    // Production completion hard-guards on bottle stock — purchase bottles at
+    // the factory against the existing 330ml material so the run can complete.
+    const matsRes = await fetch(`${baseUrl}/v1/packaging/materials`, {
+      headers: { cookie: cookies },
+    });
+    const mats = ((await matsRes.json()) as {
+      data: Array<{ id: string; size_ml: number | null }>;
+    }).data;
+    const bottle330 = mats.find((m) => m.size_ml === 330)!;
+    await fetch(`${baseUrl}/v1/packaging/purchases`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookies, "idempotency-key": uuid() },
+      body: JSON.stringify({
+        factory_id: factoryId,
+        packaging_material_id: bottle330.id,
+        quantity: 1000,
+        unit_cost_ngn: 50,
+        total_cost_ngn: 50_000,
+        purchase_date: "2026-05-01",
+      }),
+    });
 
     // 20 to branch
     const run = await fetch(`${baseUrl}/v1/production-runs`, {
@@ -69,7 +97,7 @@ describe("Phase 3 customer-site online order flow", () => {
       body: JSON.stringify({
         factory_id: factoryId,
         run_date: "2026-05-11",
-        items: [{ product_id: productId, quantity_produced: 20 }],
+        items: [{ product_id: productId, variant_id: variantId, quantity_produced: 20 }],
       }),
     });
     const runId = ((await run.json()) as { data: { id: string } }).data.id;
@@ -83,7 +111,7 @@ describe("Phase 3 customer-site online order flow", () => {
       body: JSON.stringify({
         factory_id: factoryId,
         branch_id: branchId,
-        items: [{ product_id: productId, quantity_sent: 20 }],
+        items: [{ product_id: productId, variant_id: variantId, quantity_sent: 20 }],
       }),
     });
     const xfId = ((await xf.json()) as { data: { id: string } }).data.id;

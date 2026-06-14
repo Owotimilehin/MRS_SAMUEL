@@ -180,9 +180,24 @@ export function saleRoutes(db: DbClient) {
           branchId,
           productId,
         });
-        // Out of stock (or a preorder_only variant) becomes a preorder line
-        // instead of blocking — fulfilled later once stock is produced.
-        if (preorderOnly || available < it.quantity) {
+        // A preorder_only item is always made-to-order (any channel). For a
+        // normal item that's short, only REMOTE channels (phone/whatsapp/online,
+        // fulfilled later) become a preorder — immediate-handover channels
+        // (walk-up, chowdeck pickup) can't hand over absent stock, so they're
+        // still rejected to protect inventory integrity at the counter.
+        const immediateHandover =
+          body.channel === "walkup" || body.channel === "chowdeck_pickup";
+        if (preorderOnly) {
+          orderIsPreorder = true;
+        } else if (available < it.quantity) {
+          if (immediateHandover) {
+            throw new BusinessError("conflict", "insufficient stock", 422, {
+              product_id: productId,
+              variant_id: variantId,
+              available,
+              requested: it.quantity,
+            });
+          }
           orderIsPreorder = true;
         }
         lines.push({

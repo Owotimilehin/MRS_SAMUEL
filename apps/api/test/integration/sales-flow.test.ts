@@ -73,18 +73,39 @@ describe("Phase 2 walk-up sale flow", () => {
       initial_price_ngn: 2500,
     });
     product = pRes.body.data;
+    // The legacy create defaults to a 330ml variant, auto-linked to the 330ml
+    // bottle material (seeded by migration 0043 in every testcontainer).
+    const variantId = (product as unknown as {
+      variants: Array<{ id: string; size_ml: number }>;
+    }).variants.find((v) => v.size_ml === 330)!.id;
+
+    // Production completion now hard-guards on bottle stock, so give the factory
+    // bottles to consume. Purchase against the existing 330ml bottle material.
+    const mats = await call<{ data: Array<{ id: string; size_ml: number | null }> }>(
+      "GET",
+      "/v1/packaging/materials",
+    );
+    const bottle330 = mats.body.data.find((m) => m.size_ml === 330)!;
+    await call("POST", "/v1/packaging/purchases", {
+      factory_id: factory.id,
+      packaging_material_id: bottle330.id,
+      quantity: 1000,
+      unit_cost_ngn: 50,
+      total_cost_ngn: 50_000,
+      purchase_date: "2026-05-01",
+    });
 
     // Pre-stock the branch via factory production + transfer.
     const run = await call<{ data: { id: string } }>("POST", "/v1/production-runs", {
       factory_id: factory.id,
       run_date: "2026-05-11",
-      items: [{ product_id: product.id, quantity_produced: 10 }],
+      items: [{ product_id: product.id, variant_id: variantId, quantity_produced: 10 }],
     });
     await call("PATCH", `/v1/production-runs/${run.body.data.id}/complete`);
     const xfer = await call<{ data: { id: string } }>("POST", "/v1/transfers", {
       factory_id: factory.id,
       branch_id: branch.id,
-      items: [{ product_id: product.id, quantity_sent: 10 }],
+      items: [{ product_id: product.id, variant_id: variantId, quantity_sent: 10 }],
     });
     // POST /v1/transfers creates the row already in `dispatched` status —
     // no separate /dispatch call is needed (or exists on the route table).
