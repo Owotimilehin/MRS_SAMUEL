@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { branch } from "./branch.js";
 import { customer } from "./customer.js";
 import { product } from "./product.js";
@@ -84,6 +84,9 @@ export const saleOrder = pgTable("sale_order", {
   deliveryAddressFormatted: text("delivery_address_formatted"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  isPreorder: boolean("is_preorder").notNull().default(false),
+  fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
+  fulfilledByUserId: uuid("fulfilled_by_user_id").references(() => adminUser.id),
 });
 
 export const saleOrderItem = pgTable("sale_order_item", {

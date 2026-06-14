@@ -229,6 +229,12 @@ async function seedProducts(): Promise<void> {
   );
 }
 
+async function flagPreorderVariants(): Promise<void> {
+  // Idempotent: mark all 330ml variants as preorder_only to match current UX.
+  await db.update(productVariant).set({ preorderOnly: true }).where(eq(productVariant.sizeMl, 330));
+  console.warn("preorder flags set: 330ml variants marked preorder_only");
+}
+
 async function linkVariantBottles(): Promise<void> {
   const variants = await db.select().from(productVariant).where(isNull(productVariant.bottleMaterialId));
   let linked = 0;
@@ -642,6 +648,7 @@ async function main(): Promise<void> {
   await seedBagMaterials();
   await seedProducts();
   await linkVariantBottles();
+  await flagPreorderVariants();
   await seedBlogPosts();
   await seedStorefront();
 }

@@ -17,6 +17,7 @@ export const productVariant = pgTable(
     sizeMl: integer("size_ml").notNull(),
     sku: text("sku").notNull(),
     isActive: boolean("is_active").notNull().default(true),
+    preorderOnly: boolean("preorder_only").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
