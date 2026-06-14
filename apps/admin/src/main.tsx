@@ -5,9 +5,18 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { router } from "./router.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { installTelemetry } from "./lib/telemetry.js";
+import { browserReloadEnv, reloadOnceForStaleChunk } from "./lib/chunk-reload.js";
 import "./index.css";
 
 installTelemetry("admin");
+
+// A lazy route's dynamic import can 404 after a deploy replaces hashed chunks
+// while this tab still references the previous build's filenames. Vite fires
+// `vite:preloadError` for these — reload once to pull the fresh build.
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault(); // suppress Vite's default rethrow; we recover instead
+  reloadOnceForStaleChunk(browserReloadEnv());
+});
 
 // Keep the installed app current without a hard refresh. The generated sw.js
 // uses skipWaiting + clientsClaim, so a new build activates and takes control

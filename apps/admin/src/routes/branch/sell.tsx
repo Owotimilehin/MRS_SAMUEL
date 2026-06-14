@@ -10,6 +10,7 @@ import {
 } from "../../db/local.js";
 import { createLocalSale } from "../../sync/local-sale.js";
 import { ngn } from "../../lib/format.js";
+import { Modal } from "../../components/Modal.js";
 
 type Channel = "walkup" | "whatsapp" | "chowdeck_pickup";
 type PaymentMethod = "cash" | "card" | "transfer";
@@ -27,6 +28,12 @@ interface Sellable {
   product: ProductRow;
   variant: VariantRow;
   price: number;
+}
+
+// One flavour grouping its sellable sizes — the unit the POS grid now shows.
+interface Flavour {
+  product: ProductRow;
+  sizes: Sellable[];
 }
 
 const sizeLabel = (ml: number): string => (ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`);
@@ -80,13 +87,35 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, variants, prices]);
 
+  // Collapse sellables into one entry per flavour, each carrying its sizes
+  // (sorted small→large, the way priceForVariant already ordered them).
+  const flavours = useMemo<Flavour[]>(() => {
+    const byProduct = new Map<string, Flavour>();
+    for (const s of sellables) {
+      const existing = byProduct.get(s.product.id);
+      if (existing) existing.sizes.push(s);
+      else byProduct.set(s.product.id, { product: s.product, sizes: [s] });
+    }
+    return [...byProduct.values()];
+  }, [sellables]);
+
   const filtered = useMemo(() => {
-    if (!search) return sellables;
+    if (!search) return flavours;
     const q = search.toLowerCase();
-    return sellables.filter(
-      (s) => s.product.name.toLowerCase().includes(q) || s.product.slug.includes(q),
+    return flavours.filter(
+      (f) => f.product.name.toLowerCase().includes(q) || f.product.slug.includes(q),
     );
-  }, [sellables, search]);
+  }, [flavours, search]);
+
+  // Flavour whose size picker is open (null = no modal).
+  const [picking, setPicking] = useState<Flavour | null>(null);
+
+  // Pick a flavour: single-size flavours skip straight to the cart; multi-size
+  // flavours open the size picker so the cashier chooses the can.
+  function pickFlavour(f: Flavour): void {
+    if (f.sizes.length === 1) addToCart(f.sizes[0]!);
+    else setPicking(f);
+  }
 
   function addToCart(s: Sellable): void {
     setCart((c) => {
@@ -219,12 +248,12 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 gap: 12,
               }}
             >
-              {filtered.map((s) => (
-                <ProductTile
-                  key={s.variant.id}
-                  sellable={s}
+              {filtered.map((f) => (
+                <FlavourTile
+                  key={f.product.id}
+                  flavour={f}
                   branchId={branchId}
-                  onPick={() => addToCart(s)}
+                  onPick={() => pickFlavour(f)}
                 />
               ))}
             </div>
@@ -399,28 +428,99 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           </div>
         </aside>
       </div>
+
+      {picking && (
+        <SizePicker
+          flavour={picking}
+          branchId={branchId}
+          onPick={(s) => {
+            addToCart(s);
+            setPicking(null);
+          }}
+          onClose={() => setPicking(null)}
+        />
+      )}
     </BranchShell>
   );
 }
 
-function ProductTile({
-  sellable,
+// Size picker — lists every can size of the chosen flavour with its price so the
+// cashier taps the exact variant to add. Stock is per-flavour, shown once up top.
+function SizePicker({
+  flavour,
   branchId,
   onPick,
+  onClose,
 }: {
-  sellable: Sellable;
+  flavour: Flavour;
   branchId: string;
-  onPick: () => void;
+  onPick: (s: Sellable) => void;
+  onClose: () => void;
 }): JSX.Element {
-  const { product, variant, price } = sellable;
-  // Stock is tracked per flavour, not per size — every size of a flavour draws
-  // from the same on-hand pool, so all its tiles show the same count.
+  const { product, sizes } = flavour;
   const available = useLiveQuery(
     () => localAvailableForProduct(branchId, product.id),
     [branchId, product.id],
     null as number | null,
   );
   const oos = available !== null && available <= 0;
+  return (
+    <Modal title={product.name} onClose={onClose} maxWidth={420}>
+      <div style={{ fontSize: 12, color: oos ? "var(--danger)" : "var(--ink-soft)", marginBottom: 12 }}>
+        {available === null ? product.category : oos ? "Out of stock" : `${available} in stock · choose a size`}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {sizes.map((s) => (
+          <button
+            key={s.variant.id}
+            type="button"
+            disabled={oos}
+            onClick={() => onPick(s)}
+            className="card card--hoverable"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "12px 14px",
+              borderRadius: 12,
+              cursor: oos ? "not-allowed" : "pointer",
+              opacity: oos ? 0.55 : 1,
+              textAlign: "left",
+            }}
+          >
+            <span style={{ fontWeight: 700, fontSize: 15 }}>{sizeLabel(s.variant.size_ml)}</span>
+            <span className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 17 }}>
+              {ngn(s.price)}
+            </span>
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function FlavourTile({
+  flavour,
+  branchId,
+  onPick,
+}: {
+  flavour: Flavour;
+  branchId: string;
+  onPick: () => void;
+}): JSX.Element {
+  const { product, sizes } = flavour;
+  // Stock is tracked per flavour, not per size — every size draws from the same
+  // on-hand pool, so the count lives on the flavour tile.
+  const available = useLiveQuery(
+    () => localAvailableForProduct(branchId, product.id),
+    [branchId, product.id],
+    null as number | null,
+  );
+  const oos = available !== null && available <= 0;
+  const multi = sizes.length > 1;
+  // Cheapest size up front; "from ₦x" signals more sizes sit behind the tap.
+  const minPrice = Math.min(...sizes.map((s) => s.price));
   return (
     <button
       type="button"
@@ -440,11 +540,8 @@ function ProductTile({
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
         <span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.25 }}>{product.name}</span>
-        <span
-          className="pill"
-          style={{ flexShrink: 0, fontSize: 11, fontWeight: 700 }}
-        >
-          {sizeLabel(variant.size_ml)}
+        <span className="pill" style={{ flexShrink: 0, fontSize: 11, fontWeight: 700 }}>
+          {multi ? `${sizes.length} sizes` : sizeLabel(sizes[0]!.variant.size_ml)}
         </span>
       </div>
       <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>
@@ -459,7 +556,7 @@ function ProductTile({
         )}
       </div>
       <div className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 18, marginTop: 4 }}>
-        {ngn(price)}
+        {multi ? `from ${ngn(minPrice)}` : ngn(sizes[0]!.price)}
       </div>
     </button>
   );

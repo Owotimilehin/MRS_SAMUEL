@@ -135,7 +135,7 @@ export function Hero({ products }: { products: Product[] }) {
       id="top"
       className="relative pt-32 sm:pt-36 pb-20 sm:pb-24 px-5 sm:px-10 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-12 items-center"
     >
-      <div className="relative z-10 max-w-xl">
+      <div className="relative z-10 max-w-xl order-2 lg:order-1">
         <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand)]/75">
           <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--brand-orange)]" />
           100% Natural & Cold Pressed
@@ -213,7 +213,7 @@ export function Hero({ products }: { products: Product[] }) {
         initial={{ opacity: 0, scale: 0.94 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.9, delay: 0.1, ease: "easeOut" }}
-        className="relative w-full flex flex-col items-center"
+        className="relative w-full flex flex-col items-center order-1 lg:order-2"
         onTouchStart={(e) => {
           touchStartX.current = e.touches[0].clientX;
         }}

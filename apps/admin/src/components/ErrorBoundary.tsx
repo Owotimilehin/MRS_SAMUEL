@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { browserReloadEnv, isChunkLoadError, reloadOnceForStaleChunk } from "../lib/chunk-reload.js";
 
 interface State {
   error: Error | null;
@@ -12,6 +13,9 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
+    // Fallback for a stale code-split chunk that rejected into React rather than
+    // firing vite:preloadError (handled in main.tsx). Reload once to self-heal.
+    if (isChunkLoadError(error) && reloadOnceForStaleChunk(browserReloadEnv())) return;
     console.error("[admin] unhandled render error", error, info);
   }
 
