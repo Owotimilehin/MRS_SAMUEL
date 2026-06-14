@@ -242,8 +242,10 @@ export function ProductionRunsPage(): JSX.Element {
   const sizeLabel = (ml: number | null): string => (ml ? `${ml}ml` : "—");
 
   const selectedFactoryName = factories.find((f) => f.id === factoryId)?.name;
+  // Only completed runs have actually produced bottles (drafts haven't consumed
+  // stock yet), so the card's tile counts completed runs dated today.
   const producedToday = history
-    .filter((h) => h.runDate === runDate)
+    .filter((h) => h.runDate === runDate && h.status === "completed")
     .flatMap((h) => h.items)
     .reduce((sum, it) => sum + it.quantityProduced, 0);
 
