@@ -195,6 +195,7 @@ export function productionRunRoutes(db: DbClient) {
           locationType: "factory",
           locationId: run.factoryId,
           productId: it.productId,
+          variantId: it.variantId ?? null,
           delta: it.quantityProduced,
           sourceType: "production_run",
           sourceId: id,
