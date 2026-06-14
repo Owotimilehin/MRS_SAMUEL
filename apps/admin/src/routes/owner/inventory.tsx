@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -38,6 +38,7 @@ interface GridRow {
   productName: string;
   variantId: string | null;
   label: string;
+  sizeLabel: string;
   unassigned: boolean;
 }
 interface AdjustTarget {
@@ -174,6 +175,7 @@ export function InventoryPage(): JSX.Element {
           productName: p.name,
           variantId: v.id,
           label: `${p.name} · ${sizeLabel(v.size_ml)}`,
+          sizeLabel: sizeLabel(v.size_ml),
           unassigned: false,
         });
       }
@@ -183,12 +185,30 @@ export function InventoryPage(): JSX.Element {
           productName: p.name,
           variantId: null,
           label: `${p.name} · (unassigned — recount)`,
+          sizeLabel: "(unassigned — recount)",
           unassigned: true,
         });
       }
     }
     return rows;
   }, [products, variantsByProduct, productsWithNullStock]);
+
+  // Group per-(flavour × size) rows by flavour so the grid can show a
+  // flavour-level subtotal row above each flavour's size rows.
+  const groupedRows = useMemo<Array<{ productId: string; productName: string; rows: GridRow[] }>>(() => {
+    const order: string[] = [];
+    const byProduct = new Map<string, { productId: string; productName: string; rows: GridRow[] }>();
+    for (const row of gridRows) {
+      let group = byProduct.get(row.productId);
+      if (!group) {
+        group = { productId: row.productId, productName: row.productName, rows: [] };
+        byProduct.set(row.productId, group);
+        order.push(row.productId);
+      }
+      group.rows.push(row);
+    }
+    return order.map((id) => byProduct.get(id)!);
+  }, [gridRows]);
 
   function cellTone(qty: number): string {
     if (qty <= 0) return "var(--danger)";
@@ -280,9 +300,9 @@ export function InventoryPage(): JSX.Element {
       color: cellTone(qty),
       background: cellBg(qty),
     };
-    // The unassigned NULL bucket is recount-only — adjusting it directly would
-    // re-pool sizes, so it's read-only; staff recount into the sized rows.
-    const clickable = isOwner && !row.unassigned;
+    // The unassigned NULL bucket is adjustable too — staff can drain it
+    // directly (e.g. zero it out) once its stock has been recounted into sizes.
+    const clickable = isOwner;
     return (
       <td
         key={key}
@@ -329,30 +349,68 @@ export function InventoryPage(): JSX.Element {
             </tr>
           </thead>
           <tbody>
-            {gridRows.map((row) => {
-              const cells = locations.map((l) => heat.get(heatKey(l.id, row.productId, row.variantId)) ?? 0);
-              const total = cells.reduce((sum, q) => sum + q, 0);
+            {groupedRows.map((group) => {
+              // Per-flavour subtotal: sum each location's balance across all of
+              // this flavour's size rows (including the unassigned bucket).
+              const subtotalCells = locations.map((l) =>
+                group.rows.reduce((sum, row) => sum + (heat.get(heatKey(l.id, row.productId, row.variantId)) ?? 0), 0),
+              );
+              const subtotalTotal = subtotalCells.reduce((sum, q) => sum + q, 0);
               return (
-                <tr key={`${row.productId}|${row.variantId ?? "null"}`}>
-                  <td
-                    style={{
-                      position: "sticky",
-                      left: 0,
-                      background: "var(--shell)",
-                      fontWeight: row.unassigned ? 400 : 600,
-                      color: row.unassigned ? "var(--ink-soft)" : "var(--ink)",
-                      fontStyle: row.unassigned ? "italic" : "normal",
-                    }}
-                  >
-                    {row.label}
-                  </td>
-                  {cells.map((q, idx) =>
-                    renderCell(locationType, locations[idx]!.id, locations[idx]!.name, row, q, locations[idx]!.id),
-                  )}
-                  <td className="table__num" style={{ fontWeight: 800, color: cellTone(total) }}>
-                    {locationType === "factory" ? total.toLocaleString() : total}
-                  </td>
-                </tr>
+                <Fragment key={`${group.productId}|__total`}>
+                  <tr>
+                    <td
+                      style={{
+                        position: "sticky",
+                        left: 0,
+                        background: "var(--shell)",
+                        fontWeight: 700,
+                        color: "var(--ink)",
+                      }}
+                    >
+                      {group.productName}
+                    </td>
+                    {subtotalCells.map((q, idx) => (
+                      <td
+                        key={locations[idx]!.id}
+                        className="table__num"
+                        style={{ fontWeight: 700, color: cellTone(q), background: cellBg(q) }}
+                      >
+                        {locationType === "factory" ? q.toLocaleString() : q}
+                      </td>
+                    ))}
+                    <td className="table__num" style={{ fontWeight: 800, color: cellTone(subtotalTotal) }}>
+                      {locationType === "factory" ? subtotalTotal.toLocaleString() : subtotalTotal}
+                    </td>
+                  </tr>
+                  {group.rows.map((row) => {
+                    const cells = locations.map((l) => heat.get(heatKey(l.id, row.productId, row.variantId)) ?? 0);
+                    const total = cells.reduce((sum, q) => sum + q, 0);
+                    return (
+                      <tr key={`${row.productId}|${row.variantId ?? "null"}`}>
+                        <td
+                          style={{
+                            position: "sticky",
+                            left: 0,
+                            background: "var(--shell)",
+                            paddingLeft: 28,
+                            fontWeight: row.unassigned ? 400 : 600,
+                            color: row.unassigned ? "var(--ink-soft)" : "var(--ink)",
+                            fontStyle: row.unassigned ? "italic" : "normal",
+                          }}
+                        >
+                          {row.sizeLabel}
+                        </td>
+                        {cells.map((q, idx) =>
+                          renderCell(locationType, locations[idx]!.id, locations[idx]!.name, row, q, locations[idx]!.id),
+                        )}
+                        <td className="table__num" style={{ fontWeight: 800, color: cellTone(total) }}>
+                          {locationType === "factory" ? total.toLocaleString() : total}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
               );
             })}
           </tbody>
@@ -426,7 +484,7 @@ export function InventoryPage(): JSX.Element {
       )}
       <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 12 }}>
         Red = out of stock · amber = low (≤10) · pale = caution (≤30). Each row is one can size.
-        {isOwner && " Click any sized cell to adjust its on-hand. An italic “(unassigned — recount)” row is legacy stock not yet counted into sizes."}
+        {isOwner && " Click any cell to adjust its on-hand. An italic “(unassigned — recount)” row is legacy stock not yet counted into sizes — adjust it too once recounted."}
       </p>
 
       {flash && (
@@ -504,8 +562,9 @@ function BulkAdjustModal({
     setOverrides({});
   }, [locType, factories, branches]);
 
-  // Only sized rows are bulk-adjustable; the unassigned bucket is recount-only.
-  const rows = useMemo(() => gridRows.filter((r) => !r.unassigned), [gridRows]);
+  // Sized rows plus the unassigned bucket are all bulk-adjustable, so a bulk
+  // recount can zero the unassigned bucket alongside setting sizes.
+  const rows = gridRows;
   const rowKey = (r: GridRow): string => `${r.productId}|${r.variantId ?? "null"}`;
 
   function currentQty(r: GridRow): number {

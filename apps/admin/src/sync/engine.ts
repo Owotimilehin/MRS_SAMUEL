@@ -303,10 +303,17 @@ export async function pullDeltas(branchId: string): Promise<void> {
       // non-empty catalog so a malformed/partial response can never wipe the till.
       if (body.data.products.length > 0) {
         const liveProducts = new Set(body.data.products.map((p) => p.id));
-        const liveVariants = new Set(body.data.variants.map((v) => v.id));
-        const livePrices = new Set(body.data.prices.map((pr) => pr.id));
         await local.products.filter((p) => !liveProducts.has(p.id)).delete();
+      }
+      // Variants and prices get their own guards: during a price transition the
+      // server can return products but a momentarily-empty active variant/price
+      // set, which would otherwise wipe local prices/variants on a partial active set.
+      if (body.data.variants.length > 0) {
+        const liveVariants = new Set(body.data.variants.map((v) => v.id));
         await local.variants.filter((v) => !liveVariants.has(v.id)).delete();
+      }
+      if (body.data.prices.length > 0) {
+        const livePrices = new Set(body.data.prices.map((pr) => pr.id));
         await local.prices.filter((pr) => !livePrices.has(pr.id)).delete();
       }
 
