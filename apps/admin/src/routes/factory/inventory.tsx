@@ -26,10 +26,14 @@ export function FactoryInventoryPage(): JSX.Element {
         setProducts(p.data);
         const balances = await Promise.all(
           f.data.map((row) =>
-            api<{ data: Record<string, number> }>(`/stock/factory/${row.id}`).then((r) => ({
-              id: row.id,
-              data: r.data,
-            })),
+            api<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
+              `/stock/factory/${row.id}`,
+            ).then((r) => {
+              // Reads are per-variant; roll up to per-flavour totals for this view.
+              const totals: Record<string, number> = {};
+              for (const x of r.data) totals[x.product_id] = (totals[x.product_id] ?? 0) + x.balance;
+              return { id: row.id, data: totals };
+            }),
           ),
         );
         if (cancelled) return;

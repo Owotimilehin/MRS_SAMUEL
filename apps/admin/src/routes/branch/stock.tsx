@@ -22,9 +22,14 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
     setLoading(true);
     void (async () => {
       try {
-        const res = await api<{ data: Record<string, number> }>(`/stock/branch/${branchId}`);
+        const res = await api<{
+          data: Array<{ product_id: string; variant_id: string | null; balance: number }>;
+        }>(`/stock/branch/${branchId}`);
         if (!cancelled) {
-          setServerBalances(res.data);
+          // Reads are per-variant; roll up to per-flavour totals for this view.
+          const totals: Record<string, number> = {};
+          for (const x of res.data) totals[x.product_id] = (totals[x.product_id] ?? 0) + x.balance;
+          setServerBalances(totals);
           setError(null);
         }
       } catch (err) {
