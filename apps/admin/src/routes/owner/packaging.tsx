@@ -6,12 +6,15 @@ import { ngn, formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useAuthUser } from "../../lib/auth.js";
 
+type MaterialKind = "bottle" | "bag" | "other";
+
 interface Material {
   id: string;
   name: string;
   unit_label: string;
   size_ml: number | null;
   is_active: boolean;
+  kind: MaterialKind;
 }
 
 interface StockRow {
@@ -21,6 +24,7 @@ interface StockRow {
   size_ml: number | null;
   balance: number;
   recent_unit_cost_ngn: number | null;
+  kind: MaterialKind;
 }
 
 interface Purchase {
@@ -36,6 +40,30 @@ interface Purchase {
 }
 
 interface Factory { id: string; name: string }
+interface Branch { id: string; name: string }
+
+type LocationType = "factory" | "branch";
+
+interface LocationOption {
+  type: LocationType;
+  id: string;
+  name: string;
+  /** Composite key used as <select> value */
+  key: string;
+}
+
+function kindBadge(kind: MaterialKind): JSX.Element {
+  const styles: Record<MaterialKind, React.CSSProperties> = {
+    bottle: { background: "rgba(59,130,246,0.12)", color: "var(--accent)", border: "1px solid rgba(59,130,246,0.25)" },
+    bag:    { background: "rgba(16,185,129,0.12)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)" },
+    other:  { background: "rgba(107,114,128,0.12)", color: "var(--ink-soft)", border: "1px solid rgba(107,114,128,0.2)" },
+  };
+  return (
+    <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 10, ...styles[kind] }}>
+      {kind}
+    </span>
+  );
+}
 
 function balanceTone(qty: number): string {
   if (qty < 100) return "var(--danger)";
@@ -48,7 +76,9 @@ export function PackagingPage(): JSX.Element {
   const canWrite = user.capabilities.includes("packaging.write");
   const [tab, setTab] = useState<"stock" | "purchases" | "materials">("stock");
   const [factories, setFactories] = useState<Factory[]>([]);
-  const [factoryId, setFactoryId] = useState<string>("");
+  const [branches, setBranches] = useState<Branch[]>([]);
+  /** Composite key "factory:<id>" or "branch:<id>" */
+  const [locationKey, setLocationKey] = useState<string>("");
   const [stock, setStock] = useState<StockRow[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -58,20 +88,51 @@ export function PackagingPage(): JSX.Element {
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
-  async function loadFactories(): Promise<void> {
-    const res = await api<{ data: Factory[] }>(`/factories`);
-    setFactories(res.data);
-    if (!factoryId && res.data[0]) setFactoryId(res.data[0].id);
+  /** All selectable locations in display order: factories first, then branches */
+  const locationOptions = useMemo<LocationOption[]>(() => [
+    ...factories.map((f) => ({ type: "factory" as LocationType, id: f.id, name: f.name, key: `factory:${f.id}` })),
+    ...branches.map((b)  => ({ type: "branch"  as LocationType, id: b.id, name: b.name, key: `branch:${b.id}`  })),
+  ], [factories, branches]);
+
+  /** Parse current composite key back to { type, id } */
+  const currentLocation = useMemo<{ type: LocationType; id: string } | null>(() => {
+    if (!locationKey) return null;
+    const colonIdx = locationKey.indexOf(":");
+    if (colonIdx < 0) return null;
+    return { type: locationKey.slice(0, colonIdx) as LocationType, id: locationKey.slice(colonIdx + 1) };
+  }, [locationKey]);
+
+  /** factoryId for the Purchases tab (stay on the factory context) */
+  const purchaseFactoryId = useMemo<string>(() => {
+    if (currentLocation?.type === "factory") return currentLocation.id;
+    return factories[0]?.id ?? "";
+  }, [currentLocation, factories]);
+
+  async function loadLocations(): Promise<void> {
+    const [fr, br] = await Promise.all([
+      api<{ data: Factory[] }>(`/factories`),
+      api<{ data: Branch[] }>(`/branches`),
+    ]);
+    setFactories(fr.data);
+    setBranches(br.data);
+    // Default: first factory (preserves existing behavior)
+    if (!locationKey && fr.data[0]) {
+      setLocationKey(`factory:${fr.data[0].id}`);
+    }
   }
 
   async function loadAll(): Promise<void> {
-    if (!factoryId) return;
+    if (!currentLocation) return;
     setLoading(true);
     try {
+      const stockUrl = `/packaging/stock?location_type=${currentLocation.type}&location_id=${currentLocation.id}`;
+      const purchasesUrl = currentLocation.type === "factory"
+        ? `/packaging/purchases?factory_id=${currentLocation.id}`
+        : `/packaging/purchases?factory_id=${purchaseFactoryId}`;
       const [s, m, p] = await Promise.all([
-        api<{ data: StockRow[] }>(`/packaging/stock?factory_id=${factoryId}`),
+        api<{ data: StockRow[] }>(stockUrl),
         api<{ data: Material[] }>(`/packaging/materials`),
-        api<{ data: Purchase[] }>(`/packaging/purchases?factory_id=${factoryId}`),
+        api<{ data: Purchase[] }>(purchasesUrl),
       ]);
       setStock(s.data);
       setMaterials(m.data);
@@ -85,13 +146,13 @@ export function PackagingPage(): JSX.Element {
   }
 
   useEffect(() => {
-    void loadFactories();
+    void loadLocations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [factoryId]);
+  }, [locationKey]);
 
   const materialById = useMemo(
     () => new Map(materials.map((m) => [m.id, m])),
@@ -128,17 +189,31 @@ export function PackagingPage(): JSX.Element {
       )}
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
-        <label className="field__label" htmlFor="pkg-factory">Factory</label>
+        <label className="field__label" htmlFor="pkg-location">Location</label>
         <select
-          id="pkg-factory"
+          id="pkg-location"
           className="select"
-          value={factoryId}
-          onChange={(e) => setFactoryId(e.target.value)}
-          style={{ width: 240 }}
+          value={locationKey}
+          onChange={(e) => setLocationKey(e.target.value)}
+          style={{ width: 280 }}
         >
-          {factories.map((f) => (
-            <option key={f.id} value={f.id}>{f.name}</option>
-          ))}
+          {locationOptions.length === 0 && (
+            <option value="">Loading…</option>
+          )}
+          {factories.length > 0 && (
+            <optgroup label="Factories">
+              {factories.map((f) => (
+                <option key={f.id} value={`factory:${f.id}`}>{f.name}</option>
+              ))}
+            </optgroup>
+          )}
+          {branches.length > 0 && (
+            <optgroup label="Branches">
+              {branches.map((b) => (
+                <option key={b.id} value={`branch:${b.id}`}>{b.name}</option>
+              ))}
+            </optgroup>
+          )}
         </select>
         <div style={{ flex: 1 }} />
         {tab === "purchases" && canWrite && (
@@ -161,17 +236,19 @@ export function PackagingPage(): JSX.Element {
             <thead>
               <tr>
                 <th>Material</th>
+                <th>Kind</th>
                 <th className="table__num">On hand</th>
                 <th className="table__num">Recent unit cost</th>
               </tr>
             </thead>
             <tbody>
               {stock.length === 0 ? (
-                <tr><td colSpan={3} style={{ color: "var(--ink-soft)", padding: 18 }}>No materials configured yet.</td></tr>
+                <tr><td colSpan={4} style={{ color: "var(--ink-soft)", padding: 18 }}>No materials configured yet.</td></tr>
               ) : (
                 stock.map((s) => (
                   <tr key={s.material_id}>
                     <td>{s.name}</td>
+                    <td>{kindBadge(s.kind ?? "other")}</td>
                     <td className="table__num" style={{ fontWeight: 700, color: balanceTone(s.balance) }}>
                       {s.balance.toLocaleString()}
                     </td>
@@ -223,6 +300,7 @@ export function PackagingPage(): JSX.Element {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Kind</th>
                 <th>Unit</th>
                 <th>Size (ml)</th>
                 <th>Active</th>
@@ -230,11 +308,12 @@ export function PackagingPage(): JSX.Element {
             </thead>
             <tbody>
               {materials.length === 0 ? (
-                <tr><td colSpan={4} style={{ color: "var(--ink-soft)", padding: 18 }}>No materials yet. Add one to start tracking.</td></tr>
+                <tr><td colSpan={5} style={{ color: "var(--ink-soft)", padding: 18 }}>No materials yet. Add one to start tracking.</td></tr>
               ) : (
                 materials.map((m) => (
                   <tr key={m.id}>
                     <td style={{ fontWeight: 600 }}>{m.name}</td>
+                    <td>{kindBadge(m.kind ?? "other")}</td>
                     <td>{m.unit_label}</td>
                     <td>{m.size_ml ?? "—"}</td>
                     <td>{m.is_active ? "Yes" : "No"}</td>
@@ -254,7 +333,7 @@ export function PackagingPage(): JSX.Element {
 
       {showAddPurchase && (
         <PurchaseModal
-          factoryId={factoryId}
+          factoryId={purchaseFactoryId}
           factories={factories}
           materials={materials.filter((m) => m.is_active)}
           onClose={() => setShowAddPurchase(false)}
@@ -424,6 +503,7 @@ function MaterialModal({
   const [name, setName] = useState("");
   const [unitLabel, setUnitLabel] = useState("bottle");
   const [sizeMl, setSizeMl] = useState<string>("");
+  const [kind, setKind] = useState<MaterialKind>("other");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -442,6 +522,7 @@ function MaterialModal({
           name: name.trim(),
           unit_label: unitLabel.trim(),
           size_ml: sizeMl ? Number(sizeMl) : null,
+          kind,
         }),
       });
       await onSaved();
@@ -470,6 +551,14 @@ function MaterialModal({
           <div className="field">
             <label className="field__label" htmlFor="m-name">Name</label>
             <input id="m-name" className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus required placeholder="e.g. 330ml glass bottle" />
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="m-kind">Kind</label>
+            <select id="m-kind" className="select" value={kind} onChange={(e) => setKind(e.target.value as MaterialKind)}>
+              <option value="bottle">Bottle</option>
+              <option value="bag">Bag</option>
+              <option value="other">Other</option>
+            </select>
           </div>
           <div className="field">
             <label className="field__label" htmlFor="m-unit">Unit label</label>
