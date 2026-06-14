@@ -18,6 +18,7 @@ const MaterialCreate = z.object({
   unit_label: z.string().min(1).max(50),
   size_ml: z.number().int().positive().nullable().optional(),
   is_active: z.boolean().optional(),
+  kind: z.enum(["bottle", "bag", "other"]).optional(),
 });
 
 const MaterialPatch = z.object({
@@ -25,6 +26,7 @@ const MaterialPatch = z.object({
   unit_label: z.string().min(1).max(50).optional(),
   size_ml: z.number().int().positive().nullable().optional(),
   is_active: z.boolean().optional(),
+  kind: z.enum(["bottle", "bag", "other"]).optional(),
 });
 
 const PurchaseCreate = z
@@ -50,6 +52,7 @@ function serializeMaterial(m: typeof packagingMaterial.$inferSelect) {
     name: m.name,
     unit_label: m.unitLabel,
     size_ml: m.sizeMl,
+    kind: m.kind,
     is_active: m.isActive,
   };
 }
@@ -75,6 +78,7 @@ export function packagingRoutes(db: DbClient) {
         name: body.name.trim(),
         unitLabel: body.unit_label.trim(),
         sizeMl: body.size_ml ?? null,
+        kind: body.kind ?? "other",
         isActive: body.is_active ?? true,
       })
       .returning();
@@ -96,6 +100,7 @@ export function packagingRoutes(db: DbClient) {
     if (body.unit_label !== undefined) patch.unitLabel = body.unit_label.trim();
     if (body.size_ml !== undefined) patch.sizeMl = body.size_ml;
     if (body.is_active !== undefined) patch.isActive = body.is_active;
+    if (body.kind !== undefined) patch.kind = body.kind;
     const [row] = await db
       .update(packagingMaterial)
       .set(patch)
@@ -115,42 +120,38 @@ export function packagingRoutes(db: DbClient) {
   r.get("/stock", requireCapability("packaging.view"), async (c) => {
     const url = new URL(c.req.url);
     const factoryId = url.searchParams.get("factory_id");
-    if (!factoryId) throw new BusinessError("validation_failed", "factory_id required", 400);
+    const locationType = url.searchParams.get("location_type") ?? (factoryId ? "factory" : null);
+    const locationId = url.searchParams.get("location_id") ?? factoryId;
+    if (!locationType || !locationId) {
+      throw new BusinessError("validation_failed", "location_type+location_id (or factory_id) required", 400);
+    }
 
-    const balances = await db.execute<{
-      packaging_material_id: string;
-      balance: number;
-    }>(sql`
+    const balances = await db.execute<{ packaging_material_id: string; balance: number }>(sql`
       SELECT packaging_material_id, COALESCE(SUM(delta), 0)::int AS balance
       FROM packaging_stock_ledger
-      WHERE factory_id = ${factoryId}::uuid
+      WHERE location_type = ${locationType} AND location_id = ${locationId}::uuid
       GROUP BY packaging_material_id
     `);
-
     const materials = await db.select().from(packagingMaterial);
-    const balanceById = new Map(
-      balances.map((b) => [b.packaging_material_id, Number(b.balance)]),
-    );
+    const balanceById = new Map(balances.map((b) => [b.packaging_material_id, Number(b.balance)]));
 
-    const recent = await db.execute<{
-      packaging_material_id: string;
-      unit_cost_ngn: number;
-    }>(sql`
-      SELECT DISTINCT ON (packaging_material_id)
-        packaging_material_id, unit_cost_ngn
-      FROM packaging_purchase
-      WHERE factory_id = ${factoryId}::uuid
-      ORDER BY packaging_material_id, purchase_date DESC, created_at DESC
-    `);
-    const recentCostById = new Map(
-      recent.map((p) => [p.packaging_material_id, Number(p.unit_cost_ngn)]),
-    );
+    const recentCostById = new Map<string, number>();
+    if (locationType === "factory") {
+      const recent = await db.execute<{ packaging_material_id: string; unit_cost_ngn: number }>(sql`
+        SELECT DISTINCT ON (packaging_material_id) packaging_material_id, unit_cost_ngn
+        FROM packaging_purchase
+        WHERE factory_id = ${locationId}::uuid
+        ORDER BY packaging_material_id, purchase_date DESC, created_at DESC
+      `);
+      for (const p of recent) recentCostById.set(p.packaging_material_id, Number(p.unit_cost_ngn));
+    }
 
     const data = materials.map((m) => ({
       material_id: m.id,
       name: m.name,
       unit_label: m.unitLabel,
       size_ml: m.sizeMl,
+      kind: m.kind,
       is_active: m.isActive,
       balance: balanceById.get(m.id) ?? 0,
       recent_unit_cost_ngn: recentCostById.get(m.id) ?? null,
@@ -228,6 +229,8 @@ export function packagingRoutes(db: DbClient) {
 
       await tx.insert(packagingStockLedger).values({
         factoryId: body.factory_id,
+        locationType: "factory",
+        locationId: body.factory_id,
         packagingMaterialId: body.packaging_material_id,
         delta: body.quantity,
         sourceType: "purchase",
@@ -279,16 +282,19 @@ export function packagingRoutes(db: DbClient) {
   r.get("/ledger", requireCapability("packaging.view"), async (c) => {
     const url = new URL(c.req.url);
     const factoryId = url.searchParams.get("factory_id");
+    const locationType = url.searchParams.get("location_type") ?? (factoryId ? "factory" : null);
+    const locationId = url.searchParams.get("location_id") ?? factoryId;
     const materialId = url.searchParams.get("material_id");
-    if (!factoryId || !materialId) {
-      throw new BusinessError("validation_failed", "factory_id and material_id required", 400);
+    if (!locationType || !locationId || !materialId) {
+      throw new BusinessError("validation_failed", "location (factory_id or location_type+location_id) and material_id required", 400);
     }
     const rows = await db
       .select()
       .from(packagingStockLedger)
       .where(
         and(
-          eq(packagingStockLedger.factoryId, factoryId),
+          eq(packagingStockLedger.locationType, locationType as "factory" | "branch"),
+          eq(packagingStockLedger.locationId, locationId),
           eq(packagingStockLedger.packagingMaterialId, materialId),
         ),
       )
@@ -297,6 +303,8 @@ export function packagingRoutes(db: DbClient) {
     const data = rows.map((r) => ({
       id: r.id,
       factory_id: r.factoryId,
+      location_type: r.locationType,
+      location_id: r.locationId,
       packaging_material_id: r.packagingMaterialId,
       delta: r.delta,
       source_type: r.sourceType,
