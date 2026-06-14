@@ -76,9 +76,23 @@ async function seedBottleMaterials(): Promise<void> {
       .from(packagingMaterial)
       .where(eq(packagingMaterial.sizeMl, sizeMl));
     if (existing.length > 0) continue;
-    await db.insert(packagingMaterial).values({ name, unitLabel: "bottle", sizeMl, isActive: true });
+    await db.insert(packagingMaterial).values({ name, unitLabel: "bottle", sizeMl, kind: "bottle", isActive: true });
   }
   console.warn("bottle materials seeded");
+}
+
+async function seedBagMaterials(): Promise<void> {
+  for (const name of ["Small Bag", "Medium Bag", "Large Bag"]) {
+    const existing = await db
+      .select()
+      .from(packagingMaterial)
+      .where(and(eq(packagingMaterial.kind, "bag"), eq(packagingMaterial.name, name)));
+    if (existing.length > 0) continue;
+    await db.insert(packagingMaterial).values({
+      name, unitLabel: "bag", sizeMl: null, kind: "bag", isActive: true,
+    });
+  }
+  console.warn("bag materials seeded");
 }
 
 interface CatalogProduct {
@@ -625,6 +639,7 @@ async function main(): Promise<void> {
   await seedFactory();
   await seedBranch();
   await seedBottleMaterials();
+  await seedBagMaterials();
   await seedProducts();
   await linkVariantBottles();
   await seedBlogPosts();
