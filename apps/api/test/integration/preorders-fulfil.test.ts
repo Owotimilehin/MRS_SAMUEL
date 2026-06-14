@@ -29,7 +29,6 @@ describe("preorders: pay-without-deduct + queue + fulfil", () => {
   let cookies: string;
   let server: ReturnType<typeof serve>;
   let branch: { id: string };
-  let factory: { id: string };
   let product: { id: string };
 
   async function call<T>(method: string, path: string, body?: unknown): Promise<{ status: number; body: T }> {
@@ -87,10 +86,6 @@ describe("preorders: pay-without-deduct + queue + fulfil", () => {
       delivery_zones: [],
     });
     branch = bRes.body.data;
-
-    const { factory: factoryTable } = await import("@ms/db");
-    const [fac] = await tdb.db.insert(factoryTable).values({ name: "Preorder Factory" }).returning();
-    factory = fac as { id: string };
 
     const pRes = await call<{ data: { id: string } }>("POST", "/v1/products", {
       name: "Lemon Sip",
