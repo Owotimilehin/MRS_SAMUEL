@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, desc, asc, inArray, sql } from "drizzle-orm";
+import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
   productionRun,
@@ -8,6 +8,7 @@ import {
   outboxEvent,
   productVariant,
   packagingStockLedger,
+  packagingBalanceAt,
   type DbClient,
 } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
@@ -170,16 +171,12 @@ export function productionRunRoutes(db: DbClient) {
       // Pre-flight: check the factory has enough of each bottle BEFORE posting.
       const shortfalls: { material_id: string; needed: number; available: number }[] = [];
       for (const [materialId, needed] of requiredByMaterial) {
-        const [bal] = await tx.execute<{ balance: number }>(sql`
-          SELECT COALESCE(SUM(delta), 0)::int AS balance
-          FROM packaging_stock_ledger
-          WHERE factory_id = ${run.factoryId}::uuid
-            AND packaging_material_id = ${materialId}::uuid
-        `);
-        const available = Number(bal?.balance ?? 0);
-        if (available < needed) {
-          shortfalls.push({ material_id: materialId, needed, available });
-        }
+        const available = await packagingBalanceAt(
+          tx,
+          { locationType: "factory", locationId: run.factoryId },
+          materialId,
+        );
+        if (available < needed) shortfalls.push({ material_id: materialId, needed, available });
       }
       if (shortfalls.length > 0) {
         throw new BusinessError(
@@ -211,6 +208,8 @@ export function productionRunRoutes(db: DbClient) {
       for (const [materialId, qty] of requiredByMaterial) {
         await tx.insert(packagingStockLedger).values({
           factoryId: run.factoryId,
+          locationType: "factory",
+          locationId: run.factoryId,
           packagingMaterialId: materialId,
           delta: -qty,
           sourceType: "consumption",
