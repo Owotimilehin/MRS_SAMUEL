@@ -169,6 +169,29 @@ export class ApiError extends Error {
 const RETRYABLE_STATUS = new Set([502, 503, 504, 429]);
 const MAX_ATTEMPTS = 4;
 
+// A single in-flight refresh shared by concurrent 401s, so a burst of expired
+// calls triggers exactly one POST /auth/refresh.
+let refreshInFlight: Promise<boolean> | null = null;
+
+function refreshAccessToken(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const res = await fetch(API_BASE + "/auth/refresh", {
+          method: "POST",
+          credentials: "include",
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
 /**
  * Wait before the next retry. If the device is offline, park until it comes
  * back (capped) instead of burning attempts against a dead connection — so a
@@ -211,6 +234,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("idempotency-key", uuid());
   }
 
+  let didRefresh = false;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const last = attempt === MAX_ATTEMPTS;
 
@@ -227,6 +251,19 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (RETRYABLE_STATUS.has(res.status) && !last) {
       await waitBeforeRetry(attempt);
       continue;
+    }
+
+    // Access token expired (15m). Refresh once using the 30-day session cookie
+    // and retry the original request transparently. Never refresh the refresh
+    // call itself, and only try once per api() call to avoid loops.
+    if (res.status === 401 && !didRefresh && !path.startsWith("/auth/")) {
+      didRefresh = true;
+      const ok = await refreshAccessToken();
+      if (ok) {
+        attempt--; // don't consume a retry slot for the refresh
+        continue;
+      }
+      // refresh failed → fall through and throw unauthorized.
     }
 
     if (!res.ok) {

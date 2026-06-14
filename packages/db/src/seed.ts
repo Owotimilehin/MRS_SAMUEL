@@ -1,4 +1,5 @@
 import { createDbClient } from "./client.js";
+import { assertNonProdDb } from "./lib/assert-non-prod-db.js";
 import {
   adminUser,
   factory,
@@ -18,6 +19,7 @@ import { PALETTES, VISUALS } from "./seed-data/visuals.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required");
+assertNonProdDb(url);
 const db = createDbClient(url);
 
 const ownerEmail = process.env.SEED_OWNER_EMAIL ?? "owner@example.com";

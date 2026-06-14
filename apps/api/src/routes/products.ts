@@ -5,6 +5,7 @@ import { product, productPrice, productVariant, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+import { looksLikeBareId } from "@ms/shared";
 
 const VariantInput = z.object({
   size_ml: z.number().int().positive(),
@@ -46,7 +47,12 @@ const ContentFields = {
 
 const CreateProduct = z
   .object({
-    name: z.string().min(1),
+    name: z
+      .string()
+      .min(1)
+      .refine((v) => !looksLikeBareId(v), {
+        message: "name looks like an ID, not a flavour name",
+      }),
     slug: z.string().regex(/^[a-z0-9-]+$/),
     category: z.enum(["regular", "special", "punch"]),
     ingredients: z.array(z.string()).default([]),
@@ -67,7 +73,13 @@ const CreateProduct = z
 // PATCH payload: edit product attributes + content. Variants/prices are managed
 // by the dedicated /prices endpoint, so they're intentionally absent here.
 const UpdateProduct = z.object({
-  name: z.string().min(1).optional(),
+  name: z
+    .string()
+    .min(1)
+    .refine((v) => !looksLikeBareId(v), {
+      message: "name looks like an ID, not a flavour name",
+    })
+    .optional(),
   category: z.enum(["regular", "special", "punch"]).optional(),
   ingredients: z.array(z.string()).optional(),
   shelf_life_hours: z.number().int().positive().optional(),

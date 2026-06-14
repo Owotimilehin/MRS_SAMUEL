@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createDbClient, adminUser } from "@ms/db";
+import { createDbClient, adminUser, assertNonProdDb } from "@ms/db";
 import { hashPassword } from "../../src/auth/argon.js";
 import type { AdminRole, Capability } from "@ms/shared";
 
@@ -18,6 +18,7 @@ export async function setupTestDb(): Promise<{
 }> {
   const container = await new PostgreSqlContainer("postgres:16-alpine").start();
   const url = container.getConnectionUri();
+  assertNonProdDb(url);
   const sql = postgres(url, { max: 1 });
   await migrate(drizzle(sql), { migrationsFolder });
   await sql.end();
