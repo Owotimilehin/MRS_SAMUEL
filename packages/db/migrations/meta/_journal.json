@@ -309,6 +309,13 @@
       "when": 1782200000000,
       "tag": "0044_packaging_location_and_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1782300000000,
+      "tag": "0045_transfer_item_variant",
+      "breakpoints": true
     }
   ]
 }

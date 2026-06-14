@@ -78,6 +78,33 @@ export async function checkFactoryStockAvailable(
 }
 
 /**
+ * Per-variant factory availability for a dispatch. Each requested line is keyed
+ * to its own (product, variant) bucket — a NULL variantId checks the legacy
+ * no-size bucket. MUST run in the same tx that writes the dispatch rows.
+ */
+export async function checkFactoryStockAvailableByVariant(
+  db: DbExecutor,
+  factoryId: string,
+  items: { productId: string; variantId: string | null; quantity: number }[],
+): Promise<
+  | { ok: true }
+  | { ok: false; insufficient: { productId: string; variantId: string | null; available: number; requested: number }[] }
+> {
+  const rows = await balanceByVariantAt(db, { locationType: "factory", locationId: factoryId });
+  const key = (p: string, v: string | null) => `${p}:${v ?? "null"}`;
+  const bal = new Map(rows.map((r) => [key(r.productId, r.variantId), r.balance]));
+  const insufficient = items
+    .map((it) => ({
+      productId: it.productId,
+      variantId: it.variantId,
+      available: bal.get(key(it.productId, it.variantId)) ?? 0,
+      requested: it.quantity,
+    }))
+    .filter((x) => x.available < x.requested);
+  return insufficient.length === 0 ? { ok: true } : { ok: false, insufficient };
+}
+
+/**
  * Mint the next transfer number from the postgres sequence created in
  * migration 0009. Format: TRF-{YYYY}-{NNNNN}
  *

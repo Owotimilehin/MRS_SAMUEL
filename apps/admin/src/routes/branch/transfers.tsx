@@ -27,6 +27,8 @@ interface Transfer {
 interface TransferItem {
   id: string;
   productId: string;
+  variantId?: string | null;
+  size_ml?: number | null;
   quantitySent: number;
   quantityReceived: number | null;
   varianceReason: string | null;
@@ -331,7 +333,14 @@ function ReceiveModal({
                 const variance = d.quantity_received !== d.sent;
                 return (
                   <tr key={d.item_id}>
-                    <td>{productName(items[idx]?.productId ?? "")}</td>
+                    <td>
+                      {productName(items[idx]?.productId ?? "")}
+                      {items[idx]?.size_ml != null && (
+                        <span style={{ color: "var(--ink-soft)", fontSize: 12, marginLeft: 4 }}>
+                          · {items[idx]!.size_ml}ml
+                        </span>
+                      )}
+                    </td>
                     <td className="table__num">{d.sent}</td>
                     <td>
                       <input

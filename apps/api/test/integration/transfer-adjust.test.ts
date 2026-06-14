@@ -81,13 +81,15 @@ describe("transfer adjust + variance_note", () => {
     });
     product = pRes.body.data;
 
-    // Stock the factory with 100 bottles via a completed production run
-    const run = await call<{ data: { id: string } }>("POST", "/v1/production-runs", {
-      factory_id: factory.id,
-      run_date: "2026-06-01",
-      items: [{ product_id: product.id, quantity_produced: 100 }],
+    // Seed the factory with 100 bottles via an opening-balance adjustment.
+    // (Production-run completion now requires linked bottle materials, covered
+    // in production-runs-consumption.test.ts — out of scope for transfer tests.)
+    await call("POST", "/v1/inventory/adjust", {
+      location_type: "factory",
+      location_id: factory.id,
+      reason_code: "opening_balance",
+      items: [{ product_id: product.id, new_quantity: 100 }],
     });
-    await call("PATCH", `/v1/production-runs/${run.body.data.id}/complete`);
   }, 120_000);
 
   afterAll(async () => {

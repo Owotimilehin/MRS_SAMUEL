@@ -7,9 +7,10 @@ import {
   stockLedger,
   outboxEvent,
   product,
+  productVariant,
   type DbClient,
 } from "@ms/db";
-import { checkFactoryStockAvailable, nextTransferNumber } from "@ms/domain";
+import { checkFactoryStockAvailableByVariant, nextTransferNumber } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -25,6 +26,7 @@ const CreateDraft = z.object({
     .array(
       z.object({
         product_id: z.string().uuid(),
+        variant_id: z.string().uuid().nullish(),
         quantity_sent: z.number().int().positive(),
         unit_cost_ngn: z.number().int().nonnegative().optional(),
         notes: z.string().optional(),
@@ -194,8 +196,21 @@ export function transferRoutes(db: DbClient) {
     const [t] = await db.select().from(stockTransfer).where(eq(stockTransfer.id, id));
     if (!t) throw new BusinessError("not_found", "transfer not found", 404);
     const items = await db
-      .select()
+      .select({
+        id: stockTransferItem.id,
+        stock_transfer_id: stockTransferItem.stockTransferId,
+        product_id: stockTransferItem.productId,
+        variant_id: stockTransferItem.variantId,
+        size_ml: productVariant.sizeMl,
+        quantity_sent: stockTransferItem.quantitySent,
+        quantity_received: stockTransferItem.quantityReceived,
+        variance_reason: stockTransferItem.varianceReason,
+        variance_note: stockTransferItem.varianceNote,
+        unit_cost_ngn: stockTransferItem.unitCostNgn,
+        notes: stockTransferItem.notes,
+      })
       .from(stockTransferItem)
+      .leftJoin(productVariant, eq(productVariant.id, stockTransferItem.variantId))
       .where(eq(stockTransferItem.stockTransferId, id));
     return c.json({ data: { ...t, items } });
   });
@@ -210,10 +225,10 @@ export function transferRoutes(db: DbClient) {
     const created = await db.transaction(async (tx) => {
       // Verify factory has enough stock before reserving a transfer number
       // (so failed attempts don't burn sequence values).
-      const check = await checkFactoryStockAvailable(
+      const check = await checkFactoryStockAvailableByVariant(
         tx,
         body.factory_id,
-        body.items.map((i) => ({ productId: i.product_id, quantity: i.quantity_sent })),
+        body.items.map((i) => ({ productId: i.product_id, variantId: i.variant_id ?? null, quantity: i.quantity_sent })),
       );
       if (!check.ok) {
         throw new BusinessError("conflict", "insufficient factory stock", 422, {
@@ -243,6 +258,7 @@ export function transferRoutes(db: DbClient) {
         await tx.insert(stockTransferItem).values({
           stockTransferId: t.id,
           productId: it.product_id,
+          variantId: it.variant_id ?? null,
           quantitySent: it.quantity_sent,
           unitCostNgn: it.unit_cost_ngn ?? null,
           notes: it.notes ?? null,
@@ -251,6 +267,7 @@ export function transferRoutes(db: DbClient) {
           locationType: "factory",
           locationId: t.factoryId,
           productId: it.product_id,
+          variantId: it.variant_id ?? null,
           delta: -it.quantity_sent,
           sourceType: "transfer_dispatch",
           sourceId: t.id,
@@ -370,6 +387,7 @@ export function transferRoutes(db: DbClient) {
             locationType: "branch",
             locationId: t.branchId,
             productId: it.productId,
+            variantId: it.variantId ?? null,
             delta: inp.quantity_received,
             sourceType: "transfer_receive",
             sourceId: id,
@@ -487,6 +505,7 @@ export function transferRoutes(db: DbClient) {
           locationType: "factory",
           locationId: t.factoryId,
           productId: it.productId,
+          variantId: it.variantId ?? null,
           delta: it.quantitySent,
           sourceType: "transfer_reject_reverse",
           sourceId: id,
@@ -573,6 +592,7 @@ export function transferRoutes(db: DbClient) {
           locationType: "factory",
           locationId: t.factoryId,
           productId: it.productId,
+          variantId: it.variantId ?? null,
           delta: -delta,
           sourceType: "count_correction",
           sourceId: id,
@@ -589,6 +609,7 @@ export function transferRoutes(db: DbClient) {
           locationType: "branch",
           locationId: t.branchId,
           productId: it.productId,
+          variantId: it.variantId ?? null,
           delta,
           sourceType: "count_correction",
           sourceId: id,

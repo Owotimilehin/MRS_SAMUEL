@@ -86,7 +86,7 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
     await container.stop();
   });
 
-  it("production run completes and factory stock goes from 0 to 50", async () => {
+  it("factory opening stock seeded to 50", async () => {
     // Stock at factory should start at 0
     const before = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",
@@ -94,16 +94,17 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
     );
     expect(stockBalance(before.body.data, product.id)).toBe(0);
 
-    // Create + complete production run of 50
-    const create = await call<{ data: { id: string } }>("POST", "/v1/production-runs", {
-      factory_id: factory.id,
-      run_date: "2026-05-11",
-      items: [{ product_id: product.id, quantity_produced: 50 }],
+    // Seed factory stock via an opening-balance adjustment. (Production-run
+    // completion is covered separately in production-runs-consumption.test.ts;
+    // it now requires linked bottle materials + packaging stock, which is out
+    // of scope for the transfer flow — so we seed stock directly here.)
+    const adjust = await call("POST", "/v1/inventory/adjust", {
+      location_type: "factory",
+      location_id: factory.id,
+      reason_code: "opening_balance",
+      items: [{ product_id: product.id, new_quantity: 50 }],
     });
-    expect(create.status).toBe(201);
-
-    const complete = await call("PATCH", `/v1/production-runs/${create.body.data.id}/complete`);
-    expect(complete.status).toBe(200);
+    expect(adjust.status).toBe(201);
 
     const after = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
       "GET",

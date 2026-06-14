@@ -19,6 +19,8 @@ type TransferStatus =
 interface TransferItem {
   id: string;
   productId: string;
+  variantId?: string | null;
+  size_ml?: number | null;
   quantitySent: number;
   quantityReceived: number | null;
   varianceReason: string | null;
@@ -419,7 +421,14 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                   {receiving
                     ? receipt.map((d, idx) => (
                         <tr key={d.item_id}>
-                          <td>{productName(data.items[idx]?.productId ?? "")}</td>
+                          <td>
+                            {productName(data.items[idx]?.productId ?? "")}
+                            {data.items[idx]?.size_ml != null && (
+                              <span style={{ color: "var(--ink-soft)", fontSize: 12, marginLeft: 4 }}>
+                                · {data.items[idx]!.size_ml}ml
+                              </span>
+                            )}
+                          </td>
                           <td className="table__num">{d.sent}</td>
                           <td>
                             <input
@@ -496,7 +505,14 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                           );
                         return (
                           <tr key={it.id}>
-                            <td>{productName(it.productId)}</td>
+                            <td>
+                              {productName(it.productId)}
+                              {it.size_ml != null && (
+                                <span style={{ color: "var(--ink-soft)", fontSize: 12, marginLeft: 4 }}>
+                                  · {it.size_ml}ml
+                                </span>
+                              )}
+                            </td>
                             <td className="table__num">{it.quantitySent}</td>
                             <td className="table__num" style={{ fontWeight: 700 }}>
                               {it.quantityReceived ?? "—"}
