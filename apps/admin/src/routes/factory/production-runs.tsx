@@ -487,26 +487,45 @@ export function ProductionRunsPage(): JSX.Element {
                   <th>Date</th>
                   <th>Status</th>
                   <th className="table__num">Flavours</th>
+                  <th>By size</th>
                   <th className="table__num">Bottles</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {history.map((h) => (
-                  <tr key={h.id}>
-                    <td>{formatDate(h.runDate)}</td>
-                    <td>
-                      <span className={h.status === "completed" ? "pill pill--success" : "pill pill--warning"}>{h.status}</span>
-                    </td>
-                    <td className="table__num">{h.items.length}</td>
-                    <td className="table__num">{h.items.reduce((sum, it) => sum + it.quantityProduced, 0)}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <Link to="/factory/production-runs/$runId" params={{ runId: h.id }} className="btn btn--subtle btn--sm">
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                {history.map((h) => {
+                  // Bottle distribution per size across all flavours in the run.
+                  const bySize = new Map<number, number>();
+                  for (const it of h.items) {
+                    const ml = it.sizeMl ?? 0;
+                    bySize.set(ml, (bySize.get(ml) ?? 0) + it.quantityProduced);
+                  }
+                  const sizeRows = [...bySize.entries()].sort((a, b) => a[0] - b[0]);
+                  return (
+                    <tr key={h.id}>
+                      <td>{formatDate(h.runDate)}</td>
+                      <td>
+                        <span className={h.status === "completed" ? "pill pill--success" : "pill pill--warning"}>{h.status}</span>
+                      </td>
+                      <td className="table__num">{h.items.length}</td>
+                      <td>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {sizeRows.map(([ml, qty]) => (
+                            <span key={ml} className="pill" style={{ fontSize: 12 }}>
+                              {sizeLabel(ml || null)}: {qty.toLocaleString()}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="table__num">{h.items.reduce((sum, it) => sum + it.quantityProduced, 0)}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <Link to="/factory/production-runs/$runId" params={{ runId: h.id }} className="btn btn--subtle btn--sm">
+                          View
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

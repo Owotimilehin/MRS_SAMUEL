@@ -15,11 +15,21 @@ interface Product {
   id: string;
   name: string;
 }
+interface StockRow {
+  product_id: string;
+  variant_id: string | null;
+  size_ml: number | null;
+  balance: number;
+}
+
+const sizeLabel = (ml: number | null): string => (ml ? `${ml}ml` : "No size");
 
 export function FactoriesPage(): JSX.Element {
   const [rows, setRows] = useState<Factory[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [balances, setBalances] = useState<Record<string, Record<string, number>>>({});
+  // Per-factory, the raw per-(product, size) balances so we can show the
+  // bottle distribution per size instead of only a per-flavour roll-up.
+  const [balances, setBalances] = useState<Record<string, StockRow[]>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,21 +44,17 @@ export function FactoriesPage(): JSX.Element {
         if (cancelled) return;
         setRows(f.data);
         setProducts(p.data);
-        // Pull stock for each factory
+        // Pull per-size stock for each factory.
         const stocks = await Promise.all(
           f.data.map((row) =>
-            api<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
-              `/stock/factory/${row.id}`,
-            ).then((r) => {
-              // Reads are per-variant; roll up to per-flavour totals for this summary.
-              const totals: Record<string, number> = {};
-              for (const x of r.data) totals[x.product_id] = (totals[x.product_id] ?? 0) + x.balance;
-              return { id: row.id, data: totals };
-            }),
+            api<{ data: StockRow[] }>(`/stock/factory/${row.id}`).then((r) => ({
+              id: row.id,
+              data: r.data,
+            })),
           ),
         );
         if (cancelled) return;
-        const next: Record<string, Record<string, number>> = {};
+        const next: Record<string, StockRow[]> = {};
         for (const s of stocks) next[s.id] = s.data;
         setBalances(next);
       } catch (err) {
@@ -78,9 +84,23 @@ export function FactoriesPage(): JSX.Element {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {rows.map((f) => {
-            const stock = balances[f.id] ?? {};
-            const entries = Object.entries(stock).sort((a, b) => b[1] - a[1]);
-            const totalUnits = entries.reduce((sum, [, q]) => sum + q, 0);
+            const stock = balances[f.id] ?? [];
+            // Group the per-size rows under each flavour, sorted by flavour
+            // total (desc) then size (asc) so the biggest holdings lead.
+            const byProduct = new Map<string, StockRow[]>();
+            for (const x of stock) {
+              const list = byProduct.get(x.product_id) ?? [];
+              list.push(x);
+              byProduct.set(x.product_id, list);
+            }
+            const groups = [...byProduct.entries()]
+              .map(([pid, sizes]) => ({
+                pid,
+                sizes: [...sizes].sort((a, b) => (a.size_ml ?? 0) - (b.size_ml ?? 0)),
+                total: sizes.reduce((sum, s) => sum + s.balance, 0),
+              }))
+              .sort((a, b) => b.total - a.total);
+            const totalUnits = groups.reduce((sum, g) => sum + g.total, 0);
             return (
               <section key={f.id} className="card">
                 <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
@@ -95,7 +115,7 @@ export function FactoriesPage(): JSX.Element {
                     {totalUnits.toLocaleString()} bottles on hand
                   </span>
                 </header>
-                {entries.length === 0 ? (
+                {groups.length === 0 ? (
                   <div className="empty">No stock recorded yet.</div>
                 ) : (
                   <div className="table-wrap" style={{ border: 0 }}>
@@ -103,29 +123,40 @@ export function FactoriesPage(): JSX.Element {
                       <thead>
                         <tr>
                           <th>Product</th>
+                          <th>Size</th>
                           <th className="table__num">On hand</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {entries.map(([pid, qty]) => (
-                          <tr key={pid}>
-                            <td>{productName(pid)}</td>
-                            <td
-                              className="table__num"
-                              style={{
-                                fontWeight: 700,
-                                color:
-                                  qty <= 0
-                                    ? "var(--danger)"
-                                    : qty <= 50
-                                      ? "var(--warning)"
-                                      : "var(--ink)",
-                              }}
-                            >
-                              {qty.toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
+                        {groups.map((g) =>
+                          g.sizes.map((s, i) => (
+                            <tr key={`${g.pid}:${s.variant_id ?? "null"}`}>
+                              {i === 0 ? (
+                                <td rowSpan={g.sizes.length} style={{ verticalAlign: "top", fontWeight: 600 }}>
+                                  {productName(g.pid)}
+                                  <div style={{ color: "var(--ink-soft)", fontSize: 12, fontWeight: 400, marginTop: 2 }}>
+                                    {g.total.toLocaleString()} total
+                                  </div>
+                                </td>
+                              ) : null}
+                              <td style={{ color: "var(--ink-soft)" }}>{sizeLabel(s.size_ml)}</td>
+                              <td
+                                className="table__num"
+                                style={{
+                                  fontWeight: 700,
+                                  color:
+                                    s.balance <= 0
+                                      ? "var(--danger)"
+                                      : s.balance <= 50
+                                        ? "var(--warning)"
+                                        : "var(--ink)",
+                                }}
+                              >
+                                {s.balance.toLocaleString()}
+                              </td>
+                            </tr>
+                          )),
+                        )}
                       </tbody>
                     </table>
                   </div>

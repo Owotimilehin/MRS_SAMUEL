@@ -46,10 +46,12 @@ interface BagMaterial {
   kind: string;
 }
 
-interface Variant {
-  id: string;
+// One per-size on-hand row at the source factory.
+interface FactoryStockRow {
+  product_id: string;
+  variant_id: string | null;
   size_ml: number | null;
-  sku?: string | null;
+  balance: number;
 }
 
 // A draft line is EITHER a product (juice) OR a bag (packaging material). The
@@ -62,6 +64,8 @@ interface DraftItem {
   quantity_sent: number;
   unit_cost_ngn: number;
 }
+
+const sizeLabel = (ml: number | null): string => (ml ? `${ml}ml` : "No size");
 
 function statusPill(s: TransferStatus): JSX.Element {
   const map: Record<TransferStatus, [string, string]> = {
@@ -249,43 +253,63 @@ function CreateTransferModal({
   const [items, setItems] = useState<DraftItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [variantsByProduct, setVariantsByProduct] = useState<Record<string, Variant[]>>({});
+  // Per-size on-hand at the selected factory. The picker only offers what's
+  // actually in stock here, so you can't dispatch a flavour/size the factory
+  // doesn't hold.
+  const [stock, setStock] = useState<FactoryStockRow[]>([]);
+  const [stockLoading, setStockLoading] = useState(false);
 
-  async function ensureVariants(productId: string): Promise<Variant[]> {
-    if (variantsByProduct[productId]) return variantsByProduct[productId]!;
-    try {
-      const res = await api<{ data: { variants?: Variant[] } }>(`/products/${productId}`);
-      const list = res.data.variants ?? [];
-      setVariantsByProduct((s) => ({ ...s, [productId]: list }));
-      return list;
-    } catch {
-      setVariantsByProduct((s) => ({ ...s, [productId]: [] }));
-      return [];
+  // Reload the source factory's stock whenever it changes, and clear any
+  // already-added lines (they referenced the previous factory's inventory).
+  useEffect(() => {
+    if (!factoryId) {
+      setStock([]);
+      return;
     }
-  }
+    let cancelled = false;
+    setStockLoading(true);
+    setItems([]);
+    void (async () => {
+      try {
+        const res = await api<{ data: FactoryStockRow[] }>(`/stock/factory/${factoryId}`);
+        if (!cancelled) setStock(res.data.filter((s) => s.balance > 0));
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setStockLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [factoryId]);
+
+  // Sizes-with-stock for one flavour, sorted by size.
+  const availableSizes = (productId: string): FactoryStockRow[] =>
+    stock
+      .filter((s) => s.product_id === productId)
+      .sort((a, b) => (a.size_ml ?? 0) - (b.size_ml ?? 0));
+  // Flavours that have any size in stock at this factory.
+  const availableProducts = products.filter((p) => availableSizes(p.id).length > 0);
+  const availableFor = (productId: string, variantId: string): number =>
+    stock.find((s) => s.product_id === productId && (s.variant_id ?? "") === variantId)?.balance ?? 0;
 
   function addItem(): void {
-    // Allow same flavour multiple times — dedupe is per (product_id, variant_id) pair.
-    // Here we simply allow duplicates (user can pick the size per row after adding).
-    const next = products[0];
+    const next = availableProducts[0];
     if (!next) return;
-    const existing = variantsByProduct[next.id] ?? [];
-    const firstVariant = existing[0]?.id ?? "";
+    const first = availableSizes(next.id)[0];
+    if (!first) return;
     setItems((it) => [
       ...it,
-      { kind: "product", product_id: next.id, variant_id: firstVariant, packaging_material_id: "", quantity_sent: 50, unit_cost_ngn: 0 },
+      {
+        kind: "product",
+        product_id: next.id,
+        variant_id: first.variant_id ?? "",
+        packaging_material_id: "",
+        quantity_sent: Math.min(50, first.balance),
+        unit_cost_ngn: 0,
+      },
     ]);
-    void ensureVariants(next.id).then((vs) => {
-      if (vs[0]) {
-        setItems((it) =>
-          it.map((row, idx) =>
-            idx === it.length - 1 && row.product_id === next.id && !row.variant_id
-              ? { ...row, variant_id: vs[0]!.id }
-              : row,
-          ),
-        );
-      }
-    });
   }
   function addBag(): void {
     const first = bags[0];
@@ -305,11 +329,12 @@ function CreateTransferModal({
   async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();
     if (items.length === 0 || !factoryId || !branchId) return;
-    const missingSizeItem = items.some(
-      (it) => it.kind === "product" && (variantsByProduct[it.product_id]?.length ?? 0) > 0 && !it.variant_id,
+    const overSent = items.find(
+      (it) => it.kind === "product" && it.quantity_sent > availableFor(it.product_id, it.variant_id),
     );
-    if (missingSizeItem) {
-      setError("Pick a size for every product line before sending.");
+    if (overSent) {
+      const pName = products.find((p) => p.id === overSent.product_id)?.name ?? "flavour";
+      setError(`Only ${availableFor(overSent.product_id, overSent.variant_id)} of ${pName} in stock at this factory.`);
       return;
     }
     setSubmitting(true);
@@ -423,18 +448,33 @@ function CreateTransferModal({
           <div className="field">
             <label className="field__label">Items</label>
             {items.length === 0 ? (
-              <div className="empty" style={{ padding: 18, display: "flex", gap: 8, justifyContent: "center" }}>
-                <button type="button" className="btn btn--subtle btn--sm" onClick={addItem}>
-                  + Add product
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--subtle btn--sm"
-                  onClick={addBag}
-                  disabled={bags.length === 0}
-                >
-                  + Add bag
-                </button>
+              <div className="empty" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+                {stockLoading ? (
+                  <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>Loading stock…</span>
+                ) : availableProducts.length === 0 && bags.length === 0 ? (
+                  <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                    This factory has no stock to transfer.
+                  </span>
+                ) : (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn--subtle btn--sm"
+                      onClick={addItem}
+                      disabled={availableProducts.length === 0}
+                    >
+                      + Add product
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--subtle btn--sm"
+                      onClick={addBag}
+                      disabled={bags.length === 0}
+                    >
+                      + Add bag
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="table-wrap" style={{ border: 0 }}>
@@ -470,15 +510,15 @@ function CreateTransferModal({
                               value={it.product_id}
                               onChange={(e) => {
                                 const pid = e.target.value;
-                                updateItem(idx, { product_id: pid, variant_id: "" });
-                                void ensureVariants(pid).then((vs) => {
-                                  if (vs[0]) {
-                                    updateItem(idx, { variant_id: vs[0].id });
-                                  }
+                                const first = availableSizes(pid)[0];
+                                updateItem(idx, {
+                                  product_id: pid,
+                                  variant_id: first?.variant_id ?? "",
+                                  quantity_sent: first ? Math.min(it.quantity_sent || 50, first.balance) : it.quantity_sent,
                                 });
                               }}
                             >
-                              {products.map((p) => (
+                              {availableProducts.map((p) => (
                                 <option key={p.id} value={p.id}>
                                   {p.name}
                                 </option>
@@ -493,18 +533,20 @@ function CreateTransferModal({
                             <select
                               className="select"
                               value={it.variant_id}
-                              disabled={!it.product_id || (variantsByProduct[it.product_id]?.length ?? 0) === 0}
-                              onChange={(e) => updateItem(idx, { variant_id: e.target.value })}
+                              onChange={(e) => {
+                                const vid = e.target.value;
+                                const avail = availableFor(it.product_id, vid);
+                                updateItem(idx, {
+                                  variant_id: vid,
+                                  quantity_sent: Math.min(it.quantity_sent || 50, avail),
+                                });
+                              }}
                             >
-                              {(variantsByProduct[it.product_id] ?? []).length === 0 ? (
-                                <option value="">—</option>
-                              ) : (
-                                (variantsByProduct[it.product_id] ?? []).map((v) => (
-                                  <option key={v.id} value={v.id}>
-                                    {v.size_ml ? `${v.size_ml}ml` : (v.sku ?? v.id.slice(0, 6))}
-                                  </option>
-                                ))
-                              )}
+                              {availableSizes(it.product_id).map((s) => (
+                                <option key={s.variant_id ?? "null"} value={s.variant_id ?? ""}>
+                                  {sizeLabel(s.size_ml)} · {s.balance} in stock
+                                </option>
+                              ))}
                             </select>
                           )}
                         </td>
@@ -512,12 +554,25 @@ function CreateTransferModal({
                           <input
                             className="input"
                             type="number"
-                            style={{ textAlign: "right" }}
+                            min={1}
+                            max={it.kind === "product" ? availableFor(it.product_id, it.variant_id) : undefined}
+                            style={{
+                              textAlign: "right",
+                              ...(it.kind === "product" &&
+                              it.quantity_sent > availableFor(it.product_id, it.variant_id)
+                                ? { borderColor: "var(--danger)", color: "var(--danger)" }
+                                : {}),
+                            }}
                             value={it.quantity_sent}
                             onChange={(e) =>
                               updateItem(idx, { quantity_sent: Number(e.target.value) })
                             }
                           />
+                          {it.kind === "product" && (
+                            <div style={{ fontSize: 11, color: "var(--ink-soft)", textAlign: "right", marginTop: 2 }}>
+                              {availableFor(it.product_id, it.variant_id)} available
+                            </div>
+                          )}
                         </td>
                         <td>
                           <input
@@ -548,7 +603,7 @@ function CreateTransferModal({
                     type="button"
                     className="btn btn--subtle btn--sm"
                     onClick={addItem}
-                    disabled={products.length === 0}
+                    disabled={availableProducts.length === 0}
                   >
                     + Add product
                   </button>
