@@ -1,11 +1,12 @@
 import { Hono } from "hono";
-import { eq, and, desc, asc, isNull } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   saleOrder,
   saleOrderItem,
   saleOrderPackaging,
   packagingStockLedger,
+  packagingMaterial,
   payment,
   stockReservation,
   stockLedger,
@@ -94,6 +95,28 @@ const RESERVATION_TIMEOUT_MS: Record<string, number> = {
 export function saleRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth(), requireBranchScope());
+
+  // ============ Bag stock for the POS (pos.sell — branch staff have no packaging.view) ============
+  // Lists active bag materials with this branch's on-hand count so the till can
+  // show "Bags on hand" without granting the cashier the packaging admin views.
+  r.get("/bags", requireCapability("pos.sell"), async (c) => {
+    const branchId = c.req.param("branchId");
+    if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
+    const balances = await db.execute<{ packaging_material_id: string; balance: number }>(sql`
+      SELECT packaging_material_id, COALESCE(SUM(delta), 0)::int AS balance
+      FROM packaging_stock_ledger
+      WHERE location_type = 'branch' AND location_id = ${branchId}::uuid
+      GROUP BY packaging_material_id
+    `);
+    const byId = new Map(balances.map((b) => [b.packaging_material_id, Number(b.balance)]));
+    const bags = await db
+      .select()
+      .from(packagingMaterial)
+      .where(and(eq(packagingMaterial.kind, "bag"), eq(packagingMaterial.isActive, true)));
+    return c.json({
+      data: bags.map((m) => ({ material_id: m.id, name: m.name, balance: byId.get(m.id) ?? 0 })),
+    });
+  });
 
   // ============ Confirm (creates DRAFT→CONFIRMED with stock reservation) ============
   r.post("/", requireCapability("pos.sell"), async (c) => {

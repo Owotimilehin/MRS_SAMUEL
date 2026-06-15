@@ -11,7 +11,7 @@ import {
   packagingBalanceAt,
   type createDbClient,
 } from "@ms/db";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, seedUser, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 /**
@@ -150,5 +150,26 @@ describe("POS bag consumption (A2c)", () => {
     expect(confirm.status).toBe(201);
     const pay = await call("PATCH", `/v1/branches/${branch.id}/sales/${confirm.body.data.id}/pay`);
     expect(pay.status).toBe(200);
+  });
+
+  it("GET /bags lists bag sizes with this branch's on-hand counts", async () => {
+    const res = await call<{ data: Array<{ material_id: string; name: string; balance: number }> }>(
+      "GET",
+      `/v1/branches/${branch.id}/sales/bags`,
+    );
+    expect(res.status).toBe(200);
+    const a = res.body.data.find((row) => row.material_id === bagA);
+    const b = res.body.data.find((row) => row.material_id === bagB);
+    expect(a?.balance).toBe(3); // 5 − 2 consumed earlier
+    expect(b?.balance).toBe(-2); // went negative (warn-but-allow)
+  });
+
+  it("branch_staff (pos.sell, no packaging.view) can read bag stock for the POS", async () => {
+    await seedUser(db, { email: "till@example.com", role: "branch_staff", branchId: branch.id });
+    const staffCookies = await loginAs(baseUrl, "till@example.com", "userpassword123");
+    const res = await fetch(`${baseUrl}/v1/branches/${branch.id}/sales/bags`, {
+      headers: { cookie: staffCookies },
+    });
+    expect(res.status).toBe(200);
   });
 });

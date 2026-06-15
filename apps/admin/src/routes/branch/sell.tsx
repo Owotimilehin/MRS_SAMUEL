@@ -16,6 +16,13 @@ import { Modal } from "../../components/Modal.js";
 interface BagMaterial {
   id: string;
   name: string;
+  balance: number;
+}
+
+interface BagStockRow {
+  material_id: string;
+  name: string;
+  balance: number;
 }
 
 type Channel = "walkup" | "whatsapp" | "chowdeck_pickup";
@@ -61,20 +68,23 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Optional bag add-on (tracked-only). Bag catalog is fetched when online;
-  // offline the picker is simply hidden — the sale itself still works offline.
+  // Optional bag add-on (tracked-only). The bag catalog + this branch's on-hand
+  // counts are fetched when online; offline the picker is hidden — the sale
+  // itself still works offline.
   const [bagMaterials, setBagMaterials] = useState<BagMaterial[]>([]);
   const [bagCart, setBagCart] = useState<Record<string, number>>({});
+  async function loadBags(): Promise<void> {
+    try {
+      const res = await api<{ data: BagStockRow[] }>(`/branches/${branchId}/sales/bags`);
+      setBagMaterials(res.data.map((m) => ({ id: m.material_id, name: m.name, balance: m.balance })));
+    } catch {
+      setBagMaterials([]); // offline or no access — bag add-on stays hidden
+    }
+  }
   useEffect(() => {
-    void (async () => {
-      try {
-        const res = await api<{ data: BagMaterial[] }>(`/packaging/materials?kind=bag`);
-        setBagMaterials(res.data);
-      } catch {
-        setBagMaterials([]); // offline or no access — bag add-on stays hidden
-      }
-    })();
-  }, []);
+    void loadBags();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId]);
   function setBagQty(id: string, qty: number): void {
     setBagCart((b) => {
       const next = { ...b };
@@ -229,6 +239,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       setBagCart({});
       setCustomerPhone("");
       setCustomerName("");
+      void loadBags(); // reflect the bags just handed out
       setTimeout(() => setFlash(null), 4000);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -436,41 +447,61 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
               </select>
             </div>
             {bagMaterials.length > 0 && (
-              <div className="field">
-                <label className="field__label">Bags (optional)</label>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {bagMaterials.map((bag) => {
-                    const qty = bagCart[bag.id] ?? 0;
-                    return (
-                      <div
-                        key={bag.id}
-                        style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}
-                      >
-                        <span style={{ flex: 1 }}>🛍 {bag.name}</span>
-                        <button
-                          type="button"
-                          className="btn btn--subtle btn--sm"
-                          style={{ width: 28, padding: 0, height: 26 }}
-                          onClick={() => setBagQty(bag.id, qty - 1)}
-                        >
-                          −
-                        </button>
-                        <span className="tabular-nums" style={{ width: 22, textAlign: "center" }}>
-                          {qty}
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn--subtle btn--sm"
-                          style={{ width: 28, padding: 0, height: 26 }}
-                          onClick={() => setBagQty(bag.id, qty + 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                    );
-                  })}
+              <div
+                className="card card--soft"
+                style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}
+              >
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+                  <strong style={{ fontSize: 13 }}>Bags on hand</strong>
+                  <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>optional · tracked-only</span>
                 </div>
-                <span className="field__hint">Tracked for stock — not added to the total.</span>
+                {bagMaterials.map((bag) => {
+                  const qty = bagCart[bag.id] ?? 0;
+                  const remaining = bag.balance - qty;
+                  const low = remaining <= 0;
+                  return (
+                    <div
+                      key={bag.id}
+                      style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}
+                    >
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        🛍 {bag.name}
+                        <span
+                          className="tabular-nums"
+                          style={{
+                            marginLeft: 6,
+                            fontSize: 12,
+                            color: low ? "var(--danger)" : "var(--ink-soft)",
+                          }}
+                        >
+                          {remaining} left
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn--subtle btn--sm"
+                        style={{ width: 28, padding: 0, height: 26 }}
+                        onClick={() => setBagQty(bag.id, qty - 1)}
+                      >
+                        −
+                      </button>
+                      <span className="tabular-nums" style={{ width: 22, textAlign: "center" }}>
+                        {qty}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn--subtle btn--sm"
+                        style={{ width: 28, padding: 0, height: 26 }}
+                        onClick={() => setBagQty(bag.id, qty + 1)}
+                      >
+                        +
+                      </button>
+                    </div>
+                  );
+                })}
+                <span className="field__hint">
+                  Counts down as you add bags. Not added to the total; may go below zero.
+                </span>
               </div>
             )}
             <div
