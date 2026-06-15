@@ -40,7 +40,7 @@ export interface ProductContent {
  *  so text stays legible on whatever surface the owner chooses. */
 export function deriveTextColour(surfaceHex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(surfaceHex.trim());
-  if (!m) return "#2a1a0a";
+  if (!m?.[1]) return "#2a1a0a";
   const n = parseInt(m[1], 16);
   const r = (n >> 16) & 255;
   const g = (n >> 8) & 255;

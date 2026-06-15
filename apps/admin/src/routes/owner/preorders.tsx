@@ -63,7 +63,10 @@ export function PreordersPage(): JSX.Element {
     }
     setFulfilling(o.id);
     try {
-      await api(`/preorders/${o.id}/fulfil`, { method: "PATCH" });
+      // silentError: this handler renders its own friendlier toast below, so
+      // suppress the api() helper's automatic raw-message toast (otherwise a
+      // blocked fulfil pops two toasts for one failure).
+      await api(`/preorders/${o.id}/fulfil`, { method: "PATCH" }, { silentError: true });
       toast.success(`${o.order_number} fulfilled`);
       await load();
     } catch (err) {

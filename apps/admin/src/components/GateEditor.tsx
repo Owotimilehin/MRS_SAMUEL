@@ -8,7 +8,7 @@ const GROUPS: { heading: string; caps: Capability[] }[] = [
   { heading: "Content", caps: ["blog.manage", "marketing.manage"] },
   { heading: "Bookkeeping", caps: ["expenses.view", "expenses.write"] },
   { heading: "Visibility", caps: ["reports.view", "audit.view", "devices.view", "customers.view", "orders.view", "stock.read"] },
-  { heading: "Operations", caps: ["production.manage", "transfers.create", "transfers.receive", "orders.manage"] },
+  { heading: "Operations", caps: ["production.manage", "transfers.create", "transfers.receive", "orders.manage", "packaging.view", "packaging.write"] },
   { heading: "Branch / POS", caps: ["pos.sell", "sales.view", "daily_close.submit", "returns.create", "stock.adjust"] },
 ];
 
@@ -42,6 +42,8 @@ const LABEL: Record<Capability, string> = {
   "stock.read": "View stock & inventory",
   "expenses.write": "Record expenses",
   "expenses.view": "View bookkeeping & expenses",
+  "packaging.view": "View packaging & materials",
+  "packaging.write": "Manage packaging & materials",
 };
 
 // Silence unused import warning — CAPABILITIES is used at runtime via GROUPS validation.
