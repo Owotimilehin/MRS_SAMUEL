@@ -35,5 +35,6 @@ describe("StatHero", () => {
       <StatHero eyebrow="x" title="y" sub="z" loading chips={[{ label: "A", value: 0 }]} />,
     );
     expect(container.querySelectorAll(".hero-chip.is-loading").length).toBe(1);
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 });

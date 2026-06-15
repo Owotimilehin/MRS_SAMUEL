@@ -7,7 +7,7 @@ export interface StatChip {
   tone?: "default" | "good" | "warn" | "danger";
 }
 
-interface StatHeroProps {
+export interface StatHeroProps {
   eyebrow: string;
   title: string;
   sub: string;
@@ -34,7 +34,8 @@ export function StatHero({
       </div>
       {showChips ? (
         <div className="juice-hero__aside">
-          {chips!.map((c) => (
+          {// Chip labels are unique within a hero, so they make stable keys.
+          chips.map((c) => (
             <div
               key={c.label}
               className={`hero-chip${c.tone && c.tone !== "default" ? ` hero-chip--${c.tone}` : ""}${
