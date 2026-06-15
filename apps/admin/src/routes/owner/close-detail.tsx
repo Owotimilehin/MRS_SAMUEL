@@ -14,6 +14,13 @@ interface StockCount {
   variance: number;
   varianceReason: string | null;
 }
+interface CashSale {
+  order_number: string;
+  channel: string;
+  status: string;
+  total_ngn: number;
+  created_at_local: string;
+}
 interface CloseDetail {
   id: string;
   branchId: string;
@@ -27,6 +34,7 @@ interface CloseDetail {
   approvedAt: string | null;
   notes: string | null;
   stock_counts: StockCount[];
+  cash_sales: CashSale[];
 }
 interface Product {
   id: string;
@@ -141,6 +149,33 @@ export function CloseDetailPage({
               {statusPill(data.status)}
             </header>
 
+            {/* Plain-English verdict on the cash drawer, with the math spelled out. */}
+            {(() => {
+              const v = data.varianceNgn;
+              const tone = v < 0 ? "danger" : v > 0 ? "warning" : "success";
+              const color =
+                tone === "danger" ? "var(--danger)" : tone === "warning" ? "var(--warning)" : "var(--success)";
+              const verdict =
+                v === 0
+                  ? "Drawer balances"
+                  : v < 0
+                    ? `Drawer is ${ngn(-v)} short`
+                    : `Drawer is ${ngn(v)} over`;
+              return (
+                <div
+                  className="card card--soft"
+                  style={{ padding: 16, marginBottom: 14, borderLeft: `4px solid ${color}` }}
+                >
+                  <div style={{ fontWeight: 800, fontSize: 18, color }}>{verdict}</div>
+                  <div className="tabular-nums" style={{ color: "var(--ink-soft)", fontSize: 13, marginTop: 4 }}>
+                    Cash counted {ngn(data.cashCountedNgn)} − recorded cash sales {ngn(data.systemCashTotalNgn)} ={" "}
+                    {v > 0 ? "+" : ""}
+                    {ngn(v)}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div
               style={{
                 display: "grid",
@@ -148,14 +183,18 @@ export function CloseDetailPage({
                 gap: 12,
               }}
             >
-              <CashBox label="System expected" value={ngn(data.systemCashTotalNgn)} />
-              <CashBox label="Cash counted" value={ngn(data.cashCountedNgn)} />
-              <CashBox label="Transfers counted" value={ngn(data.transfersCountedNgn)} />
+              <CashBox label="Recorded cash sales" value={ngn(data.systemCashTotalNgn)} />
+              <CashBox label="Cash counted in drawer" value={ngn(data.cashCountedNgn)} />
               <CashBox
-                label="Variance"
+                label="Difference"
                 value={`${data.varianceNgn > 0 ? "+" : ""}${ngn(data.varianceNgn)}`}
                 tone={data.varianceNgn < 0 ? "danger" : data.varianceNgn > 0 ? "warning" : "default"}
               />
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-soft)" }}>
+              Bank transfers counted:{" "}
+              <strong className="tabular-nums">{ngn(data.transfersCountedNgn)}</strong> — recorded separately;
+              not part of the cash-drawer check above.
             </div>
 
             {data.notes && (
@@ -172,6 +211,54 @@ export function CloseDetailPage({
                 <button type="button" className="btn btn--primary" disabled={acting} onClick={() => void approve()}>
                   {acting ? "…" : "Approve close"}
                 </button>
+              </div>
+            )}
+          </section>
+
+          <section className="card" style={{ marginBottom: 18 }}>
+            <h2 className="t-h2" style={{ marginBottom: 4 }}>
+              Cash sales behind &ldquo;recorded cash sales&rdquo;
+            </h2>
+            <div style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 12 }}>
+              The {data.cash_sales.length} cash {data.cash_sales.length === 1 ? "sale" : "sales"} on{" "}
+              {data.businessDate} that add up to {ngn(data.systemCashTotalNgn)}.
+            </div>
+            {data.cash_sales.length === 0 ? (
+              <div className="empty">No cash sales recorded for this day.</div>
+            ) : (
+              <div className="table-wrap" style={{ border: 0 }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Order</th>
+                      <th>Time</th>
+                      <th>Channel</th>
+                      <th className="table__num">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.cash_sales.map((s) => (
+                      <tr key={s.order_number}>
+                        <td>{s.order_number}</td>
+                        <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                          {formatDateTime(s.created_at_local)}
+                        </td>
+                        <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>{s.channel}</td>
+                        <td className="table__num tabular-nums">{ngn(s.total_ngn)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={3} style={{ textAlign: "right", fontWeight: 700 }}>
+                        Total
+                      </td>
+                      <td className="table__num tabular-nums" style={{ fontWeight: 800 }}>
+                        {ngn(data.systemCashTotalNgn)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             )}
           </section>

@@ -196,7 +196,11 @@ export function dailyCloseRoutes(db: DbClient) {
       .select()
       .from(dailyCloseStockCount)
       .where(eq(dailyCloseStockCount.dailyCloseId, id));
-    return c.json({ data: { ...close, stock_counts: counts } });
+    // Itemise the cash sales that produced `system_cash_total_ngn` so the close
+    // screen can show exactly which orders make up "System expected" rather than
+    // presenting a bare, unexplained figure.
+    const cashSales = await cashSalesForDay(db, close.branchId, new Date(close.businessDate));
+    return c.json({ data: { ...close, stock_counts: counts, cash_sales: cashSales } });
   });
 
   return r;
