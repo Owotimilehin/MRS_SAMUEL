@@ -4,6 +4,8 @@ import { z } from "zod";
 import {
   saleOrder,
   saleOrderItem,
+  saleOrderPackaging,
+  packagingStockLedger,
   payment,
   stockReservation,
   stockLedger,
@@ -58,6 +60,16 @@ const ConfirmSale = z.object({
   notes: z.string().optional(),
   delivery_fee_ngn: z.number().int().nonnegative().default(0),
   created_at_local: z.string().datetime(),
+  // Optional bags handed to the customer. Tracked-only: recorded against the
+  // sale and decremented from branch bag stock at pay, but never blocks a sale.
+  packaging: z
+    .array(
+      z.object({
+        packaging_material_id: z.string().uuid(),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .optional(),
 });
 
 const CancelBody = z.object({
@@ -259,6 +271,16 @@ export function saleRoutes(db: DbClient) {
           });
         }
       }
+
+      // Record any bags handed out (tracked-only). The branch bag stock is
+      // decremented later at /pay, alongside the juice deduction.
+      for (const pkg of body.packaging ?? []) {
+        await tx.insert(saleOrderPackaging).values({
+          saleOrderId: order.id,
+          packagingMaterialId: pkg.packaging_material_id,
+          quantity: pkg.quantity,
+        });
+      }
       return order;
     });
 
@@ -309,6 +331,25 @@ export function saleRoutes(db: DbClient) {
           });
         }
         await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, id));
+
+        // Decrement branch bag stock for any bags on this sale (tracked-only,
+        // warn-but-allow — the branch packaging ledger may go negative).
+        const bags = await tx
+          .select()
+          .from(saleOrderPackaging)
+          .where(eq(saleOrderPackaging.saleOrderId, id));
+        for (const b of bags) {
+          await tx.insert(packagingStockLedger).values({
+            locationType: "branch",
+            locationId: o.branchId,
+            packagingMaterialId: b.packagingMaterialId,
+            delta: -b.quantity,
+            sourceType: "consumption",
+            sourceId: id,
+            recordedByUserId: auth.userId,
+            note: `Bag on sale ${o.orderNumber}`,
+          });
+        }
       }
       await tx.insert(payment).values({
         saleOrderId: id,

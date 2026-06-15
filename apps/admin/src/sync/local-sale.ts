@@ -14,6 +14,8 @@ interface CreateLocalSaleInput {
   payment_method: "cash" | "card" | "transfer";
   channel: "walkup" | "whatsapp" | "chowdeck_pickup";
   external_reference?: string;
+  /** Optional bags handed to the customer (tracked-only, never blocks a sale). */
+  packaging?: Array<{ packaging_material_id: string; quantity: number }>;
   /**
    * Optional customer captured at the till. Forwarded to the server, which
    * resolves a returning customer by phone (find-or-create) so their orders
@@ -104,6 +106,9 @@ export async function createLocalSale(
             : {}),
           ...(input.customer && (input.customer.name || input.customer.phone)
             ? { customer: input.customer }
+            : {}),
+          ...(input.packaging && input.packaging.length > 0
+            ? { packaging: input.packaging }
             : {}),
           created_at_local: nowIso,
         },

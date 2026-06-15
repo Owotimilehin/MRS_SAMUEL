@@ -23,6 +23,7 @@ export * from "./stock-transfer.js";
 export * from "./outbox-event.js";
 export * from "./customer.js";
 export * from "./sale-order.js";
+export * from "./sale-order-packaging.js";
 export * from "./payment.js";
 export * from "./stock-reservation.js";
 export * from "./sale-return.js";

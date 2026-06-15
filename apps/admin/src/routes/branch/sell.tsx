@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
 import {
@@ -9,8 +9,14 @@ import {
   type PriceRow,
 } from "../../db/local.js";
 import { createLocalSale } from "../../sync/local-sale.js";
+import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { Modal } from "../../components/Modal.js";
+
+interface BagMaterial {
+  id: string;
+  name: string;
+}
 
 type Channel = "walkup" | "whatsapp" | "chowdeck_pickup";
 type PaymentMethod = "cash" | "card" | "transfer";
@@ -54,6 +60,29 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Optional bag add-on (tracked-only). Bag catalog is fetched when online;
+  // offline the picker is simply hidden — the sale itself still works offline.
+  const [bagMaterials, setBagMaterials] = useState<BagMaterial[]>([]);
+  const [bagCart, setBagCart] = useState<Record<string, number>>({});
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await api<{ data: BagMaterial[] }>(`/packaging/materials?kind=bag`);
+        setBagMaterials(res.data);
+      } catch {
+        setBagMaterials([]); // offline or no access — bag add-on stays hidden
+      }
+    })();
+  }, []);
+  function setBagQty(id: string, qty: number): void {
+    setBagCart((b) => {
+      const next = { ...b };
+      if (qty <= 0) delete next[id];
+      else next[id] = qty;
+      return next;
+    });
+  }
 
   // Price for an exact can size: most recent open price for that variant,
   // falling back to a product-level (variant-less) price for legacy rows.
@@ -174,11 +203,16 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       const itemCount = cart.reduce((n, l) => n + l.quantity, 0);
       const trimmedPhone = customerPhone.trim();
       const trimmedName = customerName.trim();
+      const bagLines = Object.entries(bagCart).map(([packaging_material_id, quantity]) => ({
+        packaging_material_id,
+        quantity,
+      }));
       const sale = await createLocalSale({
         branchId,
         channel,
         items: cart,
         payment_method: paymentMethod,
+        ...(bagLines.length > 0 ? { packaging: bagLines } : {}),
         ...(trimmedPhone || trimmedName
           ? {
               customer: {
@@ -192,6 +226,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
         `Sale recorded ✓ · ${itemCount} ${itemCount === 1 ? "item" : "items"} · ${ngn(sale.subtotal)}`,
       );
       setCart([]);
+      setBagCart({});
       setCustomerPhone("");
       setCustomerName("");
       setTimeout(() => setFlash(null), 4000);
@@ -400,6 +435,44 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 <option value="transfer">Transfer</option>
               </select>
             </div>
+            {bagMaterials.length > 0 && (
+              <div className="field">
+                <label className="field__label">Bags (optional)</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {bagMaterials.map((bag) => {
+                    const qty = bagCart[bag.id] ?? 0;
+                    return (
+                      <div
+                        key={bag.id}
+                        style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}
+                      >
+                        <span style={{ flex: 1 }}>🛍 {bag.name}</span>
+                        <button
+                          type="button"
+                          className="btn btn--subtle btn--sm"
+                          style={{ width: 28, padding: 0, height: 26 }}
+                          onClick={() => setBagQty(bag.id, qty - 1)}
+                        >
+                          −
+                        </button>
+                        <span className="tabular-nums" style={{ width: 22, textAlign: "center" }}>
+                          {qty}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn--subtle btn--sm"
+                          style={{ width: 28, padding: 0, height: 26 }}
+                          onClick={() => setBagQty(bag.id, qty + 1)}
+                        >
+                          +
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <span className="field__hint">Tracked for stock — not added to the total.</span>
+              </div>
+            )}
             <div
               style={{
                 display: "flex",
