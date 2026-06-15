@@ -61,6 +61,9 @@ const ConfirmSale = z.object({
   notes: z.string().optional(),
   delivery_fee_ngn: z.number().int().nonnegative().default(0),
   created_at_local: z.string().datetime(),
+  // Target fulfilment day for a preorder taken at the till — the day staff will
+  // make it, fulfil it from the queue, and deduct stock.
+  scheduled_delivery_at: z.string().datetime().optional(),
   // Optional bags handed to the customer. Tracked-only: recorded against the
   // sale and decremented from branch bag stock at pay, but never blocks a sale.
   packaging: z
@@ -256,6 +259,11 @@ export function saleRoutes(db: DbClient) {
         customerId,
         status: "confirmed" as const,
         isPreorder: orderIsPreorder,
+        // The fulfilment day only makes sense for a preorder; ignore it otherwise.
+        scheduledDeliveryAt:
+          orderIsPreorder && body.scheduled_delivery_at
+            ? new Date(body.scheduled_delivery_at)
+            : null,
         subtotalNgn: subtotal,
         deliveryFeeNgn: body.delivery_fee_ngn,
         totalNgn: total,

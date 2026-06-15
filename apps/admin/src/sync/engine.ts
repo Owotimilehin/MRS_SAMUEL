@@ -166,6 +166,7 @@ interface PullResponse {
       sizeMl: number;
       sku: string;
       isActive: boolean;
+      preorderOnly: boolean;
     }>;
     prices: Array<{
       id: string;
@@ -250,6 +251,7 @@ export async function pullDeltas(branchId: string): Promise<void> {
           size_ml: v.sizeMl,
           sku: v.sku,
           is_active: v.isActive,
+          preorder_only: v.preorderOnly ?? false,
         });
       }
       for (const pr of body.data.prices) {

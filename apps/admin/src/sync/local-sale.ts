@@ -13,6 +13,15 @@ interface CreateLocalSaleInput {
   }>;
   payment_method: "cash" | "card" | "transfer";
   channel: "walkup" | "whatsapp" | "chowdeck_pickup";
+  /**
+   * Prepaid preorder: payment is taken now but the stock is NOT consumed — the
+   * order waits in the Preorders queue for manual fulfilment. When true the
+   * optimistic local ledger is left untouched (nothing leaves the branch yet),
+   * mirroring the server, which defers the deduction to fulfilment.
+   */
+  is_preorder?: boolean;
+  /** Target fulfilment day (ISO) for a preorder — the day it'll be made + handed over. */
+  fulfill_by?: string;
   external_reference?: string;
   /** Optional bags handed to the customer (tracked-only, never blocks a sale). */
   packaging?: Array<{ packaging_material_id: string; quantity: number }>;
@@ -73,8 +82,10 @@ export async function createLocalSale(
         idempotency_key: idempotencyKey,
       });
 
-      // Optimistic ledger — branch availability drops immediately.
-      for (const it of input.items) {
+      // Optimistic ledger — branch availability drops immediately. A preorder
+      // takes payment without consuming stock (it's fulfilled later from the
+      // queue), so we record no ledger movement here, matching the server.
+      for (const it of input.is_preorder ? [] : input.items) {
         await local.ledger.put({
           id: crypto.randomUUID(),
           location_type: "branch",
@@ -110,6 +121,9 @@ export async function createLocalSale(
             : {}),
           ...(input.packaging && input.packaging.length > 0
             ? { packaging: input.packaging }
+            : {}),
+          ...(input.is_preorder && input.fulfill_by
+            ? { scheduled_delivery_at: input.fulfill_by }
             : {}),
           created_at_local: nowIso,
         },
