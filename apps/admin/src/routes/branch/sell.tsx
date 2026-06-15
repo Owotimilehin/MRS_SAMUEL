@@ -35,6 +35,9 @@ interface CartLine {
   size_ml: number;
   quantity: number;
   unit_price_ngn: number;
+  // This size is sold as a made-to-order preorder: payment is taken now, stock
+  // is not checked or consumed, and the order waits for manual fulfilment.
+  is_preorder: boolean;
 }
 
 // A single sellable line on the till: one can size of one flavour, priced.
@@ -68,6 +71,8 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Target fulfilment day, required when the cart is a preorder.
+  const [fulfillBy, setFulfillBy] = useState("");
 
   // Optional bag add-on (tracked-only). The bag catalog + this branch's on-hand
   // counts are fetched when online; offline the picker is hidden — the sale
@@ -173,6 +178,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           size_ml: s.variant.size_ml,
           quantity: 1,
           unit_price_ngn: s.price,
+          is_preorder: s.variant.preorder_only ?? false,
         },
       ];
     });
@@ -192,22 +198,36 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   }
 
   const total = cart.reduce((sum, l) => sum + l.quantity * l.unit_price_ngn, 0);
+  // Any preorder line turns the whole ticket into a prepaid preorder.
+  const cartIsPreorder = cart.some((l) => l.is_preorder);
 
   async function checkout(): Promise<void> {
     if (cart.length === 0 || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
+      // A preorder line makes the WHOLE order a preorder (matches the server):
+      // payment is taken now, no stock is reserved or consumed, and the order
+      // waits in the Preorders queue for manual fulfilment.
+      const orderIsPreorder = cart.some((l) => l.is_preorder);
+      // A preorder must be registered to a fulfilment day — that's when staff
+      // make it, fulfil it from the queue, and deduct stock.
+      if (orderIsPreorder && !fulfillBy) {
+        throw new Error("Pick a fulfilment date for this preorder.");
+      }
       // Pre-flight per size: each cart line is one (flavour × can size); check
       // that exact variant's availability (size-tagged stock + the flavour's
       // untyped pool). Selling a 650ml is blocked when only 330ml is on hand.
-      for (const l of cart) {
-        const have = await localAvailableForVariant(branchId, l.product_id, l.variant_id);
-        if (have < l.quantity) {
-          const p = products.find((x) => x.id === l.product_id);
-          throw new Error(
-            `Insufficient stock for ${p?.name ?? l.product_id} ${sizeLabel(l.size_ml)} (${have} available)`,
-          );
+      // Skipped entirely for a preorder — there's nothing to hand over now.
+      if (!orderIsPreorder) {
+        for (const l of cart) {
+          const have = await localAvailableForVariant(branchId, l.product_id, l.variant_id);
+          if (have < l.quantity) {
+            const p = products.find((x) => x.id === l.product_id);
+            throw new Error(
+              `Insufficient stock for ${p?.name ?? l.product_id} ${sizeLabel(l.size_ml)} (${have} available)`,
+            );
+          }
         }
       }
       const itemCount = cart.reduce((n, l) => n + l.quantity, 0);
@@ -222,6 +242,9 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
         channel,
         items: cart,
         payment_method: paymentMethod,
+        ...(orderIsPreorder
+          ? { is_preorder: true, fulfill_by: new Date(`${fulfillBy}T12:00:00`).toISOString() }
+          : {}),
         ...(bagLines.length > 0 ? { packaging: bagLines } : {}),
         ...(trimmedPhone || trimmedName
           ? {
@@ -233,10 +256,13 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           : {}),
       });
       setFlash(
-        `Sale recorded ✓ · ${itemCount} ${itemCount === 1 ? "item" : "items"} · ${ngn(sale.subtotal)}`,
+        orderIsPreorder
+          ? `Preorder taken ✓ · ${itemCount} ${itemCount === 1 ? "item" : "items"} · ${ngn(sale.subtotal)} prepaid · fulfil on ${fulfillBy}`
+          : `Sale recorded ✓ · ${itemCount} ${itemCount === 1 ? "item" : "items"} · ${ngn(sale.subtotal)}`,
       );
       setCart([]);
       setBagCart({});
+      setFulfillBy("");
       setCustomerPhone("");
       setCustomerName("");
       void loadBags(); // reflect the bags just handed out
@@ -350,6 +376,11 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                           {" · "}
                           {sizeLabel(l.size_ml)}
                         </span>
+                        {l.is_preorder && (
+                          <span style={{ color: "var(--warning, #d97706)", fontWeight: 600 }}>
+                            {" · preorder"}
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
                         {ngn(l.unit_price_ngn)} × {l.quantity}
@@ -446,6 +477,30 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 <option value="transfer">Transfer</option>
               </select>
             </div>
+            {cartIsPreorder && (
+              <div
+                className="card card--soft"
+                style={{
+                  padding: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  borderColor: "rgba(245,158,11,0.35)",
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>📅 Preorder — fulfil on</strong>
+                <input
+                  className="input"
+                  type="date"
+                  value={fulfillBy}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setFulfillBy(e.target.value)}
+                />
+                <span className="field__hint">
+                  Paid now, made to order. Stock is deducted when you fulfil it from Preorders on this day.
+                </span>
+              </div>
+            )}
             {bagMaterials.length > 0 && (
               <div
                 className="card card--soft"
@@ -504,6 +559,20 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 </span>
               </div>
             )}
+            {cartIsPreorder && (
+              <div
+                className="card card--soft"
+                style={{
+                  padding: 12,
+                  fontSize: 12,
+                  borderLeft: "4px solid var(--warning, #d97706)",
+                }}
+              >
+                <strong>⏳ Preorder</strong> — payment is taken now, but no stock leaves the
+                branch. The order waits in <strong>Preorders</strong> and only ships when you
+                fulfil it manually.
+              </div>
+            )}
             <div
               style={{
                 display: "flex",
@@ -524,7 +593,11 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
               disabled={submitting || cart.length === 0}
               onClick={() => void checkout()}
             >
-              {submitting ? "Recording…" : `Charge ${ngn(total)}`}
+              {submitting
+                ? "Recording…"
+                : cartIsPreorder
+                  ? `Take preorder · ${ngn(total)}`
+                  : `Charge ${ngn(total)}`}
             </button>
             <p style={{ fontSize: 11, color: "var(--ink-soft)", textAlign: "center", margin: 0 }}>
               Saved locally — syncs to the server when online.
@@ -584,7 +657,16 @@ function SizePicker({
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sizes.map((s) => {
           const avail = availBySize?.[s.variant.id] ?? null;
-          const sizeOos = avail !== null && avail <= 0;
+          // A preorder size is always made-to-order — never blocked on stock.
+          const isPreorder = s.variant.preorder_only ?? false;
+          const sizeOos = !isPreorder && avail !== null && avail <= 0;
+          const statusText = isPreorder
+            ? "Preorder · made to order"
+            : avail === null
+              ? ""
+              : sizeOos
+                ? "out of stock"
+                : `${avail} left`;
           return (
             <button
               key={s.variant.id}
@@ -611,10 +693,14 @@ function SizePicker({
                     marginLeft: 8,
                     fontSize: 12,
                     fontWeight: 500,
-                    color: sizeOos ? "var(--danger)" : "var(--ink-soft)",
+                    color: isPreorder
+                      ? "var(--warning, #d97706)"
+                      : sizeOos
+                        ? "var(--danger)"
+                        : "var(--ink-soft)",
                   }}
                 >
-                  {avail === null ? "" : sizeOos ? "out of stock" : `${avail} left`}
+                  {statusText}
                 </span>
               </span>
               <span className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 17 }}>
@@ -647,18 +733,23 @@ function FlavourTile({
   );
   const oos = available !== null && available <= 0;
   const multi = sizes.length > 1;
+  // Preorder sizes are made-to-order — a flavour with any preorder size must
+  // stay tappable even at zero stock so the cashier can reach it in the picker.
+  const hasPreorder = sizes.some((s) => s.variant.preorder_only ?? false);
+  const allPreorder = sizes.every((s) => s.variant.preorder_only ?? false);
+  const disabled = oos && !hasPreorder;
   // Cheapest size up front; "from ₦x" signals more sizes sit behind the tap.
   const minPrice = Math.min(...sizes.map((s) => s.price));
   return (
     <button
       type="button"
       onClick={onPick}
-      disabled={oos}
+      disabled={disabled}
       className="card card--hoverable"
       style={{
         textAlign: "left",
-        cursor: oos ? "not-allowed" : "pointer",
-        opacity: oos ? 0.55 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
         padding: 14,
         display: "flex",
         flexDirection: "column",
@@ -674,13 +765,23 @@ function FlavourTile({
       </div>
       <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>
         {product.category}
-        {available !== null && (
+        {allPreorder ? (
           <>
             {" · "}
-            <span style={{ color: oos ? "var(--danger)" : "var(--ink-soft)" }}>
-              {oos ? "Out of stock" : `${available} in stock`}
-            </span>
+            <span style={{ color: "var(--warning, #d97706)", fontWeight: 600 }}>Preorder</span>
           </>
+        ) : (
+          available !== null && (
+            <>
+              {" · "}
+              <span style={{ color: oos ? "var(--danger)" : "var(--ink-soft)" }}>
+                {oos ? "Out of stock" : `${available} in stock`}
+              </span>
+              {hasPreorder && (
+                <span style={{ color: "var(--warning, #d97706)", fontWeight: 600 }}> · preorder sizes</span>
+              )}
+            </>
+          )
         )}
       </div>
       <div className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 18, marginTop: 4 }}>

@@ -162,4 +162,27 @@ describe("preorders: pay-without-deduct + queue + fulfil", () => {
     const res = await call("PATCH", `/v1/preorders/${orderId}/fulfil`);
     expect(res.status).toBe(409);
   });
+
+  it("a POS preorder registers its fulfilment date and shows it in the queue", async () => {
+    const fulfilBy = "2026-07-01T12:00:00.000Z";
+    const confirm = await call<{ data: SaleOrder }>("POST", `/v1/branches/${branch.id}/sales`, {
+      channel: "walkup",
+      items: [{ product_id: product.id, quantity: 1 }],
+      payment_method: "cash",
+      scheduled_delivery_at: fulfilBy,
+      created_at_local: new Date().toISOString(),
+    });
+    expect(confirm.status).toBe(201);
+    expect(confirm.body.data.isPreorder).toBe(true);
+    await call("PATCH", `/v1/branches/${branch.id}/sales/${confirm.body.data.id}/pay`);
+
+    const q = await call<{ data: Array<{ id: string; scheduled_delivery_at: string | null }> }>(
+      "GET",
+      "/v1/preorders",
+    );
+    const row = q.body.data.find((r) => r.id === confirm.body.data.id);
+    expect(row).toBeDefined();
+    expect(row!.scheduled_delivery_at).not.toBeNull();
+    expect(new Date(row!.scheduled_delivery_at as string).toISOString()).toBe(fulfilBy);
+  });
 });

@@ -23,6 +23,10 @@ export interface VariantRow {
   size_ml: number;
   sku: string;
   is_active: boolean;
+  // Always made-to-order: this size is sold as a prepaid preorder on any channel
+  // (the till never blocks it on stock). Older devices may lack the field until
+  // the next pull rewrites the row — read a missing value as false.
+  preorder_only?: boolean;
 }
 
 export interface PriceRow {
