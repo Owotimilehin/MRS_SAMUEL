@@ -17,18 +17,22 @@ type TransferStatus =
   | "completed"
   | "cancelled";
 
+// NOTE: GET /transfers/:id returns item fields in snake_case (product_id,
+// quantity_sent, …) even though the parent Transfer row is camelCase. Mirror
+// the wire shape exactly — reading camelCase here yields undefined and crashes
+// productName(undefined).slice().
 interface TransferItem {
   id: string;
-  productId: string;
-  variantId?: string | null;
+  product_id: string;
+  variant_id?: string | null;
   size_ml?: number | null;
   // Bag lines (A2b) carry a packaging material instead of a product.
   packaging_material_id?: string | null;
   material_name?: string | null;
-  quantitySent: number;
-  quantityReceived: number | null;
-  varianceReason: string | null;
-  unitCostNgn: number | null;
+  quantity_sent: number;
+  quantity_received: number | null;
+  variance_reason: string | null;
+  unit_cost_ngn: number | null;
   notes: string | null;
 }
 interface TransferDetail {
@@ -127,10 +131,10 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
       setReceipt(
         t.data.items.map((i) => ({
           item_id: i.id,
-          quantity_received: i.quantityReceived ?? i.quantitySent,
-          variance_reason: i.varianceReason ?? "",
+          quantity_received: i.quantity_received ?? i.quantity_sent,
+          variance_reason: i.variance_reason ?? "",
           variance_note: "",
-          sent: i.quantitySent,
+          sent: i.quantity_sent,
         })),
       );
     } catch (err) {
@@ -204,7 +208,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
     it: TransferItem,
     side: "sent" | "received",
   ): Promise<void> {
-    const current = side === "sent" ? it.quantitySent : it.quantityReceived ?? 0;
+    const current = side === "sent" ? it.quantity_sent : it.quantity_received ?? 0;
     const raw = window.prompt(`New ${side} quantity for this line (currently ${current})`);
     if (raw === null) return;
     const nextQty = Number(raw);
@@ -238,7 +242,8 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
 
   const factoryName = (id: string): string => factories.find((f) => f.id === id)?.name ?? id.slice(0, 8);
   const branchName = (id: string): string => branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);
-  const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
+  const productName = (id: string | null | undefined): string =>
+    id ? (products.find((p) => p.id === id)?.name ?? id.slice(0, 8)) : "—";
 
   // Action availability
   const canArrive = data && (data.status === "dispatched" || data.status === "in_transit");
@@ -397,7 +402,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                           <td>
                             {data.items[idx]?.material_name
                               ? `🛍 ${data.items[idx]!.material_name}`
-                              : productName(data.items[idx]?.productId ?? "")}
+                              : productName(data.items[idx]?.product_id ?? "")}
                             {data.items[idx]?.size_ml != null && (
                               <span style={{ color: "var(--ink-soft)", fontSize: 12, marginLeft: 4 }}>
                                 · {data.items[idx]!.size_ml}ml
@@ -424,7 +429,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                             />
                           </td>
                           <td className="table__num">
-                            {data.items[idx]?.unitCostNgn != null ? ngn(data.items[idx]!.unitCostNgn!) : "—"}
+                            {data.items[idx]?.unit_cost_ngn != null ? ngn(data.items[idx]!.unit_cost_ngn!) : "—"}
                           </td>
                           <td>
                             {d.quantity_received !== d.sent ? (
@@ -481,23 +486,23 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                         return (
                           <tr key={it.id}>
                             <td>
-                              {it.material_name ? `🛍 ${it.material_name}` : productName(it.productId)}
+                              {it.material_name ? `🛍 ${it.material_name}` : productName(it.product_id)}
                               {it.size_ml != null && (
                                 <span style={{ color: "var(--ink-soft)", fontSize: 12, marginLeft: 4 }}>
                                   · {it.size_ml}ml
                                 </span>
                               )}
                             </td>
-                            <td className="table__num">{it.quantitySent}</td>
+                            <td className="table__num">{it.quantity_sent}</td>
                             <td className="table__num" style={{ fontWeight: 700 }}>
-                              {it.quantityReceived ?? "—"}
+                              {it.quantity_received ?? "—"}
                             </td>
                             <td className="table__num">
-                              {it.unitCostNgn != null ? ngn(it.unitCostNgn) : "—"}
+                              {it.unit_cost_ngn != null ? ngn(it.unit_cost_ngn) : "—"}
                             </td>
                             <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
                               <div>
-                                {it.varianceReason ?? (it.quantityReceived != null ? "matches" : "—")}
+                                {it.variance_reason ?? (it.quantity_received != null ? "matches" : "—")}
                               </div>
                               {ownerCanAdjust && (
                                 <div style={{ display: "flex", gap: 6, marginTop: 6 }}>

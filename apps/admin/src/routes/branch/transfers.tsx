@@ -24,14 +24,18 @@ interface Transfer {
   createdAt: string;
   dispatchedAt: string | null;
 }
+// NOTE: the detail endpoint (GET /transfers/:id) returns item fields in
+// snake_case (product_id, quantity_sent, …) — unlike the list endpoint's
+// camelCase Transfer rows. Mirror the wire shape exactly.
 interface TransferItem {
   id: string;
-  productId: string;
-  variantId?: string | null;
+  product_id: string;
+  variant_id?: string | null;
   size_ml?: number | null;
-  quantitySent: number;
-  quantityReceived: number | null;
-  varianceReason: string | null;
+  material_name?: string | null;
+  quantity_sent: number;
+  quantity_received: number | null;
+  variance_reason: string | null;
 }
 interface Product {
   id: string;
@@ -113,7 +117,8 @@ export function BranchTransfersPage({ branchId }: { branchId: string }): JSX.Ele
     }
   }
 
-  const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
+  const productName = (id: string | null | undefined): string =>
+    id ? (products.find((p) => p.id === id)?.name ?? id.slice(0, 8)) : "—";
 
   return (
     <BranchShell branchId={branchId} title="Incoming transfers">
@@ -222,11 +227,11 @@ function ReceiveModal({
   const [draft, setDraft] = useState(() =>
     items.map((i) => ({
       item_id: i.id,
-      quantity_received: i.quantityReceived ?? i.quantitySent,
-      variance_reason: i.varianceReason ?? "",
+      quantity_received: i.quantity_received ?? i.quantity_sent,
+      variance_reason: i.variance_reason ?? "",
       variance_note: "",
       notes: "",
-      sent: i.quantitySent,
+      sent: i.quantity_sent,
     })),
   );
   const [submitting, setSubmitting] = useState(false);
@@ -334,7 +339,9 @@ function ReceiveModal({
                 return (
                   <tr key={d.item_id}>
                     <td>
-                      {productName(items[idx]?.productId ?? "")}
+                      {items[idx]?.material_name
+                        ? `🛍 ${items[idx]!.material_name}`
+                        : productName(items[idx]?.product_id ?? "")}
                       {items[idx]?.size_ml != null && (
                         <span style={{ color: "var(--ink-soft)", fontSize: 12, marginLeft: 4 }}>
                           · {items[idx]!.size_ml}ml
