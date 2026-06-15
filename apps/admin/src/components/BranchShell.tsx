@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useSyncState } from "../sync/state.js";
 import { startSyncLoop } from "../sync/engine.js";
 import { useAuthUser } from "../lib/auth.js";
+import { RefreshAppButton } from "./RefreshAppButton.js";
 
 interface BranchShellProps {
   branchId: string;
@@ -108,6 +109,7 @@ export function BranchShell({
           <h1 className="app-head__title">{title}</h1>
           <div style={{ flex: 1 }} />
           <SyncBadge online={sync.online} queued={sync.queued} dead={sync.dead} />
+          <RefreshAppButton />
           {actions}
         </header>
         <div className="app-body">{children}</div>

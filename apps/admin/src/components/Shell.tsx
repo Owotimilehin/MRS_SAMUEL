@@ -32,6 +32,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuthUser } from "../lib/auth.js";
+import { RefreshAppButton } from "./RefreshAppButton.js";
 import type { Capability } from "@ms/shared";
 
 interface NavLink {
@@ -179,6 +180,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
             <Search />
             <input className="input" type="search" placeholder="Search…" aria-label="Search" />
           </label>
+          <RefreshAppButton />
           {actions}
           <div className="app-head__user">
             <span className="app-head__avatar">{initial}</span>
