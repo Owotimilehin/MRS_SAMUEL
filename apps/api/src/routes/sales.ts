@@ -64,6 +64,13 @@ const ConfirmSale = z.object({
   // Target fulfilment day for a preorder taken at the till — the day staff will
   // make it, fulfil it from the queue, and deduct stock.
   scheduled_delivery_at: z.string().datetime().optional(),
+  // Explicit "take this as a preorder" from the till — forces the whole order
+  // to a prepaid preorder regardless of size/stock/channel (the cashier chose
+  // it in the cashout section). Stock is NOT consumed now; it waits in the
+  // Preorders queue. Requires scheduled_delivery_at. This is IN ADDITION to the
+  // automatic triggers (a preorder_only size like 330ml, or a remote-channel
+  // short line), which still apply when this is absent/false.
+  is_preorder: z.boolean().optional(),
   // Optional bags handed to the customer. Tracked-only: recorded against the
   // sale and decremented from branch bag stock at pay, but never blocks a sale.
   packaging: z
@@ -154,9 +161,20 @@ export function saleRoutes(db: DbClient) {
 
       // Snapshot current price + check stock per line
       let subtotal = 0;
-      // Any preorder_only or out-of-stock line makes the whole order a preorder:
-      // skip reservations now, defer the stock deduction to fulfilment.
-      let orderIsPreorder = false;
+      // The cashier can deliberately take ANY order as a preorder from the till
+      // (forcePreorder) — this needs a fulfilment day and skips the walk-up
+      // out-of-stock guard below. On top of that, any preorder_only or
+      // out-of-stock line still auto-flips the order to a preorder: skip
+      // reservations now, defer the stock deduction to fulfilment.
+      const forcePreorder = body.is_preorder === true;
+      if (forcePreorder && !body.scheduled_delivery_at) {
+        throw new BusinessError(
+          "validation_failed",
+          "scheduled_delivery_at is required for a preorder",
+          422,
+        );
+      }
+      let orderIsPreorder = forcePreorder;
       const lines: {
         productId: string;
         variantId: string;
@@ -228,7 +246,10 @@ export function saleRoutes(db: DbClient) {
         if (preorderOnly) {
           orderIsPreorder = true;
         } else if (available < it.quantity) {
-          if (immediateHandover) {
+          // A deliberate till preorder (forcePreorder) is allowed to be short —
+          // it's made to order. Otherwise an immediate-handover channel can't
+          // give away absent stock, so it's still rejected.
+          if (immediateHandover && !forcePreorder) {
             throw new BusinessError("conflict", "insufficient stock", 422, {
               product_id: productId,
               variant_id: variantId,

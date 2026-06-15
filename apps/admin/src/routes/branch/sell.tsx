@@ -73,6 +73,10 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   // Target fulfilment day, required when the cart is a preorder.
   const [fulfillBy, setFulfillBy] = useState("");
+  // Order-level preorder choice. The cashier flips this in the cashout section
+  // to take the whole order as a made-to-order preorder. A 330ml (preorder_only)
+  // size in the cart forces it on — you can't complete that as an instant sale.
+  const [preorderChoice, setPreorderChoice] = useState(false);
 
   // Optional bag add-on (tracked-only). The bag catalog + this branch's on-hand
   // counts are fetched when online; offline the picker is hidden — the sale
@@ -198,22 +202,23 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   }
 
   const total = cart.reduce((sum, l) => sum + l.quantity * l.unit_price_ngn, 0);
-  // Any preorder line turns the whole ticket into a prepaid preorder.
-  const cartIsPreorder = cart.some((l) => l.is_preorder);
+  // A 330ml (preorder_only) line forces the whole ticket to a preorder; the
+  // cashier can also opt in for any other cans via the cashout toggle.
+  const forcedPreorder = cart.some((l) => l.is_preorder);
+  const orderIsPreorder = forcedPreorder || preorderChoice;
 
   async function checkout(): Promise<void> {
     if (cart.length === 0 || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
-      // A preorder line makes the WHOLE order a preorder (matches the server):
-      // payment is taken now, no stock is reserved or consumed, and the order
-      // waits in the Preorders queue for manual fulfilment.
-      const orderIsPreorder = cart.some((l) => l.is_preorder);
+      // The whole order is a preorder when a 330ml forces it OR the cashier
+      // opted in. Payment is taken now, no stock is reserved or consumed, and
+      // the order waits in the Preorders queue for manual fulfilment.
       // A preorder must be registered to a fulfilment day — that's when staff
       // make it, fulfil it from the queue, and deduct stock.
       if (orderIsPreorder && !fulfillBy) {
-        throw new Error("Pick a fulfilment date for this preorder.");
+        throw new Error("Pick a delivery date for this preorder.");
       }
       // Pre-flight per size: each cart line is one (flavour × can size); check
       // that exact variant's availability (size-tagged stock + the flavour's
@@ -263,6 +268,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       setCart([]);
       setBagCart({});
       setFulfillBy("");
+      setPreorderChoice(false);
       setCustomerPhone("");
       setCustomerName("");
       void loadBags(); // reflect the bags just handed out
@@ -376,11 +382,6 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                           {" · "}
                           {sizeLabel(l.size_ml)}
                         </span>
-                        {l.is_preorder && (
-                          <span style={{ color: "var(--warning, #d97706)", fontWeight: 600 }}>
-                            {" · preorder"}
-                          </span>
-                        )}
                       </div>
                       <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
                         {ngn(l.unit_price_ngn)} × {l.quantity}
@@ -477,30 +478,58 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 <option value="transfer">Transfer</option>
               </select>
             </div>
-            {cartIsPreorder && (
-              <div
-                className="card card--soft"
+            {/* Order-level preorder. A 330ml in the cart forces it on. */}
+            <div
+              className="card card--soft"
+              style={{
+                padding: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                borderColor: orderIsPreorder ? "rgba(245,158,11,0.45)" : "var(--line)",
+              }}
+            >
+              <label
                 style={{
-                  padding: 12,
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  borderColor: "rgba(245,158,11,0.35)",
+                  alignItems: "center",
+                  gap: 10,
+                  cursor: forcedPreorder ? "not-allowed" : "pointer",
                 }}
               >
-                <strong style={{ fontSize: 13 }}>📅 Preorder — fulfil on</strong>
                 <input
-                  className="input"
-                  type="date"
-                  value={fulfillBy}
-                  min={new Date().toISOString().slice(0, 10)}
-                  onChange={(e) => setFulfillBy(e.target.value)}
+                  type="checkbox"
+                  checked={orderIsPreorder}
+                  disabled={forcedPreorder}
+                  onChange={(e) => setPreorderChoice(e.target.checked)}
+                  style={{ width: 18, height: 18, accentColor: "var(--accent, #d97706)" }}
                 />
+                <span style={{ fontWeight: 700, fontSize: 14 }}>📅 Preorder — made to order</span>
+              </label>
+              {forcedPreorder && (
                 <span className="field__hint">
-                  Paid now, made to order. Stock is deducted when you fulfil it from Preorders on this day.
+                  A 330ml can is in the cart — this order must be taken as a preorder.
                 </span>
-              </div>
-            )}
+              )}
+              {orderIsPreorder && (
+                <>
+                  <div className="field">
+                    <label className="field__label">Delivery date *</label>
+                    <input
+                      className="input"
+                      type="date"
+                      value={fulfillBy}
+                      min={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => setFulfillBy(e.target.value)}
+                    />
+                  </div>
+                  <span className="field__hint">
+                    Paid now, made to order. No stock leaves the branch — it waits in{" "}
+                    <strong>Preorders</strong> and is deducted when you fulfil it on this day.
+                  </span>
+                </>
+              )}
+            </div>
             {bagMaterials.length > 0 && (
               <div
                 className="card card--soft"
@@ -559,20 +588,6 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 </span>
               </div>
             )}
-            {cartIsPreorder && (
-              <div
-                className="card card--soft"
-                style={{
-                  padding: 12,
-                  fontSize: 12,
-                  borderLeft: "4px solid var(--warning, #d97706)",
-                }}
-              >
-                <strong>⏳ Preorder</strong> — payment is taken now, but no stock leaves the
-                branch. The order waits in <strong>Preorders</strong> and only ships when you
-                fulfil it manually.
-              </div>
-            )}
             <div
               style={{
                 display: "flex",
@@ -595,7 +610,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
             >
               {submitting
                 ? "Recording…"
-                : cartIsPreorder
+                : orderIsPreorder
                   ? `Take preorder · ${ngn(total)}`
                   : `Charge ${ngn(total)}`}
             </button>
@@ -660,18 +675,19 @@ function SizePicker({
           // A preorder size is always made-to-order — never blocked on stock.
           const isPreorder = s.variant.preorder_only ?? false;
           const sizeOos = !isPreorder && avail !== null && avail <= 0;
+          // Every size stays tappable: an out-of-stock can can still be added
+          // and taken as a preorder from the cashout section.
           const statusText = isPreorder
             ? "Preorder · made to order"
             : avail === null
               ? ""
               : sizeOos
-                ? "out of stock"
+                ? "out of stock · preorder"
                 : `${avail} left`;
           return (
             <button
               key={s.variant.id}
               type="button"
-              disabled={sizeOos}
               onClick={() => onPick(s)}
               className="card card--hoverable"
               style={{
@@ -681,8 +697,7 @@ function SizePicker({
                 gap: 12,
                 padding: "12px 14px",
                 borderRadius: 12,
-                cursor: sizeOos ? "not-allowed" : "pointer",
-                opacity: sizeOos ? 0.55 : 1,
+                cursor: "pointer",
                 textAlign: "left",
               }}
             >
@@ -714,6 +729,41 @@ function SizePicker({
   );
 }
 
+// Bottle image with a graceful fallback (soft gradient + the flavour's initial)
+// when a product has no image or the URL fails to load.
+function BottleImage({ src, name }: { src: string | null | undefined; name: string }): JSX.Element {
+  const [broken, setBroken] = useState(false);
+  if (!src || broken) {
+    return (
+      <div
+        aria-hidden
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: "100%",
+          height: "100%",
+          background: "linear-gradient(160deg, var(--surface-soft), #fff)",
+          color: "var(--accent, #16794b)",
+          fontWeight: 800,
+          fontSize: 34,
+          opacity: 0.8,
+        }}
+      >
+        {name.trim().charAt(0).toUpperCase() || "🍶"}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={name}
+      loading="lazy"
+      onError={() => setBroken(true)}
+      style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }}
+    />
+  );
+}
+
 function FlavourTile({
   flavour,
   branchId,
@@ -733,59 +783,73 @@ function FlavourTile({
   );
   const oos = available !== null && available <= 0;
   const multi = sizes.length > 1;
-  // Preorder sizes are made-to-order — a flavour with any preorder size must
-  // stay tappable even at zero stock so the cashier can reach it in the picker.
-  const hasPreorder = sizes.some((s) => s.variant.preorder_only ?? false);
+  // Preorder-only flavours (e.g. 330ml-only) read "Preorder" instead of stock.
   const allPreorder = sizes.every((s) => s.variant.preorder_only ?? false);
-  const disabled = oos && !hasPreorder;
   // Cheapest size up front; "from ₦x" signals more sizes sit behind the tap.
+  // Tiles stay tappable even at zero stock so any can is reachable as a preorder.
   const minPrice = Math.min(...sizes.map((s) => s.price));
+  const statusColor = allPreorder
+    ? "var(--accent, #16794b)"
+    : oos
+      ? "var(--danger)"
+      : "var(--ink-soft)";
+  const statusText = allPreorder
+    ? "Preorder"
+    : available === null
+      ? ""
+      : oos
+        ? "Out of stock"
+        : `${available} in stock`;
   return (
     <button
       type="button"
       onClick={onPick}
-      disabled={disabled}
       className="card card--hoverable"
       style={{
         textAlign: "left",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        padding: 14,
+        cursor: "pointer",
+        padding: 0,
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        gap: 4,
-        borderRadius: 14,
+        gap: 0,
+        borderRadius: 16,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-        <span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.25 }}>{product.name}</span>
-        <span className="pill" style={{ flexShrink: 0, fontSize: 11, fontWeight: 700 }}>
-          {multi ? `${sizes.length} sizes` : sizeLabel(sizes[0]!.variant.size_ml)}
-        </span>
-      </div>
-      <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>
-        {product.category}
-        {allPreorder ? (
-          <>
-            {" · "}
-            <span style={{ color: "var(--warning, #d97706)", fontWeight: 600 }}>Preorder</span>
-          </>
-        ) : (
-          available !== null && (
-            <>
-              {" · "}
-              <span style={{ color: oos ? "var(--danger)" : "var(--ink-soft)" }}>
-                {oos ? "Out of stock" : `${available} in stock`}
-              </span>
-              {hasPreorder && (
-                <span style={{ color: "var(--warning, #d97706)", fontWeight: 600 }}> · preorder sizes</span>
-              )}
-            </>
-          )
+      <div
+        style={{
+          position: "relative",
+          height: 124,
+          borderBottom: "1px solid var(--line)",
+          background: "linear-gradient(160deg, var(--surface-soft), #fff)",
+        }}
+      >
+        <BottleImage src={product.image_url} name={product.name} />
+        {allPreorder && (
+          <span
+            className="pill"
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              fontSize: 10,
+              fontWeight: 700,
+              background: "rgba(245,158,11,0.15)",
+              color: "var(--accent, #b45309)",
+            }}
+          >
+            Preorder
+          </span>
         )}
       </div>
-      <div className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 18, marginTop: 4 }}>
-        {multi ? `from ${ngn(minPrice)}` : ngn(sizes[0]!.price)}
+      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 3 }}>
+        <span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.25 }}>{product.name}</span>
+        {statusText && (
+          <span style={{ fontSize: 11, fontWeight: 600, color: statusColor }}>{statusText}</span>
+        )}
+        <div className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 18, marginTop: 2 }}>
+          {multi ? `from ${ngn(minPrice)}` : ngn(sizes[0]!.price)}
+        </div>
       </div>
     </button>
   );

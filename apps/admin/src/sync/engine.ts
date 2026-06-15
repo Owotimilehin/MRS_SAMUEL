@@ -159,6 +159,7 @@ interface PullResponse {
       category: string;
       ingredients: string[];
       isActive: boolean;
+      imageUrl?: string | null;
     }>;
     variants: Array<{
       id: string;
@@ -242,6 +243,7 @@ export async function pullDeltas(branchId: string): Promise<void> {
           category: p.category,
           ingredients: p.ingredients,
           is_active: p.isActive,
+          image_url: p.imageUrl ?? null,
         });
       }
       for (const v of body.data.variants) {

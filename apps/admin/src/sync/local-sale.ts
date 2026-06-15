@@ -122,8 +122,8 @@ export async function createLocalSale(
           ...(input.packaging && input.packaging.length > 0
             ? { packaging: input.packaging }
             : {}),
-          ...(input.is_preorder && input.fulfill_by
-            ? { scheduled_delivery_at: input.fulfill_by }
+          ...(input.is_preorder
+            ? { is_preorder: true, ...(input.fulfill_by ? { scheduled_delivery_at: input.fulfill_by } : {}) }
             : {}),
           created_at_local: nowIso,
         },

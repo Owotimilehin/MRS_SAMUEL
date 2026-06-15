@@ -15,6 +15,9 @@ export interface ProductRow {
   category: string;
   ingredients: string[];
   is_active: boolean;
+  // Bottle image shown on the till's flavour card. Synced from product.imageUrl;
+  // older devices may lack it until the next pull rewrites the row.
+  image_url?: string | null;
 }
 
 export interface VariantRow {
