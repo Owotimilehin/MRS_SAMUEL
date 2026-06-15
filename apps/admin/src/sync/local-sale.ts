@@ -80,6 +80,7 @@ export async function createLocalSale(
           location_type: "branch",
           location_id: input.branchId,
           product_id: it.product_id,
+          variant_id: it.variant_id,
           delta: -it.quantity,
           source_type: "sale",
           source_id: saleId,

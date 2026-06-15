@@ -1,20 +1,24 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
-import { local } from "../../db/local.js";
+import { local, type ProductRow, type VariantRow } from "../../db/local.js";
 import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 
-interface Product {
-  id: string;
-  name: string;
-  category: string;
+interface ServerBalance {
+  product_id: string;
+  variant_id: string | null;
+  balance: number;
 }
 
+const sizeLabel = (ml: number | null): string =>
+  ml == null ? "Unsized" : ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`;
+
 export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element {
-  const products = useLiveQuery(() => local.products.toArray(), [], []);
-  const [serverBalances, setServerBalances] = useState<Record<string, number>>({});
+  const products = useLiveQuery(() => local.products.toArray(), [], [] as ProductRow[]);
+  const variants = useLiveQuery(() => local.variants.toArray(), [], [] as VariantRow[]);
+  const [balances, setBalances] = useState<ServerBalance[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,15 +26,8 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
     setLoading(true);
     void (async () => {
       try {
-        const res = await api<{
-          data: Array<{ product_id: string; variant_id: string | null; balance: number }>;
-        }>(`/stock/branch/${branchId}`);
-        if (!cancelled) {
-          // Reads are per-variant; roll up to per-flavour totals for this view.
-          const totals: Record<string, number> = {};
-          for (const x of res.data) totals[x.product_id] = (totals[x.product_id] ?? 0) + x.balance;
-          setServerBalances(totals);
-        }
+        const res = await api<{ data: ServerBalance[] }>(`/stock/branch/${branchId}`);
+        if (!cancelled) setBalances(res.data);
       } catch (err) {
         if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
       } finally {
@@ -42,69 +39,67 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
     };
   }, [branchId]);
 
-  // Local available (server ledger projected + local reservations)
-  const localAvailable = useLiveQuery(
-    async () => {
-      const rows = await local.ledger
-        .where("[location_type+location_id+product_id]")
-        .between(["branch", branchId, ""], ["branch", branchId, "￿"])
-        .toArray();
-      const reservations = await local.reservations.toArray();
-      const now = Date.now();
-      const balances: Record<string, number> = {};
-      for (const r of rows) balances[r.product_id] = (balances[r.product_id] ?? 0) + r.delta;
-      for (const r of reservations.filter((x) => x.expires_at > now)) {
-        balances[r.product_id] = (balances[r.product_id] ?? 0) - r.quantity;
-      }
-      return balances;
-    },
-    [branchId],
-    {} as Record<string, number>,
-  );
+  const productName = (id: string): string =>
+    (products as ProductRow[]).find((p) => p.id === id)?.name ?? id.slice(0, 8);
+  const sizeForVariant = (variantId: string | null): number | null =>
+    variantId == null ? null : (variants as VariantRow[]).find((v) => v.id === variantId)?.size_ml ?? null;
 
-  const rows = (products as Product[]).map((p) => {
-    const server = serverBalances[p.id] ?? 0;
-    const local = localAvailable[p.id] ?? server;
-    return { ...p, server, local };
-  });
-  rows.sort((a, b) => a.local - b.local);
+  // One row per (flavour × can size) — the per-size record the till keeps now.
+  const rows = balances
+    .map((b) => ({
+      key: `${b.product_id}|${b.variant_id ?? "null"}`,
+      product_id: b.product_id,
+      name: productName(b.product_id),
+      size_ml: sizeForVariant(b.variant_id),
+      unsized: b.variant_id == null,
+      balance: b.balance,
+    }))
+    .sort(
+      (a, b) =>
+        a.name.localeCompare(b.name) ||
+        (a.size_ml ?? Number.MAX_SAFE_INTEGER) - (b.size_ml ?? Number.MAX_SAFE_INTEGER),
+    );
 
-  const lowCount = rows.filter((r) => r.local <= 5 && r.local > 0).length;
-  const oosCount = rows.filter((r) => r.local <= 0).length;
+  const oosCount = rows.filter((r) => r.balance <= 0).length;
+  const lowCount = rows.filter((r) => r.balance > 0 && r.balance <= 5).length;
+  const unsizedCount = rows.filter((r) => r.unsized && r.balance !== 0).length;
 
   return (
     <BranchShell branchId={branchId} title="Stock">
-      
-      <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <span className={oosCount > 0 ? "pill pill--danger" : "pill"}>Out of stock · {oosCount}</span>
         <span className={lowCount > 0 ? "pill pill--warning" : "pill"}>Low · {lowCount}</span>
-        <span className="pill">{rows.length} products</span>
+        <span className="pill">{rows.length} size lines</span>
+        {unsizedCount > 0 && (
+          <span className="pill pill--warning">Unsized to reconcile · {unsizedCount}</span>
+        )}
       </div>
 
       {loading ? (
         <InlineLoader />
       ) : rows.length === 0 ? (
-        <div className="empty">No products synced yet. Connect to the network to pull the catalog.</div>
+        <div className="empty">No stock recorded yet for this branch.</div>
       ) : (
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th>Product</th>
-                <th>Category</th>
-                <th className="table__num">Available now</th>
-                <th className="table__num">Server balance</th>
+                <th>Flavour</th>
+                <th>Size</th>
+                <th className="table__num">On hand</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
                 const tone =
-                  r.local <= 0 ? "danger" : r.local <= 5 ? "warning" : r.local <= 15 ? "default" : "success";
+                  r.balance <= 0 ? "danger" : r.balance <= 5 ? "warning" : r.balance <= 15 ? "default" : "success";
                 return (
-                  <tr key={r.id}>
+                  <tr key={r.key}>
                     <td style={{ fontWeight: 600 }}>{r.name}</td>
-                    <td style={{ color: "var(--ink-soft)", textTransform: "capitalize" }}>{r.category}</td>
+                    <td style={{ color: r.unsized ? "var(--warning)" : "var(--ink-soft)" }}>
+                      {sizeLabel(r.size_ml)}
+                    </td>
                     <td
                       className="table__num"
                       style={{
@@ -119,13 +114,12 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
                                 : "var(--ink)",
                       }}
                     >
-                      {r.local}
-                    </td>
-                    <td className="table__num" style={{ color: "var(--ink-soft)" }}>
-                      {r.server}
+                      {r.balance}
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      {tone === "danger" ? (
+                      {r.unsized && r.balance !== 0 ? (
+                        <span className="pill pill--warning">Assign a size</span>
+                      ) : tone === "danger" ? (
                         <span className="pill pill--danger">OOS</span>
                       ) : tone === "warning" ? (
                         <span className="pill pill--warning">Low</span>
@@ -139,8 +133,8 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
         </div>
       )}
       <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 14 }}>
-        “Available now” reflects unsynced reservations so the till can refuse out-of-stock sales offline.
-        “Server balance” is the last value pulled from the ledger.
+        Stock is now tracked per can size. An <strong>Unsized</strong> line is older stock not yet
+        assigned to a size — reconcile it with an inventory adjustment so per-size counts are exact.
       </p>
     </BranchShell>
   );

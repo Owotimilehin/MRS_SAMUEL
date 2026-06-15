@@ -43,6 +43,10 @@ export interface LedgerRow {
   location_type: string;
   location_id: string;
   product_id: string;
+  // The exact can size this movement applies to. Older rows (and legacy
+  // opening balances) carry null — an "untyped" pool that counts toward any
+  // size until it's reconciled to a specific variant.
+  variant_id?: string | null;
   delta: number;
   source_type: string;
   source_id: string;
@@ -164,4 +168,37 @@ export async function localAvailableForProduct(
     .reduce((acc, r) => acc + r.quantity, 0);
 
   return ledgerSum - reserved;
+}
+
+/**
+ * Available stock for ONE can size at a branch. Size-tagged ledger rows for the
+ * chosen variant, PLUS the product's untyped (variant-less) pool — that legacy
+ * stock isn't assigned to a size yet, so it stays available to any size until
+ * reconciled. A flavour whose stock is fully size-tagged is now enforced per
+ * size: e.g. 96 on 330ml and 0 on 650ml means 650ml shows 0 and can't be sold.
+ */
+export async function localAvailableForVariant(
+  branchId: string,
+  productId: string,
+  variantId: string,
+): Promise<number> {
+  const rows = await local.ledger
+    .where("[location_type+location_id+product_id]")
+    .equals(["branch", branchId, productId])
+    .toArray();
+  const sized = rows
+    .filter((r) => r.variant_id === variantId)
+    .reduce((acc, r) => acc + r.delta, 0);
+  const untyped = rows
+    .filter((r) => r.variant_id == null)
+    .reduce((acc, r) => acc + r.delta, 0);
+
+  const now = Date.now();
+  const reservations = await local.reservations.where("product_id").equals(productId).toArray();
+  // Reservations are per-flavour today, so they reduce the untyped pool side.
+  const reserved = reservations
+    .filter((r) => r.expires_at > now)
+    .reduce((acc, r) => acc + r.quantity, 0);
+
+  return sized + untyped - reserved;
 }

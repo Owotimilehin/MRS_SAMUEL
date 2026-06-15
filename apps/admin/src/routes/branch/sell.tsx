@@ -4,6 +4,7 @@ import { BranchShell } from "../../components/BranchShell.js";
 import {
   local,
   localAvailableForProduct,
+  localAvailableForVariant,
   type ProductRow,
   type VariantRow,
   type PriceRow,
@@ -197,17 +198,16 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     setSubmitting(true);
     setError(null);
     try {
-      // Pre-flight: branch stock is tracked per flavour (not per size), so sum
-      // the quantities of every size of the same flavour before comparing.
-      const wantByProduct = new Map<string, number>();
+      // Pre-flight per size: each cart line is one (flavour × can size); check
+      // that exact variant's availability (size-tagged stock + the flavour's
+      // untyped pool). Selling a 650ml is blocked when only 330ml is on hand.
       for (const l of cart) {
-        wantByProduct.set(l.product_id, (wantByProduct.get(l.product_id) ?? 0) + l.quantity);
-      }
-      for (const [productId, want] of wantByProduct) {
-        const have = await localAvailableForProduct(branchId, productId);
-        if (have < want) {
-          const p = products.find((x) => x.id === productId);
-          throw new Error(`Insufficient stock for ${p?.name ?? productId} (${have} available)`);
+        const have = await localAvailableForVariant(branchId, l.product_id, l.variant_id);
+        if (have < l.quantity) {
+          const p = products.find((x) => x.id === l.product_id);
+          throw new Error(
+            `Insufficient stock for ${p?.name ?? l.product_id} ${sizeLabel(l.size_ml)} (${have} available)`,
+          );
         }
       }
       const itemCount = cart.reduce((n, l) => n + l.quantity, 0);
@@ -562,43 +562,67 @@ function SizePicker({
   onClose: () => void;
 }): JSX.Element {
   const { product, sizes } = flavour;
-  const available = useLiveQuery(
-    () => localAvailableForProduct(branchId, product.id),
-    [branchId, product.id],
-    null as number | null,
+  // Per-size availability: each can size has its own on-hand count now.
+  const availBySize = useLiveQuery(
+    async () => {
+      const entries = await Promise.all(
+        sizes.map(
+          async (s) =>
+            [s.variant.id, await localAvailableForVariant(branchId, product.id, s.variant.id)] as const,
+        ),
+      );
+      return Object.fromEntries(entries) as Record<string, number>;
+    },
+    [branchId, product.id, sizes.map((s) => s.variant.id).join(",")],
+    null as Record<string, number> | null,
   );
-  const oos = available !== null && available <= 0;
   return (
     <Modal title={product.name} onClose={onClose} maxWidth={420}>
-      <div style={{ fontSize: 12, color: oos ? "var(--danger)" : "var(--ink-soft)", marginBottom: 12 }}>
-        {available === null ? product.category : oos ? "Out of stock" : `${available} in stock · choose a size`}
+      <div style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 12 }}>
+        Choose a size — stock is shown per size
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {sizes.map((s) => (
-          <button
-            key={s.variant.id}
-            type="button"
-            disabled={oos}
-            onClick={() => onPick(s)}
-            className="card card--hoverable"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              padding: "12px 14px",
-              borderRadius: 12,
-              cursor: oos ? "not-allowed" : "pointer",
-              opacity: oos ? 0.55 : 1,
-              textAlign: "left",
-            }}
-          >
-            <span style={{ fontWeight: 700, fontSize: 15 }}>{sizeLabel(s.variant.size_ml)}</span>
-            <span className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 17 }}>
-              {ngn(s.price)}
-            </span>
-          </button>
-        ))}
+        {sizes.map((s) => {
+          const avail = availBySize?.[s.variant.id] ?? null;
+          const sizeOos = avail !== null && avail <= 0;
+          return (
+            <button
+              key={s.variant.id}
+              type="button"
+              disabled={sizeOos}
+              onClick={() => onPick(s)}
+              className="card card--hoverable"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                padding: "12px 14px",
+                borderRadius: 12,
+                cursor: sizeOos ? "not-allowed" : "pointer",
+                opacity: sizeOos ? 0.55 : 1,
+                textAlign: "left",
+              }}
+            >
+              <span style={{ fontWeight: 700, fontSize: 15 }}>
+                {sizeLabel(s.variant.size_ml)}
+                <span
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: sizeOos ? "var(--danger)" : "var(--ink-soft)",
+                  }}
+                >
+                  {avail === null ? "" : sizeOos ? "out of stock" : `${avail} left`}
+                </span>
+              </span>
+              <span className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 17 }}>
+                {ngn(s.price)}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </Modal>
   );

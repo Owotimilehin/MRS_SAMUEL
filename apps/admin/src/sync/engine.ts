@@ -180,6 +180,7 @@ interface PullResponse {
       locationType: string;
       locationId: string;
       productId: string;
+      variantId: string | null;
       delta: number;
       sourceType: string;
       sourceId: string;
@@ -268,6 +269,7 @@ export async function pullDeltas(branchId: string): Promise<void> {
           location_type: lg.locationType,
           location_id: lg.locationId,
           product_id: lg.productId,
+          variant_id: lg.variantId ?? null,
           delta: lg.delta,
           source_type: lg.sourceType,
           source_id: lg.sourceId,
