@@ -4,6 +4,7 @@ import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useAuthUser } from "../../lib/auth.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
+import { StatHero } from "../../components/StatHero.js";
 
 // Inventory groups carry a product name but no slug — derive one so FlavourMedia
 // can resolve the right bottle.
@@ -136,6 +137,25 @@ export function InventoryPage(): JSX.Element {
       cancelled = true;
     };
   }, []);
+
+  const invStats = useMemo(() => {
+    let cans = 0;
+    let low = 0;
+    let inStock = 0;
+    const perSku = new Map<string, number>();
+    for (const r of branchStock) {
+      const k = `${r.product_id}|${r.variant_id ?? "null"}`;
+      perSku.set(k, (perSku.get(k) ?? 0) + r.balance);
+    }
+    for (const bal of perSku.values()) {
+      if (bal > 0) {
+        cans += bal;
+        inStock += 1;
+        if (bal <= 10) low += 1;
+      }
+    }
+    return { cans, low, inStock };
+  }, [branchStock]);
 
   // Balance lookup keyed by (location, product, variant).
   const branchHeat = useMemo(() => {
@@ -460,13 +480,18 @@ export function InventoryPage(): JSX.Element {
         </div>
       }
     >
-      <div className="page-head ed-rise">
-        <div className="page-head__titles">
-          <div className="page-head__eyebrow">Stock</div>
-          <h1 className="page-head__title">Inventory</h1>
-          <p className="page-head__sub">On-hand stock per can size across branches and the factory.</p>
-        </div>
-      </div>
+      <StatHero
+        eyebrow="Stock"
+        title="Inventory"
+        sub="On-hand stock per can size across branches and the factory."
+        loading={loading}
+        chips={[
+          { label: "Cans on hand", value: invStats.cans.toLocaleString() },
+          { label: "SKUs in stock", value: invStats.inStock },
+          { label: "Low-stock SKUs", value: invStats.low, tone: invStats.low > 0 ? "danger" : "good" },
+          { label: "Branches", value: branches.length },
+        ]}
+      />
 
       {error && (
         <div
