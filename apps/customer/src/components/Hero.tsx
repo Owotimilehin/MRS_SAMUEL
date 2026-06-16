@@ -34,8 +34,16 @@ const EASE_GLIDE = [0.32, 0.72, 0, 1] as const; // iOS sheet/transition curve
 const GLIDE = 0.62; // seconds — the position travel
 const FOCUS = { duration: 0.42, ease: [0.4, 0, 0.2, 1] as const }; // opacity/blur
 
+// How far toward the side slot the hero bottle travels as it leaves, and the
+// scale it collapses to — `SIDE_SCALE` matches the side bottles (h-68% vs the
+// hero's h-94% ≈ 0.72) so the exiting bottle visibly *becomes* a side bottle
+// while it fades, and the incoming one grows out of the side size into focus.
+const SIDE_SLIDE = 190; // px toward the side slot
+const SIDE_SCALE = 0.72; // side-bottle size relative to the hero
+
 const centerVariants = {
-  enter: (d: number) => ({ x: d * 150, opacity: 0, scale: 0.9, filter: "blur(5px)" }),
+  // Incoming bottle starts at side size/position and grows into the centre.
+  enter: (d: number) => ({ x: d * SIDE_SLIDE, opacity: 0, scale: SIDE_SCALE, filter: "blur(5px)" }),
   center: {
     x: 0,
     opacity: 1,
@@ -48,15 +56,20 @@ const centerVariants = {
       filter: FOCUS,
     },
   },
+  // Outgoing bottle slides to the side slot AND shrinks to side size while it
+  // fades — so it reads as the hero demoting into a side bottle, not a plain
+  // cross-dissolve. Scale travels on the full glide curve so the resize stays
+  // in lock-step with the slide; opacity trails a touch behind so the shrink
+  // is still visible before it disappears.
   exit: (d: number) => ({
-    x: d * -150,
+    x: d * -SIDE_SLIDE,
     opacity: 0,
-    scale: 0.9,
+    scale: SIDE_SCALE,
     filter: "blur(5px)",
     transition: {
       x: { duration: GLIDE, ease: EASE_GLIDE },
       scale: { duration: GLIDE, ease: EASE_GLIDE },
-      opacity: { duration: 0.34, ease: "linear" as const },
+      opacity: { duration: 0.5, ease: "linear" as const },
       filter: FOCUS,
     },
   }),
