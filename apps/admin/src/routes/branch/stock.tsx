@@ -64,7 +64,6 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
 
   const oosCount = rows.filter((r) => r.balance <= 0).length;
   const lowCount = rows.filter((r) => r.balance > 0 && r.balance <= 5).length;
-  const unsizedCount = rows.filter((r) => r.unsized && r.balance !== 0).length;
 
   const onHandTotal = rows.reduce((sum, r) => sum + (r.balance > 0 ? r.balance : 0), 0);
 

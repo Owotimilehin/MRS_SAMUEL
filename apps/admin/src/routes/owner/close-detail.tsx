@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
-import { StatHero } from "../../components/StatHero.js";
+import { StatHero, type StatChip } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -132,7 +132,7 @@ export function CloseDetailPage({
       }
     >
       {(() => {
-        const chips: import("../../components/StatHero.js").StatChip[] = [];
+        const chips: StatChip[] = [];
         chips.push({ label: "Expected", value: data ? ngn(data.systemCashTotalNgn) : "—" });
         chips.push({ label: "Counted", value: data ? ngn(data.cashCountedNgn) : "—" });
         const variance = data?.varianceNgn ?? 0;
