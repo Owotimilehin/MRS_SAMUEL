@@ -41,6 +41,19 @@ interface ReviewBody {
     return_approvals: Array<{ id: string }>;
   };
 }
+interface Overview {
+  stock: { low_stock_skus: number; expiring_48h: number };
+  fulfilment: { orders_pending: number; preorders_open: number; bags_queue: number };
+  today: { net_ngn: number; yesterday_net_ngn: number; wtd_net_ngn: number };
+  growth: {
+    month_revenue_ngn: number;
+    month_expenses_ngn: number;
+    month_profit_ngn: number;
+    active_subscriptions: number;
+    mrr_ngn: number;
+    new_leads: number;
+  };
+}
 
 // Top-products / revenue endpoints return a product name but no slug; derive a
 // slug from the name so FlavourMedia can resolve the right bottle (exact for
@@ -55,6 +68,11 @@ function today(): string {
 function nDaysAgo(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 }
+function deltaPct(current: number, prior: number): string | undefined {
+  if (prior <= 0) return undefined;
+  const pct = Math.round(((current - prior) / prior) * 100);
+  return `${pct >= 0 ? "+" : ""}${pct}%`;
+}
 
 export function DashboardPage(): JSX.Element {
   const [from, setFrom] = useState(nDaysAgo(7));
@@ -64,6 +82,7 @@ export function DashboardPage(): JSX.Element {
   const [variances, setVariances] = useState<VarianceRow[]>([]);
   const [branches, setBranches] = useState<BranchRow[]>([]);
   const [reviewCount, setReviewCount] = useState(0);
+  const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -71,12 +90,13 @@ export function DashboardPage(): JSX.Element {
     setLoading(true);
     void (async () => {
       try {
-        const [rev, top, vari, br, rev2] = await Promise.all([
+        const [rev, top, vari, br, rev2, ov] = await Promise.all([
           api<{ data: RevenueRow[] }>(`/reports/revenue?from=${from}&to=${to}`),
           api<{ data: TopProductRow[] }>(`/reports/top-products?from=${from}&to=${to}&limit=5`),
           api<{ data: VarianceRow[] }>(`/reports/variances?from=${nDaysAgo(30)}`),
           api<{ data: BranchRow[] }>(`/branches`),
           api<ReviewBody>(`/review`),
+          api<{ data: Overview }>(`/reports/overview`),
         ]);
         if (cancelled) return;
         setRevenue(rev.data);
@@ -86,6 +106,7 @@ export function DashboardPage(): JSX.Element {
         setReviewCount(
           rev2.data.transfer_variances.length + rev2.data.return_approvals.length,
         );
+        setOverview(ov.data);
       } catch (err) {
         if (!cancelled) {
           toast.error(err instanceof Error ? err.message : String(err));
@@ -179,6 +200,54 @@ export function DashboardPage(): JSX.Element {
           hint={reviewCount > 0 ? "Open the inbox" : "All clear"}
         />
       </div>
+
+      {overview && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+            gap: 16,
+            marginBottom: 26,
+          }}
+          className="ed-rise"
+        >
+          <Stat
+            label="Low-stock SKUs"
+            value={String(overview.stock.low_stock_skus)}
+            tone={overview.stock.low_stock_skus > 0 ? "bad" : "good"}
+            hint={overview.stock.expiring_48h > 0 ? `${overview.stock.expiring_48h} expiring ≤48h` : "Stock healthy"}
+          />
+          <Stat
+            label="Orders pending"
+            value={String(overview.fulfilment.orders_pending)}
+            tone={overview.fulfilment.orders_pending > 0 ? "warn" : "good"}
+            hint={`${overview.fulfilment.preorders_open} preorders · ${overview.fulfilment.bags_queue} bags`}
+          />
+          {(() => {
+            const d = deltaPct(overview.today.net_ngn, overview.today.yesterday_net_ngn);
+            return d !== undefined ? (
+              <Stat
+                label="Today's sales"
+                value={ngn(overview.today.net_ngn)}
+                delta={d}
+                hint={`Week so far ${ngn(overview.today.wtd_net_ngn)}`}
+              />
+            ) : (
+              <Stat
+                label="Today's sales"
+                value={ngn(overview.today.net_ngn)}
+                hint={`Week so far ${ngn(overview.today.wtd_net_ngn)}`}
+              />
+            );
+          })()}
+          <Stat
+            label="Month profit"
+            value={ngn(overview.growth.month_profit_ngn)}
+            tone={overview.growth.month_profit_ngn >= 0 ? "good" : "bad"}
+            hint={`${overview.growth.active_subscriptions} subs · ${ngn(overview.growth.mrr_ngn)} MRR · ${overview.growth.new_leads} leads`}
+          />
+        </div>
+      )}
 
       <div className="l-split l-split--dash" style={{ marginBottom: 18 }}>
         <section className="card">
