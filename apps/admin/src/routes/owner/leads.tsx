@@ -4,6 +4,7 @@ import { api } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface SubLead {
   id: string;
@@ -52,6 +53,32 @@ export function LeadsPage(): JSX.Element {
 
   return (
     <Shell title="Leads" crumb="Storefront">
+      <StatHero
+        eyebrow="Marketing"
+        title="Leads"
+        sub="Subscription enquiries and contact messages from the storefront."
+        loading={loading}
+        chips={[
+          {
+            label: "Sub enquiries",
+            value: subs.length,
+            tone: subs.length > 0 ? "danger" : "good",
+          },
+          {
+            label: "Contact messages",
+            value: contacts.length,
+            tone: contacts.length > 0 ? "danger" : "good",
+          },
+          {
+            label: "Subs this week",
+            value: subs.filter((s) => s.createdAt >= new Date(Date.now() - 7 * 86_400_000).toISOString()).length,
+          },
+          {
+            label: "Messages this week",
+            value: contacts.filter((c) => c.createdAt >= new Date(Date.now() - 7 * 86_400_000).toISOString()).length,
+          },
+        ]}
+      />
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button
           type="button"

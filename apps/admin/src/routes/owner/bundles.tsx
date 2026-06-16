@@ -3,6 +3,7 @@ import { Shell } from "../../components/Shell.js";
 import { Modal } from "../../components/Modal.js";
 import { api, ApiError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface Bundle {
   id: string;
@@ -85,6 +86,32 @@ export function BundlesPage(): JSX.Element {
         </button>
       }
     >
+      <StatHero
+        eyebrow="Products"
+        title="Bundles"
+        sub="Gift boxes and multipacks listed on the shop page."
+        loading={loading}
+        chips={[
+          {
+            label: "Active bundles",
+            value: rows.filter((b) => b.isActive).length,
+          },
+          {
+            label: "Hidden",
+            value: rows.filter((b) => !b.isActive).length,
+            tone: rows.filter((b) => !b.isActive).length > 0 ? "warn" : "good",
+          },
+          {
+            label: "Active value",
+            value: naira(rows.filter((b) => b.isActive).reduce((sum, b) => sum + b.priceNgn, 0)),
+          },
+          {
+            label: "Badged",
+            value: rows.filter((b) => b.badge != null).length,
+          },
+        ]}
+      />
+
       {error && (
         <div className="card" style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}>
           {error}

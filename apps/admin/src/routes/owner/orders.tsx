@@ -7,6 +7,7 @@ import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { downloadCsv } from "../../lib/csv.js";
 import { toast } from "../../lib/toast.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface Branch {
   id: string;
@@ -131,13 +132,31 @@ export function OrdersPage(): JSX.Element {
         </button>
       }
     >
-      <div className="page-head ed-rise">
-        <div className="page-head__titles">
-          <div className="page-head__eyebrow">Sales</div>
-          <h1 className="page-head__title">Orders</h1>
-          <p className="page-head__sub">Every order across branches and channels.</p>
-        </div>
-      </div>
+      <StatHero
+        eyebrow="Sales"
+        title="Orders"
+        sub="Every order across branches and channels."
+        loading={loading}
+        chips={[
+          {
+            label: "Pending pay",
+            value: sales.filter((s) => s.status === "confirmed").length,
+            tone: sales.filter((s) => s.status === "confirmed").length > 0 ? "danger" : "good",
+          },
+          {
+            label: "Paid",
+            value: sales.filter((s) => s.status === "paid").length,
+          },
+          {
+            label: "Delivered",
+            value: sales.filter((s) => s.status === "delivered").length,
+          },
+          {
+            label: "Cancelled",
+            value: sales.filter((s) => s.status === "cancelled").length,
+          },
+        ]}
+      />
 
       <div className="toolbar ed-rise">
         <span className="toolbar__search">

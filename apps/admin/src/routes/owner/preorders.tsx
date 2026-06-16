@@ -4,6 +4,7 @@ import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface PreorderItem {
   product_id: string;
@@ -86,15 +87,31 @@ export function PreordersPage(): JSX.Element {
 
   return (
     <Shell title="Preorders" crumb="Owner">
-      <div className="page-head ed-rise">
-        <div className="page-head__titles">
-          <div className="page-head__eyebrow">Sales</div>
-          <h1 className="page-head__title">Preorders</h1>
-          <p className="page-head__sub">
-            Prepaid orders awaiting production. Stock is deducted when you fulfil — not before.
-          </p>
-        </div>
-      </div>
+      <StatHero
+        eyebrow="Sales"
+        title="Preorders"
+        sub="Prepaid orders awaiting production. Stock is deducted when you fulfil — not before."
+        loading={loading}
+        chips={[
+          {
+            label: "Open",
+            value: rows.length,
+            tone: rows.length > 0 ? "danger" : "good",
+          },
+          {
+            label: "Cans reserved",
+            value: rows.reduce((sum, r) => sum + r.items.reduce((s, i) => s + i.quantity, 0), 0),
+          },
+          {
+            label: "Scheduled",
+            value: rows.filter((r) => r.scheduled_delivery_at != null).length,
+          },
+          {
+            label: "Prepaid",
+            value: ngn(total),
+          },
+        ]}
+      />
 
       {loading ? (
         <InlineLoader />

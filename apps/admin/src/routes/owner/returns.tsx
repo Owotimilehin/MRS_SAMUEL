@@ -5,6 +5,7 @@ import { api, ApiError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface ReturnRow {
   id: string;
@@ -88,6 +89,31 @@ export function OwnerReturnsPage(): JSX.Element {
 
   return (
     <Shell title="Returns">
+      <StatHero
+        eyebrow="Sales"
+        title="Returns"
+        sub="Customer returns awaiting approval and refund."
+        loading={loading}
+        chips={[
+          {
+            label: "Pending approval",
+            value: rows.filter((r) => r.status === "pending_approval").length,
+            tone: rows.filter((r) => r.status === "pending_approval").length > 0 ? "danger" : "good",
+          },
+          {
+            label: "Completed",
+            value: rows.filter((r) => r.status === "completed").length,
+          },
+          {
+            label: "Refunded",
+            value: ngn(rows.filter((r) => r.status === "completed").reduce((sum, r) => sum + r.refundAmountNgn, 0)),
+          },
+          {
+            label: "This month",
+            value: rows.filter((r) => r.createdAt.slice(0, 7) === new Date().toISOString().slice(0, 7)).length,
+          },
+        ]}
+      />
       <section className="card">
         <header
           style={{

@@ -3,6 +3,7 @@ import { Shell } from "../../components/Shell.js";
 import { Modal } from "../../components/Modal.js";
 import { api, ApiError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface Plan {
   id: string;
@@ -89,6 +90,32 @@ export function SubscriptionsPage(): JSX.Element {
         </button>
       }
     >
+      <StatHero
+        eyebrow="Marketing"
+        title="Subscriptions"
+        sub="Subscription plans shown on the storefront pricing page."
+        loading={loading}
+        chips={[
+          {
+            label: "Active plans",
+            value: rows.filter((p) => p.isActive).length,
+          },
+          {
+            label: "Hidden",
+            value: rows.filter((p) => !p.isActive).length,
+            tone: rows.filter((p) => !p.isActive).length > 0 ? "warn" : "good",
+          },
+          {
+            label: "Listed MRR",
+            value: naira(rows.filter((p) => p.isActive).reduce((sum, p) => sum + p.priceNgn, 0)),
+          },
+          {
+            label: "Total plans",
+            value: rows.length,
+          },
+        ]}
+      />
+
       {error && (
         <div className="card" style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}>
           {error}

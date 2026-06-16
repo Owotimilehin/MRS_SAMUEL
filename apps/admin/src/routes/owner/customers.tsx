@@ -7,6 +7,7 @@ import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { downloadCsv } from "../../lib/csv.js";
 import { toast } from "../../lib/toast.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface CustomerSummary {
   id: string;
@@ -84,13 +85,30 @@ export function CustomersPage(): JSX.Element {
         </button>
       }
     >
-      <div className="page-head ed-rise">
-        <div className="page-head__titles">
-          <div className="page-head__eyebrow">People</div>
-          <h1 className="page-head__title">Customers</h1>
-          <p className="page-head__sub">Everyone who has ordered from Mrs. Samuel.</p>
-        </div>
-      </div>
+      <StatHero
+        eyebrow="Sales"
+        title="Customers"
+        sub="Everyone who has ordered from Mrs. Samuel."
+        loading={loading}
+        chips={[
+          {
+            label: "Total",
+            value: rows.length,
+          },
+          {
+            label: "Repeat buyers",
+            value: rows.filter((r) => r.orders >= 2).length,
+          },
+          {
+            label: "New (7 days)",
+            value: rows.filter((r) => r.lastOrderAt >= new Date(Date.now() - 7 * 86_400_000).toISOString()).length,
+          },
+          {
+            label: "Lifetime revenue",
+            value: ngn(rows.reduce((sum, r) => sum + r.lifetimeNgn, 0)),
+          },
+        ]}
+      />
 
       <div className="toolbar ed-rise">
         <span className="toolbar__search">
