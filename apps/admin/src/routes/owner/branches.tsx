@@ -4,6 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface BranchRow {
   id: string;
@@ -40,6 +41,8 @@ export function BranchesPage(): JSX.Element {
     void load();
   }, []);
 
+  const totalZones = rows.reduce((sum, b) => sum + b.deliveryZones.length, 0);
+
   return (
     <Shell
       title="Branches"
@@ -49,6 +52,17 @@ export function BranchesPage(): JSX.Element {
         </button>
       }
     >
+      <StatHero
+        eyebrow="Admin"
+        title="Branches"
+        sub="Physical locations running the daily till."
+        loading={loading}
+        chips={[
+          { label: "Branches", value: rows.length },
+          { label: "Delivery zones", value: totalZones },
+        ]}
+      />
+
       {error && (
         <div
           className="card"

@@ -6,6 +6,7 @@ import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { GateEditor, type GateValue } from "../../components/GateEditor.js";
 import type { AdminRole } from "@ms/shared";
+import { StatHero } from "../../components/StatHero.js";
 
 type Role = AdminRole;
 
@@ -82,6 +83,12 @@ export function UsersPage(): JSX.Element {
   const branchName = (id: string | null): string =>
     !id ? "—" : branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);
 
+  const activeCount = rows.filter((u) => u.isActive).length;
+  const ownerCount = rows.filter((u) => u.role === "owner").length;
+  const lockedCount = rows.filter(
+    (u) => u.lockedUntil && new Date(u.lockedUntil) > new Date(),
+  ).length;
+
   return (
     <Shell
       title="Admin users"
@@ -91,6 +98,19 @@ export function UsersPage(): JSX.Element {
         </button>
       }
     >
+      <StatHero
+        eyebrow="Admin"
+        title="Admin users"
+        sub="Team members with access to the admin panel."
+        loading={loading}
+        chips={[
+          { label: "Users", value: rows.length },
+          { label: "Active", value: activeCount, tone: activeCount > 0 ? "good" : "warn" },
+          { label: "Owners", value: ownerCount },
+          { label: "Locked", value: lockedCount, tone: lockedCount > 0 ? "danger" : "good" },
+        ]}
+      />
+
       {error && (
         <div
           className="card"

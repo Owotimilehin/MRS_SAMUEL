@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
 import { api, ApiError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface Branch {
   id: string;
@@ -68,6 +69,12 @@ export function SettingsPage(): JSX.Element {
 
   return (
     <Shell title="Settings">
+      <StatHero
+        eyebrow="Admin"
+        title="Settings"
+        sub="Branch operating hours, contacts, and integrations."
+      />
+
       {flash && (
         <div
           role="status"

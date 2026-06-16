@@ -3,6 +3,7 @@ import { Shell } from "../../components/Shell.js";
 import { api, ApiError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface Zone {
   name: string;
@@ -86,8 +87,22 @@ export function ZonesPage(): JSX.Element {
     }
   }
 
+  const totalZones = branches.reduce((sum, b) => sum + (b.deliveryZones?.length ?? 0), 0);
+  const branchesCovered = branches.filter((b) => (b.deliveryZones?.length ?? 0) > 0).length;
+
   return (
     <Shell title="Delivery zones">
+      <StatHero
+        eyebrow="Admin"
+        title="Delivery zones"
+        sub="Per-branch delivery areas and fees shown to customers at checkout."
+        loading={loading}
+        chips={[
+          { label: "Zones", value: totalZones },
+          { label: "Branches covered", value: branchesCovered, tone: branchesCovered === branches.length && branches.length > 0 ? "good" : "warn" },
+        ]}
+      />
+
       {flash && (
         <div
           role="status"

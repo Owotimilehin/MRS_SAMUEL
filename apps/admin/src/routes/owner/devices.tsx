@@ -4,6 +4,7 @@ import { api } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface Device {
   device_id: string;
@@ -64,6 +65,13 @@ export function DevicesPage(): JSX.Element {
   const branchName = (id: string | null): string =>
     id ? branches.find((b) => b.id === id)?.name ?? id.slice(0, 8) : "—";
 
+  const online = devices.filter((d) => d.age_seconds < 300).length;
+  const offline = devices.filter((d) => d.age_seconds >= 1800).length;
+  const mostRecent = devices.reduce<Device | null>(
+    (best, d) => (!best || d.age_seconds < best.age_seconds ? d : best),
+    null,
+  );
+
   return (
     <Shell
       title="Devices"
@@ -73,6 +81,23 @@ export function DevicesPage(): JSX.Element {
         </button>
       }
     >
+      <StatHero
+        eyebrow="Admin"
+        title="Devices"
+        sub="Branch tablets and POS terminals reporting in."
+        loading={loading}
+        chips={[
+          { label: "Registered", value: devices.length },
+          { label: "Online", value: online, tone: online > 0 ? "good" : "warn" },
+          { label: "Offline", value: offline, tone: offline > 0 ? "danger" : "good" },
+          {
+            label: "Last seen",
+            value: mostRecent ? relativeAge(mostRecent.age_seconds) : "—",
+            tone: mostRecent && mostRecent.age_seconds < 300 ? "good" : "warn",
+          },
+        ]}
+      />
+
       <section className="card">
         
         {loading ? (

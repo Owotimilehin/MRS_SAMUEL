@@ -3,6 +3,7 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface Factory {
   id: string;
@@ -70,9 +71,25 @@ export function FactoriesPage(): JSX.Element {
 
   const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
 
+  const totalBottles = Object.values(balances).reduce(
+    (sum, stock) => sum + stock.reduce((s, r) => s + r.balance, 0),
+    0,
+  );
+  const withStock = Object.values(balances).filter((s) => s.some((r) => r.balance > 0)).length;
+
   return (
     <Shell title="Factories">
-      
+      <StatHero
+        eyebrow="Admin"
+        title="Factories"
+        sub="Production sites that supply stock to branches."
+        loading={loading}
+        chips={[
+          { label: "Factories", value: rows.length },
+          { label: "With stock", value: withStock, tone: withStock > 0 ? "good" : "warn" },
+          { label: "Bottles on hand", value: totalBottles.toLocaleString() },
+        ]}
+      />
 
       {loading ? (
         <InlineLoader />

@@ -14,6 +14,7 @@ import {
 } from "../../lib/audit-humanize.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { StatHero } from "../../components/StatHero.js";
 
 interface Facets {
   entity_types: string[];
@@ -118,6 +119,10 @@ export function AuditLogPage(): JSX.Element {
     setShowRaw(false);
   }
 
+  const loginCount = rows.filter((r) => r.action === "auth.login_success").length;
+  const writeCount = rows.filter((r) => r.action !== "auth.login_success").length;
+  const distinctActors = new Set(rows.map((r) => r.actorUserId).filter(Boolean)).size;
+
   return (
     <Shell
       title="Activity log"
@@ -127,7 +132,18 @@ export function AuditLogPage(): JSX.Element {
         </button>
       }
     >
-      
+      <StatHero
+        eyebrow="Admin"
+        title="Audit log"
+        sub="Every write, sign-in, and configuration change in this view."
+        loading={loading}
+        chips={[
+          { label: "Events", value: rows.length },
+          { label: "Writes", value: writeCount },
+          { label: "Sign-ins", value: loginCount },
+          { label: "Actors", value: distinctActors },
+        ]}
+      />
 
       <div
         className="card"
