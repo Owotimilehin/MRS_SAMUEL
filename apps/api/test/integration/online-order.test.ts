@@ -442,4 +442,26 @@ describe("Phase 3 customer-site online order flow", () => {
     const body = (await res.json()) as { data: { total_ngn: number } };
     expect(body.data.total_ngn).toBe(2500);
   });
+
+  it("quote: a branch with an address but no coords still returns live options", async () => {
+    // Regression: the quote endpoint used to hard-gate on pickup lat/lng, so a
+    // branch created without coordinates (the prod state) always fell back to
+    // ₦0 with "Live delivery pricing is unavailable" and never showed couriers.
+    // The active provider geocodes the address, so only the address is required.
+    const res = await fetch(`${baseUrl}/v1/public/orders/quote`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        branch_id: branchId,
+        dropoff_address: "15 Admiralty Way, Lekki Phase 1, Lagos",
+        delivery_state: "Lagos",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { provider: string; options: Array<{ id: string; fee_ngn: number }> };
+    };
+    expect(body.data.provider).not.toBe("fallback");
+    expect(body.data.options.length).toBeGreaterThan(0);
+  });
 });

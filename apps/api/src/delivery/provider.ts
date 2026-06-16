@@ -7,8 +7,14 @@
 
 export interface DeliveryQuoteInput {
   pickupAddress: string;
-  pickupLat: number;
-  pickupLng: number;
+  /**
+   * Pickup coordinates are optional: a branch may have only an address on file.
+   * Providers that geocode from address text (Shipbubble validates the address
+   * and uses an env-configured sender) ignore these; the mock falls back to an
+   * address-based distance estimate when they're null.
+   */
+  pickupLat: number | null;
+  pickupLng: number | null;
   dropoffAddress: string;
   dropoffLat?: number;
   dropoffLng?: number;

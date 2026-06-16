@@ -51,7 +51,10 @@ export class BoltMockProvider implements DeliveryProvider {
     // Force a small async hop so callers can model real latency.
     await new Promise((r) => setTimeout(r, 25));
     const distKm =
-      input.dropoffLat != null && input.dropoffLng != null
+      input.pickupLat != null &&
+      input.pickupLng != null &&
+      input.dropoffLat != null &&
+      input.dropoffLng != null
         ? haversineKm(input.pickupLat, input.pickupLng, input.dropoffLat, input.dropoffLng)
         : estimateKmFromAddress(input.dropoffAddress);
     const feeNgn = Math.round(BASE_FEE_NGN + PER_KM_NGN * distKm);

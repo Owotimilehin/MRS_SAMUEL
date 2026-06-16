@@ -131,8 +131,12 @@ export function publicOrderRoutes(db: DbClient) {
         },
       });
 
-    if (pickupLat == null || pickupLng == null || !b.address) {
-      // No pickup coords on file — cannot get live options. Delivery ₦0.
+    if (!b.address) {
+      // No pickup address on file — cannot get live options. Delivery ₦0.
+      // Coordinates are optional: the active provider (Shipbubble) geocodes the
+      // address and uses an env-configured sender, so a branch with only an
+      // address still gets live courier rates. (Older Bolt code required coords;
+      // that gate wrongly suppressed all quotes for coord-less branches.)
       return empty("Live delivery pricing is unavailable — no delivery charge applied.");
     }
 
