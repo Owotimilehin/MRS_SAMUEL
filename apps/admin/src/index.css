@@ -536,6 +536,15 @@ h1, h2, h3, h4,
 }
 .app-nav__icon { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }
 .app-nav__icon svg { width: 18px; height: 18px; }
+/* "Back to admin" mode-switch link in the branch shell — set apart from the
+ * POS pages with an accent tint and a divider beneath it. */
+.app-nav__back {
+  color: var(--accent);
+  font-weight: 700;
+  background: rgba(var(--accent-rgb), 0.07);
+  margin-bottom: 8px;
+}
+.app-nav__back:hover { background: rgba(var(--accent-rgb), 0.13); color: var(--accent); }
 .app-foot {
   margin-top: auto;
   padding-top: 16px;
@@ -632,6 +641,114 @@ h1, h2, h3, h4,
 .app-head__username { font-size: 12.5px; font-weight: 700; color: var(--ink); }
 .app-head__userrole { font-size: 10.5px; color: var(--ink-soft); text-transform: capitalize; }
 .app-body { padding: 24px 28px 48px; }
+
+/* Hamburger (mobile only) + drawer scrim — hidden on desktop. */
+.app-burger {
+  display: none;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--shell);
+  color: var(--ink);
+  cursor: pointer;
+}
+.app-burger:hover { background: var(--surface-soft); }
+.app-burger svg { width: 20px; height: 20px; }
+.app-scrim { display: none; }
+
+/* ── Responsive: per UI_SPEC Part 6.2 (admin shell) ─────────────────────
+ *  ≥1280  full side rail with labels (default rules above)
+ *  1024–1280  icon-only rail, labels appear on hover via native tooltip
+ *  <1024  rail hidden off-canvas; hamburger opens it as a drawer + scrim
+ */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .app-shell { grid-template-columns: 76px 1fr; }
+  .app-side { padding: 18px 8px; }
+  .app-brand { justify-content: center; padding: 4px 0; }
+  .app-brand > div:not(.app-brand__mark) { display: none; }
+  .app-nav__section { display: none; }
+  .app-nav__link { justify-content: center; gap: 0; padding: 11px 0; }
+  .app-nav__link > span:not(.app-nav__icon) { display: none; }
+  .app-foot { align-items: center; }
+  .app-foot__email { display: none; }
+  .app-foot__signout { font-size: 11px; }
+}
+
+@media (max-width: 1023px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .app-side {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 272px;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 0 0 48px rgba(10, 20, 15, 0.22);
+  }
+  .app-shell.nav-open .app-side { transform: none; }
+  .app-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(10, 20, 15, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .app-shell.nav-open .app-scrim { opacity: 1; pointer-events: auto; }
+  .app-burger { display: inline-flex; }
+  /* Let the header wrap so actions (date pickers, New-flavour, toggles) drop to
+     a second row instead of overlapping the page title. */
+  .app-head { padding: 10px 14px; gap: 10px 8px; flex-wrap: wrap; }
+  .app-head__titles { flex: 1 1 auto; min-width: 0; }
+  .app-head__search { display: none; }
+  .app-head__usermeta { display: none; }
+  .app-head__user { padding: 4px; }
+  .app-head__title { font-size: 19px; }
+  .app-body { padding: 16px 14px 40px; }
+}
+
+/* ── Responsive two-column layouts (replace inline grid-template so media
+   queries can stack them on small screens). ── */
+.l-split { display: grid; gap: 18px; }
+.l-split--dash { grid-template-columns: 1.4fr 1fr; }
+.l-split--detail { grid-template-columns: 1.4fr 1fr; }
+.l-split--pos { grid-template-columns: 1.7fr 1fr; }
+@media (max-width: 900px) {
+  .l-split--dash, .l-split--detail { grid-template-columns: 1fr; }
+}
+.pos-cart { position: sticky; top: 96px; align-self: start; }
+@media (max-width: 860px) {
+  .l-split--pos { grid-template-columns: 1fr; }
+  .pos-cart { position: static; }
+}
+
+/* Wide tables scroll sideways on small screens instead of clipping. */
+@media (max-width: 1023px) {
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* ── Heroes wrap + shed their bottle on small screens ── */
+@media (max-width: 768px) {
+  .juice-hero { flex-direction: column; align-items: flex-start; gap: 14px; padding: 22px 20px; }
+  .juice-hero::after { right: -40px; width: 200px; height: 200px; }
+  .juice-hero__bottle { display: none; }
+  .juice-hero__aside { margin-left: 0; flex-wrap: wrap; gap: 10px; }
+  .flav-hero { flex-direction: column; align-items: flex-start; gap: 16px; padding: 22px 20px; }
+  .flav-hero__media { align-self: center; }
+}
+@media (max-width: 420px) {
+  .hero-chip { min-width: 70px; padding: 10px 12px; }
+  .hero-chip b { font-size: 20px; }
+  .flav-grid { grid-template-columns: 1fr; }
+}
 
 /* Empty / loading states */
 .empty {
@@ -1381,3 +1498,216 @@ h1, h2, h3, h4,
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   JUICE SKIN — water-drop ambience, themed chrome, flavour media, primitives.
+   Additive layer placed last so it wins over the base rules above.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes js-floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes js-splash { 0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.8; } 50% { transform: scale(1.06) rotate(3deg); opacity: 1; } }
+@keyframes js-drip {
+  0%   { transform: translateY(0) rotate(180deg) scale(0.6); opacity: 0; }
+  8%   { opacity: 0.8; }
+  90%  { opacity: 0.55; }
+  100% { transform: translateY(108vh) rotate(180deg) scale(1); opacity: 0; }
+}
+@keyframes js-ripple { 0% { transform: scale(.6); opacity: .5; } 100% { transform: scale(1.4); opacity: 0; } }
+
+/* ── Ambient water field (rendered once by Shell, behind all content) ── */
+.app-shell { background: transparent; }
+.water-field { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.water-field__glow { position: absolute; border-radius: 50%; filter: blur(72px); opacity: 0.42; }
+.water-field__glow--1 { width: 440px; height: 440px; left: -130px; top: -120px; background: radial-gradient(circle, rgba(246,181,69,0.5), transparent 70%); }
+.water-field__glow--2 { width: 520px; height: 520px; right: -170px; top: 130px; background: radial-gradient(circle, rgba(232,93,28,0.34), transparent 70%); }
+.water-field__glow--3 { width: 600px; height: 600px; left: 32%; bottom: -280px; background: radial-gradient(circle, rgba(31,122,68,0.26), transparent 70%); }
+.water-field__drop {
+  position: absolute; top: -40px;
+  width: var(--s, 14px); height: calc(var(--s, 14px) * 1.3);
+  background: radial-gradient(circle at 35% 25%, rgba(255,255,255,0.9), rgba(232,93,28,0.22) 60%, rgba(14,63,31,0.16));
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  transform: rotate(180deg); opacity: 0;
+  animation: js-drip var(--d, 9s) linear var(--delay, 0s) infinite;
+}
+/* Keep the sidebar's base `position: sticky` (do NOT override to relative — that
+   un-pins it). Only raise stacking so both sit above the water-field. */
+.app-main { position: relative; z-index: 1; }
+.app-side { z-index: 2; }
+
+/* ── Themed sidebar: deep-green gradient + droplet texture + splash ── */
+.app-side {
+  background: linear-gradient(155deg, #0f4a25 0%, #1f7a44 100%);
+  border-right: 0;
+  color: #eaf6ee;
+  overflow: hidden;
+}
+.app-side::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.8;
+  background-image:
+    radial-gradient(circle at 20% 18%, rgba(255,255,255,0.10) 0 2px, transparent 3px),
+    radial-gradient(circle at 70% 40%, rgba(255,255,255,0.07) 0 3px, transparent 4px),
+    radial-gradient(circle at 40% 80%, rgba(255,255,255,0.06) 0 2px, transparent 3px);
+  background-size: 140px 140px, 180px 180px, 120px 120px;
+}
+.app-side::after {
+  content: ""; position: absolute; right: -60px; bottom: -40px; width: 220px; height: 220px;
+  background: url("/flavours/decor/splash-green.png") center/contain no-repeat;
+  opacity: 0.2; pointer-events: none;
+}
+.app-side > * { position: relative; z-index: 1; }
+.app-brand__mark img { filter: none; }            /* white-on-transparent logo now on green */
+.app-brand__name { color: #f3fbf4; }
+.app-brand__role { color: rgba(243,251,244,0.7); }
+.app-nav__section { color: rgba(243,251,244,0.55); }
+.app-nav__link { color: #d6ebdd; }
+.app-nav__link:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.app-nav__link.is-active { background: rgba(255,255,255,0.16); color: #fff; }
+.app-nav__link.is-active::before { background: var(--gold, #f6b545); width: 3px; height: 20px; left: 0; }
+.app-foot { border-top-color: rgba(255,255,255,0.14); }
+.app-foot__email { color: rgba(243,251,244,0.8); }
+.app-foot__signout { color: #eaf6ee; }
+.app-foot__signout:hover { color: #fff; }
+.app-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); }
+.app-nav { scrollbar-color: rgba(255,255,255,0.18) transparent; }
+
+/* ── Frosted header with a hairline drip accent ── */
+.app-head {
+  background: rgba(255,255,255,0.72);
+  backdrop-filter: saturate(1.1) blur(14px);
+  -webkit-backdrop-filter: saturate(1.1) blur(14px);
+}
+
+/* ── Primary button: green liquid sheen + interaction states ── */
+.btn--primary { position: relative; overflow: hidden; }
+.btn--primary::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 52%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.24), transparent);
+  border-radius: 999px 999px 40% 40% / 999px 999px 100% 100%;
+  pointer-events: none;
+}
+.btn--primary:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(35,133,76,0.38), var(--shadow-cta); }
+/* Big terminal CTA (e.g. POS "Take payment") — same green language, larger. */
+.btn--cta {
+  width: 100%; height: 54px; border-radius: 16px; font-size: 16px; letter-spacing: 0.02em;
+}
+/* "+" chip inside a primary button */
+.btn__plus {
+  display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(255,255,255,0.18); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22);
+}
+.btn__plus svg { width: 13px; height: 13px; }
+
+/* ── Juice hero band ── */
+.juice-hero {
+  position: relative; overflow: hidden; border-radius: 26px; padding: 28px 32px; margin-bottom: 24px;
+  background: linear-gradient(120deg, #103f21 0%, #1c6e3e 60%, #2c8a4e 100%);
+  color: #f3fbf4; box-shadow: var(--shadow-float);
+  display: flex; align-items: center; gap: 20px;
+}
+.juice-hero::after {
+  content: ""; position: absolute; right: 8%; top: -30px; width: 280px; height: 280px;
+  background: url("/flavours/decor/splash-orange.png") center/contain no-repeat;
+  opacity: 0.4; animation: js-splash 9s ease-in-out infinite; pointer-events: none;
+}
+.juice-hero__body { position: relative; z-index: 1; }
+.juice-hero__eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold, #f6b545); font-weight: 700; }
+.juice-hero__title { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: clamp(28px, 3vw, 40px); line-height: 1.08; margin: 8px 0 6px; color: #fff; }
+.juice-hero__sub { margin: 0; max-width: 480px; color: rgba(243,251,244,0.82); font-size: 14.5px; line-height: 1.5; }
+.juice-hero__aside { position: relative; z-index: 1; margin-left: auto; display: flex; gap: 14px; }
+.juice-hero__bottle { position: relative; z-index: 1; margin-left: auto; filter: drop-shadow(0 26px 30px rgba(0,0,0,0.4)); animation: js-floaty 6s ease-in-out infinite; }
+
+/* Mini metric chips for hero aside */
+.hero-chip { background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.16); border-radius: 16px; padding: 12px 16px; text-align: center; min-width: 86px; }
+.hero-chip b { font-family: "Fraunces", serif; font-size: 24px; display: block; line-height: 1; color: #fff; }
+.hero-chip span { font-size: 11px; opacity: 0.82; letter-spacing: 0.04em; }
+/* StatHero chip tones — value + border tint by status (--chip-c set inline). */
+.hero-chip--danger { border-color: rgba(255,107,107,0.55); background: rgba(255,107,107,0.14); }
+.hero-chip--warn   { border-color: rgba(246,181,69,0.55);  background: rgba(246,181,69,0.14); }
+.hero-chip--good   { border-color: rgba(126,224,166,0.5);  background: rgba(126,224,166,0.13); }
+.hero-chip--danger b, .hero-chip--warn b, .hero-chip--good b { color: var(--chip-c, #fff); }
+.hero-chip.is-loading b { opacity: 0.4; animation: js-pulse 1.2s ease-in-out infinite; }
+@keyframes js-pulse { 0%,100% { opacity: 0.3; } 50% { opacity: 0.65; } }
+
+/* ── Glass + droplet stat cards (extends .stat-card) ── */
+.glass-card {
+  background: rgba(255,255,255,0.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+}
+.stat-card { position: relative; overflow: hidden; background: rgba(255,255,255,0.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: var(--shadow-card); }
+.stat-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c, var(--accent)); }
+.stat-card::after {
+  content: ""; position: absolute; right: -14px; top: -14px; width: 64px; height: 80px; opacity: 0.12;
+  background: radial-gradient(circle at 35% 25%, var(--c, var(--accent)), transparent 70%);
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+.stat-card__value { font-family: "Fraunces", Georgia, serif; font-weight: 600; }
+
+/* ── Flavour media (bottle on palette) — see FlavourMedia.tsx ── */
+.flav-media {
+  position: relative; flex: none; display: grid; place-items: center; overflow: hidden;
+  background: var(--fl-surface, #fdecd2);
+}
+.flav-media::after { /* contact shadow under the bottle */
+  content: ""; position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%);
+  width: 46%; height: 9px; background: rgba(0,0,0,0.15); border-radius: 50%; filter: blur(3px);
+}
+.flav-media--chip::after { display: none; }
+.flav-media__splash { position: absolute; width: 78%; opacity: 0.45; animation: js-splash 8s ease-in-out infinite; pointer-events: none; }
+.flav-media__bottle { position: relative; z-index: 1; filter: drop-shadow(0 12px 12px rgba(0,0,0,0.2)); animation: js-floaty 5.5s ease-in-out infinite; }
+.flav-media__fruit { position: absolute; right: 8%; top: 8%; z-index: 2; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.28)); }
+.flav-media__silhouette {
+  position: relative; z-index: 1; width: 38%;
+  background: linear-gradient(160deg, var(--fl-accent, #8aa88f), color-mix(in srgb, var(--fl-accent, #8aa88f) 65%, #000));
+  border-radius: 44% 44% 18% 18% / 30% 30% 10% 10%; opacity: 0.85; box-shadow: 0 14px 14px -10px rgba(0,0,0,0.3);
+}
+
+/* Category accent tag used on flavour cards/tiles */
+.flav-tag { display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; background: var(--fl-accent, var(--accent)); color: #fff; }
+
+/* ── Product flavour cards (Products page) ── */
+.flav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(264px, 1fr)); gap: 18px; }
+.flav-card {
+  position: relative; overflow: hidden; border-radius: var(--radius-card);
+  border: 1px solid var(--line); background: rgba(255,255,255,0.86);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-card); transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.flav-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-float); }
+.flav-card__cat { position: absolute; top: 12px; right: 12px; z-index: 4; box-shadow: 0 4px 10px -3px rgba(0,0,0,0.4); }
+.flav-card__body { padding: 16px 18px 18px; }
+.flav-card__name { font-family: "Fraunces", Georgia, serif; font-size: 20px; font-weight: 600; line-height: 1.1; color: var(--brand); }
+.flav-card__slug { font-size: 12px; color: var(--ink-soft); margin: 2px 0 10px; }
+.flav-card__ingr { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; min-height: 38px; }
+.flav-card__sizes { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.flav-size { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; }
+.flav-size__ml { color: var(--ink-soft); }
+.flav-size__pr { font-weight: 700; font-variant-numeric: tabular-nums; }
+.flav-size__pr--none { color: var(--danger-ink); font-weight: 700; font-size: 12px; }
+.flav-card__actions { display: flex; gap: 8px; margin-top: 14px; }
+.flav-card__actions > * { flex: 1; }
+
+/* ── Flavour detail hero (palette-tinted, bottle on the left) ── */
+.flav-hero {
+  position: relative; overflow: hidden; border-radius: 26px; padding: 24px 30px; margin-bottom: 18px;
+  display: flex; align-items: center; gap: 26px;
+  background: linear-gradient(120deg, var(--fl-surface, #fdecd2) 0%, #fffaf2 86%);
+  border: 1px solid var(--line); box-shadow: var(--shadow-card);
+}
+.flav-hero__media { flex: none; }
+.flav-hero__meta { min-width: 0; }
+.flav-hero__name { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: clamp(26px, 3vw, 38px); line-height: 1.06; color: var(--brand); margin: 8px 0 6px; }
+.flav-hero__tagline { color: var(--ink-soft); font-size: 15px; max-width: 52ch; margin: 0; line-height: 1.5; }
+.flav-hero__slug { font-family: monospace; font-size: 12px; color: var(--ink-soft); margin-top: 8px; }
+
+/* ── Global page-head polish: a droplet-accented eyebrow on every plain header
+   (pages not yet upgraded to a full .juice-hero still feel themed). ── */
+.page-head__eyebrow { color: var(--accent); position: relative; padding-left: 17px; }
+.page-head__eyebrow::before {
+  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 9px; height: 11px;
+  background: radial-gradient(circle at 35% 25%, var(--accent-2), var(--accent));
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+.page-head__title { position: relative; }
+
+:root { --gold: #f6b545; }
