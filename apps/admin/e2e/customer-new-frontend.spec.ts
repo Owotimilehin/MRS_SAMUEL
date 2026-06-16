@@ -112,7 +112,7 @@ test.describe("Customer storefront — CTA flows", () => {
     await expect(placeBtn).toBeEnabled({ timeout: 15_000 });
     await placeBtn.click();
 
-    // Mock OPay loops back to the order page (or any non-checkout URL). Either we
+    // Mock Payaza loops back to the order page (or any non-checkout URL). Either we
     // navigate away from /checkout, or a structured error appears in the summary.
     await page.waitForFunction(
       () => !location.pathname.endsWith("/checkout") || !!document.body.textContent?.match(/try again/i),

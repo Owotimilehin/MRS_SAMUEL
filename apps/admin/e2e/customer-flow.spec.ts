@@ -215,7 +215,7 @@ test.describe("Customer site — feature sweep", () => {
     const payBtn = page.getByRole("button", { name: /Pay /i });
     await expect(payBtn).toBeEnabled({ timeout: 10_000 });
 
-    // Capture the order body before the page navigates away to OPay.
+    // Capture the order body before the page navigates away to Payaza.
     let orderBody: { data: { order_number: string; total_ngn: number } } | null = null;
     page.on("response", async (r) => {
       if (

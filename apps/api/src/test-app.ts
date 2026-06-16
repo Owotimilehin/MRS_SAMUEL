@@ -27,7 +27,7 @@ import { publicCatalogRoutes } from "./routes/public-catalog.js";
 import { publicOrderRoutes } from "./routes/public-orders.js";
 import { publicCartRoutes } from "./routes/public-cart.js";
 import { publicInstagramRoutes } from "./routes/public-instagram.js";
-import { opayWebhookRoutes } from "./routes/webhooks-opay.js";
+import { payazaWebhookRoutes } from "./routes/webhooks-payaza.js";
 import { returnRoutes } from "./routes/returns.js";
 import { dailyCloseRoutes } from "./routes/daily-close.js";
 import { reportRoutes } from "./routes/reports.js";
@@ -63,7 +63,7 @@ export function buildApp(): Hono {
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'", "https://liveapi.opaycheckout.com"],
+        connectSrc: ["'self'", "https://api.payaza.africa"],
         frameAncestors: ["'none'"],
       },
       xFrameOptions: "DENY",
@@ -115,7 +115,7 @@ export function buildApp(): Hono {
   app.route("/v1/public/contact", publicContactRoutes(db));
   app.route("/v1/public/subscriptions", publicSubscriptionRoutes(db));
   app.route("/v1/public/telemetry", telemetryRoutes(db));
-  app.route("/v1/webhooks/opay", opayWebhookRoutes(db));
+  app.route("/v1/webhooks/payaza", payazaWebhookRoutes(db));
   app.route("/v1/webhooks/bolt", boltWebhookRoutes(db));
   app.route("/v1/webhooks/shipbubble", shipbubbleWebhookRoutes(db));
 

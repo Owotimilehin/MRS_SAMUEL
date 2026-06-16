@@ -9,43 +9,52 @@ import {
   outboxEvent,
   type DbClient,
 } from "@ms/db";
-import { queryOpayOrder } from "../payments/opay.js";
+import { verifyPayazaTransaction, verifyPayazaSignature, isPayazaSuccess } from "../payments/payaza.js";
 import { isOutsideLagos } from "@ms/shared";
 
 /**
- * OPay webhook receiver. The callback is treated as a wake-up only — we don't
- * trust its body for the money decision. On every callback we re-read the
- * order from OPay (queryOpayOrder) and only flip the order to paid when OPay
- * itself reports SUCCESS. Idempotent: replaying a callback for an already-paid
- * order is a no-op.
+ * Payaza webhook receiver. The callback is signature-verified (HMAC-SHA512,
+ * x-payaza-signature) and then treated as a wake-up only — we don't trust its
+ * body for the money decision. On every callback we re-read the transaction
+ * from Payaza (verifyPayazaTransaction) and only flip the order to paid when
+ * Payaza itself reports success. Idempotent: replaying a callback for an
+ * already-paid order is a no-op.
  *
- * Dev mode: when OPay creds are unset, queryOpayOrder returns a mock SUCCESS
- * so the mock checkout URL can simulate completion.
+ * Dev mode: when Payaza creds are unset, the signature check is skipped and
+ * verifyPayazaTransaction returns a mock success so the mock checkout URL can
+ * simulate completion.
  */
-export function opayWebhookRoutes(db: DbClient) {
+export function payazaWebhookRoutes(db: DbClient) {
   const r = new Hono();
 
   r.post("/", async (c) => {
     const raw = await c.req.raw.clone().text();
+    const signature = c.req.header("x-payaza-signature") ?? null;
+    if (!verifyPayazaSignature(raw, signature)) {
+      // Bad signature — ack quietly so Payaza stops retrying, but do nothing.
+      return c.json({ ok: true });
+    }
+
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
       return c.json({ ok: true });
     }
-    // OPay nests the order under `payload`; accept a couple of shapes
-    // defensively since the exact envelope varies by product.
+    // Payaza nests the transaction under a couple of shapes depending on the
+    // event envelope; accept the common ones defensively.
     const p = parsed as {
-      payload?: { reference?: string };
-      data?: { reference?: string };
+      data?: { transaction_reference?: string; reference?: string };
+      transaction_reference?: string;
       reference?: string;
     };
-    const reference = p.payload?.reference ?? p.data?.reference ?? p.reference;
+    const reference =
+      p.data?.transaction_reference ?? p.data?.reference ?? p.transaction_reference ?? p.reference;
     if (!reference || typeof reference !== "string") return c.json({ ok: true });
 
     // Authoritative confirmation — never trust the callback body for money.
-    const confirmed = await queryOpayOrder(reference);
-    if (confirmed.status !== "SUCCESS") return c.json({ ok: true });
+    const confirmed = await verifyPayazaTransaction(reference);
+    if (!isPayazaSuccess(confirmed.status)) return c.json({ ok: true });
 
     await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.orderNumber, reference));
@@ -68,7 +77,7 @@ export function opayWebhookRoutes(db: DbClient) {
             order_number: o.orderNumber,
             expected_ngn: o.totalNgn,
             reported_ngn: confirmed.amountNgn,
-            opay_reference: confirmed.orderNo ?? null,
+            payaza_reference: confirmed.processorReference ?? null,
           },
         });
         return;
@@ -100,8 +109,8 @@ export function opayWebhookRoutes(db: DbClient) {
         method: "card",
         amountNgn: o.totalNgn,
         status: "paid",
-        processor: "opay",
-        processorReference: confirmed.orderNo ?? null,
+        processor: "payaza",
+        processorReference: confirmed.processorReference ?? null,
         paidAt: new Date(),
       });
       await tx
@@ -125,8 +134,8 @@ export function opayWebhookRoutes(db: DbClient) {
         },
       });
       // Bypass: preorders (not made yet), scheduled (future), OR outside-Lagos
-      // orders skip automated Bolt dispatch entirely; they're fulfilled out of
-      // band. Only immediate, in-Lagos, in-stock orders request a ride now.
+      // orders skip automated delivery dispatch entirely; they're fulfilled out
+      // of band. Only immediate, in-Lagos, in-stock orders request a ride now.
       const outsideLagos = isOutsideLagos(o.deliveryState);
       const bypass = o.isPreorder || o.scheduledDeliveryAt != null || outsideLagos;
       if (!bypass) {

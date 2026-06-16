@@ -16,7 +16,7 @@ export const Route = createFileRoute("/checkout")({
   head: () => ({
     meta: [
       { title: "Checkout — Mrs. Samuel Fruit Juice" },
-      { name: "description", content: "Complete your Mrs. Samuel juice order. Lagos delivery now or scheduled; nationwide arranged separately. Pay securely with OPay." },
+      { name: "description", content: "Complete your Mrs. Samuel juice order. Lagos delivery now or scheduled; nationwide arranged separately. Pay securely with Payaza." },
     ],
   }),
   loader: async () => ({ branches: await fetchBranches() }),
@@ -143,7 +143,7 @@ function Page() {
           idempotency_key: idemRef.current,
         },
       });
-      // Stash phone so the tracking page can read the order back after OPay.
+      // Stash phone so the tracking page can read the order back after Payaza.
       try {
         localStorage.setItem(`ms_track_${res.order_number}`, JSON.stringify({ phone }));
       } catch {
@@ -344,7 +344,7 @@ function Page() {
               >
                 {placing ? (<><Loader2 className="h-4 w-4 animate-spin" /> Redirecting to payment…</>) : (<>Place order — {formatNaira(total)}</>)}
               </button>
-              <p className="mt-2 text-center text-[11px] text-white/50">You'll pay securely via OPay.</p>
+              <p className="mt-2 text-center text-[11px] text-white/50">You'll pay securely via Payaza.</p>
             </aside>
           </div>
         )}

@@ -9,7 +9,7 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
  * Customer-site happy path:
  *   1. Public menu returns seeded products + a zone for our branch
  *   2. Anonymous customer creates an order (zone valid, stock available)
- *   3. OPay callback (queryorder mock-confirms in test mode) marks paid
+ *   3. Payaza callback (verify mock-confirms in test mode) marks paid
  *   4. Branch ledger decrements; tracking endpoint shows paid status
  */
 describe("Phase 3 customer-site online order flow", () => {
@@ -179,14 +179,14 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(orderBody.data.total_ngn).toBe(2500 * 3);
     expect(orderBody.data.payment.authorization_url).toContain("paid=1");
 
-    // Simulate the OPay callback landing (mock queryorder confirms in dev)
-    const webhook = await fetch(`${baseUrl}/v1/webhooks/opay`, {
+    // Simulate the Payaza callback landing (mock verify confirms in dev)
+    const webhook = await fetch(`${baseUrl}/v1/webhooks/payaza`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        payload: {
-          reference: orderBody.data.order_number,
-          status: "SUCCESS",
+        data: {
+          transaction_reference: orderBody.data.order_number,
+          status: "SUCCESSFUL",
         },
       }),
     });
@@ -367,13 +367,13 @@ describe("Phase 3 customer-site online order flow", () => {
       }),
     });
     const ob = (await orderRes.json()) as { data: { order_number: string; total_ngn: number } };
-    await fetch(`${baseUrl}/v1/webhooks/opay`, {
+    await fetch(`${baseUrl}/v1/webhooks/payaza`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        payload: {
-          reference: ob.data.order_number,
-          status: "SUCCESS",
+        data: {
+          transaction_reference: ob.data.order_number,
+          status: "SUCCESSFUL",
         },
       }),
     });

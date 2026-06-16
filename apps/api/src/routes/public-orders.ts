@@ -16,7 +16,7 @@ import { availableAtBranch, nextOrderNumber } from "@ms/domain";
 import { normalizeNigerianPhone, phonesMatch, isOutsideLagos } from "@ms/shared";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { BusinessError } from "../lib/errors.js";
-import { createOpaySession } from "../payments/opay.js";
+import { createPayazaSession } from "../payments/payaza.js";
 import { resolveCustomer } from "../lib/customers.js";
 import { getDeliveryProvider } from "../delivery/index.js";
 import { storeOptionSet, loadOptionSet } from "../delivery/quote-store.js";
@@ -205,7 +205,7 @@ export function publicOrderRoutes(db: DbClient) {
 
   /**
    * Create an online order — anonymous (no session). Reserves stock, returns
-   * the new order id + an OPay checkout URL. If the device drops out before
+   * the new order id + a Payaza checkout URL. If the device drops out before
    * paying, the reservation expires and the bottles return to inventory.
    */
   r.post("/", async (c) => {
@@ -479,7 +479,7 @@ export function publicOrderRoutes(db: DbClient) {
       return { order: o, customerEmail: body.customer.email ?? null };
     });
 
-    // Initiate the OPay Cashier session (or mock URL in dev). PUBLIC_CUSTOMER_URL
+    // Initiate the Payaza checkout session (or mock URL in dev). PUBLIC_CUSTOMER_URL
     // wins when set; the admin→www substitution is a legacy fallback for prod
     // where customer + admin share a domain root.
     // The order owns the cart contents now — empty the cart so a refresh
@@ -488,15 +488,15 @@ export function publicOrderRoutes(db: DbClient) {
 
     const customerBase =
       env.PUBLIC_CUSTOMER_URL ?? env.PUBLIC_ADMIN_URL.replace("admin.", "www.");
-    // returnUrl = where OPay sends the customer's browser back to; callbackUrl =
+    // returnUrl = where Payaza sends the customer's browser back to; callbackUrl =
     // the server-to-server webhook that actually confirms payment.
     const returnUrl = `${customerBase}/order/${created.order.orderNumber}?paid=1`;
-    const session = await createOpaySession({
+    const session = await createPayazaSession({
       amountNgn: created.order.totalNgn,
       email: created.customerEmail ?? "no-email@example.com",
       reference: created.order.orderNumber,
       returnUrl,
-      callbackUrl: `${env.PUBLIC_API_URL}/v1/webhooks/opay`,
+      callbackUrl: `${env.PUBLIC_API_URL}/v1/webhooks/payaza`,
       productName: `Mrs. Samuel order ${created.order.orderNumber}`,
     });
 

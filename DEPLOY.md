@@ -67,8 +67,8 @@ in 30 seconds.
 
 In each provider's dashboard:
 
-- **OPay** → callback URL: `https://api.mrssamueljuice.com/v1/webhooks/opay`
-- **Bolt Send** → webhook URL: `https://api.mrssamueljuice.com/v1/webhooks/bolt`
+- **Payaza** → webhook URL: `https://api.mrssamuel.com/v1/webhooks/payaza` (Settings → API Keys & Webhooks)
+- **Shipbubble** → webhook URL: `https://api.mrssamuel.com/v1/webhooks/shipbubble`
 
 The webhook secrets in `.env` must match what each dashboard shows.
 

@@ -63,12 +63,12 @@ services:
       # session cookies to drop the Secure flag so the browser actually sends
       # them back. Production behind Cloudflare Tunnel = HTTPS, leave unset.
       COOKIE_INSECURE: ${COOKIE_INSECURE:-0}
-      # Payments — OPay Cashier. Empty keys = mock mode (auto-success checkout).
-      OPAY_MERCHANT_ID: ${OPAY_MERCHANT_ID:-}
-      OPAY_PUBLIC_KEY: ${OPAY_PUBLIC_KEY:-}
-      OPAY_PRIVATE_KEY: ${OPAY_PRIVATE_KEY:-}
-      OPAY_API_BASE: ${OPAY_API_BASE:-}
-      OPAY_SIGN_ALG: ${OPAY_SIGN_ALG:-}
+      # Payments — Payaza collection. Empty PAYAZA_SECRET_KEY = mock mode.
+      PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}
+      PAYAZA_PUBLIC_KEY: ${PAYAZA_PUBLIC_KEY:-}
+      PAYAZA_WEBHOOK_SECRET: ${PAYAZA_WEBHOOK_SECRET:-}
+      PAYAZA_API_BASE: ${PAYAZA_API_BASE:-}
+      PAYAZA_AUTH_SCHEME: ${PAYAZA_AUTH_SCHEME:-}
       TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
       # Delivery — Shipbubble (active) or Bolt (legacy mock fallback).
       DELIVERY_PROVIDER: ${DELIVERY_PROVIDER:-bolt}
@@ -139,11 +139,10 @@ services:
       BOLT_API_KEY: ${BOLT_API_KEY:-}
       BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET:-}
       BOLT_MOCK_WEBHOOK_URL: ${BOLT_MOCK_WEBHOOK_URL:-}
-      # Refunds — OPay. Empty = mock refund reference.
-      OPAY_MERCHANT_ID: ${OPAY_MERCHANT_ID:-}
-      OPAY_PRIVATE_KEY: ${OPAY_PRIVATE_KEY:-}
-      OPAY_API_BASE: ${OPAY_API_BASE:-}
-      OPAY_SIGN_ALG: ${OPAY_SIGN_ALG:-}
+      # Refunds — Payaza. Empty = mock refund reference.
+      PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}
+      PAYAZA_API_BASE: ${PAYAZA_API_BASE:-}
+      PAYAZA_AUTH_SCHEME: ${PAYAZA_AUTH_SCHEME:-}
       # Image processing (Cloudflare R2).
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
@@ -185,7 +184,7 @@ services:
       # Used by the SSR app's server functions to reach the API. This is the
       # in-network service address and is deliberately NOT derived from the
       # host's PUBLIC_API_URL: that var is overloaded (the api service uses it
-      # for outbound OPay callback URLs, which must be the *public* host URL).
+      # for outbound Payaza callback URLs, which must be the *public* host URL).
       # The customer container always reaches the api over the compose network,
       # where it is `http://api:3001` in both dev and prod.
       PUBLIC_API_URL: http://api:3001
