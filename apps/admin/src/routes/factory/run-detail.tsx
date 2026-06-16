@@ -1,6 +1,8 @@
 ﻿import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
+import type { StatChip } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { formatDate, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -88,6 +90,24 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
 
   const totalBottles = run?.items.reduce((sum, it) => sum + it.quantityProduced, 0) ?? 0;
 
+  // Chips: guard against null run while loading; "Planned" omitted (no planned
+  // quantity field on RunDetail). Yield % guarded against div-by-zero — dropped
+  // when no planned qty is available. Tone for status varies by value.
+  const runDetailChips: StatChip[] = [];
+  runDetailChips.push({ label: "Bottles produced", value: totalBottles ?? 0 });
+  runDetailChips.push({ label: "Line items", value: run?.items.length ?? 0 });
+  if (run) {
+    const statusTone =
+      run.status === "completed"
+        ? "good" as const
+        : run.status === "cancelled"
+        ? "danger" as const
+        : "warn" as const;
+    runDetailChips.push({ label: "Status", value: run.status, tone: statusTone });
+  } else {
+    runDetailChips.push({ label: "Status", value: "—" });
+  }
+
   return (
     <Shell
       title={run ? `Run · ${formatDate(run.runDate)}` : "Production run"}
@@ -97,8 +117,13 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
         </Link>
       }
     >
-      
-      
+      <StatHero
+        eyebrow="Factory"
+        title={run ? `Run · ${formatDate(run.runDate)}` : "Production run"}
+        sub="Per-run breakdown of bottles produced and line items."
+        loading={loading}
+        chips={runDetailChips}
+      />
 
       {loading || !run ? (
         <InlineLoader />

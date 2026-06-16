@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
+import type { StatChip } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -57,9 +59,27 @@ export function FactoryInventoryPage(): JSX.Element {
       : a.category.localeCompare(b.category),
   );
 
+  // Chips: derive from already-loaded data only (no new API calls).
+  // "Low" threshold not present in the loaded interface — chip omitted.
+  const totalProducts = products.length;
+  const totalOnHand = Object.values(stock).reduce(
+    (sum, factoryMap) => sum + Object.values(factoryMap).reduce((s, n) => s + n, 0),
+    0,
+  );
+  const inventoryChips: StatChip[] = [
+    { label: "Products", value: totalProducts ?? 0 },
+    { label: "On hand (bottles)", value: totalOnHand ?? 0 },
+  ];
+
   return (
     <Shell title="Factory inventory">
-      
+      <StatHero
+        eyebrow="Factory"
+        title="Inventory"
+        sub="Finished-goods balances across all factory locations."
+        loading={loading}
+        chips={inventoryChips}
+      />
 
       {loading ? (
         <InlineLoader />

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
+import type { StatChip } from "../../components/StatHero.js";
 import { Stat } from "../../components/Stat.js";
 import { api } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
@@ -263,8 +265,28 @@ export function ProductionRunsPage(): JSX.Element {
   const remainingL = totalL - bottledL;
   const overAllocated = totalL > 0 && remainingL < -1e-9;
 
+  // Chips derived from already-loaded data only (no new API calls).
+  // Status values on Run are "draft" | "completed" — no "in-progress" or "planned".
+  // "Yield %" dropped: no planned quantity available.
+  // "Active runs" = draft runs in history; "Total runs" = history length.
+  const draftRuns = history.filter((h) => h.status === "draft").length;
+  const completedRuns = history.filter((h) => h.status === "completed").length;
+  const productionRunChips: StatChip[] = [
+    { label: "Draft runs", value: draftRuns ?? 0 },
+    { label: "Completed runs", value: completedRuns ?? 0 },
+    { label: "Produced today", value: producedToday ?? 0 },
+    { label: "Total runs", value: history.length ?? 0 },
+  ];
+
   return (
     <Shell title="Production runs">
+      <StatHero
+        eyebrow="Factory"
+        title="Production runs"
+        sub="Track daily runs, bottle output, and run history for each factory."
+        loading={loading}
+        chips={productionRunChips}
+      />
       <section className="card" style={{ marginBottom: 18 }}>
         <div className="card__head">
           <h2 className="t-h2">Bottle stock{selectedFactoryName ? ` — ${selectedFactoryName}` : ""}</h2>
@@ -421,60 +443,44 @@ export function ProductionRunsPage(): JSX.Element {
                       </div>
                     </div>
 
-                    <label className="field__label" style={{ display: "block", marginBottom: 4 }}>Divide into bottles</label>
                     {draftVariants.length === 0 ? (
                       <div className="empty" style={{ padding: 14 }}>This flavour has no sizes yet.</div>
                     ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {draftVariants.map((v) => {
-                          const count = Number(draft.counts[v.id] ?? 0);
-                          const litres = ((v.size_ml ?? 0) * count) / 1000;
-                          return (
-                            <div key={v.id} style={{ display: "grid", gridTemplateColumns: "90px 110px 1fr", gap: 10, alignItems: "center" }}>
-                              <span style={{ fontWeight: 600, fontSize: 13 }}>{v.size_ml ? `${v.size_ml}ml` : (v.sku ?? "—")}</span>
-                              <input
-                                className="input" type="number" min={0}
-                                value={draft.counts[v.id] ?? ""}
-                                placeholder="0"
-                                style={{ textAlign: "right", height: 34 }}
-                                onChange={(e) =>
-                                  setDraft((d) => ({ ...d, counts: { ...d.counts, [v.id]: Math.max(0, Number(e.target.value) || 0) } }))
-                                }
-                              />
-                              <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>{count > 0 ? `= ${litres.toFixed(2)} L` : ""}</span>
-                            </div>
-                          );
-                        })}
+                      // Single-line strip: "Divide into bottles" + a per-size input
+                      // each, the bottled-vs-total tally, and the add button.
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                        <span className="field__label" style={{ whiteSpace: "nowrap" }}>Divide into bottles</span>
+                        {draftVariants.map((v) => (
+                          <label key={v.id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: "nowrap" }}>
+                              {v.size_ml ? `${v.size_ml}ml` : (v.sku ?? "—")}
+                            </span>
+                            <input
+                              className="input" type="number" min={0}
+                              value={draft.counts[v.id] ?? ""}
+                              placeholder="0"
+                              style={{ textAlign: "right", height: 34, width: 72 }}
+                              onChange={(e) =>
+                                setDraft((d) => ({ ...d, counts: { ...d.counts, [v.id]: Math.max(0, Number(e.target.value) || 0) } }))
+                              }
+                            />
+                          </label>
+                        ))}
+                        <span style={{ fontSize: 13, color: overAllocated ? "var(--danger)" : "var(--ink-soft)", whiteSpace: "nowrap" }}>
+                          Bottled <strong style={{ color: overAllocated ? "var(--danger)" : "var(--ink)" }}>{bottledL.toFixed(2)} L</strong>
+                          {totalL > 0 ? ` / ${totalL.toFixed(2)} L` : ""}
+                          {totalL > 0 && (overAllocated ? ` · ${Math.abs(remainingL).toFixed(2)} L over` : ` · ${remainingL.toFixed(2)} L left`)}
+                        </span>
+                        <button
+                          className="btn btn--subtle btn--sm"
+                          style={{ marginLeft: "auto" }}
+                          disabled={busy || !draft.productId || bottledMl <= 0 || overAllocated}
+                          onClick={() => void appendAllocation()}
+                        >
+                          {busy ? "…" : overAllocated ? "Over the produced total" : "+ Add to run"}
+                        </button>
                       </div>
                     )}
-
-                    {/* Volume reconciliation: how much of the produced total is bottled. */}
-                    <div
-                      style={{
-                        display: "flex", justifyContent: "space-between", alignItems: "baseline",
-                        marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--line)",
-                        fontSize: 13,
-                        color: overAllocated ? "var(--danger)" : "var(--ink)",
-                      }}
-                    >
-                      <span>Bottled <strong>{bottledL.toFixed(2)} L</strong>{totalL > 0 ? ` of ${totalL.toFixed(2)} L` : ""}</span>
-                      <span style={{ fontWeight: 600 }}>
-                        {totalL <= 0
-                          ? ""
-                          : overAllocated
-                            ? `${Math.abs(remainingL).toFixed(2)} L over`
-                            : `${remainingL.toFixed(2)} L left`}
-                      </span>
-                    </div>
-
-                    <button
-                      className="btn btn--subtle btn--sm"
-                      style={{ marginTop: 10 }}
-                      disabled={busy || !draft.productId || bottledMl <= 0 || overAllocated}
-                      onClick={() => void appendAllocation()}
-                    >
-                      {busy ? "…" : overAllocated ? "Over the produced total" : "+ Add to run"}
-                    </button>
                   </div>
                 )}
               </>
