@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../components/Shell.js";
+import { StatHero } from "../components/StatHero.js";
 import { api } from "../lib/api.js";
 import { ngn, formatDateTime } from "../lib/format.js";
 import { useAuthUser } from "../lib/auth.js";
@@ -269,8 +270,34 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
         </Link>
       }
     >
-      
-      
+      {(() => {
+        const totalCans = data
+          ? data.items.reduce((sum, it) => sum + it.quantity_sent, 0)
+          : 0;
+        const route =
+          data && factories.length > 0 && branches.length > 0
+            ? `${factories.find((f) => f.id === data.factoryId)?.name ?? data.factoryId.slice(0, 6)} → ${branches.find((b) => b.id === data.branchId)?.name ?? data.branchId.slice(0, 6)}`
+            : "—";
+        const hasVariance = data?.status === "received_with_variance";
+        const chips: import("../components/StatHero.js").StatChip[] = [];
+        chips.push({ label: "Cans", value: data ? totalCans : "—" });
+        chips.push({ label: "Route", value: data ? route : "—" });
+        chips.push({ label: "Status", value: data?.status ?? "—" });
+        if (hasVariance) {
+          chips.push({ label: "Variance", value: "Flagged", tone: "warn" });
+        } else {
+          chips.push({ label: "Variance", value: data ? "None" : "—" });
+        }
+        return (
+          <StatHero
+            eyebrow="Products"
+            title={data?.transferNumber ?? "Transfer"}
+            sub={data ? `Created ${formatDateTime(data.createdAt)}` : "Loading…"}
+            loading={loading}
+            chips={chips}
+          />
+        );
+      })()}
 
       {loading || !data ? (
         <InlineLoader />

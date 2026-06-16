@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api, ApiError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -102,6 +103,19 @@ export function OwnerReturnDetailPage({
         </Link>
       }
     >
+      <StatHero
+        eyebrow="Sales"
+        title={data ? `Return ${data.returnNumber}` : "Return"}
+        sub={data ? `Created ${formatDateTime(data.createdAt)}` : "Loading…"}
+        loading={loading}
+        chips={[
+          { label: "Items", value: data ? data.items.length : "—" },
+          { label: "Refund", value: data ? ngn(data.refundAmountNgn) : "—" },
+          { label: "Reason", value: data?.reasonCategory ?? "—" },
+          { label: "Status", value: data?.status ?? "—" },
+        ]}
+      />
+
       {loading ? (
         <InlineLoader />
       ) : error || !data ? (

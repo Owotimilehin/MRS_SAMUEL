@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useRouter } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { Stat } from "../../components/Stat.js";
 import { Modal } from "../../components/Modal.js";
 import { api } from "../../lib/api.js";
@@ -211,6 +212,27 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
           {flash}
         </div>
       )}
+
+      <StatHero
+        eyebrow="Catalogue"
+        title={product?.name ?? "Product"}
+        sub={product?.tagline ?? (product ? `/${product.slug}` : "Loading…")}
+        loading={loading}
+        chips={[
+          { label: "Sizes", value: product ? product.variants.length : "—" },
+          {
+            label: "From",
+            value: product
+              ? (product.current_price_ngn != null ? ngn(product.current_price_ngn) : "No price")
+              : "—",
+          },
+          {
+            label: "Status",
+            value: product ? (product.isActive ? "Active" : "Hidden") : "—",
+          },
+          { label: "Category", value: product?.category ?? "—" },
+        ]}
+      />
 
       {loading || !product ? (
         <InlineLoader />

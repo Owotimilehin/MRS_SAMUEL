@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -65,20 +66,28 @@ export function CustomerDetailPage({ customerId }: { customerId: string }): JSX.
 
   return (
     <Shell title={title} crumb="Owner">
-      <div className="page-head ed-rise">
-        <div className="page-head__titles">
-          <Link
-            to="/owner/customers"
-            className="page-head__eyebrow"
-            style={{ color: "var(--accent)" }}
-          >
-            ← Back to customers
-          </Link>
-          <h1 className="page-head__title">{title}</h1>
-        </div>
-      </div>
+      <StatHero
+        eyebrow="Sales"
+        title={title}
+        sub={data?.customer.email ?? data?.customer.phone ?? "Customer profile"}
+        loading={loading}
+        chips={[
+          { label: "Orders", value: data ? data.orders.length : "—" },
+          { label: "Lifetime", value: data ? ngn(data.lifetimeNgn) : "—" },
+          {
+            label: "Last order",
+            value: data && data.orders.length > 0
+              ? formatDateTime(data.orders[0]!.createdAtLocal)
+              : "—",
+          },
+          {
+            label: "Since",
+            value: data ? formatDateTime(data.customer.createdAt) : "—",
+          },
+        ]}
+      />
 
-      
+
 
       {loading ? (
         <InlineLoader />

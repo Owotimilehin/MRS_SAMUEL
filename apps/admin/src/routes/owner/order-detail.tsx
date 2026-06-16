@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { FlavourMedia } from "../../components/FlavourMedia.js";
 
 interface SaleItem {
   id: string;
@@ -51,8 +53,27 @@ function statusPill(status: string): JSX.Element {
 export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   const [data, setData] = useState<Sale | null>(null);
   const [branchName, setBranchName] = useState<string>("");
+  const [products, setProducts] = useState<Record<string, { name: string; slug: string }>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Sale items only carry productId; resolve names/bottles client-side so the
+  // Items table shows the flavour instead of a raw id fragment.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await api<{ data: Array<{ id: string; name: string; slug: string }> }>("/products");
+        if (cancelled) return;
+        setProducts(Object.fromEntries(res.data.map((p) => [p.id, { name: p.name, slug: p.slug }])));
+      } catch {
+        /* fall back to id fragment */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +122,19 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
         </Link>
       }
     >
+      <StatHero
+        eyebrow="Sales"
+        title={data ? `Order ${data.orderNumber}` : "Order"}
+        sub={data ? `Placed ${formatDateTime(data.createdAtLocal)}` : "Loading…"}
+        loading={loading}
+        chips={[
+          { label: "Items", value: data ? data.items.length : "—" },
+          { label: "Total", value: data ? ngn(data.totalNgn) : "—" },
+          { label: "Status", value: data?.status ?? "—" },
+          { label: "Channel", value: data?.channel ?? "—" },
+        ]}
+      />
+
       {loading ? (
         <InlineLoader />
       ) : error || !data ? (
@@ -166,16 +200,26 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.items.map((it) => (
+                  {data.items.map((it) => {
+                    const p = products[it.productId];
+                    return (
                     <tr key={it.id}>
-                      <td>{it.productId.slice(0, 8)}…</td>
+                      <td>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                          <FlavourMedia size="chip" product={{ slug: p?.slug }} />
+                          <span style={{ fontWeight: 600 }}>
+                            {p?.name ?? `${it.productId.slice(0, 8)}…`}
+                          </span>
+                        </span>
+                      </td>
                       <td className="table__num">{it.quantity}</td>
                       <td className="table__num">{ngn(it.unitPriceNgn)}</td>
                       <td className="table__num" style={{ fontWeight: 700 }}>
                         {ngn(it.lineTotalNgn)}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

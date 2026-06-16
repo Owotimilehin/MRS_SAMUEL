@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -130,8 +131,34 @@ export function CloseDetailPage({
         </Link>
       }
     >
-      
-      
+      {(() => {
+        const chips: import("../../components/StatHero.js").StatChip[] = [];
+        chips.push({ label: "Expected", value: data ? ngn(data.systemCashTotalNgn) : "—" });
+        chips.push({ label: "Counted", value: data ? ngn(data.cashCountedNgn) : "—" });
+        const variance = data?.varianceNgn ?? 0;
+        if (data && variance !== 0) {
+          chips.push({
+            label: "Variance",
+            value: `${variance > 0 ? "+" : ""}${ngn(variance)}`,
+            tone: "warn",
+          });
+        } else {
+          chips.push({
+            label: "Variance",
+            value: data ? `${variance > 0 ? "+" : ""}${ngn(variance)}` : "—",
+          });
+        }
+        chips.push({ label: "Status", value: data?.status ?? "—" });
+        return (
+          <StatHero
+            eyebrow="Finance"
+            title={data ? `Close · ${data.businessDate}` : "Daily close"}
+            sub={data ? `Branch close · ${data.businessDate}` : "Loading…"}
+            loading={loading}
+            chips={chips}
+          />
+        );
+      })()}
 
       {loading || !data ? (
         <InlineLoader />

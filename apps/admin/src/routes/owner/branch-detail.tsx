@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -131,8 +132,26 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
         </div>
       }
     >
-      
-      
+      <StatHero
+        eyebrow="Admin"
+        title={branch?.name ?? "Branch"}
+        sub={branch?.address ?? branch?.code ?? "Branch details"}
+        loading={loading}
+        chips={[
+          { label: "Code", value: branch?.code ?? "—" },
+          { label: "Phone", value: branch?.phone ?? "—" },
+          {
+            label: "Hours",
+            value: branch?.opensAt && branch?.closesAt
+              ? `${branch.opensAt.slice(0, 5)}–${branch.closesAt.slice(0, 5)}`
+              : "—",
+          },
+          {
+            label: "Zones",
+            value: branch ? branch.deliveryZones.length : "—",
+          },
+        ]}
+      />
 
       {loading || !branch ? (
         <InlineLoader />
