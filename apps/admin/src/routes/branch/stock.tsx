@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
+import { StatHero } from "../../components/StatHero.js";
+import type { StatChip } from "../../components/StatHero.js";
 import { local, type ProductRow, type VariantRow } from "../../db/local.js";
 import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -64,16 +66,32 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
   const lowCount = rows.filter((r) => r.balance > 0 && r.balance <= 5).length;
   const unsizedCount = rows.filter((r) => r.unsized && r.balance !== 0).length;
 
+  const onHandTotal = rows.reduce((sum, r) => sum + (r.balance > 0 ? r.balance : 0), 0);
+
+  const stockChips: StatChip[] = [
+    { label: "On hand", value: onHandTotal ?? 0 },
+    { label: "Size lines", value: rows.length ?? 0 },
+  ];
+  if (oosCount > 0) {
+    stockChips.push({ label: "Out of stock", value: oosCount, tone: "danger" });
+  } else {
+    stockChips.push({ label: "Out of stock", value: oosCount, tone: "good" });
+  }
+  if (lowCount > 0) {
+    stockChips.push({ label: "Low (≤5)", value: lowCount, tone: "warn" });
+  } else {
+    stockChips.push({ label: "Low (≤5)", value: lowCount });
+  }
+
   return (
     <BranchShell branchId={branchId} title="Stock">
-      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-        <span className={oosCount > 0 ? "pill pill--danger" : "pill"}>Out of stock · {oosCount}</span>
-        <span className={lowCount > 0 ? "pill pill--warning" : "pill"}>Low · {lowCount}</span>
-        <span className="pill">{rows.length} size lines</span>
-        {unsizedCount > 0 && (
-          <span className="pill pill--warning">Unsized to reconcile · {unsizedCount}</span>
-        )}
-      </div>
+      <StatHero
+        eyebrow="Branch"
+        title="Stock"
+        sub="Per-size on-hand quantities for this branch."
+        loading={loading}
+        chips={stockChips}
+      />
 
       {loading ? (
         <InlineLoader />

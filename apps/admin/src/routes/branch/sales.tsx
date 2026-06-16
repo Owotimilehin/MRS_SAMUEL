@@ -2,6 +2,8 @@
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
 import { Stat } from "../../components/Stat.js";
+import { StatHero } from "../../components/StatHero.js";
+import type { StatChip } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -16,6 +18,20 @@ interface Sale {
   totalNgn: number;
   createdAtLocal: string;
   notes: string | null;
+  isPreorder?: boolean;
+  fulfilledAt?: string | null;
+  scheduledDeliveryAt?: string | null;
+}
+
+// Order type: an immediate walk-up sale vs a made-to-order preorder (and whether
+// that preorder is still awaiting fulfilment).
+function typePill(s: Sale): JSX.Element {
+  if (!s.isPreorder) return <span className="pill pill--ink">Sale</span>;
+  return s.fulfilledAt ? (
+    <span className="pill pill--success">📅 Preorder · fulfilled</span>
+  ) : (
+    <span className="pill pill--warning">📅 Preorder · pending</span>
+  );
 }
 
 function statusPill(status: string): JSX.Element {
@@ -69,9 +85,29 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
   const transfer = completed.filter((s) => s.paymentMethod === "transfer").reduce((sum, s) => sum + s.totalNgn, 0);
   const card = completed.filter((s) => s.paymentMethod === "card").reduce((sum, s) => sum + s.totalNgn, 0);
 
+  const avgTicket = completed.length > 0 ? Math.round(revenue / completed.length) : 0;
+  const pendingCount = todaysSales.filter((s) => s.status === "confirmed").length;
+
+  const chips: StatChip[] = [
+    { label: "Revenue today", value: ngn(revenue) },
+    { label: "Orders", value: completed.length ?? 0 },
+    { label: "Avg ticket", value: ngn(avgTicket) },
+  ];
+  if (pendingCount > 0) {
+    chips.push({ label: "Pending pay", value: pendingCount, tone: "danger" });
+  } else {
+    chips.push({ label: "Pending pay", value: pendingCount, tone: "good" });
+  }
+
   return (
     <BranchShell branchId={branchId} title="Today's sales">
-      
+      <StatHero
+        eyebrow="Branch"
+        title="Sales"
+        sub="Today's completed and pending orders at this branch."
+        loading={loading}
+        chips={chips}
+      />
 
       <div
         style={{
@@ -119,6 +155,7 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
             <thead>
               <tr>
                 <th>Order</th>
+                <th>Type</th>
                 <th>Channel</th>
                 <th>Payment</th>
                 <th>Status</th>
@@ -138,6 +175,7 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
                       {s.orderNumber}
                     </Link>
                   </td>
+                  <td>{typePill(s)}</td>
                   <td style={{ textTransform: "capitalize" }}>{s.channel.replace(/_/g, " ")}</td>
                   <td style={{ textTransform: "capitalize" }}>{s.paymentMethod}</td>
                   <td>{statusPill(s.status)}</td>

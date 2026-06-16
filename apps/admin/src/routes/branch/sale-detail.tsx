@@ -1,6 +1,8 @@
 ﻿import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
+import { StatHero } from "../../components/StatHero.js";
+import type { StatChip } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -166,6 +168,13 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
   const canDeliver = sale?.status === "paid" && ["online", "phone"].includes(sale.channel);
   const canCancel = sale && ["confirmed", "paid"].includes(sale.status);
 
+  const saleChips: StatChip[] = [
+    { label: "Items", value: sale?.items.length ?? "—" },
+    { label: "Total", value: sale ? ngn(sale.totalNgn) : "—" },
+    { label: "Payment", value: sale ? `${sale.paymentMethod} · ${sale.paymentStatus}` : "—" },
+    { label: "Status", value: sale ? sale.status.replace(/_/g, " ") : "—" },
+  ];
+
   return (
     <BranchShell
       branchId={branchId}
@@ -176,8 +185,13 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
         </Link>
       }
     >
-      
-      
+      <StatHero
+        eyebrow="Branch"
+        title={sale?.orderNumber ?? "Order"}
+        sub={sale ? `Placed ${formatDateTime(sale.createdAtLocal)} · ${sale.channel.replace(/_/g, " ")}` : "Loading order…"}
+        loading={loading}
+        chips={saleChips}
+      />
 
       {loading || !sale ? (
         <InlineLoader />

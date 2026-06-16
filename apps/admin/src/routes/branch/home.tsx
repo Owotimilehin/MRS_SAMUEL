@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
+import { StatHero } from "../../components/StatHero.js";
+import type { StatChip } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -58,18 +60,26 @@ export function BranchHomePage({ branchId }: { branchId: string }): JSX.Element 
   const todaysTotal = salesToday.reduce((acc, s) => acc + s.totalNgn, 0);
   const recent = sales.slice(0, 5);
 
+  const chips: StatChip[] = [
+    { label: "Today's orders", value: salesToday.length ?? 0 },
+    { label: "Revenue today", value: ngn(todaysTotal ?? 0) },
+  ];
+  if (sync.queued > 0) {
+    chips.push({ label: "Sync queue", value: sync.queued, tone: "warn" });
+  } else {
+    chips.push({ label: "Sync queue", value: sync.queued });
+  }
+
   return (
     <BranchShell branchId={branchId} title="Today">
+      <StatHero
+        eyebrow="Branch"
+        title="Today"
+        sub="Live snapshot of today's activity at this branch."
+        loading={loading}
+        chips={chips}
+      />
       <div className="branch-home">
-        <section className="branch-home__kpi">
-          <KpiCard label="Today's sales" value={salesToday.length.toString()} />
-          <KpiCard label="Revenue" value={ngn(todaysTotal)} accent />
-          <KpiCard
-            label="Sync queue"
-            value={`${sync.queued}`}
-            {...(sync.queued > 0 ? { tone: "warn" as const } : {})}
-          />
-        </section>
 
         <section className="branch-home__tiles">
           {TILES.map((t) => (

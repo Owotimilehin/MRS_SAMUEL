@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
+import { StatHero } from "../../components/StatHero.js";
+import type { StatChip } from "../../components/StatHero.js";
 import { local, type OutboxRow } from "../../db/local.js";
 import { flushOutbox } from "../../sync/engine.js";
 
@@ -102,9 +104,22 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
     setActing(null);
   }
 
+  const pendingRows = rows.filter((r) => r.status === "pending");
+  const inFlightRows = rows.filter((r) => r.status === "in_flight");
   const pending = rows.filter((r) => r.status === "pending" || r.status === "in_flight");
   const dead = rows.filter((r) => r.status === "dead");
   const done = rows.filter((r) => r.status === "acknowledged").slice(0, 20);
+
+  const queueChips: StatChip[] = [
+    { label: "In queue", value: pendingRows.length ?? 0 },
+    { label: "Sending", value: inFlightRows.length ?? 0 },
+  ];
+  if (dead.length > 0) {
+    queueChips.push({ label: "Failed", value: dead.length, tone: "danger" });
+  } else {
+    queueChips.push({ label: "Failed", value: dead.length, tone: "good" });
+  }
+  queueChips.push({ label: "Synced", value: done.length ?? 0 });
 
   return (
     <BranchShell
@@ -120,6 +135,12 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
         </button>
       }
     >
+      <StatHero
+        eyebrow="Branch"
+        title="Queue"
+        sub="Offline operations waiting to sync with the server."
+        chips={queueChips}
+      />
       {pending.length === 0 && dead.length === 0 ? (
         <section className="card">
           <div className="empty">
