@@ -14,6 +14,7 @@ import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { Modal } from "../../components/Modal.js";
 import { getFlavourVisual } from "../../lib/flavour-visuals.js";
+import { FlavourMedia } from "../../components/FlavourMedia.js";
 
 interface BagMaterial {
   id: string;
@@ -340,87 +341,53 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
         </section>
 
         <aside className="card pos-cart">
-          <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
-            <h2 className="t-h2">Cart</h2>
+          <header className="till-cart__head">
+            <span className="till-cart__count">
+              <b>Cart</b>
+              {cart.length > 0 && (
+                <span className="till-cart__pill">{cart.reduce((n, l) => n + l.quantity, 0)} items</span>
+              )}
+            </span>
             {cart.length > 0 && (
-              <button
-                type="button"
-                onClick={clearCart}
-                style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 13, color: "var(--ink-soft)" }}
-              >
+              <button type="button" className="till-cart__clear" onClick={clearCart}>
                 Clear
               </button>
             )}
           </header>
 
           {cart.length === 0 ? (
-            <div className="empty" style={{ padding: 20 }}>
-              Tap a product to add it.
+            <div className="empty" style={{ padding: 24 }}>
+              Tap a flavour to add it to the cart.
             </div>
           ) : (
-            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+            <ul className="till-lines">
               {cart.map((l) => {
                 const p = products.find((x) => x.id === l.product_id);
+                const vis = getFlavourVisual({ slug: p?.slug, image_url: p?.image_url });
                 return (
-                  <li
-                    key={l.variant_id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto",
-                      gap: 6,
-                      padding: 10,
-                      background: "var(--surface-soft)",
-                      borderRadius: 12,
-                    }}
-                  >
+                  <li key={l.variant_id} className="till-line" style={{ ["--fl-accent" as string]: vis.accent } as React.CSSProperties}>
+                    <FlavourMedia className="till-line__media" size="chip" product={{ slug: p?.slug, image_url: p?.image_url }} />
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div className="till-line__name">
                         {p?.name ?? l.product_id.slice(0, 8)}
-                        <span style={{ color: "var(--ink-soft)", fontWeight: 500 }}>
-                          {" · "}
-                          {sizeLabel(l.size_ml)}
-                        </span>
+                        <span className="sz"> · {sizeLabel(l.size_ml)}</span>
                       </div>
-                      <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
-                        {ngn(l.unit_price_ngn)} × {l.quantity}
+                      <div className="till-line__unit">{ngn(l.unit_price_ngn)} each</div>
+                    </div>
+                    <div className="till-line__total tabular-nums">{ngn(l.unit_price_ngn * l.quantity)}</div>
+                    <div className="till-line__controls">
+                      <div className="qty-step">
+                        <button type="button" aria-label="Decrease" onClick={() => updateQty(l.variant_id, l.quantity - 1)}>−</button>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={l.quantity}
+                          onChange={(e) => updateQty(l.variant_id, Number(e.target.value))}
+                          aria-label="Quantity"
+                        />
+                        <button type="button" aria-label="Increase" onClick={() => updateQty(l.variant_id, l.quantity + 1)}>+</button>
                       </div>
-                    </div>
-                    <div className="tabular-nums" style={{ fontWeight: 700, textAlign: "right" }}>
-                      {ngn(l.unit_price_ngn * l.quantity)}
-                    </div>
-                    <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                      <button
-                        type="button"
-                        className="btn btn--subtle btn--sm"
-                        style={{ width: 30, padding: 0, height: 28 }}
-                        onClick={() => updateQty(l.variant_id, l.quantity - 1)}
-                      >
-                        −
-                      </button>
-                      <input
-                        type="number"
-                        className="input"
-                        style={{ width: 56, height: 28, textAlign: "center" }}
-                        value={l.quantity}
-                        onChange={(e) => updateQty(l.variant_id, Number(e.target.value))}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn--subtle btn--sm"
-                        style={{ width: 30, padding: 0, height: 28 }}
-                        onClick={() => updateQty(l.variant_id, l.quantity + 1)}
-                      >
-                        +
-                      </button>
-                      <div style={{ flex: 1 }} />
-                      <button
-                        type="button"
-                        onClick={() => removeLine(l.variant_id)}
-                        style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--ink-soft)", fontSize: 18 }}
-                        aria-label="Remove"
-                      >
-                        ×
-                      </button>
+                      <button type="button" className="till-line__rm" onClick={() => removeLine(l.variant_id)} aria-label="Remove">×</button>
                     </div>
                   </li>
                 );
@@ -586,23 +553,13 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 </span>
               </div>
             )}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "baseline",
-                padding: "10px 0",
-                borderTop: "1px solid var(--line)",
-              }}
-            >
-              <span style={{ fontWeight: 600 }}>Total</span>
-              <span className="tabular-nums" style={{ fontWeight: 800, fontSize: 22 }}>
-                {ngn(total)}
-              </span>
+            <div className="till-total">
+              <span className="till-total__label">{orderIsPreorder ? "Preorder total" : "Total"}</span>
+              <span className="till-total__value tabular-nums">{ngn(total)}</span>
             </div>
             <button
               type="button"
-              className="btn btn--primary btn--block btn--lg"
+              className="btn btn--primary btn--block btn--cta"
               disabled={submitting || cart.length === 0}
               onClick={() => void checkout()}
             >

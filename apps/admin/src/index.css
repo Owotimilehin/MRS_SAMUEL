@@ -1710,4 +1710,40 @@ h1, h2, h3, h4,
 }
 .page-head__title { position: relative; }
 
+/* ── Till cart (POS) — polished line items + stepper ── */
+.till-cart__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.till-cart__count { display: inline-flex; align-items: center; gap: 8px; }
+.till-cart__count b { font-family: "Fraunces", Georgia, serif; font-size: 20px; color: var(--brand); line-height: 1; }
+.till-cart__pill { font-size: 11px; font-weight: 700; color: var(--accent); background: rgba(var(--accent-rgb), 0.10); padding: 3px 9px; border-radius: 999px; }
+.till-cart__clear { background: transparent; border: 0; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.till-cart__clear:hover { color: var(--danger); }
+
+.till-lines { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.till-line {
+  position: relative; overflow: hidden;
+  display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 12px;
+  padding: 10px 12px 10px 10px; background: #fff;
+  border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-card);
+}
+.till-line::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--fl-accent, var(--accent)); }
+.till-line__media { width: 44px; height: 50px; }
+.till-line__name { font-weight: 700; font-size: 13.5px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.till-line__name .sz { color: var(--ink-soft); font-weight: 600; }
+.till-line__unit { font-size: 12px; color: var(--ink-soft); margin-top: 1px; }
+.till-line__total { font-weight: 800; font-size: 14px; text-align: right; white-space: nowrap; }
+.till-line__controls { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.till-line__rm { margin-left: auto; background: transparent; border: 0; cursor: pointer; color: var(--ink-soft); font-size: 18px; line-height: 1; padding: 2px 4px; }
+.till-line__rm:hover { color: var(--danger); }
+
+/* Segmented quantity stepper */
+.qty-step { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface-soft); }
+.qty-step button { width: 30px; height: 30px; border: 0; background: transparent; cursor: pointer; font-size: 18px; line-height: 1; color: var(--ink); display: grid; place-items: center; }
+.qty-step button:hover { background: rgba(var(--accent-rgb), 0.10); color: var(--accent); }
+.qty-step input { width: 42px; height: 30px; border: 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); background: #fff; text-align: center; font: inherit; font-weight: 700; font-size: 13px; }
+
+/* Sticky checkout footer */
+.till-total { display: flex; align-items: baseline; justify-content: space-between; margin: 14px 0 4px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.till-total__label { font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.till-total__value { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 26px; color: var(--brand); }
+
 :root { --gold: #f6b545; }
