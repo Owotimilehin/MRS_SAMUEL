@@ -172,12 +172,14 @@ describe("Phase 3 customer-site online order flow", () => {
       data: {
         order_number: string;
         total_ngn: number;
-        payment: { authorization_url: string; reference: string };
+        payment: { provider: string; reference: string; payaza: { connectionMode: string; reference: string } };
       };
     };
     // No live quote → delivery is not charged; total is the subtotal only.
     expect(orderBody.data.total_ngn).toBe(2500 * 3);
-    expect(orderBody.data.payment.authorization_url).toContain("paid=1");
+    expect(orderBody.data.payment.provider).toBe("payaza");
+    expect(orderBody.data.payment.payaza.reference).toBe(orderBody.data.order_number);
+    expect(orderBody.data.payment.payaza.connectionMode).toBe("Mock"); // no keys in test
 
     // Simulate the Payaza callback landing (mock verify confirms in dev)
     const webhook = await fetch(`${baseUrl}/v1/webhooks/payaza`, {

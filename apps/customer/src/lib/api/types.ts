@@ -106,11 +106,24 @@ export interface ApiQuote {
   notice?: string;
 }
 
+/** Init config for the Payaza checkout SDK, built server-side per order. */
+export interface PayazaCheckoutConfig {
+  reference: string;
+  connectionMode: "Mock" | "Test" | "Live";
+  merchantKey: string;
+  amount: number; // kobo (naira × 100)
+  currency: "NGN";
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+}
+
 export interface ApiPlacedOrder {
   id: string;
   order_number: string;
   total_ngn: number;
-  payment: { authorization_url: string; reference: string };
+  payment: { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig };
 }
 
 export interface ApiOrderTracking {

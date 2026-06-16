@@ -16,7 +16,7 @@ import { availableAtBranch, nextOrderNumber } from "@ms/domain";
 import { normalizeNigerianPhone, phonesMatch, isOutsideLagos } from "@ms/shared";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { BusinessError } from "../lib/errors.js";
-import { createPayazaSession } from "../payments/payaza.js";
+import { buildPayazaCheckoutConfig } from "../payments/payaza.js";
 import { resolveCustomer } from "../lib/customers.js";
 import { getDeliveryProvider } from "../delivery/index.js";
 import { storeOptionSet, loadOptionSet } from "../delivery/quote-store.js";
@@ -479,25 +479,19 @@ export function publicOrderRoutes(db: DbClient) {
       return { order: o, customerEmail: body.customer.email ?? null };
     });
 
-    // Initiate the Payaza checkout session (or mock URL in dev). PUBLIC_CUSTOMER_URL
-    // wins when set; the admin→www substitution is a legacy fallback for prod
-    // where customer + admin share a domain root.
     // The order owns the cart contents now — empty the cart so a refresh
     // doesn't replay the same items into a second order.
     await clearCartForCookie(db, c);
 
-    const customerBase =
-      env.PUBLIC_CUSTOMER_URL ?? env.PUBLIC_ADMIN_URL.replace("admin.", "www.");
-    // returnUrl = where Payaza sends the customer's browser back to; callbackUrl =
-    // the server-to-server webhook that actually confirms payment.
-    const returnUrl = `${customerBase}/order/${created.order.orderNumber}?paid=1`;
-    const session = await createPayazaSession({
+    // Payaza checkout is a frontend SDK (no server redirect) — hand the customer
+    // page the SDK init config. Payment is confirmed server-side by the
+    // /v1/webhooks/payaza handler re-querying Payaza after the popup completes.
+    const payaza = buildPayazaCheckoutConfig({
       amountNgn: created.order.totalNgn,
       email: created.customerEmail ?? "no-email@example.com",
       reference: created.order.orderNumber,
-      returnUrl,
-      callbackUrl: `${env.PUBLIC_API_URL}/v1/webhooks/payaza`,
-      productName: `Mrs. Samuel order ${created.order.orderNumber}`,
+      customerName: body.customer.name,
+      customerPhone: body.customer.phone,
     });
 
     return c.json(
@@ -507,8 +501,9 @@ export function publicOrderRoutes(db: DbClient) {
           order_number: created.order.orderNumber,
           total_ngn: created.order.totalNgn,
           payment: {
-            authorization_url: session.authorization_url,
-            reference: session.reference,
+            provider: "payaza" as const,
+            reference: payaza.reference,
+            payaza,
           },
         },
       },

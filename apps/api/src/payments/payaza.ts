@@ -1,8 +1,24 @@
 import crypto from "node:crypto";
 
-export interface PayazaSession {
+/**
+ * Init config for Payaza's frontend checkout SDK
+ * (https://checkout-v2.payaza.africa/js/v1/bundle.js). Payaza has no
+ * server-side "create session" endpoint — the popup is opened client-side with
+ * the public key + order details, so the server's job is to hand the customer
+ * page exactly these params. Field names match the SDK (confirmed against
+ * Payaza's WooCommerce plugin). `amount` is in kobo (naira × 100).
+ */
+export interface PayazaCheckoutConfig {
   reference: string;
-  authorization_url: string;
+  /** "Mock" locally (no public key) → frontend simulates success; "Test"/"Live" by key. */
+  connectionMode: "Mock" | "Test" | "Live";
+  merchantKey: string;
+  amount: number;
+  currency: "NGN";
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
 }
 
 /** Payaza transaction states vary by product: SUCCESSFUL | PENDING | FAILED |
@@ -14,92 +30,55 @@ export interface PayazaTransactionStatus {
   processorReference: string | null;
 }
 
-const BASE = process.env.PAYAZA_API_BASE ?? "https://api.payaza.africa/live";
+// `||` not `??` — empty string in .env should fall back to the default, not
+// produce a relative URL.
+const BASE = process.env.PAYAZA_API_BASE || "https://api.payaza.africa/live";
 
 /**
- * Build the Authorization header for Payaza. Payaza's docs vary by product —
- * the Connection-mode APIs are documented as `Payaza <base64(secretKey)>`,
- * while some collection endpoints accept a plain `Bearer <secretKey>`. We
- * default to the base64 "Payaza" scheme and leave a one-env escape hatch
- * (PAYAZA_AUTH_SCHEME=bearer) so the scheme can be flipped during the live
- * smoke test without touching code. Isolated here on purpose.
+ * Build the Authorization header for Payaza's read endpoints. Confirmed against
+ * Payaza's official WooCommerce plugin: the merchant transaction-query API
+ * authenticates with the base64-encoded **public** key, prefixed with "Payaza ".
  */
-function payazaAuthHeader(): string {
-  const secret = process.env.PAYAZA_SECRET_KEY ?? "";
-  if ((process.env.PAYAZA_AUTH_SCHEME ?? "payaza-base64").toLowerCase() === "bearer") {
-    return `Bearer ${secret}`;
-  }
-  return `Payaza ${Buffer.from(secret).toString("base64")}`;
+function payazaReadAuthHeader(): string {
+  const publicKey = process.env.PAYAZA_PUBLIC_KEY ?? "";
+  return `Payaza ${Buffer.from(publicKey).toString("base64")}`;
 }
 
 /**
- * Initiate a Payaza hosted-checkout session and return the URL we redirect the
- * customer to.
+ * Build the config the customer page passes to the Payaza checkout SDK. Pure +
+ * synchronous — there is no server call here (Payaza's checkout is client-side).
  *
- * Dev/test shim: when PAYAZA_SECRET_KEY is absent we return a fake URL that
- * loops back to the customer return URL with ?mock=1 so the webhook (also in
- * mock mode) can auto-complete the order without real keys. Mirrors the shim
- * the OPay client used (now removed) so local checkout stays clickable.
- *
- * NOTE: the live request/response shape below is the best-known shape and is
- * verified by scripts/payaza-smoke.ts against test keys — adjust there, not by
- * guessing. Response parsing is deliberately tolerant of a couple of envelopes.
+ * Dev/test shim: when PAYAZA_PUBLIC_KEY is absent we return connectionMode
+ * "Mock" so the frontend can simulate success and the webhook (also in mock
+ * mode) auto-completes the order without real keys.
  */
-export async function createPayazaSession(opts: {
+export function buildPayazaCheckoutConfig(opts: {
   amountNgn: number;
   email: string;
   reference: string;
-  returnUrl: string;
-  callbackUrl: string;
-  productName: string;
   customerName?: string;
   customerPhone?: string;
-}): Promise<PayazaSession> {
-  if (!process.env.PAYAZA_SECRET_KEY) {
-    const sep = opts.returnUrl.includes("?") ? "&" : "?";
-    return {
-      reference: opts.reference,
-      authorization_url: `${opts.returnUrl}${sep}mock=1&reference=${opts.reference}`,
-    };
-  }
-
-  const payload = {
-    amount: opts.amountNgn,
+}): PayazaCheckoutConfig {
+  const publicKey = process.env.PAYAZA_PUBLIC_KEY ?? "";
+  const [firstName, ...rest] = (opts.customerName ?? "").trim().split(/\s+/);
+  const lastName = rest.join(" ");
+  // Live keys are prefixed PZ..-PKLIVE-, test keys PZ..-PKTEST-.
+  const mode: PayazaCheckoutConfig["connectionMode"] = !publicKey
+    ? "Mock"
+    : /PKLIVE/i.test(publicKey)
+      ? "Live"
+      : "Test";
+  return {
+    reference: opts.reference,
+    connectionMode: mode,
+    merchantKey: publicKey,
+    amount: opts.amountNgn * 100, // Payaza SDK takes kobo
     currency: "NGN",
     email: opts.email,
-    transaction_reference: opts.reference,
-    callback_url: opts.callbackUrl,
-    return_url: opts.returnUrl,
-    description: opts.productName,
-    ...(opts.customerName ? { customer_name: opts.customerName } : {}),
-    ...(opts.customerPhone ? { phone_number: opts.customerPhone } : {}),
+    ...(firstName ? { firstName } : {}),
+    ...(lastName ? { lastName } : {}),
+    ...(opts.customerPhone ? { phone: opts.customerPhone } : {}),
   };
-
-  const res = await fetch(`${BASE}/merchant-collection/initiate-payment`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: payazaAuthHeader(),
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error(`payaza initiate failed: ${res.status} ${await res.text()}`);
-  }
-  const body = (await res.json()) as {
-    data?: { checkout_url?: string; authorization_url?: string };
-    checkout_url?: string;
-    authorization_url?: string;
-  };
-  const url =
-    body.data?.checkout_url ??
-    body.data?.authorization_url ??
-    body.checkout_url ??
-    body.authorization_url;
-  if (!url) {
-    throw new Error(`payaza initiate rejected: no checkout url in response`);
-  }
-  return { reference: opts.reference, authorization_url: url };
 }
 
 /**
@@ -115,58 +94,66 @@ export async function createPayazaSession(opts: {
 export async function verifyPayazaTransaction(
   reference: string,
 ): Promise<PayazaTransactionStatus> {
-  if (!process.env.PAYAZA_SECRET_KEY) {
-    return { status: "SUCCESSFUL", amountNgn: null, processorReference: `mock-${reference}` };
+  if (!process.env.PAYAZA_PUBLIC_KEY) {
+    return { status: "Completed", amountNgn: null, processorReference: `mock-${reference}` };
   }
-  const res = await fetch(
-    `${BASE}/merchant-collection/transaction/${encodeURIComponent(reference)}`,
-    {
-      method: "GET",
-      headers: {
-        "content-type": "application/json",
-        authorization: payazaAuthHeader(),
-      },
-    },
-  );
-  if (!res.ok) {
-    throw new Error(`payaza verify failed: ${res.status} ${await res.text()}`);
+  const url =
+    `${BASE}/merchant-collection/transfer_notification_controller/merchant/transaction-query` +
+    `?merchant_reference=${encodeURIComponent(reference)}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { "content-type": "application/json", authorization: payazaReadAuthHeader() },
+  });
+  const text = await res.text();
+  // Auth/upstream failures are real errors worth surfacing + retrying. A 400
+  // with a JSON envelope (e.g. {success:false,"message":"Transaction not
+  // found"}) is a legitimate "not confirmed yet" answer, not an error — fall
+  // through and let the status come back non-"Completed".
+  if (res.status === 401 || res.status === 403 || res.status >= 500) {
+    throw new Error(`payaza verify failed: ${res.status} ${text}`);
   }
-  const body = (await res.json()) as {
+  // Confirmed shape (Payaza WooCommerce plugin): success boolean +
+  // data.transaction_status ("Completed" on success) + data.amount_received in
+  // FULL naira units (not cents) + data.transaction_reference (Payaza's own id).
+  let body: {
+    success?: boolean;
     data?: {
-      status?: string;
       transaction_status?: string;
-      amount?: number;
+      amount_received?: number;
       transaction_reference?: string;
-      provider_reference?: string;
-    };
-    status?: string;
-    amount?: number;
+      merchant_transaction_reference?: string;
+    } | null;
   };
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error(`payaza verify failed: ${res.status} ${text}`);
+  }
   const d = body.data ?? {};
-  const amount = d.amount ?? body.amount;
   return {
-    status: d.status ?? d.transaction_status ?? body.status ?? "PENDING",
-    amountNgn: typeof amount === "number" ? Math.round(amount) : null,
-    processorReference: d.provider_reference ?? d.transaction_reference ?? null,
+    status: d.transaction_status ?? (body.success ? "Completed" : "PENDING"),
+    amountNgn: typeof d.amount_received === "number" ? Math.round(d.amount_received) : null,
+    processorReference: d.transaction_reference ?? d.merchant_transaction_reference ?? null,
   };
 }
 
-/** Payaza reports a success state under a few different spellings. */
+/** Payaza's verify API reports success as transaction_status "Completed". */
 export function isPayazaSuccess(status: string): boolean {
-  const s = status.toLowerCase();
-  return s === "successful" || s === "success" || s === "completed" || s === "paid";
+  return status.toLowerCase() === "completed";
 }
 
 /**
- * Verify the HMAC-SHA512 signature Payaza puts on webhook callbacks.
- * Constant-time comparison via timingSafeEqual. When PAYAZA_WEBHOOK_SECRET is
- * unset (dev/mock mode) we accept anything so the mock flow stays exercisable.
+ * Verify the HMAC-SHA256 signature Payaza puts on webhook callbacks
+ * (x-payaza-signature, keyed by the secret key — confirmed against Payaza's
+ * WooCommerce plugin). Constant-time comparison via timingSafeEqual. When
+ * PAYAZA_WEBHOOK_SECRET is unset (dev/mock mode) we accept anything so the mock
+ * flow stays exercisable.
  */
 export function verifyPayazaSignature(rawBody: string, signature: string | null): boolean {
   const secret = process.env.PAYAZA_WEBHOOK_SECRET;
   if (!secret) return true; // dev/mock mode
   if (!signature) return false;
-  const expected = crypto.createHmac("sha512", secret).update(rawBody).digest("hex");
+  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
   const a = Buffer.from(expected);
   const b = Buffer.from(signature.trim());
   if (a.length !== b.length) return false;

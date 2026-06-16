@@ -9,6 +9,7 @@ import { useCart, formatNaira } from "@/lib/cart";
 import { fetchBranches, requestQuote, placeOrder as placeOrderFn } from "@/lib/api/server-fns";
 import { asApiError } from "@/lib/api/client";
 import type { ApiDeliveryOption } from "@/lib/api/types";
+import { launchPayazaCheckout } from "@/lib/payaza";
 import { NIGERIA_STATES } from "@/lib/nigeria-states";
 import { WINDOWS, scheduledIso, isWindowAvailable, type DeliveryWindow } from "@/lib/schedule";
 
@@ -150,7 +151,20 @@ function Page() {
         /* ignore storage failures */
       }
       clear();
-      window.location.href = res.payment.authorization_url;
+      // Payaza checkout is a client-side popup (no redirect). On success the
+      // server webhook confirms payment; we just move to the tracking page.
+      const trackUrl = `/order/${res.order_number}?paid=1`;
+      await launchPayazaCheckout(res.payment.payaza, {
+        onPaid: () => {
+          window.location.href = trackUrl;
+        },
+        onClose: () => {
+          // Popup dismissed without paying — order stays 'confirmed'; let the
+          // customer retry or view the (unpaid) order.
+          setPlacing(false);
+        },
+      });
+      return;
     } catch (e) {
       // placeOrder runs as a server function; the API's ApiError is serialized
       // across the RPC boundary and reconstructed here so we can branch on
@@ -342,7 +356,7 @@ function Page() {
                 onClick={() => submit(false)}
                 className="mt-5 w-full rounded-full bg-[color:var(--brand-orange)] text-white px-6 py-4 text-sm font-bold disabled:opacity-40 hover:opacity-90 transition flex items-center justify-center gap-2"
               >
-                {placing ? (<><Loader2 className="h-4 w-4 animate-spin" /> Redirecting to payment…</>) : (<>Place order — {formatNaira(total)}</>)}
+                {placing ? (<><Loader2 className="h-4 w-4 animate-spin" /> Opening payment…</>) : (<>Place order — {formatNaira(total)}</>)}
               </button>
               <p className="mt-2 text-center text-[11px] text-white/50">You'll pay securely via Payaza.</p>
             </aside>

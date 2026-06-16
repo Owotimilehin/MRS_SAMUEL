@@ -64,7 +64,7 @@ test("Payaza mock checkout: order → callback → paid + stock decremented", as
         data: {
           order_number: string;
           total_ngn: number;
-          payment: { authorization_url: string };
+          payment: { provider: string; reference: string; payaza: { connectionMode: string } };
         };
       }
     | null = null;
@@ -97,11 +97,12 @@ test("Payaza mock checkout: order → callback → paid + stock decremented", as
   const captured = orderBody as NonNullable<typeof orderBody>;
   const orderNo = captured.data.order_number;
   console.log(`[payaza-test] order ${orderNo} total ₦${captured.data.total_ngn}`);
-  console.log(`[payaza-test] mock checkout url: ${captured.data.payment.authorization_url}`);
+  console.log(`[payaza-test] payment mode: ${captured.data.payment.payaza.connectionMode}`);
 
-  // The mock authorization_url must loop back to the customer return URL.
-  expect(captured.data.payment.authorization_url).toContain("mock=1");
-  expect(captured.data.payment.authorization_url).toContain(orderNo);
+  // No keys in local dev → Mock mode; the SDK config carries our order ref.
+  expect(captured.data.payment.provider).toBe("payaza");
+  expect(captured.data.payment.payaza.connectionMode).toBe("Mock");
+  expect(captured.data.payment.reference).toBe(orderNo);
 
   // 3. Before payment the order is 'confirmed', not yet paid.
   const phone = "%2B2348025550777";

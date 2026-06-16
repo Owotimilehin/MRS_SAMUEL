@@ -2,7 +2,8 @@ import pino from "pino";
 
 const logger = pino({ base: { service: "ms-worker", part: "payaza-refund" } });
 
-const BASE = process.env.PAYAZA_API_BASE ?? "https://api.payaza.africa/live";
+// `||` not `??` — empty string in .env should fall back to the default.
+const BASE = process.env.PAYAZA_API_BASE || "https://api.payaza.africa/live";
 
 /**
  * Build the Authorization header for Payaza. Mirrors the helper in apps/api's
@@ -11,7 +12,7 @@ const BASE = process.env.PAYAZA_API_BASE ?? "https://api.payaza.africa/live";
  */
 function payazaAuthHeader(): string {
   const secret = process.env.PAYAZA_SECRET_KEY ?? "";
-  if ((process.env.PAYAZA_AUTH_SCHEME ?? "payaza-base64").toLowerCase() === "bearer") {
+  if ((process.env.PAYAZA_AUTH_SCHEME || "payaza-base64").toLowerCase() === "bearer") {
     return `Bearer ${secret}`;
   }
   return `Payaza ${Buffer.from(secret).toString("base64")}`;

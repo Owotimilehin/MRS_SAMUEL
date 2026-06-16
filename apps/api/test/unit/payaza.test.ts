@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createPayazaSession,
+  buildPayazaCheckoutConfig,
   verifyPayazaTransaction,
   verifyPayazaSignature,
   isPayazaSuccess,
@@ -11,94 +11,95 @@ function mockFetch(impl: (url: string, init?: RequestInit) => Promise<Response> 
   vi.stubGlobal("fetch", vi.fn(impl as never));
 }
 
-const baseSession = {
-  amountNgn: 100,
+const baseConfig = {
+  amountNgn: 2500,
   email: "buyer@example.com",
   reference: "ORD-1",
-  returnUrl: "https://shop.example/order/ORD-1?paid=1",
-  callbackUrl: "https://api.example/v1/webhooks/payaza",
-  productName: "Test order",
+  customerName: "Ada Obi",
+  customerPhone: "+2348025551234",
 };
 
-describe("payaza mock mode (no secret key)", () => {
+describe("buildPayazaCheckoutConfig", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("returns Mock mode with no public key (dev shim)", () => {
+    vi.stubEnv("PAYAZA_PUBLIC_KEY", "");
+    const cfg = buildPayazaCheckoutConfig(baseConfig);
+    expect(cfg.connectionMode).toBe("Mock");
+    expect(cfg.amount).toBe(2500 * 100); // kobo
+    expect(cfg.firstName).toBe("Ada");
+    expect(cfg.lastName).toBe("Obi");
+    expect(cfg.phone).toBe("+2348025551234");
+    expect(cfg.reference).toBe("ORD-1");
+  });
+
+  it("detects Test mode from a PKTEST public key", () => {
+    vi.stubEnv("PAYAZA_PUBLIC_KEY", "PZ78-PKTEST-ABC");
+    expect(buildPayazaCheckoutConfig(baseConfig).connectionMode).toBe("Test");
+  });
+
+  it("detects Live mode from a PKLIVE public key", () => {
+    vi.stubEnv("PAYAZA_PUBLIC_KEY", "PZ78-PKLIVE-XYZ");
+    const cfg = buildPayazaCheckoutConfig(baseConfig);
+    expect(cfg.connectionMode).toBe("Live");
+    expect(cfg.merchantKey).toBe("PZ78-PKLIVE-XYZ");
+  });
+});
+
+describe("verifyPayazaTransaction", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
-  it("createPayazaSession returns a ?mock=1 loopback URL", async () => {
-    vi.stubEnv("PAYAZA_SECRET_KEY", "");
-    const s = await createPayazaSession(baseSession);
-    expect(s.reference).toBe("ORD-1");
-    expect(s.authorization_url).toContain("mock=1");
-    expect(s.authorization_url).toContain("reference=ORD-1");
-    expect(s.authorization_url.startsWith(baseSession.returnUrl)).toBe(true);
-  });
-
-  it("verifyPayazaTransaction returns a mock success with unknown amount", async () => {
-    vi.stubEnv("PAYAZA_SECRET_KEY", "");
+  it("returns a mock Completed status with no public key", async () => {
+    vi.stubEnv("PAYAZA_PUBLIC_KEY", "");
     const r = await verifyPayazaTransaction("ORD-1");
     expect(isPayazaSuccess(r.status)).toBe(true);
     expect(r.amountNgn).toBeNull();
     expect(r.processorReference).toBe("mock-ORD-1");
   });
-});
 
-describe("payaza live mode (secret key set)", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
-  });
-
-  it("createPayazaSession sends the base64 Payaza auth header by default and parses checkout_url", async () => {
-    vi.stubEnv("PAYAZA_SECRET_KEY", "sk_test_123");
-    vi.stubEnv("PAYAZA_AUTH_SCHEME", "");
+  it("sends the base64 public-key auth header and queries by merchant_reference", async () => {
+    vi.stubEnv("PAYAZA_PUBLIC_KEY", "pub_test_123");
     let seenAuth = "";
-    mockFetch((_url, init) => {
+    let seenUrl = "";
+    mockFetch((url, init) => {
+      seenUrl = url;
       seenAuth = (init?.headers as Record<string, string>).authorization;
-      return new Response(JSON.stringify({ data: { checkout_url: "https://pay.example/c/abc" } }), {
-        status: 200,
-      });
-    });
-    const s = await createPayazaSession(baseSession);
-    expect(s.authorization_url).toBe("https://pay.example/c/abc");
-    expect(seenAuth).toBe(`Payaza ${Buffer.from("sk_test_123").toString("base64")}`);
-  });
-
-  it("createPayazaSession honors PAYAZA_AUTH_SCHEME=bearer", async () => {
-    vi.stubEnv("PAYAZA_SECRET_KEY", "sk_test_123");
-    vi.stubEnv("PAYAZA_AUTH_SCHEME", "bearer");
-    let seenAuth = "";
-    mockFetch((_url, init) => {
-      seenAuth = (init?.headers as Record<string, string>).authorization;
-      return new Response(JSON.stringify({ authorization_url: "https://pay.example/c/xyz" }), {
-        status: 200,
-      });
-    });
-    await createPayazaSession(baseSession);
-    expect(seenAuth).toBe("Bearer sk_test_123");
-  });
-
-  it("createPayazaSession throws on a non-2xx response", async () => {
-    vi.stubEnv("PAYAZA_SECRET_KEY", "sk_test_123");
-    mockFetch(() => new Response("bad request", { status: 400 }));
-    await expect(createPayazaSession(baseSession)).rejects.toThrow(/payaza initiate failed: 400/);
-  });
-
-  it("verifyPayazaTransaction parses amount + status from the data envelope", async () => {
-    vi.stubEnv("PAYAZA_SECRET_KEY", "sk_test_123");
-    mockFetch(() =>
-      new Response(
+      return new Response(
         JSON.stringify({
-          data: { status: "SUCCESSFUL", amount: 2500, provider_reference: "PZ-REF-9" },
+          success: true,
+          data: { transaction_status: "Completed", amount_received: 2500, transaction_reference: "PZ-9" },
         }),
         { status: 200 },
-      ),
-    );
+      );
+    });
     const r = await verifyPayazaTransaction("ORD-1");
-    expect(r.status).toBe("SUCCESSFUL");
-    expect(r.amountNgn).toBe(2500);
-    expect(r.processorReference).toBe("PZ-REF-9");
+    expect(seenAuth).toBe(`Payaza ${Buffer.from("pub_test_123").toString("base64")}`);
+    expect(seenUrl).toContain("transfer_notification_controller/merchant/transaction-query");
+    expect(seenUrl).toContain("merchant_reference=ORD-1");
+    expect(r.status).toBe("Completed");
+    expect(r.amountNgn).toBe(2500); // full naira units, not cents
+    expect(r.processorReference).toBe("PZ-9");
+  });
+
+  it("treats a 400 'not found' envelope as a non-success status, not an error", async () => {
+    vi.stubEnv("PAYAZA_PUBLIC_KEY", "pub_test_123");
+    mockFetch(() =>
+      new Response(JSON.stringify({ success: false, data: null, message: "Transaction not found" }), {
+        status: 400,
+      }),
+    );
+    const r = await verifyPayazaTransaction("UNKNOWN");
+    expect(isPayazaSuccess(r.status)).toBe(false);
+    expect(r.amountNgn).toBeNull();
+  });
+
+  it("throws on a 401 (auth failure) so it can be surfaced + retried", async () => {
+    vi.stubEnv("PAYAZA_PUBLIC_KEY", "pub_test_123");
+    mockFetch(() => new Response("Unauthorized", { status: 401 }));
+    await expect(verifyPayazaTransaction("ORD-1")).rejects.toThrow(/payaza verify failed: 401/);
   });
 });
 
@@ -116,10 +117,10 @@ describe("verifyPayazaSignature", () => {
     expect(verifyPayazaSignature("{}", null)).toBe(false);
   });
 
-  it("accepts a correct HMAC-SHA512 signature and rejects a tampered one", () => {
+  it("accepts a correct HMAC-SHA256 signature and rejects a tampered one", () => {
     vi.stubEnv("PAYAZA_WEBHOOK_SECRET", "whsec");
     const body = JSON.stringify({ data: { transaction_reference: "ORD-1" } });
-    const good = crypto.createHmac("sha512", "whsec").update(body).digest("hex");
+    const good = crypto.createHmac("sha256", "whsec").update(body).digest("hex");
     expect(verifyPayazaSignature(body, good)).toBe(true);
     expect(verifyPayazaSignature(body + " ", good)).toBe(false);
     expect(verifyPayazaSignature(body, good.replace(/.$/, "0"))).toBe(false);
@@ -127,11 +128,10 @@ describe("verifyPayazaSignature", () => {
 });
 
 describe("isPayazaSuccess", () => {
-  it("recognises the known success spellings, case-insensitively", () => {
-    for (const s of ["SUCCESSFUL", "success", "Completed", "PAID"]) {
-      expect(isPayazaSuccess(s)).toBe(true);
-    }
-    for (const s of ["PENDING", "FAILED", "REVERSED", ""]) {
+  it("recognises only Completed (case-insensitively)", () => {
+    expect(isPayazaSuccess("Completed")).toBe(true);
+    expect(isPayazaSuccess("completed")).toBe(true);
+    for (const s of ["PENDING", "FAILED", "successful", "paid", ""]) {
       expect(isPayazaSuccess(s)).toBe(false);
     }
   });
