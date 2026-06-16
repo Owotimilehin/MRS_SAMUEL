@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { useSyncState } from "../../sync/state.js";
 import { flushOutbox } from "../../sync/engine.js";
 import { local } from "../../db/local.js";
@@ -58,6 +59,12 @@ export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Elemen
         </button>
       }
     >
+      <StatHero
+        eyebrow="Branch"
+        title="Device"
+        sub="Monitor connection, sync status and device info for this POS terminal."
+      />
+
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <section className="card">
           <h2 className="t-h2" style={{ marginBottom: 12 }}>

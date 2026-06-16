@@ -1,11 +1,13 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { local } from "../../db/local.js";
 import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import type { StatChip } from "../../components/StatHero.js";
 
 interface CashSale {
   order_number: string;
@@ -127,10 +129,25 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
     }
   }
 
+  const closeChips: StatChip[] = [
+    { label: "Expected ₦", value: ngn(expectedCash) },
+    { label: "Counted ₦", value: ngn(counted) },
+  ];
+  if (variance !== 0) {
+    closeChips.push({ label: "Variance ₦", value: `${variance > 0 ? "+" : ""}${ngn(variance)}`, tone: "warn" });
+  } else {
+    closeChips.push({ label: "Variance ₦", value: ngn(0), tone: "good" });
+  }
+
   return (
     <BranchShell branchId={branchId} title="Daily close">
-      
-      
+      <StatHero
+        eyebrow="Branch"
+        title="Close"
+        sub="Enter stock counts and cash on hand for today's reconciliation."
+        loading={loading}
+        chips={closeChips}
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
         <section className="card">

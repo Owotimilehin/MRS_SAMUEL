@@ -1,9 +1,11 @@
 ﻿import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import type { StatChip } from "../../components/StatHero.js";
 
 interface ReturnRow {
   id: string;
@@ -90,6 +92,18 @@ export function BranchReturnsPage({ branchId }: { branchId: string }): JSX.Eleme
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchId]);
 
+  const pendingCount = rows.filter((r) => r.status === "pending_approval").length;
+  const completedCount = rows.filter((r) => r.status === "completed").length;
+
+  const returnsChips: StatChip[] = [];
+  if (pendingCount > 0) {
+    returnsChips.push({ label: "Pending approval", value: pendingCount, tone: "danger" });
+  } else {
+    returnsChips.push({ label: "Pending approval", value: pendingCount, tone: "good" });
+  }
+  returnsChips.push({ label: "Completed", value: completedCount });
+  returnsChips.push({ label: "Total", value: rows.length });
+
   return (
     <BranchShell
       branchId={branchId}
@@ -100,6 +114,14 @@ export function BranchReturnsPage({ branchId }: { branchId: string }): JSX.Eleme
         </button>
       }
     >
+      <StatHero
+        eyebrow="Branch"
+        title="Returns"
+        sub="Customer returns and refunds recorded at this branch."
+        loading={loading}
+        chips={returnsChips}
+      />
+
       {error && (
         <div
           className="card"

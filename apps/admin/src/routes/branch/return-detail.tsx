@@ -1,10 +1,12 @@
 ﻿import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import type { StatChip } from "../../components/StatHero.js";
 
 interface ReturnItem {
   id: string;
@@ -99,6 +101,12 @@ export function ReturnDetailPage({
 
   const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
 
+  const detailChips: StatChip[] = [
+    { label: "Items", value: ret?.items.length ?? "—" },
+    { label: "Refund ₦", value: ret ? ngn(ret.refundAmountNgn) : "—" },
+    { label: "Status", value: ret ? ret.status.replace(/_/g, " ") : "—" },
+  ];
+
   return (
     <BranchShell
       branchId={branchId}
@@ -109,8 +117,13 @@ export function ReturnDetailPage({
         </Link>
       }
     >
-      
-      
+      <StatHero
+        eyebrow="Branch"
+        title={ret?.returnNumber ?? "Return"}
+        sub="Review items, refund amount and approval status for this return."
+        loading={loading}
+        chips={detailChips}
+      />
 
       {loading || !ret ? (
         <InlineLoader />

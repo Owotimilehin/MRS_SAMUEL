@@ -1,8 +1,10 @@
 ﻿import { useEffect, useState } from "react";
 import { BranchShell } from "../../components/BranchShell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import type { StatChip } from "../../components/StatHero.js";
 
 type TransferStatus =
   | "dispatched"
@@ -120,8 +122,33 @@ export function BranchTransfersPage({ branchId }: { branchId: string }): JSX.Ele
   const productName = (id: string | null | undefined): string =>
     id ? (products.find((p) => p.id === id)?.name ?? id.slice(0, 8)) : "—";
 
+  const toReceive = rows.filter(
+    (r) => r.status === "dispatched" || r.status === "in_transit" || r.status === "arrived",
+  ).length;
+  const received = rows.filter(
+    (r) => r.status === "received" || r.status === "received_with_variance" || r.status === "completed",
+  ).length;
+
+  const transferChips: StatChip[] = [
+    { label: "Incoming", value: rows.length },
+  ];
+  if (toReceive > 0) {
+    transferChips.push({ label: "To receive", value: toReceive, tone: "warn" });
+  } else {
+    transferChips.push({ label: "To receive", value: toReceive, tone: "good" });
+  }
+  transferChips.push({ label: "Received", value: received });
+
   return (
     <BranchShell branchId={branchId} title="Incoming transfers">
+      <StatHero
+        eyebrow="Branch"
+        title="Transfers"
+        sub="Shipments dispatched from the factory to this branch."
+        loading={loading}
+        chips={transferChips}
+      />
+
       {error && (
         <div
           className="card"

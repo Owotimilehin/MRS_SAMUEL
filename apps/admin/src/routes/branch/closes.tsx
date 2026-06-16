@@ -1,10 +1,12 @@
 ﻿import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import type { StatChip } from "../../components/StatHero.js";
 
 interface CloseRow {
   id: string;
@@ -57,6 +59,21 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
   const disputed = rows.filter((r) => r.status === "disputed").length;
   const submitted = rows.filter((r) => r.status === "submitted").length;
 
+  const withVariance = rows.filter((r) => r.varianceNgn !== 0).length;
+  const lastRow = rows[0]; // already sorted newest first
+
+  const chips: StatChip[] = [
+    { label: "Total closes", value: rows.length },
+  ];
+  if (withVariance > 0) {
+    chips.push({ label: "With variance", value: withVariance, tone: "warn" });
+  } else {
+    chips.push({ label: "With variance", value: withVariance, tone: "good" });
+  }
+  if (lastRow) {
+    chips.push({ label: "Last variance ₦", value: ngn(lastRow.varianceNgn) });
+  }
+
   return (
     <BranchShell
       branchId={branchId}
@@ -67,7 +84,13 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
         </Link>
       }
     >
-      
+      <StatHero
+        eyebrow="Branch"
+        title="Daily closes"
+        sub="Cash reconciliation records for this branch."
+        loading={loading}
+        chips={chips}
+      />
 
       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
         <span className="pill pill--success">Approved · {approved}</span>
