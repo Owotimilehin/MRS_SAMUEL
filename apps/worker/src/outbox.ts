@@ -165,7 +165,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
       return {
         chatIds: [owner, channels.branchAjao()],
         text:
-          `⏰ *Daily close overdue*\n` +
+          `⏰ *Shift-end report overdue*\n` +
           `${p["branch_name"]} hasn't filed for ${p["business_date"]}.\n` +
           `👉 ${ADMIN_URL}/branch/close`,
       };
@@ -173,8 +173,8 @@ export function format(event: { eventType: string; payload: Record<string, unkno
       return {
         chatIds: [owner],
         text:
-          `📋 *Daily close filed*\n` +
-          `${p["business_date"]}\n` +
+          `📋 *Shift-end report filed*\n` +
+          `${p["business_date"]}${p["filed_by"] ? ` · by ${p["filed_by"]}` : ""}\n` +
           `Cash: ₦${p["cash_ngn"] ?? "?"} · Transfers: ₦${p["transfer_ngn"] ?? "?"} · Variance: ₦${p["variance_ngn"] ?? "0"}\n` +
           `👉 ${ADMIN_URL}/owner/closes`,
       };
@@ -302,6 +302,57 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `${p["name"]} · ${p["phone"]}\n` +
           `Plan: ${p["plan_slug"]}`,
       };
+    case "sale.preorder_fulfilled":
+      return {
+        chatIds: [owner],
+        text:
+          `🎁 *Preorder fulfilled*\n` +
+          `${p["order_number"]} · ${p["channel"] ?? ""}\n` +
+          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
+      };
+    case "sale.preorder_paid":
+      return {
+        chatIds: [owner],
+        text:
+          `💰 *Preorder paid*\n` +
+          `${p["order_number"]} · ₦${p["total_ngn"] ?? "?"}\n` +
+          `Customer has paid; ready to fulfil.\n` +
+          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
+      };
+    case "audit.logged": {
+      // Generic mirror of any audited action that doesn't have a richer,
+      // purpose-built event of its own. Renders "<Noun> <verb> — <identifier>
+      // (by <Role>)" so the owner sees every change in plain language.
+      const VERB: Record<string, string> = {
+        create: "created",
+        create_draft: "drafted",
+        update: "updated",
+        update_item: "item edited",
+        append_items: "items added",
+        delete: "deleted",
+        delete_item: "item removed",
+        publish: "published",
+        invite: "invited",
+        reset_password: "password reset",
+        approve: "approved",
+        confirm: "confirmed",
+        hand_over: "handed over",
+        mark_delivered: "delivered",
+        cancel: "cancelled",
+        fulfil: "fulfilled",
+      };
+      const noun = String(p["entity_noun"] ?? p["entity_type"] ?? "Record");
+      const verbKey = String(p["action"] ?? "").split(".")[1] ?? "";
+      const verb = VERB[verbKey] ?? verbKey.replace(/_/g, " ") ?? "changed";
+      const identifier = p["identifier"] ? ` — ${p["identifier"]}` : "";
+      const role = p["actor_role"]
+        ? ` (by ${String(p["actor_role"]).replace(/_/g, " ")})`
+        : "";
+      return {
+        chatIds: [owner],
+        text: `📝 *${noun} ${verb}*${identifier}${role}\n👉 ${ADMIN_URL}/owner/audit-log`,
+      };
+    }
     default:
       // Unknown event — tell the owner so we never silently drop something new.
       return {

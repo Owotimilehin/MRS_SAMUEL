@@ -55,7 +55,7 @@ export function OwnerClosesPage(): JSX.Element {
 
   return (
     <Shell
-      title="Daily closes"
+      title="Shift-end reports"
       actions={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <label className="t-eyebrow" style={{ color: "var(--ink-soft)" }}>
@@ -73,14 +73,14 @@ export function OwnerClosesPage(): JSX.Element {
     >
       <StatHero
         eyebrow="Finance"
-        title="Daily closes"
-        sub="Branch end-of-day cash variance report."
+        title="Shift-end reports"
+        sub="Branch end-of-shift cash variance report."
         loading={loading}
         chips={[
           { label: "In range", value: variances.length },
           { label: "With variance", value: withVariance, tone: withVariance > 0 ? "warn" : "good" },
           { label: "Net variance", value: ngn(netVariance) },
-          { label: "Negative closes", value: negativeCloses, tone: negativeCloses > 0 ? "danger" : "good" },
+          { label: "Negative shifts", value: negativeCloses, tone: negativeCloses > 0 ? "danger" : "good" },
         ]}
       />
 
@@ -90,7 +90,7 @@ export function OwnerClosesPage(): JSX.Element {
       ) : variances.length === 0 ? (
         <div className="empty">
           <div className="empty__title">No closes in range</div>
-          Closes will appear here as branches submit them.
+          Shift-end reports will appear here as branches submit them.
         </div>
       ) : (
         <div className="table-wrap">

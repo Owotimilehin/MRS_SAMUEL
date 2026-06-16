@@ -63,7 +63,7 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
   const lastRow = rows[0]; // already sorted newest first
 
   const chips: StatChip[] = [
-    { label: "Total closes", value: rows.length },
+    { label: "Total reports", value: rows.length },
   ];
   if (withVariance > 0) {
     chips.push({ label: "With variance", value: withVariance, tone: "warn" });
@@ -77,16 +77,16 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
   return (
     <BranchShell
       branchId={branchId}
-      title="Close history"
+      title="Shift-end history"
       actions={
         <Link to="/branch/close" className="btn btn--primary btn--sm">
-          + New close
+          + New shift end
         </Link>
       }
     >
       <StatHero
         eyebrow="Branch"
-        title="Daily closes"
+        title="Shift-end reports"
         sub="Cash reconciliation records for this branch."
         loading={loading}
         chips={chips}
@@ -103,8 +103,8 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
         <InlineLoader />
       ) : rows.length === 0 ? (
         <div className="empty">
-          <div className="empty__title">No past closes</div>
-          File your first daily close from the "Daily close" tab.
+          <div className="empty__title">No past shift-end reports</div>
+          File your first shift-end report from the "Shift end" tab.
         </div>
       ) : (
         <div className="table-wrap">

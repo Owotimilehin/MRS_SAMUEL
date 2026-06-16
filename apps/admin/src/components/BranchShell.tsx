@@ -38,8 +38,8 @@ const NAV: BranchNavLink[] = [
   { to: "/branch/transfers", label: "Incoming", icon: "📦", cap: "transfers.receive" },
   { to: "/branch/stock", label: "Stock", icon: "📊" },
   { to: "/branch/returns", label: "Returns", icon: "↩️", cap: "returns.create" },
-  { to: "/branch/close", label: "Daily close", icon: "📋", cap: "daily_close.submit" },
-  { to: "/branch/closes", label: "Close history", icon: "📚" },
+  { to: "/branch/close", label: "Shift end", icon: "📋", cap: "daily_close.submit" },
+  { to: "/branch/closes", label: "Shift history", icon: "📚" },
   { to: "/branch/queue", label: "Sync queue", icon: "🔄" },
   { to: "/branch/device", label: "Device", icon: "📱" },
 ];

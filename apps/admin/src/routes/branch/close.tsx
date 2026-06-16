@@ -118,7 +118,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
           })),
         }),
       });
-      toast.success("Daily close submitted. Awaiting owner approval.");
+      toast.success("Shift-end report submitted. Awaiting owner approval.");
       setCash("");
       setTransfers("");
       setNotes("");
@@ -140,11 +140,11 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
   }
 
   return (
-    <BranchShell branchId={branchId} title="Daily close">
+    <BranchShell branchId={branchId} title="Shift end">
       <StatHero
         eyebrow="Branch"
-        title="Close"
-        sub="Enter stock counts and cash on hand for today's reconciliation."
+        title="Shift end"
+        sub="Enter stock counts and cash on hand to close out your shift."
         loading={loading}
         chips={closeChips}
       />

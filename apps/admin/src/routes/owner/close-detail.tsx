@@ -33,6 +33,8 @@ interface CloseDetail {
   varianceNgn: number;
   submittedAt: string | null;
   approvedAt: string | null;
+  submitted_by: string | null;
+  approved_by: string | null;
   notes: string | null;
   stock_counts: StockCount[];
   cash_sales: CashSale[];
@@ -93,7 +95,7 @@ export function CloseDetailPage({
     setActing(true);
     try {
       await api(`/branches/${branchId}/daily-close/${closeId}/approve`, { method: "PATCH" });
-      toast.success("Close approved");
+      toast.success("Shift-end report approved");
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -110,7 +112,7 @@ export function CloseDetailPage({
         method: "PATCH",
         body: JSON.stringify({ reason }),
       });
-      toast.success("Close disputed");
+      toast.success("Shift-end report disputed");
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -124,10 +126,10 @@ export function CloseDetailPage({
 
   return (
     <Shell
-      title={data ? `Close · ${data.businessDate}` : "Daily close"}
+      title={data ? `Shift end · ${data.businessDate}` : "Shift end"}
       actions={
         <Link to="/owner/closes" className="btn btn--subtle btn--sm">
-          ← All closes
+          ← All reports
         </Link>
       }
     >
@@ -149,11 +151,13 @@ export function CloseDetailPage({
           });
         }
         chips.push({ label: "Status", value: data?.status ?? "—" });
+        chips.push({ label: "Filed by", value: data?.submitted_by ?? "—" });
+        if (data?.approved_by) chips.push({ label: "Approved by", value: data.approved_by });
         return (
           <StatHero
             eyebrow="Finance"
-            title={data ? `Close · ${data.businessDate}` : "Daily close"}
-            sub={data ? `Branch close · ${data.businessDate}` : "Loading…"}
+            title={data ? `Shift end · ${data.businessDate}` : "Shift end"}
+            sub={data ? `Branch shift end · ${data.businessDate}` : "Loading…"}
             loading={loading}
             chips={chips}
           />

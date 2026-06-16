@@ -5,6 +5,7 @@ import {
   dailyClose,
   dailyCloseStockCount,
   outboxEvent,
+  adminUser,
   type DbClient,
 } from "@ms/db";
 import { cashSalesForDay, expectedCashForDay, expectedStockForDay } from "@ms/domain";
@@ -91,6 +92,12 @@ export function dailyCloseRoutes(db: DbClient) {
         });
       }
 
+      // Stamp the filer's identity onto the notification so the owner sees
+      // which staff member closed out the shift.
+      const [filer] = await tx
+        .select({ email: adminUser.email })
+        .from(adminUser)
+        .where(eq(adminUser.id, auth.userId));
       await tx.insert(outboxEvent).values({
         eventType: "daily_close.submitted",
         payload: {
@@ -100,6 +107,7 @@ export function dailyCloseRoutes(db: DbClient) {
           cash_ngn: body.cash_counted_ngn,
           transfer_ngn: body.transfers_counted_ngn,
           variance_ngn: variance,
+          filed_by: filer?.email ?? auth.userId,
         },
       });
       return close;
@@ -200,7 +208,17 @@ export function dailyCloseRoutes(db: DbClient) {
     // screen can show exactly which orders make up "System expected" rather than
     // presenting a bare, unexplained figure.
     const cashSales = await cashSalesForDay(db, close.branchId, new Date(close.businessDate));
-    return c.json({ data: { ...close, stock_counts: counts, cash_sales: cashSales } });
+    // Resolve the staff identities behind the shift-end report so the owner
+    // sees *who* filed and approved it, not bare uuids.
+    const submittedBy = close.submittedByUserId
+      ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, close.submittedByUserId)))[0]?.email ?? null
+      : null;
+    const approvedBy = close.approvedByUserId
+      ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, close.approvedByUserId)))[0]?.email ?? null
+      : null;
+    return c.json({
+      data: { ...close, submitted_by: submittedBy, approved_by: approvedBy, stock_counts: counts, cash_sales: cashSales },
+    });
   });
 
   return r;

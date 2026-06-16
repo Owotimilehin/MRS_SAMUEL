@@ -14,7 +14,7 @@ const GROUPS: { heading: string; caps: Capability[] }[] = [
 
 const LABEL: Record<Capability, string> = {
   "users.manage": "Manage admin users",
-  "close.approve": "Approve/dispute daily closes",
+  "close.approve": "Approve/dispute shift-end reports",
   "returns.approve": "Approve returns & refunds",
   "transfers.adjust": "Approve/adjust transfers",
   "shrinkage.view": "View shrinkage report",
@@ -36,7 +36,7 @@ const LABEL: Record<Capability, string> = {
   "orders.manage": "Manage online orders",
   "pos.sell": "Use POS / sell",
   "sales.view": "View sales",
-  "daily_close.submit": "Submit daily close",
+  "daily_close.submit": "Submit shift-end report",
   "returns.create": "Create returns",
   "stock.adjust": "Adjust stock",
   "stock.read": "View stock & inventory",

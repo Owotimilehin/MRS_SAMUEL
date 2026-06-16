@@ -78,7 +78,7 @@ const NAV_PRODUCTS: NavLink[] = [
 const NAV_FINANCE: NavLink[] = [
   { to: "/owner/bookkeeping", label: "Bookkeeping", Icon: Wallet, cap: "expenses.view" },
   { to: "/owner/vendors", label: "Vendors", Icon: Tags, cap: "expenses.view" },
-  { to: "/owner/closes", label: "Daily closes", Icon: ClipboardList, cap: "close.approve" },
+  { to: "/owner/closes", label: "Shift-end reports", Icon: ClipboardList, cap: "close.approve" },
 ];
 const NAV_MARKETING: NavLink[] = [
   { to: "/owner/subscriptions", label: "Subscriptions", Icon: CalendarClock, cap: "marketing.manage" },

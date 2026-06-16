@@ -35,6 +35,34 @@ export interface BranchLookup {
 type Json = Record<string, unknown> | null | undefined;
 const j = (v: unknown): Json => (v && typeof v === "object" ? (v as Json) : null);
 
+/**
+ * Read the first present key from an object, trying each name in order.
+ * Audit `afterJson` payloads are inconsistent: some call sites pass the full
+ * Drizzle row (camelCase, e.g. `orderNumber`) while others pass a hand-built
+ * snake_case object (e.g. `amount_ngn`). This lets one humanizer cover both.
+ */
+function pick(obj: Json, ...keys: string[]): unknown {
+  if (!obj) return undefined;
+  for (const k of keys) {
+    const v = (obj as Record<string, unknown>)[k];
+    if (v !== undefined && v !== null && v !== "") return v;
+  }
+  return undefined;
+}
+
+/** "12500" → "₦12,500". Leaves non-numeric values as a plain string. */
+function ngn(v: unknown): string {
+  const n = typeof v === "number" ? v : Number(v);
+  if (Number.isNaN(n)) return String(v ?? "—");
+  return `₦${n.toLocaleString()}`;
+}
+
+/** "other_with_note" → "other with note" — tidy a snake_case code for display. */
+function tidy(v: unknown): string {
+  if (typeof v !== "string") return String(v ?? "—");
+  return v.replace(/_/g, " ");
+}
+
 const ROLE_LABEL: Record<string, string> = {
   owner: "Owner",
   admin: "Admin",
@@ -82,87 +110,182 @@ export function humanizeAction(row: AuditRow, branches: BranchLookup[]): string 
     return branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);
   };
 
+  const s = (v: unknown): string => (typeof v === "string" ? v : "—");
+  const transferNum = () => s(pick(after, "transferNumber", "transfer_number")) || "a transfer";
+  const orderNum = () => s(pick(after, "orderNumber", "order_number", "saleNumber")) || "a sale";
+
   switch (row.action) {
     case "auth.login_success":
       return "Signed in";
 
+    // ── Users ──
     case "admin_user.invite": {
-      const email = (after?.["email"] as string | undefined) ?? "a user";
-      const role = roleLabel((after?.["role"] as string | undefined) ?? null);
+      const email = s(pick(after, "email")) || "a user";
+      const role = roleLabel(s(pick(after, "role")));
       return `Invited ${role} — ${email}`;
     }
-    case "admin_user.update": {
-      const email = (after?.["email"] as string | undefined) ?? "user";
-      return `Updated ${email}`;
-    }
+    case "admin_user.update":
+      return `Updated user ${s(pick(after, "email")) || ""}`.trim();
     case "admin_user.reset_password":
       return "Reset a user's password";
 
+    // ── Branches ──
     case "branch.create":
-      return `Created branch ${(after?.["name"] as string | undefined) ?? "—"}`;
+      return `Created branch ${s(pick(after, "name"))}`;
     case "branch.update":
-      return `Updated branch ${(after?.["name"] as string | undefined) ?? (before?.["name"] as string | undefined) ?? "—"}`;
+      return `Updated branch ${s(pick(after, "name") ?? pick(before, "name"))}`;
+    case "branch.delete":
+      return `Deleted branch ${s(pick(before, "name") ?? pick(after, "name"))}`;
 
+    // ── Products & pricing ──
     case "product.create":
-      return `Created product ${(after?.["name"] as string | undefined) ?? "—"}`;
+      return `Created product ${s(pick(after, "name"))}`;
     case "product.update":
-      return `Updated product ${(after?.["name"] as string | undefined) ?? (before?.["name"] as string | undefined) ?? "—"}`;
-
-    case "blog.create":
-      return `Drafted post "${(after?.["title"] as string | undefined) ?? "—"}"`;
-    case "blog.update":
-      return `Updated post "${(after?.["title"] as string | undefined) ?? "—"}"`;
-    case "blog.publish":
-      return `Published post "${(after?.["title"] as string | undefined) ?? "—"}"`;
-
-    case "production_run.create_draft":
-      return `Started production run for ${(after?.["runDate"] as string | undefined) ?? (after?.["run_date"] as string | undefined) ?? "—"}`;
-    case "production_run.complete":
-      return `Completed production run for ${(after?.["runDate"] as string | undefined) ?? (after?.["run_date"] as string | undefined) ?? "—"}`;
-
-    case "stock_transfer.create_draft":
-    case "stock_transfer.dispatch": {
-      const num = (after?.["transferNumber"] as string | undefined) ?? "transfer";
-      return `Sent ${num} to ${branchName(after?.["branchId"])}`;
+      return `Updated product ${s(pick(after, "name") ?? pick(before, "name"))}`;
+    case "product.delete":
+      return `Deleted product ${s(pick(before, "name") ?? pick(after, "name"))}`;
+    case "product_price.publish": {
+      const size = pick(after, "size_ml", "sizeMl");
+      const price = pick(after, "price_ngn", "priceNgn");
+      return `Set price to ${ngn(price)}${size ? ` for the ${size}ml size` : ""}`;
     }
+
+    // ── Blog ──
+    case "blog_post.create":
+      return `Drafted post "${s(pick(after, "title"))}"`;
+    case "blog_post.update":
+      return `Updated post "${s(pick(after, "title") ?? pick(before, "title"))}"`;
+    case "blog_post.delete":
+      return `Deleted post "${s(pick(before, "title") ?? pick(after, "title"))}"`;
+
+    // ── Vendors ──
+    case "vendor.create":
+      return `Added vendor ${s(pick(after, "name"))}`;
+    case "vendor.update":
+      return `Updated vendor ${s(pick(after, "name") ?? pick(before, "name"))}`;
+    case "vendor.delete":
+      return `Removed vendor ${s(pick(before, "name") ?? pick(after, "name"))}`;
+
+    // ── Expenses ──
+    case "recurring_expense.create":
+      return `Added recurring expense — ${tidy(pick(after, "category_code"))} (${ngn(pick(after, "amount_ngn"))}/mo)`;
+    case "recurring_expense.update":
+      return `Updated a recurring expense`;
+    case "recurring_expense.delete":
+      return `Deleted a recurring expense`;
+    case "business_expense.create":
+      return `Recorded expense — ${tidy(pick(after, "category_code"))} (${ngn(pick(after, "amount_ngn"))})`;
+    case "business_expense.update":
+      return `Updated an expense`;
+    case "business_expense.delete":
+      return `Deleted an expense`;
+
+    // ── Packaging ──
+    case "packaging_material.create":
+      return `Added packaging material ${s(pick(after, "name"))}`;
+    case "packaging_material.update":
+      return `Updated packaging material ${s(pick(after, "name") ?? pick(before, "name"))}`;
+    case "packaging_purchase.create": {
+      const qty = pick(after, "quantity");
+      return `Recorded packaging purchase — ${qty ? `${qty} units, ` : ""}${ngn(pick(after, "total_cost_ngn"))}`;
+    }
+
+    // ── Marketing ──
+    case "subscription_plan.create":
+      return `Created subscription plan ${s(pick(after, "name"))}`;
+    case "subscription_plan.update":
+      return `Updated subscription plan ${s(pick(after, "name") ?? pick(before, "name"))}`;
+    case "subscription_plan.delete":
+      return `Deleted subscription plan ${s(pick(before, "name") ?? pick(after, "name"))}`;
+    case "bundle.create":
+      return `Created bundle ${s(pick(after, "name"))}`;
+    case "bundle.update":
+      return `Updated bundle ${s(pick(after, "name") ?? pick(before, "name"))}`;
+    case "bundle.delete":
+      return `Deleted bundle ${s(pick(before, "name") ?? pick(after, "name"))}`;
+
+    // ── Media ──
+    case "media_asset.create":
+      return "Uploaded an image";
+
+    // ── Inventory ──
+    case "stock_adjustment.create": {
+      const reason = tidy(pick(after, "reason_code"));
+      const count = pick(after, "item_count");
+      return `Adjusted stock — ${reason}${count ? ` (${count} item${count === 1 ? "" : "s"})` : ""}`;
+    }
+
+    // ── Production ──
+    case "production_run.create_draft":
+      return `Started production run for ${s(pick(after, "runDate", "run_date"))}`;
+    case "production_run.complete":
+      return `Completed production run for ${s(pick(after, "runDate", "run_date"))}`;
+    case "production_run.append_items": {
+      const added = pick(after, "added");
+      return `Added ${added ?? "items"} to a production run`;
+    }
+    case "production_run.update_item":
+      return "Edited a production run item";
+    case "production_run.delete_item":
+      return "Removed a production run item";
+
+    // ── Transfers ──
+    case "stock_transfer.create_draft":
+      return `Drafted ${transferNum()} for ${branchName(pick(after, "branchId", "branch_id"))}`;
+    case "stock_transfer.dispatch":
+      return `Sent ${transferNum()} to ${branchName(pick(after, "branchId", "branch_id"))}`;
     case "stock_transfer.arrive":
-      return `Marked ${(after?.["transferNumber"] as string | undefined) ?? "a transfer"} as arrived`;
+      return `Marked ${transferNum()} as arrived`;
     case "stock_transfer.receive": {
-      const num = (after?.["transferNumber"] as string | undefined) ?? "a transfer";
-      const variance = (after?.["status"] as string | undefined) === "received_with_variance";
-      return variance ? `Received ${num} with a mismatch` : `Received ${num}`;
+      const variance = s(pick(after, "status")) === "received_with_variance";
+      return variance ? `Received ${transferNum()} with a mismatch` : `Received ${transferNum()}`;
     }
     case "stock_transfer.approve_variance":
-      return `Approved variance on ${(after?.["transferNumber"] as string | undefined) ?? "a transfer"}`;
+      return `Approved variance on ${transferNum()}`;
     case "stock_transfer.reject": {
-      const num = (after?.["transferNumber"] as string | undefined) ?? "a transfer";
-      const reason = (after?.["rejectReason"] as string | undefined) ?? "";
-      return reason ? `Rejected ${num} — ${reason}` : `Rejected ${num}`;
+      const reason = s(pick(after, "rejectReason", "reject_reason"));
+      return reason !== "—" ? `Rejected ${transferNum()} — ${reason}` : `Rejected ${transferNum()}`;
+    }
+    case "stock_transfer.adjust_count": {
+      const side = s(pick(after, "side"));
+      const qty = pick(after, "new_quantity");
+      return `Corrected ${side === "sent" ? "dispatched" : "received"} count to ${qty ?? "?"}`;
     }
 
+    // ── Sales ──
     case "sale.create_draft":
-      return `Started sale ${(after?.["saleNumber"] as string | undefined) ?? "—"}`;
+      return `Started sale ${orderNum()}`;
     case "sale.confirm":
-      return `Confirmed sale ${(after?.["saleNumber"] as string | undefined) ?? "—"}`;
-    case "sale.mark_paid":
-      return `Marked sale ${(after?.["saleNumber"] as string | undefined) ?? "—"} as paid`;
+      return `Confirmed sale ${orderNum()}`;
+    case "sale.pay":
+      return `Took payment for sale ${orderNum()}`;
     case "sale.hand_over":
-      return `Handed over sale ${(after?.["saleNumber"] as string | undefined) ?? "—"}`;
+      return `Handed over sale ${orderNum()}`;
+    case "sale.mark_delivered":
+      return `Marked sale ${orderNum()} as delivered`;
     case "sale.cancel":
-      return `Cancelled sale ${(after?.["saleNumber"] as string | undefined) ?? "—"}`;
+      return `Cancelled sale ${orderNum()}`;
 
-    case "return.create":
-      return `Created return ${(after?.["returnNumber"] as string | undefined) ?? "—"}`;
-    case "return.approve":
-      return `Approved return ${(after?.["returnNumber"] as string | undefined) ?? "—"}`;
+    // ── Returns ──
+    case "sale_return.create":
+      return `Started return ${s(pick(after, "returnNumber", "return_number"))}`;
+    case "sale_return.approve":
+      return `Approved return ${s(pick(after, "returnNumber", "return_number"))}`;
 
+    // ── Preorders ──
+    case "preorder.fulfil":
+      return "Fulfilled a preorder";
+
+    // ── Shift end (formerly "daily close") ──
     case "daily_close.submit":
-      return `Submitted daily close for ${branchName(after?.["branchId"])} (${(after?.["closeDate"] as string | undefined) ?? "—"})`;
+      return `Filed shift-end report for ${branchName(pick(after, "branchId", "branch_id"))} (${s(pick(after, "businessDate", "business_date"))})`;
     case "daily_close.approve":
-      return `Approved daily close for ${branchName(after?.["branchId"])} (${(after?.["closeDate"] as string | undefined) ?? "—"})`;
+      return `Approved shift-end report for ${branchName(pick(after, "branchId", "branch_id"))} (${s(pick(after, "businessDate", "business_date"))})`;
 
     default:
-      return row.action;
+      // Last-resort fallback — turn "some_thing.did_action" into
+      // "Some thing — did action" so even an unmapped row is readable.
+      return tidy(row.action.replace(".", " — "));
   }
 }
 
@@ -175,27 +298,40 @@ export function humanizeEntity(row: AuditRow): string {
   const before = j(row.beforeJson);
   const fromEither = (key: string): unknown => after?.[key] ?? before?.[key];
 
+  const id8 = row.entityId.slice(0, 8);
+  const str = (key: string): string | undefined => {
+    const v = fromEither(key);
+    return typeof v === "string" && v !== "" ? v : undefined;
+  };
   switch (row.entityType) {
     case "stock_transfer":
-      return (fromEither("transferNumber") as string | undefined) ?? row.entityId.slice(0, 8);
+    case "stock_transfer_item":
+      return str("transferNumber") ?? str("transfer_number") ?? id8;
     case "admin_user":
-      return (fromEither("email") as string | undefined) ?? row.entityId.slice(0, 8);
+      return str("email") ?? id8;
     case "branch":
-      return (fromEither("name") as string | undefined) ?? row.entityId.slice(0, 8);
+      return str("name") ?? id8;
     case "product":
-      return (fromEither("name") as string | undefined) ?? row.entityId.slice(0, 8);
+    case "packaging_material":
+    case "vendor":
+    case "subscription_plan":
+    case "bundle":
+      return str("name") ?? id8;
     case "sale_order":
-      return (fromEither("saleNumber") as string | undefined) ?? row.entityId.slice(0, 8);
+      return str("orderNumber") ?? str("order_number") ?? id8;
     case "sale_return":
-      return (fromEither("returnNumber") as string | undefined) ?? row.entityId.slice(0, 8);
+      return str("returnNumber") ?? str("return_number") ?? id8;
     case "production_run":
-      return (fromEither("runDate") as string | undefined) ?? row.entityId.slice(0, 8);
+      return str("runDate") ?? str("run_date") ?? id8;
     case "daily_close":
-      return (fromEither("closeDate") as string | undefined) ?? row.entityId.slice(0, 8);
+      return str("businessDate") ?? str("business_date") ?? id8;
     case "blog_post":
-      return (fromEither("title") as string | undefined) ?? row.entityId.slice(0, 8);
+      return str("title") ?? id8;
+    case "business_expense":
+    case "recurring_expense":
+      return str("category_code") ? tidy(str("category_code")) : id8;
     default:
-      return row.entityId.slice(0, 8);
+      return id8;
   }
 }
 
@@ -206,11 +342,21 @@ export function entityTypeLabel(entityType: string): string {
     branch: "Branch",
     product: "Product",
     stock_transfer: "Transfer",
+    stock_transfer_item: "Transfer",
+    stock_adjustment: "Stock adjustment",
     sale_order: "Sale",
     sale_return: "Return",
     production_run: "Production run",
-    daily_close: "Daily close",
+    daily_close: "Shift end",
     blog_post: "Blog post",
+    vendor: "Vendor",
+    packaging_material: "Packaging",
+    packaging_purchase: "Packaging purchase",
+    business_expense: "Expense",
+    recurring_expense: "Recurring expense",
+    subscription_plan: "Subscription plan",
+    bundle: "Bundle",
+    media_asset: "Image",
   };
   return map[entityType] ?? entityType;
 }
