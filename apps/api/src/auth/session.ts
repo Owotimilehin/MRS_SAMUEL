@@ -85,3 +85,19 @@ export async function revokeSession(db: DbClient, refreshToken: string): Promise
     .set({ revokedAt: new Date() })
     .where(eq(session.refreshTokenHash, hash));
 }
+
+/**
+ * Revoke every live session for a user, forcing their next request to fail the
+ * refresh and bounce to login. Used when an owner changes a user's role or
+ * permissions (so the new capabilities take effect on re-login rather than
+ * lingering in the old 15-minute access token) and when a user is deactivated
+ * or soft-deleted. Returns the number of sessions revoked.
+ */
+export async function revokeAllUserSessions(db: DbClient, userId: string): Promise<number> {
+  const revoked = await db
+    .update(session)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(session.userId, userId), isNull(session.revokedAt)))
+    .returning({ id: session.id });
+  return revoked.length;
+}

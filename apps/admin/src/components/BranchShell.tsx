@@ -7,6 +7,7 @@ import { startSyncLoop } from "../sync/engine.js";
 import { useAuthUser } from "../lib/auth.js";
 import { useRailOpen } from "../lib/rail.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
+import type { Capability } from "@ms/shared";
 
 function dropStyle(left: string, s: string, d: string, delay: string): CSSProperties {
   return { left, ["--s" as string]: s, ["--d" as string]: d, ["--delay" as string]: delay };
@@ -19,14 +20,25 @@ interface BranchShellProps {
   children: ReactNode;
 }
 
-const NAV = [
-  { to: "/branch", label: "Today", icon: "🏠" },
-  { to: "/branch/sell", label: "Sell", icon: "🥤" },
-  { to: "/branch/sales", label: "Today's sales", icon: "🧾" },
-  { to: "/branch/transfers", label: "Incoming", icon: "📦" },
+// Each link's `cap` is the capability the page's API actually enforces, so the
+// nav never shows a till operator a page their token would 403 on. Links with
+// no `cap` hit auth-only endpoints (branch stock, close history) or are purely
+// local (sync queue, device) and are always shown.
+interface BranchNavLink {
+  to: string;
+  label: string;
+  icon: string;
+  cap?: Capability;
+}
+
+const NAV: BranchNavLink[] = [
+  { to: "/branch", label: "Today", icon: "🏠", cap: "sales.view" },
+  { to: "/branch/sell", label: "Sell", icon: "🥤", cap: "pos.sell" },
+  { to: "/branch/sales", label: "Today's sales", icon: "🧾", cap: "sales.view" },
+  { to: "/branch/transfers", label: "Incoming", icon: "📦", cap: "transfers.receive" },
   { to: "/branch/stock", label: "Stock", icon: "📊" },
-  { to: "/branch/returns", label: "Returns", icon: "↩️" },
-  { to: "/branch/close", label: "Daily close", icon: "📋" },
+  { to: "/branch/returns", label: "Returns", icon: "↩️", cap: "returns.create" },
+  { to: "/branch/close", label: "Daily close", icon: "📋", cap: "daily_close.submit" },
   { to: "/branch/closes", label: "Close history", icon: "📚" },
   { to: "/branch/queue", label: "Sync queue", icon: "🔄" },
   { to: "/branch/device", label: "Device", icon: "📱" },
@@ -116,7 +128,7 @@ export function BranchShell({
               <span>Back to admin</span>
             </Link>
           ) : null}
-          {NAV.map((item) => (
+          {NAV.filter((item) => !item.cap || user.capabilities.includes(item.cap)).map((item) => (
             <Link
               key={item.to}
               to={item.to}

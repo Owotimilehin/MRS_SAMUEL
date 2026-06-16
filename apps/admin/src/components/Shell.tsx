@@ -16,7 +16,6 @@ import {
   Wallet,
   Tags,
   Milk,
-  Map as MapIcon,
   User,
   ClipboardList,
   Undo2,
@@ -24,7 +23,6 @@ import {
   Users,
   ScrollText,
   Smartphone,
-  Settings,
   PenLine,
   ShoppingCart,
   Search,
@@ -62,7 +60,7 @@ const NAV_OVERVIEW: NavLink[] = [
   { to: "/owner/review", label: "Needs review", Icon: Bell, cap: "orders.manage" },
 ];
 const NAV_SALES: NavLink[] = [
-  { to: "/owner/orders", label: "Orders", Icon: ReceiptText, cap: "orders.view" },
+  { to: "/owner/orders", label: "Orders", Icon: ReceiptText, cap: "sales.view" },
   { to: "/owner/preorders", label: "Preorders", Icon: Hourglass, cap: "orders.manage" },
   { to: "/owner/returns", label: "Returns", Icon: Undo2, cap: "returns.approve" },
   { to: "/owner/customers", label: "Customers", Icon: User, cap: "customers.view" },
@@ -71,7 +69,7 @@ const NAV_PRODUCTS: NavLink[] = [
   { to: "/owner/products", label: "Products", Icon: CupSoda, cap: "products.manage" },
   { to: "/owner/packaging", label: "Packaging", Icon: Milk, cap: "packaging.view" },
   { to: "/owner/bundles", label: "Bundles", Icon: Gift, cap: "marketing.manage" },
-  { to: "/owner/inventory", label: "Inventory", Icon: Boxes, cap: "reports.view" },
+  { to: "/owner/inventory", label: "Inventory", Icon: Boxes, cap: "stock.read" },
   { to: "/owner/adjustments", label: "Adjustments", Icon: IdCard, cap: "stock.read" },
   { to: "/owner/transfers", label: "Transfers", Icon: Truck, cap: "transfers.create" },
   { to: "/factory/production-runs", label: "Production runs", Icon: Factory, cap: "production.manage" },
@@ -90,11 +88,9 @@ const NAV_MARKETING: NavLink[] = [
 const NAV_ADMIN: NavLink[] = [
   { to: "/owner/branches", label: "Branches", Icon: Store, cap: "branches.manage" },
   { to: "/owner/factories", label: "Factories", Icon: Factory, cap: "branches.manage" },
-  { to: "/owner/zones", label: "Delivery zones", Icon: MapIcon, cap: "zones.manage" },
   { to: "/owner/users", label: "Admin users", Icon: Users, cap: "users.manage" },
   { to: "/owner/devices", label: "Devices", Icon: Smartphone, cap: "devices.view" },
   { to: "/owner/audit-log", label: "Audit log", Icon: ScrollText, cap: "audit.view" },
-  { to: "/owner/settings", label: "Settings", Icon: Settings, cap: "settings.manage" },
 ];
 
 interface ShellProps {

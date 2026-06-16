@@ -273,7 +273,20 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       setPreorderChoice(false);
       setCustomerPhone("");
       setCustomerName("");
-      void loadBags(); // reflect the bags just handed out
+      // Optimistically reflect the bags just handed out. The server decrements
+      // branch bag stock when this queued sale syncs (at /pay), so refetching
+      // now would read the pre-sale balance and snap the count back to the
+      // transferred amount. Subtract locally instead; the next full load (on
+      // remount) reconciles with the server. Preorders defer the hand-over, so
+      // skip them — the server doesn't decrement their bags until fulfilment.
+      if (!orderIsPreorder && bagLines.length > 0) {
+        setBagMaterials((prev) =>
+          prev.map((m) => {
+            const sold = bagLines.find((b) => b.packaging_material_id === m.id)?.quantity ?? 0;
+            return sold > 0 ? { ...m, balance: m.balance - sold } : m;
+          }),
+        );
+      }
       setTimeout(() => setFlash(null), 4000);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -55,15 +55,15 @@ export function ProductionRunsPage(): JSX.Element {
   const [variantsByProduct, setVariantsByProduct] = useState<Record<string, Variant[]>>({});
   const [bottleStock, setBottleStock] = useState<BottleStock[]>([]);
   // The add-flavour form now works batch-first: the factory enters the total
-  // volume produced for one flavour, then divides it into per-size bottle
-  // counts. `counts` is keyed by variantId. `totalLitres` is the produced
-  // volume (a guide/sanity-check — only bottle counts are persisted).
+  // number of cans produced for one flavour, then divides it into per-size
+  // bottle counts. `counts` is keyed by variantId. `totalCans` is the produced
+  // can count (a guide/sanity-check — only bottle counts are persisted).
   const [draft, setDraft] = useState<{
     productId: string;
-    totalLitres: string;
+    totalCans: string;
     counts: Record<string, number>;
     batch: string;
-  }>({ productId: "", totalLitres: "", counts: {}, batch: "" });
+  }>({ productId: "", totalCans: "", counts: {}, batch: "" });
 
   // Fetch variants for a product on demand and cache. Used when the factory
   // picks a flavour from the dropdown.
@@ -200,7 +200,7 @@ export function ProductionRunsPage(): JSX.Element {
         body: JSON.stringify({ items }),
       });
       setRun(res.data);
-      setDraft((d) => ({ ...d, totalLitres: "", counts: {}, batch: "" }));
+      setDraft((d) => ({ ...d, totalCans: "", counts: {}, batch: "" }));
     } catch { /* api() already toasted */ } finally { setBusy(false); }
   }
 
@@ -254,16 +254,16 @@ export function ProductionRunsPage(): JSX.Element {
     .flatMap((h) => h.items)
     .reduce((sum, it) => sum + it.quantityProduced, 0);
 
-  // Live volume math for the allocation form: bottles × size → litres bottled.
+  // Live can-count math for the allocation form: sum the per-size bottle counts
+  // and compare against the total cans produced for this flavour.
   const draftVariants = variantsByProduct[draft.productId] ?? [];
-  const bottledMl = draftVariants.reduce(
-    (sum, v) => sum + (v.size_ml ?? 0) * Number(draft.counts[v.id] ?? 0),
+  const allocatedCans = draftVariants.reduce(
+    (sum, v) => sum + Number(draft.counts[v.id] ?? 0),
     0,
   );
-  const bottledL = bottledMl / 1000;
-  const totalL = Number(draft.totalLitres) || 0;
-  const remainingL = totalL - bottledL;
-  const overAllocated = totalL > 0 && remainingL < -1e-9;
+  const totalCans = Number(draft.totalCans) || 0;
+  const remainingCans = totalCans - allocatedCans;
+  const overAllocated = totalCans > 0 && remainingCans < 0;
 
   // Chips derived from already-loaded data only (no new API calls).
   // Status values on Run are "draft" | "completed" — no "in-progress" or "planned".
@@ -428,13 +428,13 @@ export function ProductionRunsPage(): JSX.Element {
                         </select>
                       </div>
                       <div className="field">
-                        <label className="field__label">Total produced (L)</label>
+                        <label className="field__label">Total produced (cans)</label>
                         <input
-                          className="input" type="number" min={0} step="0.1"
-                          placeholder="e.g. 50"
-                          value={draft.totalLitres}
+                          className="input" type="number" min={0} step="1"
+                          placeholder="e.g. 200"
+                          value={draft.totalCans}
                           style={{ textAlign: "right", height: 34 }}
-                          onChange={(e) => setDraft((d) => ({ ...d, totalLitres: e.target.value }))}
+                          onChange={(e) => setDraft((d) => ({ ...d, totalCans: e.target.value }))}
                         />
                       </div>
                       <div className="field">
@@ -467,14 +467,14 @@ export function ProductionRunsPage(): JSX.Element {
                           </label>
                         ))}
                         <span style={{ fontSize: 13, color: overAllocated ? "var(--danger)" : "var(--ink-soft)", whiteSpace: "nowrap" }}>
-                          Bottled <strong style={{ color: overAllocated ? "var(--danger)" : "var(--ink)" }}>{bottledL.toFixed(2)} L</strong>
-                          {totalL > 0 ? ` / ${totalL.toFixed(2)} L` : ""}
-                          {totalL > 0 && (overAllocated ? ` · ${Math.abs(remainingL).toFixed(2)} L over` : ` · ${remainingL.toFixed(2)} L left`)}
+                          Allocated <strong style={{ color: overAllocated ? "var(--danger)" : "var(--ink)" }}>{allocatedCans.toLocaleString()} cans</strong>
+                          {totalCans > 0 ? ` / ${totalCans.toLocaleString()} cans` : ""}
+                          {totalCans > 0 && (overAllocated ? ` · ${Math.abs(remainingCans).toLocaleString()} over` : ` · ${remainingCans.toLocaleString()} left`)}
                         </span>
                         <button
                           className="btn btn--subtle btn--sm"
                           style={{ marginLeft: "auto" }}
-                          disabled={busy || !draft.productId || bottledMl <= 0 || overAllocated}
+                          disabled={busy || !draft.productId || allocatedCans <= 0 || overAllocated}
                           onClick={() => void appendAllocation()}
                         >
                           {busy ? "…" : overAllocated ? "Over the produced total" : "+ Add to run"}

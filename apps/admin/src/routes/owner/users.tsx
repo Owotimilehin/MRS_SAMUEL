@@ -41,6 +41,8 @@ export function UsersPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
+  const [editFor, setEditFor] = useState<AdminUserRow | null>(null);
+  const [deleteFor, setDeleteFor] = useState<AdminUserRow | null>(null);
   const [resetFor, setResetFor] = useState<AdminUserRow | null>(null);
   const [acting, setActing] = useState<string | null>(null);
 
@@ -166,6 +168,14 @@ export function UsersPage(): JSX.Element {
                       type="button"
                       className="btn btn--subtle btn--sm"
                       style={{ marginRight: 6 }}
+                      onClick={() => setEditFor(u)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--subtle btn--sm"
+                      style={{ marginRight: 6 }}
                       onClick={() => setResetFor(u)}
                     >
                       Reset password
@@ -173,10 +183,18 @@ export function UsersPage(): JSX.Element {
                     <button
                       type="button"
                       className={u.isActive ? "btn btn--subtle btn--sm" : "btn btn--primary btn--sm"}
+                      style={{ marginRight: 6 }}
                       disabled={acting === u.id}
                       onClick={() => void toggleActive(u)}
                     >
                       {acting === u.id ? "…" : u.isActive ? "Disable" : "Enable"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--danger btn--sm"
+                      onClick={() => setDeleteFor(u)}
+                    >
+                      Delete
                     </button>
                   </td>
                 </tr>
@@ -192,6 +210,27 @@ export function UsersPage(): JSX.Element {
           onClose={() => setShowInvite(false)}
           onSaved={() => {
             setShowInvite(false);
+            void load();
+          }}
+        />
+      )}
+      {editFor && (
+        <EditUserModal
+          user={editFor}
+          branches={branches}
+          onClose={() => setEditFor(null)}
+          onSaved={() => {
+            setEditFor(null);
+            void load();
+          }}
+        />
+      )}
+      {deleteFor && (
+        <DeleteUserModal
+          user={deleteFor}
+          onClose={() => setDeleteFor(null)}
+          onSaved={() => {
+            setDeleteFor(null);
             void load();
           }}
         />
@@ -331,6 +370,180 @@ function InviteModal({
           {submitting ? "Inviting…" : "Send invite"}
         </button>
       </form>
+    </Modal>
+  );
+}
+
+function EditUserModal({
+  user,
+  branches,
+  onClose,
+  onSaved,
+}: {
+  user: AdminUserRow;
+  branches: Branch[];
+  onClose: () => void;
+  onSaved: () => void;
+}): JSX.Element {
+  const [role, setRole] = useState<Role>(user.role);
+  const [branchId, setBranchId] = useState<string>(user.branchId ?? "");
+  const [gates, setGates] = useState<GateValue>(user.permissionOverrides);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const needsBranch = role === "manager" || role === "branch_staff";
+
+  async function submit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api(`/admin/users/${user.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          role,
+          branch_id: needsBranch ? branchId || null : null,
+          permission_overrides: gates,
+        }),
+      });
+      onSaved();
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError(err instanceof Error ? err.message : String(err));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal title={`Edit user · ${user.email}`} onClose={onClose}>
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: needsBranch ? "1fr 1fr" : "1fr", gap: 12 }}>
+          <div className="field">
+            <label className="field__label">Role</label>
+            <select
+              className="select"
+              value={role}
+              onChange={(e) => {
+                setRole(e.target.value as Role);
+                setGates({ granted: [], revoked: [] });
+              }}
+            >
+              <option value="branch_staff">Branch staff</option>
+              <option value="manager">Manager</option>
+              <option value="admin">Admin</option>
+              <option value="owner">Owner</option>
+            </select>
+          </div>
+          {needsBranch && (
+            <div className="field">
+              <label className="field__label">Branch</label>
+              <select
+                className="select"
+                value={branchId}
+                onChange={(e) => setBranchId(e.target.value)}
+                required
+              >
+                <option value="">Pick a branch…</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+        <GateEditor role={role} value={gates} onChange={setGates} />
+        <span className="field__hint">
+          Saving signs {user.email} out of any active sessions so the new access applies the
+          next time they sign in.
+        </span>
+        {error && <div className="field__error">{error}</div>}
+        <button type="submit" className="btn btn--primary btn--block" disabled={submitting}>
+          {submitting ? "Saving…" : "Save changes"}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function DeleteUserModal({
+  user,
+  onClose,
+  onSaved,
+}: {
+  user: AdminUserRow;
+  onClose: () => void;
+  onSaved: () => void;
+}): JSX.Element {
+  const [confirm, setConfirm] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<"hard" | "soft" | null>(null);
+
+  // Type-to-confirm: deleting is destructive, so the button stays inert until
+  // the typed email matches exactly.
+  const armed = confirm.trim().toLowerCase() === user.email.trim().toLowerCase();
+
+  async function submit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!armed) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await api<{ data: { id: string; mode: "hard" | "soft" } }>(
+        `/admin/users/${user.id}`,
+        { method: "DELETE" },
+      );
+      setResult(res.data.mode);
+      setTimeout(onSaved, 1800);
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError(err instanceof Error ? err.message : String(err));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal title={`Delete user · ${user.email}`} onClose={onClose}>
+      {result ? (
+        <p style={{ color: "var(--success)", margin: 0, lineHeight: 1.5 }}>
+          {result === "hard"
+            ? "User permanently deleted."
+            : "This user had activity history, so the account was deactivated and hidden — their records stay intact, and the email is now free to re-invite."}
+        </p>
+      ) : (
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div
+            className="card"
+            style={{
+              borderColor: "rgba(220,38,38,0.25)",
+              color: "var(--ink)",
+              fontSize: 13,
+              lineHeight: 1.5,
+            }}
+          >
+            This permanently removes <strong>{user.email}</strong> if they have no recorded
+            activity. If they have handled sales, stock, closes or expenses, the account is
+            instead deactivated and hidden so the books are preserved. Either way they can no
+            longer sign in. This cannot be undone.
+          </div>
+          <div className="field">
+            <label className="field__label">Type the user&rsquo;s email to confirm</label>
+            <input
+              className="input"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder={user.email}
+              autoFocus
+            />
+          </div>
+          {error && <div className="field__error">{error}</div>}
+          <button type="submit" className="btn btn--danger btn--block" disabled={submitting || !armed}>
+            {submitting ? "Deleting…" : "Delete user"}
+          </button>
+        </form>
+      )}
     </Modal>
   );
 }

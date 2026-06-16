@@ -4,9 +4,16 @@ import { z } from "zod";
 import { adminUser, type DbClient } from "@ms/db";
 import { CAPABILITIES } from "@ms/shared";
 import { hashPassword } from "../auth/argon.js";
+import { revokeAllUserSessions } from "../auth/session.js";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+
+/** Postgres foreign-key violation — raised when a hard delete is blocked by a
+ *  referencing row (a sale/payment/stock entry the user recorded). */
+function isForeignKeyViolation(e: unknown): boolean {
+  return typeof e === "object" && e !== null && (e as { code?: string }).code === "23503";
+}
 
 /**
  * Owner-only admin user management. Listing returns soft-state plus last-login
@@ -40,6 +47,17 @@ const ResetPassword = z.object({ password: z.string().min(12) });
 export function adminUserRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth(), requireCapability("users.manage"));
+
+  // Count owners who can still actually sign in. Guards every path that could
+  // strip the business of its last owner (delete, demote, disable) so it can
+  // never lock itself out of user management.
+  async function activeOwnerCount(): Promise<number> {
+    const rows = await db
+      .select({ id: adminUser.id })
+      .from(adminUser)
+      .where(and(eq(adminUser.role, "owner"), eq(adminUser.isActive, true), isNull(adminUser.deletedAt)));
+    return rows.length;
+  }
 
   r.get("/", async (c) => {
     const rows = await db
@@ -104,8 +122,20 @@ export function adminUserRoutes(db: DbClient) {
   r.patch("/:id", async (c) => {
     const id = c.req.param("id");
     const body = PatchUser.parse(await c.req.json());
-    const [before] = await db.select().from(adminUser).where(eq(adminUser.id, id));
+    const [before] = await db
+      .select()
+      .from(adminUser)
+      .where(and(eq(adminUser.id, id), isNull(adminUser.deletedAt)));
     if (!before) throw new BusinessError("not_found", "user not found", 404);
+
+    // Never let the last active owner be demoted or disabled.
+    const demotingLastOwner =
+      before.role === "owner" && body.role !== undefined && body.role !== "owner";
+    const disablingLastOwner =
+      before.role === "owner" && body.is_active === false;
+    if ((demotingLastOwner || disablingLastOwner) && (await activeOwnerCount()) <= 1) {
+      throw new BusinessError("conflict", "can't remove the last active owner", 409);
+    }
 
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     if (body.role !== undefined) patch["role"] = body.role;
@@ -126,6 +156,20 @@ export function adminUserRoutes(db: DbClient) {
       .where(and(eq(adminUser.id, id), isNull(adminUser.deletedAt)))
       .returning();
     if (!row) throw new BusinessError("internal_error", "update failed", 500);
+
+    // A role/permission change only lives in the user's 15-minute access token.
+    // Revoke their sessions so the new capabilities take effect on next sign-in
+    // instead of silently lagging (the "granted access but it didn't work" bug).
+    // Disabling a user likewise kicks them out immediately.
+    let sessionsRevoked = 0;
+    if (
+      body.role !== undefined ||
+      body.permission_overrides !== undefined ||
+      body.is_active === false
+    ) {
+      sessionsRevoked = await revokeAllUserSessions(db, id);
+    }
+
     await writeAudit(db, c, {
       action: "admin_user.update",
       entityType: "admin_user",
@@ -133,7 +177,7 @@ export function adminUserRoutes(db: DbClient) {
       before,
       after: row,
     });
-    return c.json({ data: row });
+    return c.json({ data: row, meta: { sessionsRevoked } });
   });
 
   r.patch("/:id/reset-password", async (c) => {
@@ -157,6 +201,63 @@ export function adminUserRoutes(db: DbClient) {
       entityId: id,
     });
     return c.json({ data: { ok: true } });
+  });
+
+  // Delete a user. We try a true row delete first; Postgres blocks it (FK
+  // restrict) when the user has recorded any sale / payment / stock move /
+  // close / production run / expense, in which case we soft-delete instead so
+  // the financial and audit history stays intact. Either way the account is
+  // gone from the list and can no longer sign in. Response `mode` tells the UI
+  // which happened.
+  r.delete("/:id", async (c) => {
+    const id = c.req.param("id");
+    const actor = c.get("auth");
+    if (actor.userId === id) {
+      throw new BusinessError("conflict", "you can't delete your own account", 409);
+    }
+    const [before] = await db
+      .select()
+      .from(adminUser)
+      .where(and(eq(adminUser.id, id), isNull(adminUser.deletedAt)));
+    if (!before) throw new BusinessError("not_found", "user not found", 404);
+    if (before.role === "owner" && (await activeOwnerCount()) <= 1) {
+      throw new BusinessError("conflict", "can't delete the last active owner", 409);
+    }
+
+    let mode: "hard" | "soft";
+    try {
+      // Sessions cascade-delete with the row; blog/branch references null out.
+      const deleted = await db
+        .delete(adminUser)
+        .where(eq(adminUser.id, id))
+        .returning({ id: adminUser.id });
+      if (deleted.length === 0) throw new BusinessError("not_found", "user not found", 404);
+      mode = "hard";
+    } catch (e) {
+      if (e instanceof BusinessError) throw e;
+      if (!isForeignKeyViolation(e)) throw e;
+      // Has history → soft delete. Kill sessions, deactivate, hide, and release
+      // the email (suffix it) so the same address can be invited again later.
+      await revokeAllUserSessions(db, id);
+      await db
+        .update(adminUser)
+        .set({
+          deletedAt: new Date(),
+          isActive: false,
+          email: `${before.email}.deleted-${Date.now()}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(adminUser.id, id));
+      mode = "soft";
+    }
+
+    await writeAudit(db, c, {
+      action: mode === "hard" ? "admin_user.delete" : "admin_user.soft_delete",
+      entityType: "admin_user",
+      entityId: id,
+      before,
+    });
+    return c.json({ data: { id, mode } });
   });
 
   return r;

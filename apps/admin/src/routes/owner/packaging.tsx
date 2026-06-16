@@ -87,6 +87,7 @@ export function PackagingPage(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [showAddPurchase, setShowAddPurchase] = useState(false);
   const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [editMaterial, setEditMaterial] = useState<Material | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
 
   /** All selectable locations in display order: factories first, then branches */
@@ -321,11 +322,12 @@ export function PackagingPage(): JSX.Element {
                 <th>Unit</th>
                 <th>Size (ml)</th>
                 <th>Active</th>
+                {canWrite && <th />}
               </tr>
             </thead>
             <tbody>
               {materials.length === 0 ? (
-                <tr><td colSpan={5} style={{ color: "var(--ink-soft)", padding: 18 }}>No materials yet. Add one to start tracking.</td></tr>
+                <tr><td colSpan={canWrite ? 6 : 5} style={{ color: "var(--ink-soft)", padding: 18 }}>No materials yet. Add one to start tracking.</td></tr>
               ) : (
                 materials.map((m) => (
                   <tr key={m.id}>
@@ -334,6 +336,13 @@ export function PackagingPage(): JSX.Element {
                     <td>{m.unit_label}</td>
                     <td>{m.size_ml ?? "—"}</td>
                     <td>{m.is_active ? "Yes" : "No"}</td>
+                    {canWrite && (
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEditMaterial(m)}>
+                          Edit
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -369,6 +378,19 @@ export function PackagingPage(): JSX.Element {
           onSaved={async () => {
             setShowAddMaterial(false);
             setFlash("Material added");
+            setTimeout(() => setFlash(null), 2500);
+            await loadAll();
+          }}
+        />
+      )}
+
+      {editMaterial && (
+        <MaterialModal
+          material={editMaterial}
+          onClose={() => setEditMaterial(null)}
+          onSaved={async () => {
+            setEditMaterial(null);
+            setFlash("Material updated");
             setTimeout(() => setFlash(null), 2500);
             await loadAll();
           }}
@@ -511,16 +533,20 @@ function PurchaseModal({
 }
 
 function MaterialModal({
+  material,
   onClose,
   onSaved,
 }: {
+  material?: Material;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }): JSX.Element {
-  const [name, setName] = useState("");
-  const [unitLabel, setUnitLabel] = useState("bottle");
-  const [sizeMl, setSizeMl] = useState<string>("");
-  const [kind, setKind] = useState<MaterialKind>("other");
+  const isEdit = material != null;
+  const [name, setName] = useState(material?.name ?? "");
+  const [unitLabel, setUnitLabel] = useState(material?.unit_label ?? "bottle");
+  const [sizeMl, setSizeMl] = useState<string>(material?.size_ml != null ? String(material.size_ml) : "");
+  const [kind, setKind] = useState<MaterialKind>(material?.kind ?? "other");
+  const [isActive, setIsActive] = useState(material?.is_active ?? true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -532,15 +558,17 @@ function MaterialModal({
     }
     setSubmitting(true);
     setError(null);
+    const payload = {
+      name: name.trim(),
+      unit_label: unitLabel.trim(),
+      size_ml: sizeMl ? Number(sizeMl) : null,
+      kind,
+      ...(isEdit ? { is_active: isActive } : {}),
+    };
     try {
-      await api(`/packaging/materials`, {
-        method: "POST",
-        body: JSON.stringify({
-          name: name.trim(),
-          unit_label: unitLabel.trim(),
-          size_ml: sizeMl ? Number(sizeMl) : null,
-          kind,
-        }),
+      await api(isEdit ? `/packaging/materials/${material.id}` : `/packaging/materials`, {
+        method: isEdit ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
       });
       await onSaved();
     } catch (err) {
@@ -562,7 +590,7 @@ function MaterialModal({
         onClick={(e) => e.stopPropagation()}
       >
         <header style={{ marginBottom: 14 }}>
-          <h2 className="t-h2">Add material</h2>
+          <h2 className="t-h2">{isEdit ? "Edit material" : "Add material"}</h2>
         </header>
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="field">
@@ -585,11 +613,17 @@ function MaterialModal({
             <label className="field__label" htmlFor="m-size">Size (ml) — optional</label>
             <input id="m-size" className="input" type="number" min={1} value={sizeMl} onChange={(e) => setSizeMl(e.target.value)} placeholder="330" />
           </div>
+          {isEdit && (
+            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+              <span className="field__label" style={{ margin: 0 }}>Active (uncheck to hide from pickers)</span>
+            </label>
+          )}
           {error && <div className="field__error">{error}</div>}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
             <button type="button" className="btn btn--subtle" onClick={onClose} disabled={submitting}>Cancel</button>
             <button type="submit" className="btn btn--primary" disabled={submitting}>
-              {submitting ? "Adding…" : "Add material"}
+              {submitting ? "Saving…" : isEdit ? "Save changes" : "Add material"}
             </button>
           </div>
         </form>
