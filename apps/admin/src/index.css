@@ -660,6 +660,26 @@ h1, h2, h3, h4,
 .app-burger svg { width: 20px; height: 20px; }
 .app-scrim { display: none; }
 
+/* Side-rail expand/collapse chevron. Hidden on desktop (≥1280) where the rail
+ * is always full; shown on md to draw the text drawer out/in, and inside the
+ * small-screen drawer to collapse it. Sits on the green rail, so light-on-green. */
+.app-rail-toggle {
+  display: none;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #eaf6ee;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.app-rail-toggle:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.app-rail-toggle svg { width: 18px; height: 18px; }
+
 /* ── Responsive: per UI_SPEC Part 6.2 (admin shell) ─────────────────────
  *  ≥1280  full side rail with labels (default rules above)
  *  1024–1280  icon-only rail, labels appear on hover via native tooltip
@@ -676,6 +696,45 @@ h1, h2, h3, h4,
   .app-foot { align-items: center; }
   .app-foot__email { display: none; }
   .app-foot__signout { font-size: 11px; }
+  /* Expand control sits centered above the logo on the collapsed icon rail. */
+  .app-rail-toggle { display: inline-flex; align-self: center; margin-bottom: 2px; }
+
+  /* Drawn-out state: overlay a full 272px text drawer over the page, same feel
+   * as the phone drawer. The 76px column stays put, fully hidden behind it. */
+  .app-shell.nav-open .app-side {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 272px;
+    z-index: 60;
+    padding: 22px 16px;
+    box-shadow: 0 0 48px rgba(10, 20, 15, 0.22);
+  }
+  .app-shell.nav-open .app-rail-toggle { align-self: flex-end; }
+  .app-shell.nav-open .app-brand { justify-content: flex-start; padding: 4px 8px; }
+  .app-shell.nav-open .app-brand > div:not(.app-brand__mark) { display: block; }
+  .app-shell.nav-open .app-nav__section { display: block; }
+  .app-shell.nav-open .app-nav__link {
+    justify-content: flex-start;
+    gap: 11px;
+    padding: 9px 12px 9px 14px;
+  }
+  .app-shell.nav-open .app-nav__link > span:not(.app-nav__icon) { display: inline; }
+  .app-shell.nav-open .app-foot { align-items: stretch; }
+  .app-shell.nav-open .app-foot__email { display: block; }
+  .app-shell.nav-open .app-foot__signout { font-size: 13px; }
+  .app-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(10, 20, 15, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .app-shell.nav-open .app-scrim { opacity: 1; pointer-events: auto; }
 }
 
 @media (max-width: 1023px) {
@@ -704,6 +763,9 @@ h1, h2, h3, h4,
   }
   .app-shell.nav-open .app-scrim { opacity: 1; pointer-events: auto; }
   .app-burger { display: inline-flex; }
+  /* Inside the drawer (only visible when open, since the rail is off-canvas
+   * when closed) the chevron collapses it; the header hamburger opens it. */
+  .app-rail-toggle { display: inline-flex; align-self: flex-end; }
   /* Let the header wrap so actions (date pickers, New-flavour, toggles) drop to
      a second row instead of overlapping the page title. */
   .app-head { padding: 10px 14px; gap: 10px 8px; flex-wrap: wrap; }

@@ -1,10 +1,11 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Menu, ArrowLeft } from "lucide-react";
+import { Menu, ArrowLeft, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useSyncState } from "../sync/state.js";
 import { startSyncLoop } from "../sync/engine.js";
 import { useAuthUser } from "../lib/auth.js";
+import { useRailOpen } from "../lib/rail.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
 
 function dropStyle(left: string, s: string, d: string, delay: string): CSSProperties {
@@ -40,20 +41,11 @@ export function BranchShell({
   const sync = useSyncState();
   const user = useAuthUser();
   const [branchName, setBranchName] = useState<string | null>(null);
-  const [navOpen, setNavOpen] = useState(false);
+  const rail = useRailOpen();
 
   useEffect(() => {
     return startSyncLoop(branchId);
   }, [branchId]);
-
-  useEffect(() => {
-    if (!navOpen) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") setNavOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [navOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,8 +68,8 @@ export function BranchShell({
   }, [branchId]);
 
   return (
-    <div className={`app-shell${navOpen ? " nav-open" : ""}`}>
-      <div className="app-scrim" aria-hidden="true" onClick={() => setNavOpen(false)} />
+    <div className={`app-shell${rail.open ? " nav-open" : ""}`}>
+      <div className="app-scrim" aria-hidden="true" onClick={rail.close} />
       <div className="water-field" aria-hidden="true">
         <div className="water-field__glow water-field__glow--1" />
         <div className="water-field__glow water-field__glow--2" />
@@ -88,6 +80,15 @@ export function BranchShell({
         <span className="water-field__drop" style={dropStyle("80%", "16px", "10s", "3.5s")} />
       </div>
       <aside className="app-side">
+        <button
+          type="button"
+          className="app-rail-toggle"
+          aria-label={rail.open ? "Collapse navigation" : "Expand navigation"}
+          aria-expanded={rail.open}
+          onClick={rail.toggle}
+        >
+          {rail.open ? <ChevronsLeft strokeWidth={2} /> : <ChevronsRight strokeWidth={2} />}
+        </button>
         <div className="app-brand">
           <div className="app-brand__mark">
             <img src="/brand-logo.png" alt="Mrs. Samuel" />
@@ -106,7 +107,7 @@ export function BranchShell({
             <Link
               to="/owner/dashboard"
               title="Back to admin"
-              onClick={() => setNavOpen(false)}
+              onClick={rail.close}
               className="app-nav__link app-nav__back"
             >
               <span className="app-nav__icon">
@@ -120,7 +121,7 @@ export function BranchShell({
               key={item.to}
               to={item.to}
               title={item.label}
-              onClick={() => setNavOpen(false)}
+              onClick={rail.close}
               className="app-nav__link"
               activeProps={{ className: "app-nav__link is-active" }}
             >
@@ -153,7 +154,7 @@ export function BranchShell({
             type="button"
             className="app-burger"
             aria-label="Open navigation"
-            onClick={() => setNavOpen(true)}
+            onClick={rail.show}
           >
             <Menu strokeWidth={2} />
           </button>

@@ -1,7 +1,9 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Menu,
+  ChevronsLeft,
+  ChevronsRight,
   LayoutDashboard,
   TrendingUp,
   Bell,
@@ -34,6 +36,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuthUser } from "../lib/auth.js";
+import { useRailOpen } from "../lib/rail.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
 import type { Capability } from "@ms/shared";
 
@@ -106,16 +109,9 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
   const user = useAuthUser();
   const can = (cap: Capability): boolean => user.capabilities.includes(cap);
   const initial = (user.email?.[0] ?? "?").toUpperCase();
-  // Mobile (<1024) nav drawer. Inert on desktop where the rail is always shown.
-  const [navOpen, setNavOpen] = useState(false);
-  useEffect(() => {
-    if (!navOpen) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") setNavOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [navOpen]);
+  // Overlay drawer state. Drives the off-canvas drawer on small screens and the
+  // "drawn-out" text rail on md; inert on desktop where the rail is always full.
+  const rail = useRailOpen();
 
   const renderSection = (heading: string, items: NavLink[]): JSX.Element | null => {
     const visible = items.filter((i) => can(i.cap));
@@ -128,7 +124,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
             key={item.to}
             to={item.to}
             title={item.label}
-            onClick={() => setNavOpen(false)}
+            onClick={rail.close}
             className="app-nav__link"
             activeProps={{ className: "app-nav__link is-active" }}
           >
@@ -143,8 +139,8 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
   };
 
   return (
-    <div className={`app-shell${navOpen ? " nav-open" : ""}`}>
-      <div className="app-scrim" aria-hidden="true" onClick={() => setNavOpen(false)} />
+    <div className={`app-shell${rail.open ? " nav-open" : ""}`}>
+      <div className="app-scrim" aria-hidden="true" onClick={rail.close} />
       {/* Ambient water-drop field — sits behind all content (see index.css). */}
       <div className="water-field" aria-hidden="true">
         <div className="water-field__glow water-field__glow--1" />
@@ -158,6 +154,15 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
         <span className="water-field__drop" style={dropStyle("90%", "20px", "12s", "2.4s")} />
       </div>
       <aside className="app-side">
+        <button
+          type="button"
+          className="app-rail-toggle"
+          aria-label={rail.open ? "Collapse navigation" : "Expand navigation"}
+          aria-expanded={rail.open}
+          onClick={rail.toggle}
+        >
+          {rail.open ? <ChevronsLeft strokeWidth={2} /> : <ChevronsRight strokeWidth={2} />}
+        </button>
         <div className="app-brand">
           <div className="app-brand__mark">
             <img src="/brand-logo.png" alt="Mrs. Samuel" />
@@ -181,7 +186,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
               <Link
                 to="/branch/sell"
                 title="Branch POS"
-                onClick={() => setNavOpen(false)}
+                onClick={rail.close}
                 className="app-nav__link"
                 activeProps={{ className: "app-nav__link is-active" }}
               >
@@ -217,7 +222,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
             type="button"
             className="app-burger"
             aria-label="Open navigation"
-            onClick={() => setNavOpen(true)}
+            onClick={rail.show}
           >
             <Menu strokeWidth={2} />
           </button>
