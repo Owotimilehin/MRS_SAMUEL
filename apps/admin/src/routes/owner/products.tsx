@@ -1,10 +1,13 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { Modal } from "../../components/Modal.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api, ApiError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { FlavourMedia } from "../../components/FlavourMedia.js";
+import { getFlavourVisual } from "../../lib/flavour-visuals.js";
 import {
   PalettePicker,
   AssetPicker,
@@ -86,17 +89,27 @@ export function ProductsPage(): JSX.Element {
       crumb="Owner"
       actions={
         <button type="button" className="btn btn--primary btn--sm" onClick={() => setShowCreate(true)}>
-          + New flavour
+          <span className="btn__plus">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </span>
+          New flavour
         </button>
       }
     >
-      <div className="page-head ed-rise">
-        <div className="page-head__titles">
-          <div className="page-head__eyebrow">Catalogue</div>
-          <h1 className="page-head__title">Products</h1>
-          <p className="page-head__sub">Flavours, sizes and pricing.</p>
-        </div>
-      </div>
+      <StatHero
+        eyebrow="Catalogue"
+        title="Products"
+        sub={"Flavours, sizes and pricing — every bottle in the Mrs. Samuel range."}
+        loading={loading}
+        chips={[
+          { label: "Flavours", value: rows.length },
+          { label: "Regular", value: rows.filter((r) => r.category === "regular").length },
+          { label: "Special", value: rows.filter((r) => r.category === "special").length },
+          { label: "Punch", value: rows.filter((r) => r.category === "punch").length },
+        ]}
+      />
 
       {error && (
         <div
@@ -115,76 +128,47 @@ export function ProductsPage(): JSX.Element {
           Add your first flavour to start selling.
         </div>
       ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Flavour</th>
-                <th>Category</th>
-                <th>Ingredients</th>
-                <th>Cans &amp; prices</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{p.name}</div>
-                    <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{p.slug}</div>
-                  </td>
-                  <td>
-                    <span
-                      className={
-                        p.category === "special"
-                          ? "pill pill--accent"
-                          : p.category === "punch"
-                            ? "pill pill--grad"
-                            : "pill"
-                      }
-                    >
-                      {p.category}
-                    </span>
-                  </td>
-                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
-                    {p.ingredients.length > 0 ? p.ingredients.join(", ") : "—"}
-                  </td>
-                  <td>
-                    {p.variants && p.variants.length > 0 ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        {p.variants.map((v) => (
-                          <div
-                            key={v.id}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 12,
-                              fontSize: 13,
-                            }}
-                          >
-                            <span style={{ color: "var(--ink-soft)" }}>{v.size_ml}ml</span>
-                            <span
-                              className="tabular-nums"
-                              style={{
-                                fontWeight: 700,
-                                color: v.current_price_ngn == null ? "var(--danger)" : "inherit",
-                              }}
-                            >
-                              {v.current_price_ngn != null ? ngn(v.current_price_ngn) : "no price"}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span style={{ color: "var(--ink-soft)" }}>—</span>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+        <div className="flav-grid ed-rise">
+          {rows.map((p) => {
+            const accent = getFlavourVisual({ slug: p.slug }).accent;
+            return (
+              <article key={p.id} className="flav-card">
+                <FlavourMedia
+                  size="card"
+                  product={{ slug: p.slug }}
+                />
+                <span className="flav-tag flav-card__cat" style={{ ["--fl-accent" as string]: accent } as CSSProperties}>
+                  {p.category}
+                </span>
+                <div className="flav-card__body">
+                  <div className="flav-card__name">{p.name}</div>
+                  <div className="flav-card__slug">{p.slug}</div>
+                  <div className="flav-card__ingr">
+                    {p.ingredients.length > 0 ? p.ingredients.join(", ") : "No ingredients listed yet"}
+                  </div>
+                  {p.variants && p.variants.length > 0 ? (
+                    <div className="flav-card__sizes">
+                      {p.variants.map((v) => (
+                        <div key={v.id} className="flav-size">
+                          <span className="flav-size__ml">{v.size_ml} ml</span>
+                          {v.current_price_ngn != null ? (
+                            <span className="flav-size__pr">{ngn(v.current_price_ngn)}</span>
+                          ) : (
+                            <span className="flav-size__pr--none">no price — set it</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flav-card__sizes">
+                      <span className="flav-size__pr--none">No cans yet</span>
+                    </div>
+                  )}
+                  <div className="flav-card__actions">
                     <Link
                       to="/owner/products/$productId"
                       params={{ productId: p.id }}
                       className="btn btn--subtle btn--sm"
-                      style={{ marginRight: 6 }}
                     >
                       Open
                     </Link>
@@ -196,11 +180,11 @@ export function ProductsPage(): JSX.Element {
                     >
                       Update prices
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
 
