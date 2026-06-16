@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../components/Shell.js";
+import { StatHero } from "../components/StatHero.js";
 import { api } from "../lib/api.js";
 import { formatDateTime } from "../lib/format.js";
 import { InlineLoader } from "../components/Spinner.js";
@@ -127,6 +128,11 @@ export function TransfersPage(): JSX.Element {
   const branchName = (id: string): string =>
     branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);
 
+  const inTransitCount = rows.filter((r) => r.status === "dispatched" || r.status === "in_transit").length;
+  const toReceiveCount = rows.filter((r) => r.status === "arrived").length;
+  const completedCount = rows.filter((r) => r.status === "completed" || r.status === "received").length;
+  const varianceCount = rows.filter((r) => r.status === "received_with_variance").length;
+
   return (
     <Shell
       title="Transfers"
@@ -151,6 +157,18 @@ export function TransfersPage(): JSX.Element {
         </div>
       }
     >
+      <StatHero
+        eyebrow="Products"
+        title="Transfers"
+        sub="Factory-to-branch stock transfers and their status."
+        loading={loading}
+        chips={[
+          { label: "In transit", value: inTransitCount, tone: inTransitCount > 0 ? "warn" : "good" },
+          { label: "To receive", value: toReceiveCount, tone: toReceiveCount > 0 ? "warn" : "good" },
+          { label: "Completed", value: completedCount },
+          { label: "Variance", value: varianceCount, tone: varianceCount > 0 ? "danger" : "good" },
+        ]}
+      />
       {error && (
         <div
           className="card"

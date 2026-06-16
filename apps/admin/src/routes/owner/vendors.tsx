@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useAuthUser } from "../../lib/auth.js";
@@ -56,6 +57,9 @@ export function VendorsPage(): JSX.Element {
     setTimeout(() => setFlash(null), 2500);
   }
 
+  const activeVendors = vendors.filter((v) => v.deleted_at === null).length;
+  const withContact = vendors.filter((v) => v.phone !== null || v.email !== null).length;
+
   return (
     <Shell
       title="Vendors"
@@ -67,6 +71,17 @@ export function VendorsPage(): JSX.Element {
         ) : null
       }
     >
+      <StatHero
+        eyebrow="Finance"
+        title="Vendors"
+        sub="Supplier directory for expenses and purchases."
+        loading={loading}
+        chips={[
+          { label: "Vendors", value: vendors.length },
+          { label: "Active", value: activeVendors },
+          { label: "With contact", value: withContact },
+        ]}
+      />
       {error && (
         <div className="card" style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}>
           {error}

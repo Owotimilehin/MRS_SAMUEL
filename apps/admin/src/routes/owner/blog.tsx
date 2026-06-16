@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState, type FormEvent } from "react";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { Modal } from "../../components/Modal.js";
 import { api, ApiError } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
@@ -83,6 +84,9 @@ export function BlogPage(): JSX.Element {
     }
   }
 
+  const publishedCount = rows.filter((p) => p.publishedAt !== null).length;
+  const draftCount = rows.filter((p) => p.publishedAt === null).length;
+
   return (
     <Shell
       title="Blog"
@@ -92,6 +96,17 @@ export function BlogPage(): JSX.Element {
         </button>
       }
     >
+      <StatHero
+        eyebrow="Marketing"
+        title="Blog"
+        sub="Content posts published to the customer storefront."
+        loading={loading}
+        chips={[
+          { label: "Posts", value: rows.length },
+          { label: "Published", value: publishedCount, tone: "good" },
+          { label: "Drafts", value: draftCount, tone: draftCount > 0 ? "warn" : "good" },
+        ]}
+      />
       {error && (
         <div
           className="card"

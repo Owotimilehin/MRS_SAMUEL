@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -96,9 +97,25 @@ export function AdjustmentsPage(): JSX.Element {
     });
   }
 
+  const allLines = rows.flatMap((r) => r.lines);
+  const netDelta = allLines.reduce((sum, l) => sum + l.delta, 0);
+  const positiveAdj = rows.filter((r) => r.lines.some((l) => l.delta > 0)).length;
+  const negativeAdj = rows.filter((r) => r.lines.every((l) => l.delta <= 0) && r.lines.some((l) => l.delta < 0)).length;
+
   return (
     <Shell title="Adjustments history">
-      
+      <StatHero
+        eyebrow="Products"
+        title="Adjustments"
+        sub="Stock adjustment history for factories and branches."
+        loading={loading}
+        chips={[
+          { label: "In range", value: rows.length },
+          { label: "Net delta (cans)", value: (netDelta >= 0 ? "+" : "") + netDelta },
+          { label: "Increases", value: positiveAdj, tone: "good" },
+          { label: "Decreases", value: negativeAdj, tone: negativeAdj > 0 ? "warn" : "good" },
+        ]}
+      />
 
       <div style={{ display: "flex", gap: 12, alignItems: "end", marginBottom: 16, flexWrap: "wrap" }}>
         <div className="field">

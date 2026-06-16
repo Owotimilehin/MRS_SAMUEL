@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -48,6 +49,10 @@ export function OwnerClosesPage(): JSX.Element {
 
   const branchName = (id: string): string => branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);
 
+  const withVariance = variances.filter((v) => v.variance_ngn !== 0).length;
+  const netVariance = variances.reduce((sum, v) => sum + v.variance_ngn, 0);
+  const negativeCloses = variances.filter((v) => v.variance_ngn < 0).length;
+
   return (
     <Shell
       title="Daily closes"
@@ -66,7 +71,19 @@ export function OwnerClosesPage(): JSX.Element {
         </div>
       }
     >
-      
+      <StatHero
+        eyebrow="Finance"
+        title="Daily closes"
+        sub="Branch end-of-day cash variance report."
+        loading={loading}
+        chips={[
+          { label: "In range", value: variances.length },
+          { label: "With variance", value: withVariance, tone: withVariance > 0 ? "warn" : "good" },
+          { label: "Net variance", value: ngn(netVariance) },
+          { label: "Negative closes", value: negativeCloses, tone: negativeCloses > 0 ? "danger" : "good" },
+        ]}
+      />
+
 
       {loading ? (
         <InlineLoader />

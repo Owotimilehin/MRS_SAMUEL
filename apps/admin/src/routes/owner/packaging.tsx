@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -159,6 +160,11 @@ export function PackagingPage(): JSX.Element {
     [materials],
   );
 
+  const lowStockCount = stock.filter((s) => s.balance < 100).length;
+  const bagsOnHand = stock
+    .filter((s) => s.kind === "bag")
+    .reduce((sum, s) => sum + s.balance, 0);
+
   return (
     <Shell
       title="Packaging"
@@ -182,6 +188,17 @@ export function PackagingPage(): JSX.Element {
         </div>
       }
     >
+      <StatHero
+        eyebrow="Products"
+        title="Packaging"
+        sub="Packaging materials stock and purchase history."
+        loading={loading}
+        chips={[
+          { label: "Materials tracked", value: stock.length },
+          { label: "Bags on hand", value: bagsOnHand.toLocaleString() },
+          { label: "Low stock", value: lowStockCount, tone: lowStockCount > 0 ? "danger" : "good" },
+        ]}
+      />
       {error && (
         <div className="card" style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}>
           {error}

@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -94,6 +95,9 @@ export function ReviewPage(): JSX.Element {
   const total =
     (data?.transfer_variances.length ?? 0) + (data?.return_approvals.length ?? 0);
 
+  const transferVarianceCount = data?.transfer_variances.length ?? 0;
+  const returnApprovalCount = data?.return_approvals.length ?? 0;
+
   return (
     <Shell
       title="Needs review"
@@ -103,7 +107,18 @@ export function ReviewPage(): JSX.Element {
         </span>
       }
     >
-      
+      <StatHero
+        eyebrow="Overview"
+        title="Needs review"
+        sub="Items awaiting owner action — variances and return approvals."
+        loading={loading}
+        chips={[
+          { label: "Items to review", value: total, tone: total > 0 ? "danger" : "good" },
+          { label: "Transfer variances", value: transferVarianceCount, tone: transferVarianceCount > 0 ? "warn" : "good" },
+          { label: "Return approvals", value: returnApprovalCount, tone: returnApprovalCount > 0 ? "warn" : "good" },
+        ]}
+      />
+
 
       <section style={{ marginBottom: 24 }}>
         <header style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>

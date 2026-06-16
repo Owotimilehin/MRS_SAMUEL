@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Shell } from "../../components/Shell.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -109,6 +110,10 @@ export function BookkeepingPage(): JSX.Element {
     setTimeout(() => setFlash(null), 2500);
   }
 
+  const marginPct = pnl && pnl.net_revenue_ngn > 0
+    ? Math.round((pnl.net_ngn / pnl.net_revenue_ngn) * 100)
+    : 0;
+
   return (
     <Shell
       title="Bookkeeping"
@@ -138,6 +143,18 @@ export function BookkeepingPage(): JSX.Element {
         </div>
       }
     >
+      <StatHero
+        eyebrow="Finance"
+        title="Bookkeeping"
+        sub={`Revenue, expenses and profit for ${month}.`}
+        loading={loading}
+        chips={[
+          { label: "Revenue", value: pnl ? ngn(pnl.net_revenue_ngn) : "—" },
+          { label: "Expenses", value: pnl ? ngn(pnl.expenses_total_ngn) : "—" },
+          { label: "Profit", value: pnl ? ngn(pnl.net_ngn) : "—", tone: pnl ? (pnl.net_ngn >= 0 ? "good" : "danger") : "default" },
+          { label: "Margin", value: pnl ? `${marginPct}%` : "—" },
+        ]}
+      />
       {error && (
         <div
           className="card"
