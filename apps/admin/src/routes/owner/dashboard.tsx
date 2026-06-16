@@ -2,6 +2,8 @@
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { Stat } from "../../components/Stat.js";
+import { FlavourMedia } from "../../components/FlavourMedia.js";
+import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { downloadCsv } from "../../lib/csv.js";
@@ -38,6 +40,13 @@ interface ReviewBody {
     transfer_variances: Array<{ id: string }>;
     return_approvals: Array<{ id: string }>;
   };
+}
+
+// Top-products / revenue endpoints return a product name but no slug; derive a
+// slug from the name so FlavourMedia can resolve the right bottle (exact for
+// known flavours, a stable hash fallback otherwise).
+function slugify(v: string): string {
+  return v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 function today(): string {
@@ -142,17 +151,14 @@ export function DashboardPage(): JSX.Element {
         </div>
       }
     >
-      <div className="page-head ed-rise">
-        <div className="page-head__titles">
-          <div className="page-head__eyebrow">Overview</div>
-          <h1 className="page-head__title">Store performance</h1>
-          <p className="page-head__sub">
-            Revenue, orders and items that need your attention across every branch.
-          </p>
-        </div>
-      </div>
+      <StatHero
+        eyebrow="Overview"
+        title="Store performance"
+        sub="Revenue, orders and the things that need your attention — across every branch, poured fresh."
+        bottleSlug={topProducts[0] ? slugify(topProducts[0].product_name) : "sunrise"}
+      />
 
-      
+
 
       <div
         style={{
@@ -174,14 +180,7 @@ export function DashboardPage(): JSX.Element {
         />
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.4fr 1fr",
-          gap: 18,
-          marginBottom: 18,
-        }}
-      >
+      <div className="l-split l-split--dash" style={{ marginBottom: 18 }}>
         <section className="card">
           <header className="card__head">
             <h2 className="t-h2">Branch performance</h2>
@@ -261,16 +260,17 @@ export function DashboardPage(): JSX.Element {
                   key={p.product_id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "28px 1fr auto",
+                    gridTemplateColumns: "26px 46px 1fr auto",
                     alignItems: "center",
-                    gap: 10,
+                    gap: 11,
                     padding: "8px 0",
                     borderBottom: idx === topProducts.length - 1 ? "none" : "1px solid var(--line)",
                   }}
                 >
-                  <span className="pill pill--grad" style={{ width: 28, height: 28, padding: 0, justifyContent: "center" }}>
+                  <span className="pill pill--grad" style={{ width: 26, height: 26, padding: 0, justifyContent: "center" }}>
                     {idx + 1}
                   </span>
+                  <FlavourMedia size="chip" product={{ slug: slugify(p.product_name) }} />
                   <div>
                     <div style={{ fontWeight: 600 }}>{p.product_name}</div>
                     <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{p.quantity} sold</div>
