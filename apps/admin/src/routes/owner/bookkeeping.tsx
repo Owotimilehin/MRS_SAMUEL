@@ -574,6 +574,8 @@ function ExpenseModal({
         style={{
           width: "100%",
           maxWidth: 520,
+          maxHeight: "calc(100vh - 32px)",
+          overflow: "auto",
           background: "var(--shell)",
           boxShadow: "var(--shadow-float)",
         }}
@@ -993,7 +995,7 @@ function RecurringModal({
     >
       <div
         className="card"
-        style={{ width: "100%", maxWidth: 480, background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
+        style={{ width: "100%", maxWidth: 480, maxHeight: "calc(100vh - 32px)", overflow: "auto", background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <header style={{ marginBottom: 14 }}>

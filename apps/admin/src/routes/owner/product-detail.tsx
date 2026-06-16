@@ -6,6 +6,8 @@ import { Modal } from "../../components/Modal.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { FlavourMedia } from "../../components/FlavourMedia.js";
+import { getFlavourVisual } from "../../lib/flavour-visuals.js";
 import {
   PalettePicker,
   AssetPicker,
@@ -214,6 +216,30 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
         <InlineLoader />
       ) : (
         <>
+          {(() => {
+            const vis = getFlavourVisual({ slug: product.slug, imageUrl: product.imageUrl, palette: product.palette });
+            return (
+              <section
+                className="flav-hero ed-rise"
+                style={{ ["--fl-surface" as string]: vis.surface, ["--fl-accent" as string]: vis.accent } as React.CSSProperties}
+              >
+                <FlavourMedia
+                  size="hero"
+                  className="flav-hero__media"
+                  product={{ slug: product.slug, imageUrl: product.imageUrl, palette: product.palette }}
+                />
+                <div className="flav-hero__meta">
+                  <span className="flav-tag" style={{ ["--fl-accent" as string]: vis.accent } as React.CSSProperties}>
+                    {product.category}
+                  </span>
+                  <h2 className="flav-hero__name">{product.name}</h2>
+                  {product.tagline ? <p className="flav-hero__tagline">{product.tagline}</p> : null}
+                  <div className="flav-hero__slug">/{product.slug}</div>
+                </div>
+              </section>
+            );
+          })()}
+
           <div
             className="ed-rise"
             style={{
@@ -233,7 +259,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
             <Stat label="Shelf life" value={`${product.shelfLifeHours}h`} />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
+          <div className="l-split l-split--detail">
             <section className="card">
               <div className="card__head"><h2 className="t-h2">Details</h2></div>
               <Field label="Name" value={product.name} />

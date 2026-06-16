@@ -77,6 +77,66 @@ export function reportRoutes(db: DbClient) {
     return c.json({ data: rows });
   });
 
+  // Revenue / orders bucketed over time for trend charts. Zero-filled so the
+  // x-axis is continuous even on days/weeks with no sales. Same status filter as
+  // /revenue; net subtracts completed refunds in the same bucket.
+  r.get("/timeseries", async (c) => {
+    const from =
+      c.req.query("from") ??
+      new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    const to = c.req.query("to") ?? new Date().toISOString().slice(0, 10);
+    const interval = c.req.query("interval") === "week" ? "week" : "day";
+
+    const seriesStart =
+      interval === "week"
+        ? sql`date_trunc('week', ${from}::timestamp)::date`
+        : sql`${from}::date`;
+    const step = interval === "week" ? sql`'1 week'::interval` : sql`'1 day'::interval`;
+    const saleBucket =
+      interval === "week"
+        ? sql`date_trunc('week', created_at_local)::date`
+        : sql`created_at_local::date`;
+    const refundBucket =
+      interval === "week"
+        ? sql`date_trunc('week', created_at)::date`
+        : sql`created_at::date`;
+
+    const rows = await db.execute<{
+      date: string;
+      gross_ngn: number;
+      net_ngn: number;
+      orders: number;
+    }>(sql`
+      WITH buckets AS (
+        SELECT generate_series(${seriesStart}, ${to}::date, ${step})::date AS d
+      ),
+      sales AS (
+        SELECT ${saleBucket} AS d, SUM(total_ngn)::int AS gross, COUNT(*)::int AS orders
+        FROM sale_order
+        WHERE status IN ('paid','handed_over','delivered')
+          AND created_at_local::date BETWEEN ${from}::date AND ${to}::date
+        GROUP BY 1
+      ),
+      refunds AS (
+        SELECT ${refundBucket} AS d, SUM(refund_amount_ngn)::int AS refunds
+        FROM sale_return
+        WHERE status = 'completed'
+          AND created_at::date BETWEEN ${from}::date AND ${to}::date
+        GROUP BY 1
+      )
+      SELECT
+        b.d::text AS date,
+        COALESCE(s.gross, 0)::int AS gross_ngn,
+        (COALESCE(s.gross, 0) - COALESCE(r.refunds, 0))::int AS net_ngn,
+        COALESCE(s.orders, 0)::int AS orders
+      FROM buckets b
+      LEFT JOIN sales s ON s.d = b.d
+      LEFT JOIN refunds r ON r.d = b.d
+      ORDER BY b.d
+    `);
+    return c.json({ data: rows });
+  });
+
   r.get("/branch-stock", async (c) => {
     const rows = await db.execute<{
       branch_id: string;

@@ -3,6 +3,11 @@ import { Shell } from "../../components/Shell.js";
 import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useAuthUser } from "../../lib/auth.js";
+import { FlavourMedia } from "../../components/FlavourMedia.js";
+
+// Inventory groups carry a product name but no slug — derive one so FlavourMedia
+// can resolve the right bottle.
+const slugify = (v: string): string => v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 // Per-variant stock row as returned by /stock/factory/:id and /reports/branch-stock.
 interface StockRow {
@@ -368,7 +373,10 @@ export function InventoryPage(): JSX.Element {
                         color: "var(--ink)",
                       }}
                     >
-                      {group.productName}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                        <FlavourMedia size="chip" product={{ slug: slugify(group.productName) }} />
+                        {group.productName}
+                      </span>
                     </td>
                     {subtotalCells.map((q, idx) => (
                       <td
@@ -823,7 +831,7 @@ function AdjustModal({
     >
       <div
         className="card"
-        style={{ width: "100%", maxWidth: 460, background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
+        style={{ width: "100%", maxWidth: 460, maxHeight: "calc(100vh - 32px)", overflow: "auto", background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <header style={{ marginBottom: 14 }}>

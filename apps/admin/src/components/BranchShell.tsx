@@ -1,10 +1,15 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { Menu, ArrowLeft } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useSyncState } from "../sync/state.js";
 import { startSyncLoop } from "../sync/engine.js";
 import { useAuthUser } from "../lib/auth.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
+
+function dropStyle(left: string, s: string, d: string, delay: string): CSSProperties {
+  return { left, ["--s" as string]: s, ["--d" as string]: d, ["--delay" as string]: delay };
+}
 
 interface BranchShellProps {
   branchId: string;
@@ -35,10 +40,20 @@ export function BranchShell({
   const sync = useSyncState();
   const user = useAuthUser();
   const [branchName, setBranchName] = useState<string | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     return startSyncLoop(branchId);
   }, [branchId]);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setNavOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +76,17 @@ export function BranchShell({
   }, [branchId]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${navOpen ? " nav-open" : ""}`}>
+      <div className="app-scrim" aria-hidden="true" onClick={() => setNavOpen(false)} />
+      <div className="water-field" aria-hidden="true">
+        <div className="water-field__glow water-field__glow--1" />
+        <div className="water-field__glow water-field__glow--2" />
+        <div className="water-field__glow water-field__glow--3" />
+        <span className="water-field__drop" style={dropStyle("14%", "12px", "8s", "0s")} />
+        <span className="water-field__drop" style={dropStyle("34%", "18px", "11s", "2s")} />
+        <span className="water-field__drop" style={dropStyle("58%", "10px", "7s", "1s")} />
+        <span className="water-field__drop" style={dropStyle("80%", "16px", "10s", "3.5s")} />
+      </div>
       <aside className="app-side">
         <div className="app-brand">
           <div className="app-brand__mark">
@@ -74,10 +99,28 @@ export function BranchShell({
         </div>
 
         <nav className="app-nav">
+          {/* Owners/admins drop into POS to run a till; give them a one-tap way
+           * back to the admin app. Gated on dashboard access so we never link
+           * a pure branch_staff member somewhere they can't go. */}
+          {user.capabilities.includes("reports.view") ? (
+            <Link
+              to="/owner/dashboard"
+              title="Back to admin"
+              onClick={() => setNavOpen(false)}
+              className="app-nav__link app-nav__back"
+            >
+              <span className="app-nav__icon">
+                <ArrowLeft strokeWidth={2} />
+              </span>
+              <span>Back to admin</span>
+            </Link>
+          ) : null}
           {NAV.map((item) => (
             <Link
               key={item.to}
               to={item.to}
+              title={item.label}
+              onClick={() => setNavOpen(false)}
               className="app-nav__link"
               activeProps={{ className: "app-nav__link is-active" }}
             >
@@ -106,6 +149,14 @@ export function BranchShell({
 
       <main className="app-main">
         <header className="app-head">
+          <button
+            type="button"
+            className="app-burger"
+            aria-label="Open navigation"
+            onClick={() => setNavOpen(true)}
+          >
+            <Menu strokeWidth={2} />
+          </button>
           <h1 className="app-head__title">{title}</h1>
           <div style={{ flex: 1 }} />
           <SyncBadge online={sync.online} queued={sync.queued} dead={sync.dead} />

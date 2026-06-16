@@ -207,7 +207,7 @@ function CreateBranchModal({
     >
       <div
         className="card"
-        style={{ width: "100%", maxWidth: 520, boxShadow: "var(--shadow-float)" }}
+        style={{ width: "100%", maxWidth: 520, maxHeight: "calc(100vh - 32px)", overflow: "auto", boxShadow: "var(--shadow-float)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <header

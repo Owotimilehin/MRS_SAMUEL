@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 interface StatProps {
   label: string;
@@ -24,9 +24,18 @@ export function Stat({ label, value, hint, tone = "default", delta, children }: 
           : tone === "accent"
             ? "var(--accent)"
             : "var(--ink-soft)";
+  // Tone-matched colour for the liquid edge + droplet watermark (--c).
+  const edge =
+    tone === "good"
+      ? "#1f9e74"
+      : tone === "warn"
+        ? "#e8951c"
+        : tone === "bad"
+          ? "#dc2626"
+          : "var(--accent)";
   const deltaDown = delta?.trim().startsWith("-");
   return (
-    <div className="stat-card">
+    <div className="stat-card" style={{ ["--c" as string]: edge } as CSSProperties}>
       <div className="stat-card__label" style={{ color: labelColor }}>
         {label}
       </div>

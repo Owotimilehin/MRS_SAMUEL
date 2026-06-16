@@ -34,6 +34,13 @@ interface BottleStock {
   balance: number;
 }
 
+// A flavour is a product; a run holds one line item per (flavour × size). Count
+// distinct products so a flavour split across can sizes counts once, not once
+// per size.
+function flavourCount(items: { productId: string }[]): number {
+  return new Set(items.map((i) => i.productId)).size;
+}
+
 export function ProductionRunsPage(): JSX.Element {
   const [factories, setFactories] = useState<Factory[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -311,7 +318,7 @@ export function ProductionRunsPage(): JSX.Element {
                   <div>
                     <span className={run.status === "completed" ? "pill pill--success" : "pill pill--warning"}>{run.status}</span>
                     <span style={{ marginLeft: 8, color: "var(--ink-soft)", fontSize: 13 }}>
-                      {formatDate(run.runDate)} · {run.items.length} flavour{run.items.length === 1 ? "" : "s"}
+                      {formatDate(run.runDate)} · {flavourCount(run.items)} flavour{flavourCount(run.items) === 1 ? "" : "s"}
                     </span>
                   </div>
                   {run.status === "draft" && (
@@ -381,12 +388,13 @@ export function ProductionRunsPage(): JSX.Element {
                 )}
 
                 {run.status === "draft" && (
-                  <div className="card" style={{ background: "var(--surface-soft)", padding: 14 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8, alignItems: "end", marginBottom: 12 }}>
+                  <div className="card" style={{ background: "var(--surface-soft)", padding: "12px 14px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8, alignItems: "end", marginBottom: 10 }}>
                       <div className="field">
                         <label className="field__label">Add flavour</label>
                         <select
                           className="select"
+                          style={{ height: 34 }}
                           value={draft.productId}
                           onChange={(e) => {
                             const pid = e.target.value;
@@ -403,32 +411,32 @@ export function ProductionRunsPage(): JSX.Element {
                           className="input" type="number" min={0} step="0.1"
                           placeholder="e.g. 50"
                           value={draft.totalLitres}
-                          style={{ textAlign: "right" }}
+                          style={{ textAlign: "right", height: 34 }}
                           onChange={(e) => setDraft((d) => ({ ...d, totalLitres: e.target.value }))}
                         />
                       </div>
                       <div className="field">
                         <label className="field__label">Batch</label>
-                        <input className="input" placeholder="optional" value={draft.batch} onChange={(e) => setDraft((d) => ({ ...d, batch: e.target.value }))} />
+                        <input className="input" style={{ height: 34 }} placeholder="optional" value={draft.batch} onChange={(e) => setDraft((d) => ({ ...d, batch: e.target.value }))} />
                       </div>
                     </div>
 
-                    <label className="field__label" style={{ display: "block", marginBottom: 6 }}>Divide into bottles</label>
+                    <label className="field__label" style={{ display: "block", marginBottom: 4 }}>Divide into bottles</label>
                     {draftVariants.length === 0 ? (
                       <div className="empty" style={{ padding: 14 }}>This flavour has no sizes yet.</div>
                     ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {draftVariants.map((v) => {
                           const count = Number(draft.counts[v.id] ?? 0);
                           const litres = ((v.size_ml ?? 0) * count) / 1000;
                           return (
-                            <div key={v.id} style={{ display: "grid", gridTemplateColumns: "100px 120px 1fr", gap: 10, alignItems: "center" }}>
-                              <span style={{ fontWeight: 600 }}>{v.size_ml ? `${v.size_ml}ml` : (v.sku ?? "—")}</span>
+                            <div key={v.id} style={{ display: "grid", gridTemplateColumns: "90px 110px 1fr", gap: 10, alignItems: "center" }}>
+                              <span style={{ fontWeight: 600, fontSize: 13 }}>{v.size_ml ? `${v.size_ml}ml` : (v.sku ?? "—")}</span>
                               <input
                                 className="input" type="number" min={0}
                                 value={draft.counts[v.id] ?? ""}
                                 placeholder="0"
-                                style={{ textAlign: "right" }}
+                                style={{ textAlign: "right", height: 34 }}
                                 onChange={(e) =>
                                   setDraft((d) => ({ ...d, counts: { ...d.counts, [v.id]: Math.max(0, Number(e.target.value) || 0) } }))
                                 }
@@ -444,8 +452,8 @@ export function ProductionRunsPage(): JSX.Element {
                     <div
                       style={{
                         display: "flex", justifyContent: "space-between", alignItems: "baseline",
-                        marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)",
-                        fontSize: 13.5,
+                        marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--line)",
+                        fontSize: 13,
                         color: overAllocated ? "var(--danger)" : "var(--ink)",
                       }}
                     >
@@ -460,8 +468,8 @@ export function ProductionRunsPage(): JSX.Element {
                     </div>
 
                     <button
-                      className="btn btn--subtle"
-                      style={{ marginTop: 12 }}
+                      className="btn btn--subtle btn--sm"
+                      style={{ marginTop: 10 }}
                       disabled={busy || !draft.productId || bottledMl <= 0 || overAllocated}
                       onClick={() => void appendAllocation()}
                     >
@@ -507,7 +515,7 @@ export function ProductionRunsPage(): JSX.Element {
                       <td>
                         <span className={h.status === "completed" ? "pill pill--success" : "pill pill--warning"}>{h.status}</span>
                       </td>
-                      <td className="table__num">{h.items.length}</td>
+                      <td className="table__num">{flavourCount(h.items)}</td>
                       <td>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                           {sizeRows.map(([ml, qty]) => (

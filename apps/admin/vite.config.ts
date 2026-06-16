@@ -1,9 +1,51 @@
-import { defineConfig } from "vite";
+import { createReadStream, existsSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join, normalize, extname } from "node:path";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+const here = dirname(fileURLToPath(import.meta.url));
+
+// In production, admin nginx proxies /media/ to the customer app, which serves
+// product imagery from its public/media folder. The admin dev server has no
+// such proxy, so /media/* falls through to the SPA fallback (HTML) and product
+// bottle images break. Serve those assets straight off disk in dev so the admin
+// renders the same imagery locally as in prod.
+function serveCustomerMedia(): Plugin {
+  const root = join(here, "../customer/public/media");
+  const types: Record<string, string> = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".avif": "image/avif",
+  };
+  return {
+    name: "serve-customer-media",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use("/media", (req, res, next) => {
+        const rel = normalize(decodeURIComponent((req.url ?? "").split("?")[0]!)).replace(/^[/\\]+/, "");
+        const file = join(root, rel);
+        // Block path traversal outside the media root.
+        if (!file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) {
+          next();
+          return;
+        }
+        res.setHeader("Content-Type", types[extname(file).toLowerCase()] ?? "application/octet-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        createReadStream(file).pipe(res);
+      });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
+    serveCustomerMedia(),
     react(),
     VitePWA({
       registerType: "autoUpdate",

@@ -431,7 +431,7 @@ function PurchaseModal({
     >
       <div
         className="card"
-        style={{ width: "100%", maxWidth: 520, background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
+        style={{ width: "100%", maxWidth: 520, maxHeight: "calc(100vh - 32px)", overflow: "auto", background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <header style={{ marginBottom: 14 }}>
@@ -541,7 +541,7 @@ function MaterialModal({
     >
       <div
         className="card"
-        style={{ width: "100%", maxWidth: 460, background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
+        style={{ width: "100%", maxWidth: 460, maxHeight: "calc(100vh - 32px)", overflow: "auto", background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <header style={{ marginBottom: 14 }}>

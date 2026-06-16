@@ -13,6 +13,7 @@ import { createLocalSale } from "../../sync/local-sale.js";
 import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { Modal } from "../../components/Modal.js";
+import { getFlavourVisual } from "../../lib/flavour-visuals.js";
 
 interface BagMaterial {
   id: string;
@@ -304,7 +305,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: 18 }}>
+      <div className="l-split l-split--pos">
         <section>
           <input
             className="input"
@@ -338,10 +339,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           )}
         </section>
 
-        <aside
-          className="card"
-          style={{ position: "sticky", top: 96, alignSelf: "start" }}
-        >
+        <aside className="card pos-cart">
           <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
             <h2 className="t-h2">Cart</h2>
             {cart.length > 0 && (
@@ -731,7 +729,7 @@ function SizePicker({
 
 // Bottle image with a graceful fallback (soft gradient + the flavour's initial)
 // when a product has no image or the URL fails to load.
-function BottleImage({ src, name }: { src: string | null | undefined; name: string }): JSX.Element {
+function BottleImage({ src, name, float }: { src: string | null | undefined; name: string; float?: boolean }): JSX.Element {
   const [broken, setBroken] = useState(false);
   if (!src || broken) {
     return (
@@ -759,7 +757,14 @@ function BottleImage({ src, name }: { src: string | null | undefined; name: stri
       alt={name}
       loading="lazy"
       onError={() => setBroken(true)}
-      style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }}
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        padding: 8,
+        filter: "drop-shadow(0 10px 10px rgba(0,0,0,0.18))",
+        animation: float ? "js-floaty 5.5s ease-in-out infinite" : undefined,
+      }}
     />
   );
 }
@@ -774,6 +779,9 @@ function FlavourTile({
   onPick: () => void;
 }): JSX.Element {
   const { product, sizes } = flavour;
+  // Bottle + palette for this flavour: the assigned image wins, else a slug-mapped
+  // bottle on the flavour's tint — so every tile is instantly recognisable.
+  const vis = getFlavourVisual({ slug: product.slug, image_url: product.image_url });
   // Stock is tracked per flavour, not per size — every size draws from the same
   // on-hand pool, so the count lives on the flavour tile.
   const available = useLiveQuery(
@@ -821,10 +829,18 @@ function FlavourTile({
           position: "relative",
           height: 124,
           borderBottom: "1px solid var(--line)",
-          background: "linear-gradient(160deg, var(--surface-soft), #fff)",
+          background: vis.surface,
         }}
       >
-        <BottleImage src={product.image_url} name={product.name} />
+        <BottleImage src={vis.bottle} name={product.name} float />
+        <img
+          src={vis.fruit}
+          alt=""
+          aria-hidden
+          loading="lazy"
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
+          style={{ position: "absolute", left: 8, top: 8, width: 24, filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.3))" }}
+        />
         {allPreorder && (
           <span
             className="pill"

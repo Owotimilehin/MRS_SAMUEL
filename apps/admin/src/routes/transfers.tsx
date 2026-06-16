@@ -387,7 +387,7 @@ function CreateTransferModal({
     >
       <div
         className="card"
-        style={{ width: "100%", maxWidth: 640, boxShadow: "var(--shadow-float)" }}
+        style={{ width: "100%", maxWidth: 640, maxHeight: "calc(100vh - 32px)", overflow: "auto", boxShadow: "var(--shadow-float)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <header style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
