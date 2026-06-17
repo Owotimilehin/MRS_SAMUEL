@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { auditLog, outboxEvent } from "@ms/db";
 import type { DbClient } from "@ms/db";
+import { resolveActor, diffChanges } from "../lib/notify.js";
 
 export interface AuditContext {
   action: string;
@@ -110,6 +111,7 @@ export async function writeAudit(db: DbClient, c: Context, ctx: AuditContext): P
   // dedicated event are skipped to avoid double-pinging.
   const shouldNotify = ctx.notify ?? !SKIP_NOTIFY.has(ctx.action);
   if (shouldNotify) {
+    const actorBlock = await resolveActor(db, c);
     await db.insert(outboxEvent).values({
       eventType: "audit.logged",
       payload: {
@@ -118,7 +120,8 @@ export async function writeAudit(db: DbClient, c: Context, ctx: AuditContext): P
         entity_id: ctx.entityId,
         entity_noun: ENTITY_NOUN[ctx.entityType] ?? ctx.entityType.replace(/_/g, " "),
         identifier: identifierOf(ctx.after, ctx.before),
-        actor_role: actor?.role ?? null,
+        changes: diffChanges(ctx.before, ctx.after),
+        ...actorBlock,
       },
     });
   }
