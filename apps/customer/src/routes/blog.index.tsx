@@ -7,17 +7,18 @@ import { PageHero } from "@/components/PageHero";
 import { CLUSTERS } from "@/lib/visuals";
 import { useState } from "react";
 import clusterBerry from "@/assets/decor/cluster-berry.png";
+import { seo, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/blog/")({
   loader: async () => ({ posts: await fetchBlogPosts() }),
-  head: () => ({
-    meta: [
-      { title: "Blog — Mrs. Samuel Fruit Juice" },
-      { name: "description", content: "Stories from the Mrs. Samuel kitchen — wellness, recipes, behind-the-scenes, and the mission to end Nigerian fruit waste." },
-      { property: "og:title", content: "Blog — Mrs. Samuel" },
-      { property: "og:description", content: "Stories from the kitchen." },
-    ],
-  }),
+  head: () =>
+    seo({
+      title: "The Mrs. Samuel Journal — Juice, Wellness & Nigerian Fruit",
+      description:
+        "Stories from the Mrs. Samuel kitchen — cold-pressed wellness, juice recipes, the health benefits of Nigerian fruit, and the mission to end fruit waste.",
+      path: "/blog",
+      jsonLd: [breadcrumbLd([{ name: "Home", path: "/" }, { name: "Journal", path: "/blog" }])],
+    }),
   component: Page,
 });
 

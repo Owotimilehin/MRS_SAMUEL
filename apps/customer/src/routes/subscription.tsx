@@ -8,17 +8,18 @@ import { fetchSubscriptionPlans, subscribe } from "@/lib/api/server-fns";
 import { launchPayazaCheckout } from "@/lib/payaza";
 import type { ApiSubscriptionPlan } from "@/lib/api/types";
 import bottleGreen from "@/assets/bottle-green.png";
+import { seo, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/subscription")({
   loader: async () => ({ plans: await fetchSubscriptionPlans() }),
-  head: () => ({
-    meta: [
-      { title: "Subscription — Mrs. Samuel Fruit Juice" },
-      { name: "description", content: "Fresh, cold-pressed juice delivered to your door on your schedule. Weekly, monthly detox, or family plans." },
-      { property: "og:title", content: "Subscription — Mrs. Samuel" },
-      { property: "og:description", content: "Goodness delivered. Skip or cancel anytime." },
-    ],
-  }),
+  head: () =>
+    seo({
+      title: "Juice Subscription — Fresh Delivery on Your Schedule | Mrs. Samuel",
+      description:
+        "Fresh, cold-pressed juice delivered to your door on your schedule — weekly, monthly detox, or family plans. Skip or cancel anytime. Lagos delivery.",
+      path: "/subscription",
+      jsonLd: [breadcrumbLd([{ name: "Home", path: "/" }, { name: "Subscription", path: "/subscription" }])],
+    }),
   component: Page,
 });
 

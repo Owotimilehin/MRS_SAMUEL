@@ -18,21 +18,26 @@ import { FAQ } from "@/components/FAQ";
 import { Story } from "@/components/Story";
 import { Sustainability } from "@/components/Sustainability";
 import { Blog } from "@/components/Blog";
+import { seo } from "@/lib/seo";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Mrs. Samuel Fruit Juice — Real Fruit. Real Good. Cold-pressed in Lagos." },
-      { name: "description", content: "100% natural, cold-pressed Nigerian juice made in Lagos. Over 40,000 bottles shared since launch. No added sugar. No preservatives." },
-      { property: "og:title", content: "Mrs. Samuel Fruit Juice — Real Fruit. Real Good." },
-      { property: "og:description", content: "Cold-pressed Nigerian juice. Pressed at sunrise, delivered the same morning." },
-    ],
-    links: [
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,300..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" },
-    ],
-  }),
+  head: () => {
+    const base = seo({
+      title: "Mrs. Samuel Fruit Juice — Real Fruit, Real Good. Cold-Pressed in Lagos",
+      description:
+        "100% natural, cold-pressed Nigerian juice made fresh in Lagos. Over 40,000 bottles shared. No added sugar, no preservatives — pressed at sunrise, delivered the same morning.",
+      path: "/",
+    });
+    return {
+      ...base,
+      links: [
+        ...base.links,
+        { rel: "preconnect", href: "https://fonts.googleapis.com" },
+        { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "" },
+        { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,300..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" },
+      ],
+    };
+  },
   loader: async () => {
     const [products, posts, plans] = await Promise.all([
       fetchProducts(),

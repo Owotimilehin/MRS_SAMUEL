@@ -4,6 +4,7 @@ import { fetchBlogPost, fetchBlogPosts } from "@/lib/api/server-fns";
 import { renderMarkdown } from "@/lib/markdown";
 import { SiteShell } from "@/components/SiteShell";
 import { CLUSTERS } from "@/lib/visuals";
+import { seo, articleLd, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/blog/$slug")({
   loader: async ({ params }) => {
@@ -16,15 +17,27 @@ export const Route = createFileRoute("/blog/$slug")({
       related: all.filter((x) => x.slug !== post.slug && x.category === post.category).slice(0, 2),
     };
   },
-  head: ({ loaderData }) => ({
-    meta: [
-      { title: `${loaderData?.post?.title ?? "Post"} — Mrs. Samuel Journal` },
-      { name: "description", content: loaderData?.post?.excerpt ?? "" },
-      { property: "og:title", content: loaderData?.post?.title ?? "" },
-      { property: "og:description", content: loaderData?.post?.excerpt ?? "" },
-      { property: "og:type", content: "article" },
-    ],
-  }),
+  head: ({ loaderData }) => {
+    const post = loaderData?.post;
+    if (!post) return seo({ title: "Journal — Mrs. Samuel Fruit Juice", path: "/blog" });
+    const path = `/blog/${post.slug}`;
+    const image = `/media/decor/cluster-${post.cover}.png`;
+    return seo({
+      title: `${post.title} — Mrs. Samuel Journal`,
+      description: post.excerpt,
+      path,
+      image,
+      type: "article",
+      jsonLd: [
+        articleLd({ title: post.title, description: post.excerpt, image, path, author: post.author }),
+        breadcrumbLd([
+          { name: "Home", path: "/" },
+          { name: "Journal", path: "/blog" },
+          { name: post.title, path },
+        ]),
+      ],
+    });
+  },
   component: Page,
   notFoundComponent: () => (
     <SiteShell>

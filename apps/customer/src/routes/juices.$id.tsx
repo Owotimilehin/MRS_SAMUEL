@@ -7,6 +7,7 @@ import { CLUSTERS } from "@/lib/visuals";
 import { fetchProductBySlug, fetchProducts } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";
 import { useCart, formatNaira, isPreorderSize, quickAddSize } from "@/lib/cart";
+import { seo, productLd, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/juices/$id")({
   loader: async ({ params }) => {
@@ -16,15 +17,31 @@ export const Route = createFileRoute("/juices/$id")({
     ]);
     return { product, related: all.filter((x) => x.id !== product.id && x.cluster === product.cluster).slice(0, 3) };
   },
-  head: ({ loaderData }) => ({
-    meta: [
-      { title: `${loaderData?.product?.name ?? "Juice"} — Mrs. Samuel Fruit Juice` },
-      { name: "description", content: loaderData?.product?.tagline ?? "Cold-pressed Nigerian juice." },
-      { property: "og:title", content: `${loaderData?.product?.name} — Mrs. Samuel` },
-      { property: "og:description", content: loaderData?.product?.tagline ?? "" },
-      { property: "og:type", content: "product" },
-    ],
-  }),
+  head: ({ loaderData }) => {
+    const p = loaderData?.product;
+    if (!p) {
+      return seo({ title: "Juice — Mrs. Samuel Fruit Juice", path: "/juices" });
+    }
+    const path = `/juices/${p.id}`;
+    const description =
+      `${p.tagline} Cold-pressed ${p.name} made fresh in Lagos with ${p.ingredients.slice(0, 4).join(", ")} — no added sugar, no preservatives.`.trim();
+    const fromPrice = p.prices["330ml"] || p.prices["650ml"];
+    return seo({
+      title: `${p.name} — Cold-Pressed Juice | Mrs. Samuel`,
+      description,
+      path,
+      image: p.image,
+      type: "product",
+      jsonLd: [
+        productLd({ name: p.name, description, image: p.image, path, priceNgn: fromPrice }),
+        breadcrumbLd([
+          { name: "Home", path: "/" },
+          { name: "Our Juices", path: "/juices" },
+          { name: p.name, path },
+        ]),
+      ],
+    });
+  },
   component: Page,
   notFoundComponent: NotFound,
 });

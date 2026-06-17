@@ -3,16 +3,17 @@ import { motion } from "framer-motion";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import clusterRoot from "@/assets/decor/cluster-root.png";
+import { seo, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/about")({
-  head: () => ({
-    meta: [
-      { title: "About Us — Mrs. Samuel Fruit Juice" },
-      { name: "description", content: "The story of Mr. & Mrs. Samuel — how a kitchen in Lagos became Nigeria's freshest cold-pressed juice brand, and the mission to end Nigerian fruit waste." },
-      { property: "og:title", content: "About — Mrs. Samuel" },
-      { property: "og:description", content: "More than business. Building a sustainable future for Nigerian farmers, families and fruit." },
-    ],
-  }),
+  head: () =>
+    seo({
+      title: "About Mrs. Samuel — Nigeria's Freshest Cold-Pressed Juice",
+      description:
+        "The story of Mr. & Mrs. Samuel — how a kitchen in Lagos became one of Nigeria's freshest cold-pressed juice brands, on a mission to end Nigerian fruit waste.",
+      path: "/about",
+      jsonLd: [breadcrumbLd([{ name: "Home", path: "/" }, { name: "About", path: "/about" }])],
+    }),
   component: Page,
 });
 

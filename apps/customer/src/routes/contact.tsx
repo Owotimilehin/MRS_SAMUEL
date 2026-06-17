@@ -6,16 +6,17 @@ import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { sendContactMessage } from "@/lib/api/server-fns";
 import leafMint from "@/assets/decor/leaf-mint.png";
+import { seo, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/contact")({
-  head: () => ({
-    meta: [
-      { title: "Contact — Mrs. Samuel Fruit Juice" },
-      { name: "description", content: "Order, partner, or just say hello. WhatsApp Mrs. Samuel directly, or send us a message." },
-      { property: "og:title", content: "Contact — Mrs. Samuel" },
-      { property: "og:description", content: "Reach the people behind every bottle." },
-    ],
-  }),
+  head: () =>
+    seo({
+      title: "Contact Mrs. Samuel — Order, Partner or Say Hello",
+      description:
+        "Order, partner, or just say hello. WhatsApp Mrs. Samuel on 0901 951 2246, visit us at 30 Asa Afariogun Street, Ajao Estate, Lagos, or send a message.",
+      path: "/contact",
+      jsonLd: [breadcrumbLd([{ name: "Home", path: "/" }, { name: "Contact", path: "/contact" }])],
+    }),
   component: Page,
 });
 

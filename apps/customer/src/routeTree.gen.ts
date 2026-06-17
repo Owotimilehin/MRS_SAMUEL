@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SubscriptionRouteImport } from './routes/subscription'
 import { Route as ShopRouteImport } from './routes/shop'
+import { Route as QrRouteImport } from './routes/qr'
 import { Route as JuicesRouteImport } from './routes/juices'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as CheckoutRouteImport } from './routes/checkout'
@@ -31,6 +32,11 @@ const SubscriptionRoute = SubscriptionRouteImport.update({
 const ShopRoute = ShopRouteImport.update({
   id: '/shop',
   path: '/shop',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QrRoute = QrRouteImport.update({
+  id: '/qr',
+  path: '/qr',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JuicesRoute = JuicesRouteImport.update({
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
   '/juices': typeof JuicesRouteWithChildren
+  '/qr': typeof QrRoute
   '/shop': typeof ShopRoute
   '/subscription': typeof SubscriptionRoute
   '/blog/$slug': typeof BlogSlugRoute
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/about': typeof AboutRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
+  '/qr': typeof QrRoute
   '/shop': typeof ShopRoute
   '/subscription': typeof SubscriptionRoute
   '/blog/$slug': typeof BlogSlugRoute
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
   '/juices': typeof JuicesRouteWithChildren
+  '/qr': typeof QrRoute
   '/shop': typeof ShopRoute
   '/subscription': typeof SubscriptionRoute
   '/blog/$slug': typeof BlogSlugRoute
@@ -142,6 +151,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/contact'
     | '/juices'
+    | '/qr'
     | '/shop'
     | '/subscription'
     | '/blog/$slug'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/checkout'
     | '/contact'
+    | '/qr'
     | '/shop'
     | '/subscription'
     | '/blog/$slug'
@@ -170,6 +181,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/contact'
     | '/juices'
+    | '/qr'
     | '/shop'
     | '/subscription'
     | '/blog/$slug'
@@ -186,6 +198,7 @@ export interface RootRouteChildren {
   CheckoutRoute: typeof CheckoutRoute
   ContactRoute: typeof ContactRoute
   JuicesRoute: typeof JuicesRouteWithChildren
+  QrRoute: typeof QrRoute
   ShopRoute: typeof ShopRoute
   SubscriptionRoute: typeof SubscriptionRoute
   OrderOrderNumberRoute: typeof OrderOrderNumberRoute
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       path: '/shop'
       fullPath: '/shop'
       preLoaderRoute: typeof ShopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/qr': {
+      id: '/qr'
+      path: '/qr'
+      fullPath: '/qr'
+      preLoaderRoute: typeof QrRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/juices': {
@@ -319,6 +339,7 @@ const rootRouteChildren: RootRouteChildren = {
   CheckoutRoute: CheckoutRoute,
   ContactRoute: ContactRoute,
   JuicesRoute: JuicesRouteWithChildren,
+  QrRoute: QrRoute,
   ShopRoute: ShopRoute,
   SubscriptionRoute: SubscriptionRoute,
   OrderOrderNumberRoute: OrderOrderNumberRoute,

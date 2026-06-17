@@ -13,6 +13,14 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { CartProvider } from "../lib/cart";
+import {
+  SITE_NAME,
+  DEFAULT_DESCRIPTION,
+  DEFAULT_OG_IMAGE,
+  TWITTER_HANDLE,
+  organizationLd,
+  websiteLd,
+} from "../lib/seo";
 
 function NotFoundComponent() {
   return (
@@ -76,29 +84,36 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
+    // Site-wide defaults. Leaf routes override title/description/canonical and
+    // add their own JSON-LD via the `seo()` helper; whatever they set wins.
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Mrs. Samuel Fruit Juice — Cold-Pressed Nigerian Juice" },
-      { name: "description", content: "Premium Nigerian cold-pressed fruit juice, pressed fresh every morning in Lagos. Real fruit, nothing added." },
-      { name: "author", content: "Mrs. Samuel Fruit Juice" },
-      { property: "og:title", content: "Mrs. Samuel Fruit Juice" },
-      { property: "og:description", content: "Premium Nigerian cold-pressed fruit juice, pressed fresh every morning in Lagos. Real fruit, nothing added." },
+      { title: `${SITE_NAME} — Cold-Pressed Nigerian Juice, Fresh Every Morning` },
+      { name: "description", content: DEFAULT_DESCRIPTION },
+      { name: "author", content: SITE_NAME },
+      { name: "robots", content: "index, follow" },
+      { name: "theme-color", content: "#0b6b3a" },
+      { property: "og:site_name", content: SITE_NAME },
+      { property: "og:locale", content: "en_NG" },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Mrs_samuelfruitjuice" },
-      { name: "twitter:title", content: "Mrs. Samuel Fruit Juice" },
-      { name: "twitter:description", content: "Mrs. Samuel Juice Delight is a vibrant, single-page website showcasing premium Nigerian cold-pressed juices." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/3561b90c-4a52-4395-a576-68168ec965b0/id-preview-48313aa8--35963620-4684-4120-b7be-cecb5b9da5c3.lovable.app-1780790665634.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/3561b90c-4a52-4395-a576-68168ec965b0/id-preview-48313aa8--35963620-4684-4120-b7be-cecb5b9da5c3.lovable.app-1780790665634.png" },
+      { property: "og:title", content: SITE_NAME },
+      { property: "og:description", content: DEFAULT_DESCRIPTION },
+      { property: "og:image", content: DEFAULT_OG_IMAGE },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:site", content: TWITTER_HANDLE },
+      { name: "twitter:title", content: SITE_NAME },
+      { name: "twitter:description", content: DEFAULT_DESCRIPTION },
+      { name: "twitter:image", content: DEFAULT_OG_IMAGE },
     ],
     links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
+      { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
       { rel: "apple-touch-icon", href: "/favicon.png" },
+    ],
+    scripts: [
+      { type: "application/ld+json", children: JSON.stringify(organizationLd()) },
+      { type: "application/ld+json", children: JSON.stringify(websiteLd()) },
     ],
   }),
   shellComponent: RootShell,

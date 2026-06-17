@@ -7,16 +7,17 @@ import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { formatNaira, quickAddSize } from "@/lib/cart";
 import bottleSunrise from "@/assets/bottle-sunrise.png";
+import { seo, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/shop")({
-  head: () => ({
-    meta: [
-      { title: "Shop — Mrs. Samuel Fruit Juice" },
-      { name: "description", content: "Bundles, gift boxes, and single bottles of Mrs. Samuel cold-pressed juice. Order for delivery in Lagos." },
-      { property: "og:title", content: "Shop — Mrs. Samuel" },
-      { property: "og:description", content: "Starter packs, detox bundles, gift boxes, and single bottles." },
-    ],
-  }),
+  head: () =>
+    seo({
+      title: "Shop Cold-Pressed Juice — Bundles & Gift Boxes | Mrs. Samuel",
+      description:
+        "Order Mrs. Samuel cold-pressed juice in Lagos: starter packs, detox bundles, gift boxes and single bottles. Pressed fresh, delivered the same morning.",
+      path: "/shop",
+      jsonLd: [breadcrumbLd([{ name: "Home", path: "/" }, { name: "Shop", path: "/shop" }])],
+    }),
   loader: async () => {
     const [products, bundles] = await Promise.all([fetchProducts(), fetchBundles()]);
     return { products, bundles };
