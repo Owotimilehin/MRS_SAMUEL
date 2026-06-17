@@ -8,10 +8,12 @@ describe("capability gating", () => {
   let container: StartedPostgreSqlContainer;
   let baseUrl: string;
   let server: ReturnType<typeof serve>;
+  let db: Awaited<ReturnType<typeof setupTestDb>>["db"];
 
   beforeAll(async () => {
     const tdb = await setupTestDb();
     container = tdb.container;
+    db = tdb.db;
     await seedOwner(tdb.db);
     await seedUser(tdb.db, { email: "admin@example.com", role: "admin" });
     await seedUser(tdb.db, { email: "manager@example.com", role: "manager" });
@@ -65,6 +67,32 @@ describe("capability gating", () => {
     expect(Array.isArray(body.data.capabilities)).toBe(true);
     expect(body.data.capabilities).toContain("production.manage");
     expect(body.data.capabilities).not.toContain("users.manage");
+  });
+
+  it("admin/manager with no branch can sync-pull any branch; branch_staff is pinned to theirs", async () => {
+    // A cross-branch admin/manager (branch_id = null) drops into a branch till;
+    // the device polls /v1/sync/pull?branch_id=<branch>. This must succeed for
+    // them, and only branch_staff may be told "wrong branch".
+    const owner = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
+    const bRes = await fetch(`${baseUrl}/v1/branches`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: owner, "idempotency-key": crypto.randomUUID() },
+      body: JSON.stringify({ name: "Scope Branch", code: "SCOPE" }),
+    });
+    const branchId = ((await bRes.json()) as { data: { id: string } }).data.id;
+    const pull = (cookie: string, b: string): Promise<number> =>
+      status(cookie, `/v1/sync/pull?branch_id=${b}`);
+
+    const admin = await loginAs(baseUrl, "admin@example.com", "userpassword123");
+    const manager = await loginAs(baseUrl, "manager@example.com", "userpassword123");
+    expect(await pull(admin, branchId)).toBe(200);
+    expect(await pull(manager, branchId)).toBe(200);
+
+    // branch_staff scoped to this branch can pull it, but not a different branch.
+    await seedUser(db, { email: "scoped@example.com", role: "branch_staff", branchId });
+    const scoped = await loginAs(baseUrl, "scoped@example.com", "userpassword123");
+    expect(await pull(scoped, branchId)).toBe(200);
+    expect(await pull(scoped, crypto.randomUUID())).toBe(403);
   });
 
   it("branch_staff cannot view transfers list (no transfers.receive or similar gate but still requireAuth enforced)", async () => {

@@ -16,6 +16,12 @@ import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { BusinessError } from "../lib/errors.js";
 
+// Cross-branch roles act on any branch's till (matches requireBranchScope and
+// transfers' actsOnAnyBranch). Only branch_staff are pinned to their own branch.
+function actsOnAnyBranch(role: string): boolean {
+  return role === "owner" || role === "admin" || role === "manager";
+}
+
 /**
  * One-shot pull of everything a branch device needs since a given cursor.
  *
@@ -38,7 +44,7 @@ export function syncRoutes(db: DbClient) {
     if (!branchIdParam) {
       throw new BusinessError("validation_failed", "branch_id required", 400);
     }
-    if (auth.role !== "owner" && auth.branchId !== branchIdParam) {
+    if (!actsOnAnyBranch(auth.role) && auth.branchId !== branchIdParam) {
       throw new BusinessError("forbidden", "wrong branch", 403);
     }
 

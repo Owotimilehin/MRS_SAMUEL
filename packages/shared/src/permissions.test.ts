@@ -12,6 +12,19 @@ describe("resolveCapabilities", () => {
     );
   });
 
+  it("admin can run a till (POS + the branch flow it depends on)", () => {
+    const caps = resolveCapabilities("admin");
+    for (const cap of [
+      "pos.sell",
+      "sales.view",
+      "daily_close.submit",
+      "returns.create",
+      "stock.adjust",
+    ] as const) {
+      expect(caps).toContain(cap);
+    }
+  });
+
   it("a granted override adds a capability on top of the role", () => {
     const caps = resolveCapabilities("branch_staff", { granted: ["daily_close.submit"], revoked: [] });
     expect(caps).toContain("daily_close.submit");
@@ -31,7 +44,7 @@ describe("resolveCapabilities", () => {
   });
 
   it("revoking a capability the role never had is a no-op", () => {
-    const caps = resolveCapabilities("admin", { granted: [], revoked: ["pos.sell"] });
+    const caps = resolveCapabilities("admin", { granted: [], revoked: ["users.manage"] });
     expect(caps.sort()).toEqual([...ROLE_DEFAULTS.admin].sort());
   });
 
