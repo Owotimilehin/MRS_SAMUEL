@@ -6,7 +6,13 @@ import {
   type ReactNode,
 } from "react";
 import { PageLoader } from "../components/Spinner.js";
+import { refreshAccessToken } from "./api.js";
 import type { AdminRole, Capability } from "@ms/shared";
+
+// Refresh the 30-minute access token well before it expires, and again whenever
+// the app regains focus, so an active user never hits a mid-action 401 and a
+// backgrounded PWA re-arms its session on return instead of bouncing to login.
+const PROACTIVE_REFRESH_MS = 10 * 60_000;
 
 export interface AuthUser {
   id: string;
@@ -72,6 +78,24 @@ export function RequireAuth({ children }: { children: ReactNode }): JSX.Element 
       cancelled = true;
     };
   }, []);
+
+  // Keep the session warm while the app is open: refresh on a timer and whenever
+  // the tab/PWA regains focus. Best-effort — a genuinely dead session still
+  // bounces to login via the next request's 401 handling.
+  useEffect(() => {
+    if (state.kind !== "ready") return;
+    const interval = window.setInterval(() => {
+      void refreshAccessToken();
+    }, PROACTIVE_REFRESH_MS);
+    const onVisible = (): void => {
+      if (document.visibilityState === "visible") void refreshAccessToken();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [state.kind]);
 
   if (state.kind === "loading") {
     return <PageLoader />;

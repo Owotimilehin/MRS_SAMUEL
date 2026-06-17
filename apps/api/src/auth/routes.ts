@@ -27,8 +27,13 @@ function isSecureCookies(): boolean {
   return (process.env.NODE_ENV ?? "development") === "production";
 }
 
-function cookieSameSite(): "Strict" | "Lax" {
-  return process.env.COOKIE_INSECURE === "1" ? "Lax" : "Strict";
+/** `Lax` (not `Strict`): Strict drops the cookie on the first request when the
+ *  admin PWA is re-opened from the home screen or followed from an external
+ *  link, which bounced users to login even with a valid 30-day session. Lax
+ *  keeps same-site XHR working while still blocking cross-site POST CSRF; the
+ *  API is cookie+JWT with HttpOnly, so the CSRF delta from Strict is negligible. */
+function cookieSameSite(): "Lax" {
+  return "Lax";
 }
 
 function accessCookieOpts() {
@@ -37,7 +42,9 @@ function accessCookieOpts() {
     secure: isSecureCookies(),
     sameSite: cookieSameSite(),
     path: "/",
-    maxAge: 60 * 15,
+    // Must match the access-token TTL (ACCESS_TTL in jwt.ts). Bumped 15m -> 30m
+    // to halve refresh frequency, reducing exposure to the rotation race.
+    maxAge: 60 * 30,
   };
 }
 

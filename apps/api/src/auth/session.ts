@@ -1,4 +1,4 @@
-import { eq, and, isNull, gte } from "drizzle-orm";
+import { eq, and, isNull, gte, gt, or } from "drizzle-orm";
 import crypto from "node:crypto";
 import { v4 as uuid } from "uuid";
 import type { DbClient } from "@ms/db";
@@ -6,6 +6,15 @@ import { session, adminUser } from "@ms/db";
 
 export const REFRESH_TTL_DAYS = 30;
 const REFRESH_BYTES = 48;
+
+/**
+ * Grace window after a rotation during which the OLD refresh token still works.
+ * Tolerates a lost refresh response, a backgrounded PWA, or a second tab racing
+ * the refresh — any of which would otherwise orphan the client and force a
+ * re-login. Only rotation-revoked tokens get this grace; logout / forced revoke
+ * (which leave `rotatedAt` null) are immediate.
+ */
+const ROTATION_GRACE_MS = 60_000;
 
 export function generateRefreshToken(): { token: string; hash: string } {
   const token = crypto.randomBytes(REFRESH_BYTES).toString("base64url");
@@ -50,14 +59,18 @@ export async function rotateSession(
   | null
 > {
   const oldHash = crypto.createHash("sha256").update(oldRefreshToken).digest("hex");
+  const graceThreshold = new Date(Date.now() - ROTATION_GRACE_MS);
   const rows = await db
     .select()
     .from(session)
     .where(
       and(
         eq(session.refreshTokenHash, oldHash),
-        isNull(session.revokedAt),
         gte(session.expiresAt, new Date()),
+        // Accept a live token OR one that was rotated within the grace window.
+        // Logout/forced-revoke rows have `rotatedAt` null, so they never match
+        // the grace branch — they stay immediately dead.
+        or(isNull(session.revokedAt), gt(session.rotatedAt, graceThreshold)),
       ),
     )
     .limit(1);
@@ -68,7 +81,8 @@ export async function rotateSession(
   const user = userRows[0];
   if (!user || !user.isActive) return null;
 
-  await db.update(session).set({ revokedAt: new Date() }).where(eq(session.id, row.id));
+  const now = new Date();
+  await db.update(session).set({ revokedAt: now, rotatedAt: now }).where(eq(session.id, row.id));
   const created = await createSession(db, {
     userId: user.id,
     deviceId: row.deviceId,

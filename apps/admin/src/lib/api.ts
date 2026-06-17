@@ -175,19 +175,51 @@ const MAX_ATTEMPTS = 4;
 // calls triggers exactly one POST /auth/refresh.
 let refreshInFlight: Promise<boolean> | null = null;
 
-function refreshAccessToken(): Promise<boolean> {
+// Cross-tab coordination: when the admin is open in several tabs (or POS +
+// dashboard), each one hitting a 401 would otherwise rotate the refresh token
+// out from under the others. A Web Lock serialises refreshes across tabs, and a
+// "someone just refreshed" stamp lets queued tabs skip a redundant rotation.
+const LAST_REFRESH_KEY = "ms_last_refresh_at";
+const RECENT_REFRESH_MS = 5000;
+
+function markRefreshed(): void {
+  try {
+    localStorage.setItem(LAST_REFRESH_KEY, String(Date.now()));
+  } catch {
+    /* private mode / no storage — fine */
+  }
+}
+function refreshedRecently(): boolean {
+  try {
+    return Date.now() - Number(localStorage.getItem(LAST_REFRESH_KEY) ?? 0) < RECENT_REFRESH_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function doRefresh(): Promise<boolean> {
+  // Another tab refreshed moments ago — the cookie is already fresh, so don't
+  // rotate again.
+  if (refreshedRecently()) return true;
+  try {
+    const res = await fetch(API_BASE + "/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+    });
+    if (res.ok) markRefreshed();
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export function refreshAccessToken(): Promise<boolean> {
   if (!refreshInFlight) {
-    refreshInFlight = (async () => {
-      try {
-        const res = await fetch(API_BASE + "/auth/refresh", {
-          method: "POST",
-          credentials: "include",
-        });
-        return res.ok;
-      } catch {
-        return false;
-      }
-    })().finally(() => {
+    const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+    const runner = locks
+      ? () => locks.request("ms-auth-refresh", () => doRefresh()) as Promise<boolean>
+      : doRefresh;
+    refreshInFlight = runner().finally(() => {
       refreshInFlight = null;
     });
   }

@@ -3,7 +3,11 @@ import type { AdminRole, Capability } from "@ms/shared";
 
 const ISSUER = "ms-api";
 const AUDIENCE = "ms-admin";
-const ACCESS_TTL = "15m";
+// 30m (was 15m): halves how often the client must rotate the refresh token,
+// shrinking the window for the rotation race that caused premature logouts.
+// Capability/permission changes still take effect promptly via the
+// revoke-all-sessions path (see revokeAllUserSessions).
+const ACCESS_TTL = "30m";
 
 function getKey(env: "current" | "previous"): Uint8Array | null {
   const raw =
