@@ -525,6 +525,11 @@ export function saleRoutes(db: DbClient) {
             locationType: "branch",
             locationId: o.branchId,
             productId: it.productId,
+            // Restore to the SAME size bucket the sale deducted from. Omitting
+            // this drops the credit into the legacy no-size (NULL) bucket, which
+            // leaves the per-size grid skewed (a negative sized row + a phantom
+            // no-size row) even though the per-flavour total still nets out.
+            variantId: it.variantId ?? null,
             delta: it.quantity,
             sourceType: "sale_cancelled",
             sourceId: id,

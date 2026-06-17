@@ -116,18 +116,39 @@ describe("Phase 4 returns flow", () => {
       initial_price_ngn: 2500,
     });
     product = pRes.body.data;
+    // The legacy create defaults to a 330ml variant; production + transfer lines
+    // must name that variant (completion now requires a size per line).
+    const variantId = (product as unknown as {
+      variants: Array<{ id: string; size_ml: number }>;
+    }).variants.find((v) => v.size_ml === 330)!.id;
+
+    // Production completion hard-guards on bottle stock, so give the factory
+    // bottles to consume before running production (mirrors sales-flow setup).
+    const mats = await call<{ data: Array<{ id: string; size_ml: number | null }> }>(
+      "GET",
+      "/v1/packaging/materials",
+    );
+    const bottle330 = mats.body.data.find((m) => m.size_ml === 330)!;
+    await call("POST", "/v1/packaging/purchases", {
+      factory_id: factory.id,
+      packaging_material_id: bottle330.id,
+      quantity: 1000,
+      unit_cost_ngn: 50,
+      total_cost_ngn: 50_000,
+      purchase_date: "2026-05-01",
+    });
 
     // Pre-stock branch with 40 bottles (enough for all four scenarios).
     const run = await call<{ data: { id: string } }>("POST", "/v1/production-runs", {
       factory_id: factory.id,
       run_date: "2026-05-11",
-      items: [{ product_id: product.id, quantity_produced: 40 }],
+      items: [{ product_id: product.id, variant_id: variantId, quantity_produced: 40 }],
     });
     await call("PATCH", `/v1/production-runs/${run.body.data.id}/complete`);
     const xfer = await call<{ data: { id: string } }>("POST", "/v1/transfers", {
       factory_id: factory.id,
       branch_id: branch.id,
-      items: [{ product_id: product.id, quantity_sent: 40 }],
+      items: [{ product_id: product.id, variant_id: variantId, quantity_sent: 40 }],
     });
     // POST /v1/transfers creates the row already in `dispatched` status —
     // no separate /dispatch call is needed (or exists on the route table).
@@ -179,6 +200,40 @@ describe("Phase 4 returns flow", () => {
       `/v1/stock/branch/${branch.id}`,
     );
     expect(stockBalance(stockAfter.body.data, product.id)).toBe(before + 1);
+  });
+
+  it("restock returns stock to the SAME size bucket it was sold from", async () => {
+    const sale = await buildPaidSale({ quantity: 1, paymentMethod: "cash" });
+    // The sale deducted from a specific variant (size) bucket.
+    const saleLedger = await db
+      .select()
+      .from(stockLedger)
+      .where(eq(stockLedger.sourceId, sale.id));
+    const soldVariantId = saleLedger[0]!.variantId;
+    expect(soldVariantId).not.toBeNull();
+
+    const res = await call<{ data: ReturnRow }>(
+      "POST",
+      `/v1/branches/${branch.id}/returns`,
+      {
+        original_sale_order_id: sale.id,
+        reason_category: "wrong_flavor",
+        refund_method: "cash",
+        items: [
+          { sale_order_item_id: sale.items[0]!.id, quantity_returned: 1, disposition: "restocked" },
+        ],
+      },
+    );
+    expect(res.body.data.status).toBe("completed");
+
+    // The restock row must carry the SAME variant — restoring to the no-size
+    // (NULL) bucket would leave the size grid permanently skewed.
+    const restockLedger = await db
+      .select()
+      .from(stockLedger)
+      .where(eq(stockLedger.sourceId, res.body.data.id));
+    expect(restockLedger.length).toBe(1);
+    expect(restockLedger[0]!.variantId).toBe(soldVariantId);
   });
 
   it("quality_issue + wasted disposition flags pending_approval until owner approves", async () => {

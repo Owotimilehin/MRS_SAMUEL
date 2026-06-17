@@ -339,13 +339,27 @@ async function applyReturnEffects(
     .from(saleReturnItem)
     .where(eq(saleReturnItem.saleReturnId, returnId));
 
+  // The sale deducted stock from a specific size (variant) bucket, but
+  // sale_return_item only stores the product. Resolve each line's variant from
+  // its original sale_order_item so the restock/waste rows land in the SAME
+  // bucket — otherwise the credit falls into the legacy no-size (NULL) bucket
+  // and the per-size grid stays skewed even though the flavour total nets out.
+  const origItemIds = items.map((i) => i.saleOrderItemId);
+  const origItems =
+    origItemIds.length > 0
+      ? await tx.select().from(saleOrderItem).where(inArray(saleOrderItem.id, origItemIds))
+      : [];
+  const variantByOrderItemId = new Map(origItems.map((oi) => [oi.id, oi.variantId ?? null]));
+
   // Ledger effects per disposition
   for (const it of items) {
+    const variantId = variantByOrderItemId.get(it.saleOrderItemId) ?? null;
     if (it.disposition === "restocked" || it.disposition === "replaced") {
       await tx.insert(stockLedger).values({
         locationType: "branch",
         locationId: ret.branchId,
         productId: it.productId,
+        variantId,
         delta: it.quantityReturned,
         sourceType: "return_restock",
         sourceId: returnId,
@@ -359,6 +373,7 @@ async function applyReturnEffects(
         locationType: "branch",
         locationId: ret.branchId,
         productId: it.productId,
+        variantId,
         delta: it.quantityReturned,
         sourceType: "return_restock",
         sourceId: returnId,
@@ -369,6 +384,7 @@ async function applyReturnEffects(
         locationType: "branch",
         locationId: ret.branchId,
         productId: it.productId,
+        variantId,
         delta: -it.quantityReturned,
         sourceType: "waste",
         sourceId: returnId,
@@ -456,11 +472,13 @@ async function applyReturnEffects(
               unitPriceNgn: 0,
               lineTotalNgn: 0,
             });
-            // Outbound ledger so the replacement bottles leave inventory too.
+            // Outbound ledger so the replacement bottles leave inventory too —
+            // from the same size bucket as the original line.
             await tx.insert(stockLedger).values({
               locationType: "branch",
               locationId: ret.branchId,
               productId: it.productId,
+              variantId: origItem.variantId ?? null,
               delta: -it.quantityReturned,
               sourceType: "sale",
               sourceId: free.id,

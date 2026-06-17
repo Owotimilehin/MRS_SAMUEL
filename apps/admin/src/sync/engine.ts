@@ -118,6 +118,32 @@ export async function reclaimInFlight(): Promise<void> {
     });
 }
 
+/**
+ * One-time heal for tills that double-counted sales before the pull-reconcile
+ * fix landed. A sale rung up under the old code left BOTH its optimistic row
+ * (client id) AND the server's authoritative row (server id) in the ledger, so
+ * the deduction was applied twice. Those rows were already pulled, so a fresh
+ * pull won't re-deliver them and `pullDeltas`' source-id reconcile can't reach
+ * them. Collapse the duplicates here: for `sale` rows only — the only source
+ * with an optimistic twin — keep ONE row per (source_id, product_id,
+ * variant_id). The server writes exactly one ledger row per sold line, so any
+ * second row with the same key is a stale optimistic copy. Non-sale sources
+ * (production, transfers, adjustments) are never touched — two of those sharing
+ * a key are genuinely distinct movements. Idempotent: a deduped ledger is a
+ * no-op on the next run.
+ */
+export async function dedupeSaleLedger(): Promise<void> {
+  const saleRows = await local.ledger.filter((r) => r.source_type === "sale").toArray();
+  const seen = new Set<string>();
+  const staleIds: string[] = [];
+  for (const r of saleRows) {
+    const key = `${r.source_id}|${r.product_id}|${r.variant_id ?? "null"}`;
+    if (seen.has(key)) staleIds.push(r.id);
+    else seen.add(key);
+  }
+  if (staleIds.length > 0) await local.ledger.bulkDelete(staleIds);
+}
+
 export async function flushOutbox(): Promise<void> {
   if (!navigator.onLine) return;
   const now = Date.now();
@@ -267,6 +293,19 @@ export async function pullDeltas(branchId: string): Promise<void> {
           valid_to: pr.validTo,
         });
       }
+      // Reconcile against the optimistic rows the till wrote at sale time. A
+      // local sale decrements stock immediately with a CLIENT-generated row id
+      // keyed to the order id as its source_id; the server then writes its OWN
+      // authoritative row (a different id, same source_id) which arrives here.
+      // Keyed by id alone the two would coexist and the sale would be counted
+      // twice, so the till's stock drops by 2× what was sold and never settles.
+      // Drop every local row whose source is in this batch, then insert the
+      // server's rows — making the server the single source of truth and the
+      // whole pull idempotent across overlapping cursor windows.
+      const incomingSourceIds = new Set(body.data.ledger.map((lg) => lg.sourceId));
+      if (incomingSourceIds.size > 0) {
+        await local.ledger.filter((row) => incomingSourceIds.has(row.source_id)).delete();
+      }
       for (const lg of body.data.ledger) {
         await local.ledger.put({
           id: lg.id,
@@ -355,8 +394,9 @@ export function startSyncLoop(branchId: string): () => void {
   window.addEventListener("online", onOnline);
 
   // Fresh session: rescue any sale stranded mid-send by a previous crash/close,
-  // THEN start the loop so the rescued rows flush on the very first tick.
-  void reclaimInFlight().finally(() => void tick());
+  // heal any double-counted sale rows left by the pre-reconcile code, THEN start
+  // the loop so the rescued rows flush on the very first tick.
+  void Promise.allSettled([reclaimInFlight(), dedupeSaleLedger()]).finally(() => void tick());
 
   // Fire-and-forget telemetry tick.
   void reportTelemetry();

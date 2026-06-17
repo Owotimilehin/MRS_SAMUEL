@@ -4,6 +4,8 @@ import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
 import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { and, eq } from "drizzle-orm";
+import { stockLedger, type DbClient } from "@ms/db";
 
 interface Branch { id: string; name: string }
 interface Product { id: string; name: string; slug: string }
@@ -23,6 +25,8 @@ describe("Phase 2 walk-up sale flow", () => {
   let branch: Branch;
   let factory: { id: string };
   let product: Product;
+  let db: DbClient;
+  let variant330Id: string;
 
   async function call<T>(
     method: string,
@@ -45,6 +49,7 @@ describe("Phase 2 walk-up sale flow", () => {
   beforeAll(async () => {
     const tdb = await setupTestDb();
     container = tdb.container;
+    db = tdb.db;
     await seedOwner(tdb.db);
     const { buildApp } = await import("../../src/test-app.js");
     server = serve({ fetch: buildApp().fetch, port: 0 });
@@ -78,6 +83,7 @@ describe("Phase 2 walk-up sale flow", () => {
     const variantId = (product as unknown as {
       variants: Array<{ id: string; size_ml: number }>;
     }).variants.find((v) => v.size_ml === 330)!.id;
+    variant330Id = variantId;
 
     // Production completion now hard-guards on bottle stock, so give the factory
     // bottles to consume. Purchase against the existing 330ml bottle material.
@@ -242,6 +248,38 @@ describe("Phase 2 walk-up sale flow", () => {
       `/v1/stock/branch/${branch.id}`,
     );
     expect(stockBalance(after.body.data, product.id)).toBe(8);
+  });
+
+  it("cancel after pay restores stock to the SAME size bucket it was sold from", async () => {
+    const confirm = await call<{ data: SaleOrder }>(
+      "POST",
+      `/v1/branches/${branch.id}/sales`,
+      {
+        channel: "walkup",
+        items: [{ product_id: product.id, quantity: 1 }],
+        payment_method: "cash",
+        created_at_local: new Date().toISOString(),
+      },
+    );
+    await call("PATCH", `/v1/branches/${branch.id}/sales/${confirm.body.data.id}/pay`);
+    await call("PATCH", `/v1/branches/${branch.id}/sales/${confirm.body.data.id}/cancel`, {
+      reason: "duplicate_order",
+    });
+
+    // The sale deducted from the 330ml variant bucket; the compensating row must
+    // return to that SAME bucket, not the legacy no-size (NULL) bucket — otherwise
+    // the per-size grid shows a negative 330ml row and a phantom no-size row.
+    const cancelLedger = await db
+      .select()
+      .from(stockLedger)
+      .where(
+        and(
+          eq(stockLedger.sourceId, confirm.body.data.id),
+          eq(stockLedger.sourceType, "sale_cancelled"),
+        ),
+      );
+    expect(cancelLedger.length).toBe(1);
+    expect(cancelLedger[0]!.variantId).toBe(variant330Id);
   });
 
   it("idempotency: same key + same payload returns the same sale row", async () => {
