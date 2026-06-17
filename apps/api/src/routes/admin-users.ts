@@ -29,6 +29,7 @@ const Overrides = z
 
 const InviteUser = z.object({
   email: z.string().email(),
+  name: z.string().trim().min(1).max(120).optional(),
   role: RoleEnum,
   branch_id: z.string().uuid().nullable().optional(),
   password: z.string().min(12),
@@ -36,6 +37,7 @@ const InviteUser = z.object({
 });
 
 const PatchUser = z.object({
+  name: z.string().trim().max(120).nullable().optional(),
   role: RoleEnum.optional(),
   branch_id: z.string().uuid().nullable().optional(),
   is_active: z.boolean().optional(),
@@ -64,6 +66,7 @@ export function adminUserRoutes(db: DbClient) {
       .select({
         id: adminUser.id,
         email: adminUser.email,
+        name: adminUser.name,
         phone: adminUser.phone,
         role: adminUser.role,
         branchId: adminUser.branchId,
@@ -95,6 +98,7 @@ export function adminUserRoutes(db: DbClient) {
       .insert(adminUser)
       .values({
         email: body.email,
+        name: body.name ?? null,
         passwordHash,
         role: body.role,
         branchId: body.branch_id ?? null,
@@ -138,6 +142,7 @@ export function adminUserRoutes(db: DbClient) {
     }
 
     const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (body.name !== undefined) patch["name"] = body.name;
     if (body.role !== undefined) patch["role"] = body.role;
     if (body.branch_id !== undefined) patch["branchId"] = body.branch_id;
     if (body.is_active !== undefined) {
