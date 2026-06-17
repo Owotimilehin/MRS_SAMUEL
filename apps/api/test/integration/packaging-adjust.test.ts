@@ -10,7 +10,7 @@ import {
   factory as factoryTable,
   type createDbClient,
 } from "@ms/db";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, seedUser, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 /**
@@ -56,6 +56,8 @@ describe("packaging stock adjustment", () => {
     const addr = server.address() as AddressInfo;
     baseUrl = `http://localhost:${addr.port}`;
     cookies = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
+    // An admin keeps packaging.write (purchases/materials) but NOT packaging.adjust.
+    await seedUser(tdb.db, { email: "admin@example.com", role: "admin" });
 
     const [fac] = await tdb.db.insert(factoryTable).values({ name: "Adjust Factory" }).returning();
     factory = fac as { id: string };
@@ -144,6 +146,23 @@ describe("packaging stock adjustment", () => {
     });
     expect([400, 422]).toContain(res.status);
     expect(await balance()).toBe(120);
+  });
+
+  it("forbids a non-owner (admin) from adjusting", async () => {
+    const adminCookies = await loginAs(baseUrl, "admin@example.com", "userpassword123");
+    const res = await fetch(`${baseUrl}/v1/packaging/adjust`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: adminCookies, "idempotency-key": uuid() },
+      body: JSON.stringify({
+        location_type: "factory",
+        location_id: factory.id,
+        packaging_material_id: materialId,
+        new_count: 999,
+        reason: "count_correction",
+      }),
+    });
+    expect(res.status).toBe(403);
+    expect(await balance()).toBe(120); // unchanged
   });
 
   it("emits a packaging.stock_adjusted outbox event", async () => {

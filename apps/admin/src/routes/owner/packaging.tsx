@@ -75,6 +75,7 @@ function balanceTone(qty: number): string {
 export function PackagingPage(): JSX.Element {
   const user = useAuthUser();
   const canWrite = user.capabilities.includes("packaging.write");
+  const canAdjust = user.capabilities.includes("packaging.adjust");
   const [tab, setTab] = useState<"stock" | "purchases" | "materials">("stock");
   const [factories, setFactories] = useState<Factory[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -258,12 +259,12 @@ export function PackagingPage(): JSX.Element {
                 <th>Kind</th>
                 <th className="table__num">On hand</th>
                 <th className="table__num">Recent unit cost</th>
-                {canWrite && <th />}
+                {canAdjust && <th />}
               </tr>
             </thead>
             <tbody>
               {stock.length === 0 ? (
-                <tr><td colSpan={canWrite ? 5 : 4} style={{ color: "var(--ink-soft)", padding: 18 }}>No materials configured yet.</td></tr>
+                <tr><td colSpan={canAdjust ? 5 : 4} style={{ color: "var(--ink-soft)", padding: 18 }}>No materials configured yet.</td></tr>
               ) : (
                 stock.map((s) => (
                   <tr key={s.material_id}>
@@ -275,7 +276,7 @@ export function PackagingPage(): JSX.Element {
                     <td className="table__num" style={{ color: "var(--ink-soft)" }}>
                       {s.recent_unit_cost_ngn != null ? ngn(s.recent_unit_cost_ngn) : "—"}
                     </td>
-                    {canWrite && (
+                    {canAdjust && (
                       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                         <button type="button" className="btn btn--subtle btn--sm" onClick={() => setAdjustRow(s)}>
                           Adjust
