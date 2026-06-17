@@ -189,6 +189,13 @@ export function humanizeAction(row: AuditRow, branches: BranchLookup[]): string 
       const qty = pick(after, "quantity");
       return `Recorded packaging purchase — ${qty ? `${qty} units, ` : ""}${ngn(pick(after, "total_cost_ngn"))}`;
     }
+    case "packaging_stock.adjust": {
+      const name = s(pick(after, "name"));
+      const oldC = pick(after, "old_count");
+      const newC = pick(after, "new_count");
+      const reason = pick(after, "reason");
+      return `Adjusted packaging stock — ${name} ${oldC} → ${newC}${reason ? ` (${reason})` : ""}`;
+    }
 
     // ── Marketing ──
     case "subscription_plan.create":

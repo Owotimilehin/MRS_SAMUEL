@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   packagingMaterial,
   packagingStockLedger,
   packagingPurchase,
+  packagingBalanceAt,
   businessExpense,
   outboxEvent,
   type DbClient,
@@ -44,6 +46,26 @@ const PurchaseCreate = z
     (v) => v.total_cost_ngn === v.unit_cost_ngn * v.quantity,
     { message: "total_cost_ngn must equal unit_cost_ngn × quantity" },
   );
+
+const ADJUST_REASONS = ["count_correction", "breakage", "spoilage", "theft_loss", "other"] as const;
+
+const StockAdjust = z.object({
+  location_type: z.enum(["factory", "branch"]),
+  location_id: z.string().uuid(),
+  packaging_material_id: z.string().uuid(),
+  new_count: z.number().int().nonnegative(),
+  reason: z.enum(ADJUST_REASONS),
+  note: z.string().max(500).optional(),
+});
+
+/** Human label for a reason code, used in the ledger note + Telegram alert. */
+const REASON_LABEL: Record<(typeof ADJUST_REASONS)[number], string> = {
+  count_correction: "Stock count correction",
+  breakage: "Breakage / damage",
+  spoilage: "Spoilage / expiry",
+  theft_loss: "Theft / loss",
+  other: "Other",
+};
 
 /** Serialize a material row to the snake_case shape the admin UI expects. */
 function serializeMaterial(m: typeof packagingMaterial.$inferSelect) {
@@ -160,6 +182,78 @@ export function packagingRoutes(db: DbClient) {
       recent_unit_cost_ngn: recentCostById.get(m.id) ?? null,
     }));
     return c.json({ data });
+  });
+
+  // ─── Manual stock adjustment ───
+  // Owner enters the actual on-hand count; the server computes the delta vs
+  // the current balance and writes one `adjustment` ledger row. No bookkeeping
+  // side-effect — an adjustment is a correction, not a purchase.
+  r.post("/adjust", requireCapability("packaging.write"), async (c) => {
+    const body = StockAdjust.parse(await c.req.json());
+    const auth = c.get("auth");
+
+    const [material] = await db
+      .select()
+      .from(packagingMaterial)
+      .where(eq(packagingMaterial.id, body.packaging_material_id));
+    if (!material) throw new BusinessError("not_found", "material not found", 404);
+
+    const loc = { locationType: body.location_type, locationId: body.location_id };
+    const current = await packagingBalanceAt(db, loc, body.packaging_material_id);
+    const delta = body.new_count - current;
+    if (delta === 0) {
+      throw new BusinessError("validation_failed", "new_count equals current balance — nothing to adjust", 400);
+    }
+
+    const noteText = `${REASON_LABEL[body.reason]}${body.note?.trim() ? ` — ${body.note.trim()}` : ""}`;
+    const sourceId = randomUUID();
+
+    await db.transaction(async (tx) => {
+      // The AFTER INSERT trigger guards against driving the balance negative.
+      // It cannot here (new_count ≥ 0) but the guard stays for safety.
+      await tx.insert(packagingStockLedger).values({
+        factoryId: body.location_type === "factory" ? body.location_id : null,
+        locationType: body.location_type,
+        locationId: body.location_id,
+        packagingMaterialId: body.packaging_material_id,
+        delta,
+        sourceType: "adjustment",
+        sourceId,
+        recordedByUserId: auth.userId,
+        note: noteText,
+      });
+
+      await tx.insert(outboxEvent).values({
+        eventType: "packaging.stock_adjusted",
+        payload: {
+          location_type: body.location_type,
+          location_id: body.location_id,
+          material_id: body.packaging_material_id,
+          material_name: material.name,
+          old_count: current,
+          new_count: body.new_count,
+          delta,
+          reason: REASON_LABEL[body.reason],
+          note: body.note?.trim() || null,
+        },
+      });
+    });
+
+    await writeAudit(db, c, {
+      action: "packaging_stock.adjust",
+      entityType: "packaging_material",
+      entityId: body.packaging_material_id,
+      after: {
+        name: material.name,
+        location_type: body.location_type,
+        old_count: current,
+        new_count: body.new_count,
+        delta,
+        reason: REASON_LABEL[body.reason],
+      },
+    });
+
+    return c.json({ data: { material_id: body.packaging_material_id, old_count: current, new_count: body.new_count, delta } }, 201);
   });
 
   // ─── Purchases ───

@@ -152,6 +152,23 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         text: lines.filter(Boolean).join("\n"),
       };
     }
+    case "packaging.stock_adjusted": {
+      // Owner manually corrected a packaging on-hand count. Owner always sees
+      // it; the side channel for the location that moved sees it too.
+      const delta = Number(p["delta"]);
+      const sign = delta > 0 ? "+" : "";
+      const sideChannel =
+        p["location_type"] === "factory" ? channels.factory() : channels.branchAjao();
+      const note = p["note"] ? `\n_${String(p["note"])}_` : "";
+      return {
+        chatIds: [owner, sideChannel],
+        text:
+          `🔧 *Packaging count corrected*\n` +
+          `${p["material_name"]}  ${p["old_count"]} → ${p["new_count"]} (${sign}${delta})\n` +
+          `Reason: ${p["reason"]}${note}\n` +
+          `👉 ${ADMIN_URL}/owner/packaging`,
+      };
+    }
     case "sale_return.pending_approval":
       return {
         chatIds: [owner],

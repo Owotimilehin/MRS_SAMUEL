@@ -88,6 +88,7 @@ export function PackagingPage(): JSX.Element {
   const [showAddPurchase, setShowAddPurchase] = useState(false);
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [editMaterial, setEditMaterial] = useState<Material | null>(null);
+  const [adjustRow, setAdjustRow] = useState<StockRow | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
 
   /** All selectable locations in display order: factories first, then branches */
@@ -257,11 +258,12 @@ export function PackagingPage(): JSX.Element {
                 <th>Kind</th>
                 <th className="table__num">On hand</th>
                 <th className="table__num">Recent unit cost</th>
+                {canWrite && <th />}
               </tr>
             </thead>
             <tbody>
               {stock.length === 0 ? (
-                <tr><td colSpan={4} style={{ color: "var(--ink-soft)", padding: 18 }}>No materials configured yet.</td></tr>
+                <tr><td colSpan={canWrite ? 5 : 4} style={{ color: "var(--ink-soft)", padding: 18 }}>No materials configured yet.</td></tr>
               ) : (
                 stock.map((s) => (
                   <tr key={s.material_id}>
@@ -273,6 +275,13 @@ export function PackagingPage(): JSX.Element {
                     <td className="table__num" style={{ color: "var(--ink-soft)" }}>
                       {s.recent_unit_cost_ngn != null ? ngn(s.recent_unit_cost_ngn) : "—"}
                     </td>
+                    {canWrite && (
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        <button type="button" className="btn btn--subtle btn--sm" onClick={() => setAdjustRow(s)}>
+                          Adjust
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -391,6 +400,21 @@ export function PackagingPage(): JSX.Element {
           onSaved={async () => {
             setEditMaterial(null);
             setFlash("Material updated");
+            setTimeout(() => setFlash(null), 2500);
+            await loadAll();
+          }}
+        />
+      )}
+
+      {adjustRow && currentLocation && (
+        <AdjustStockModal
+          row={adjustRow}
+          location={currentLocation}
+          locationName={locationOptions.find((o) => o.key === locationKey)?.name ?? ""}
+          onClose={() => setAdjustRow(null)}
+          onSaved={async () => {
+            setAdjustRow(null);
+            setFlash("Stock adjusted");
             setTimeout(() => setFlash(null), 2500);
             await loadAll();
           }}
@@ -524,6 +548,135 @@ function PurchaseModal({
             <button type="button" className="btn btn--subtle" onClick={onClose} disabled={submitting}>Cancel</button>
             <button type="submit" className="btn btn--primary" disabled={submitting}>
               {submitting ? "Recording…" : "Record purchase"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const ADJUST_REASONS: { value: string; label: string }[] = [
+  { value: "count_correction", label: "Stock count correction" },
+  { value: "breakage", label: "Breakage / damage" },
+  { value: "spoilage", label: "Spoilage / expiry" },
+  { value: "theft_loss", label: "Theft / loss" },
+  { value: "other", label: "Other" },
+];
+
+function AdjustStockModal({
+  row,
+  location,
+  locationName,
+  onClose,
+  onSaved,
+}: {
+  row: StockRow;
+  location: { type: LocationType; id: string };
+  locationName: string;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}): JSX.Element {
+  const [newCount, setNewCount] = useState<string>(String(row.balance));
+  const [reason, setReason] = useState<string>("count_correction");
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const parsed = newCount.trim() === "" ? NaN : Number(newCount);
+  const valid = Number.isInteger(parsed) && parsed >= 0;
+  const delta = valid ? parsed - row.balance : 0;
+  const noChange = !valid || delta === 0;
+
+  async function handleSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!valid) {
+      setError("Enter a whole number of 0 or more");
+      return;
+    }
+    if (delta === 0) {
+      setError("New count is the same as the current on-hand");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api(`/packaging/adjust`, {
+        method: "POST",
+        body: JSON.stringify({
+          location_type: location.type,
+          location_id: location.id,
+          packaging_material_id: row.material_id,
+          new_count: parsed,
+          reason,
+          note: note.trim() || undefined,
+        }),
+      });
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal
+      style={{ position: "fixed", inset: 0, background: "rgba(20,24,31,0.45)", display: "grid", placeItems: "center", zIndex: 50, padding: 16 }}
+      onClick={onClose}
+    >
+      <div
+        className="card"
+        style={{ width: "100%", maxWidth: 460, maxHeight: "calc(100vh - 32px)", overflow: "auto", background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header style={{ marginBottom: 14 }}>
+          <h2 className="t-h2">Adjust stock</h2>
+          <p style={{ color: "var(--ink-soft)", fontSize: 13, margin: "4px 0 0" }}>
+            {row.name}{locationName ? ` · ${locationName}` : ""}
+          </p>
+        </header>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, background: "var(--surface-soft, rgba(127,127,127,0.08))" }}>
+            <span style={{ color: "var(--ink-soft)" }}>Current on hand</span>
+            <strong>{row.balance.toLocaleString()}</strong>
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="adj-count">New count (actual on hand)</label>
+            <input
+              id="adj-count"
+              className="input"
+              type="number"
+              min={0}
+              step={1}
+              value={newCount}
+              onChange={(e) => setNewCount(e.target.value)}
+              style={{ textAlign: "right" }}
+              autoFocus
+              required
+            />
+          </div>
+          {valid && delta !== 0 && (
+            <div style={{ fontSize: 14, color: delta > 0 ? "var(--success)" : "var(--danger)" }}>
+              This will record {delta > 0 ? "+" : ""}{delta.toLocaleString()} ({row.balance.toLocaleString()} → {parsed.toLocaleString()}).
+            </div>
+          )}
+          <div className="field">
+            <label className="field__label" htmlFor="adj-reason">Reason</label>
+            <select id="adj-reason" className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
+              {ADJUST_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="adj-note">Note (optional)</label>
+            <input id="adj-note" className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. carton dropped in transit" />
+          </div>
+          {error && <div className="field__error">{error}</div>}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+            <button type="button" className="btn btn--subtle" onClick={onClose} disabled={submitting}>Cancel</button>
+            <button type="submit" className="btn btn--primary" disabled={submitting || noChange}>
+              {submitting ? "Saving…" : "Save adjustment"}
             </button>
           </div>
         </form>
