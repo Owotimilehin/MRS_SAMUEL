@@ -5,6 +5,7 @@ import { Stat } from "../../components/Stat.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
 import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
+import { useCan } from "../../lib/auth.js";
 import { ngn } from "../../lib/format.js";
 import { downloadCsv } from "../../lib/csv.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -84,18 +85,26 @@ export function DashboardPage(): JSX.Element {
   const [reviewCount, setReviewCount] = useState(0);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
+  const can = useCan();
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     void (async () => {
       try {
+        // The "Needs review" count requires orders.manage (owners/managers).
+        // Admins land on this dashboard without that cap, so fetch it only when
+        // permitted and never let it reject the whole load — one forbidden
+        // optional widget must not blank the entire dashboard.
+        const reviewP = can("orders.manage")
+          ? api<ReviewBody>(`/review`).catch(() => null)
+          : Promise.resolve(null);
         const [rev, top, vari, br, rev2, ov] = await Promise.all([
           api<{ data: RevenueRow[] }>(`/reports/revenue?from=${from}&to=${to}`),
           api<{ data: TopProductRow[] }>(`/reports/top-products?from=${from}&to=${to}&limit=5`),
           api<{ data: VarianceRow[] }>(`/reports/variances?from=${nDaysAgo(30)}`),
           api<{ data: BranchRow[] }>(`/branches`),
-          api<ReviewBody>(`/review`),
+          reviewP,
           api<{ data: Overview }>(`/reports/overview`),
         ]);
         if (cancelled) return;
@@ -104,7 +113,7 @@ export function DashboardPage(): JSX.Element {
         setVariances(vari.data);
         setBranches(br.data);
         setReviewCount(
-          rev2.data.transfer_variances.length + rev2.data.return_approvals.length,
+          rev2 ? rev2.data.transfer_variances.length + rev2.data.return_approvals.length : 0,
         );
         setOverview(ov.data);
       } catch (err) {
@@ -118,6 +127,8 @@ export function DashboardPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
+    // `can` is session-stable; depending on it would refetch on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
   const branchName = (id: string): string => branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);

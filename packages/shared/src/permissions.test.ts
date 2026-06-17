@@ -20,6 +20,7 @@ describe("resolveCapabilities", () => {
       "daily_close.submit",
       "returns.create",
       "stock.adjust",
+      "orders.manage",
     ] as const) {
       expect(caps).toContain(cap);
     }

@@ -53,12 +53,14 @@ const ADMIN_CAPS: Capability[] = [
   "packaging.view",
   "packaging.write",
   // Branch / POS: admins can step in and run a till end-to-end (sell, view
-  // sales, submit shift-end, take returns, adjust stock) like a manager.
+  // sales, submit shift-end, take returns, adjust stock) like a manager, and
+  // manage the orders/preorders/review queues that the dashboard surfaces.
   "pos.sell",
   "sales.view",
   "daily_close.submit",
   "returns.create",
   "stock.adjust",
+  "orders.manage",
 ];
 
 const MANAGER_CAPS: Capability[] = [
