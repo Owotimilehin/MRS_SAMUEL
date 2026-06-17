@@ -27,8 +27,10 @@ function humanizeKey(k: string): string {
 function fmt(key: string, v: unknown): string {
   if (v === null || v === undefined) return "—";
   if (typeof v === "boolean") return v ? "Yes" : "No";
-  if (typeof v === "number" && /ngn$/i.test(key)) return `₦${v.toLocaleString()}`;
-  if (typeof v === "number") return v.toLocaleString();
+  // Pin the locale so grouping (₦1,800) is stable regardless of the host
+  // process locale — a C/POSIX-locale CI runner would otherwise drop the comma.
+  if (typeof v === "number" && /ngn$/i.test(key)) return `₦${v.toLocaleString("en-NG")}`;
+  if (typeof v === "number") return v.toLocaleString("en-NG");
   return String(v);
 }
 
