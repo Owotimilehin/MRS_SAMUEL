@@ -33,6 +33,10 @@ export const CAPABILITIES = [
   "expenses.view",
   "packaging.view",
   "packaging.write",
+  // Owner-only by default: manual stock corrections (set new on-hand count).
+  // Deliberately NOT in ADMIN_CAPS/MANAGER_CAPS — admins keep packaging.write
+  // (purchases + materials) but cannot adjust counts unless granted per-user.
+  "packaging.adjust",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 

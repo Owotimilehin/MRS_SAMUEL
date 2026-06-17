@@ -188,7 +188,7 @@ export function packagingRoutes(db: DbClient) {
   // Owner enters the actual on-hand count; the server computes the delta vs
   // the current balance and writes one `adjustment` ledger row. No bookkeeping
   // side-effect — an adjustment is a correction, not a purchase.
-  r.post("/adjust", requireCapability("packaging.write"), async (c) => {
+  r.post("/adjust", requireCapability("packaging.adjust"), async (c) => {
     const body = StockAdjust.parse(await c.req.json());
     const auth = c.get("auth");
 
