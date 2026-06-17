@@ -13,6 +13,10 @@ import { createLocalSale } from "../../sync/local-sale.js";
 import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { Modal } from "../../components/Modal.js";
+import { SaleSuccessModal } from "../../components/SaleSuccessModal.js";
+import { useAuthUser } from "../../lib/auth.js";
+import { buildReceiptFromCart, type ReceiptData } from "../../lib/receipt-data.js";
+import { getReceiptStyle } from "../../lib/receipt-settings.js";
 import { getFlavourVisual } from "../../lib/flavour-visuals.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
 
@@ -79,6 +83,37 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   // to take the whole order as a made-to-order preorder. A 330ml (preorder_only)
   // size in the cart forces it on — you can't complete that as an instant sale.
   const [preorderChoice, setPreorderChoice] = useState(false);
+
+  // Cash handling for the receipt: how much the customer handed over (cash only)
+  // so the modal + printed receipt can show change due.
+  const [cashReceived, setCashReceived] = useState("");
+  // The just-completed sale, surfaced as a success modal with a Print option.
+  const [successSale, setSuccessSale] = useState<{ receipt: ReceiptData; itemCount: number } | null>(
+    null,
+  );
+  // Who is serving (for "Served by" on the receipt). admin_user has no name
+  // field yet, so fall back to the email prefix then the role.
+  const authUser = useAuthUser();
+  const servedBy = (authUser.email.split("@")[0] || authUser.role).replace(/[._]/g, " ");
+  // Branch header for the receipt, fetched best-effort (works online; offline we
+  // still print with just the branch id-derived fallbacks).
+  const [branchInfo, setBranchInfo] = useState<{ name: string; address: string | null; phone: string | null }>({
+    name: "Mrs. Samuel",
+    address: null,
+    phone: null,
+  });
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await api<{ data: { name: string; address: string | null; phone: string | null } }>(
+          `/branches/${branchId}`,
+        );
+        setBranchInfo({ name: res.data.name, address: res.data.address, phone: res.data.phone });
+      } catch {
+        /* offline or no access — keep fallback header */
+      }
+    })();
+  }, [branchId]);
 
   // Optional bag add-on (tracked-only). The bag catalog + this branch's on-hand
   // counts are fetched when online; offline the picker is hidden — the sale
@@ -262,17 +297,37 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
             }
           : {}),
       });
-      setFlash(
-        orderIsPreorder
-          ? `Preorder taken ✓ · ${itemCount} ${itemCount === 1 ? "item" : "items"} · ${ngn(sale.subtotal)} prepaid · fulfil on ${fulfillBy}`
-          : `Sale recorded ✓ · ${itemCount} ${itemCount === 1 ? "item" : "items"} · ${ngn(sale.subtotal)}`,
-      );
+      // Build the receipt from the live cart BEFORE we clear it, then surface a
+      // success modal with a Print option (replaces the old green flash banner).
+      const cashNum =
+        paymentMethod === "cash" ? Number(cashReceived.replace(/[^0-9]/g, "")) : NaN;
+      const receipt = buildReceiptFromCart({
+        style: getReceiptStyle(),
+        receiptNo: sale.orderNumber,
+        whenIso: new Date().toISOString(),
+        branch: branchInfo,
+        servedBy,
+        channel,
+        payment: paymentMethod,
+        items: cart.map((l) => ({
+          name: products.find((p) => p.id === l.product_id)?.name ?? "Item",
+          sizeMl: l.size_ml,
+          qty: l.quantity,
+          unitNgn: l.unit_price_ngn,
+        })),
+        ...(Number.isFinite(cashNum) && cashNum > 0 ? { cashNgn: cashNum } : {}),
+        ...(orderIsPreorder
+          ? { isPreorder: true, fulfilIso: new Date(`${fulfillBy}T12:00:00`).toISOString() }
+          : {}),
+      });
+      setSuccessSale({ receipt, itemCount });
       setCart([]);
       setBagCart({});
       setFulfillBy("");
       setPreorderChoice(false);
       setCustomerPhone("");
       setCustomerName("");
+      setCashReceived("");
       // Optimistically reflect the bags just handed out. The server decrements
       // branch bag stock when this queued sale syncs (at /pay), so refetching
       // now would read the pre-sale balance and snap the count back to the
@@ -456,6 +511,22 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 <option value="transfer">Transfer</option>
               </select>
             </div>
+            {paymentMethod === "cash" && cart.length > 0 && (
+              <div className="field">
+                <label className="field__label" htmlFor="sell-cash">Cash received</label>
+                <input
+                  id="sell-cash"
+                  className="input"
+                  inputMode="numeric"
+                  placeholder={`${total}`}
+                  value={cashReceived}
+                  onChange={(e) => setCashReceived(e.target.value.replace(/[^0-9]/g, ""))}
+                />
+                {cashReceived !== "" && Number(cashReceived) >= total && (
+                  <span className="field__hint">Change: {ngn(Number(cashReceived) - total)}</span>
+                )}
+              </div>
+            )}
             {/* Order-level preorder. A 330ml in the cart forces it on. */}
             <div
               className="card card--soft"
@@ -598,6 +669,13 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
             setPicking(null);
           }}
           onClose={() => setPicking(null)}
+        />
+      )}
+      {successSale && (
+        <SaleSuccessModal
+          receipt={successSale.receipt}
+          itemCount={successSale.itemCount}
+          onNewSale={() => setSuccessSale(null)}
         />
       )}
     </BranchShell>

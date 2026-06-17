@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mrs. Samuel — Receipt Design Mockups (real data)</title>
+<style>
+  :root { --ink:#141414; --muted:#5a5a5a; }
+  * { box-sizing: border-box; }
+  body{ margin:0; padding:40px 16px 80px;
+    background:radial-gradient(1200px 600px at 50% -10%, #f3f4f6, #d9dde3 60%, #c7ccd4);
+    font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:#1f2937; }
+  h1{ text-align:center; font-weight:800; letter-spacing:-.02em; margin:0 0 6px; font-size:26px; color:#111827; }
+  .sub{ text-align:center; color:#6b7280; margin:0 0 8px; font-size:14px; }
+  .note{ text-align:center; color:#6b7280; margin:0 auto 32px; font-size:12px; max-width:760px; }
+  .row{ display:flex; gap:34px; justify-content:center; align-items:flex-start; flex-wrap:wrap; }
+  .col{ display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .label{ font-weight:700; font-size:13px; color:#111827; text-align:center; }
+  .label small{ display:block; font-weight:400; color:#6b7280; font-size:11px; margin-top:2px; }
+
+  .paper{ width:288px; background:#fff; color:var(--ink); padding:18px 20px 22px;
+    box-shadow:0 1px 0 rgba(0,0,0,.04),0 24px 50px -12px rgba(15,23,42,.45); border-radius:2px; position:relative; }
+  .paper::before,.paper::after{ content:""; position:absolute; left:0; right:0; height:7px;
+    background:repeating-linear-gradient(90deg,transparent 0 6px,rgba(0,0,0,.05) 6px 7px),
+      radial-gradient(circle at 6px 0,#fff 5px,transparent 6px); }
+  .paper::before{ top:-6px; transform:scaleY(-1); } .paper::after{ bottom:-6px; }
+
+  .logo{ display:block; width:172px; margin:2px auto 8px; }
+  .center{ text-align:center; } .muted{ color:var(--muted); }
+  .mono{ font-family:ui-monospace,"Cascadia Mono","Courier New",monospace; }
+  .b{ font-weight:700; }
+  .xs{ font-size:10.5px; } .sm{ font-size:11.5px; line-height:1.5; } .md{ font-size:13px; }
+  .hr{ border:none; border-top:1px dashed #b8b8b8; margin:10px 0; }
+  .hr2{ border:none; border-top:2px solid #141414; margin:10px 0; }
+  .kv{ display:flex; justify-content:space-between; gap:8px; }
+  table.items{ width:100%; border-collapse:collapse; }
+  table.items td{ padding:3px 0; vertical-align:top; }
+  table.items td.q{ width:26px; } table.items td.a{ text-align:right; white-space:nowrap; }
+  .qr{ display:block; margin:0 auto; filter:grayscale(1) contrast(1.15); image-rendering:pixelated; }
+  .totbar{ background:#141414; color:#fff; padding:9px 12px; display:flex; justify-content:space-between; align-items:center; font-weight:800; font-size:16px; border-radius:6px; }
+  .qrbox{ border:1.5px solid #141414; border-radius:10px; padding:12px; text-align:center; margin-top:12px; }
+  .coupon{ border:2px dashed #141414; border-radius:10px; padding:12px; text-align:center; margin-top:12px; }
+  .coupon .big{ font-weight:800; font-size:13.5px; margin-top:6px; }
+  .pill{ display:inline-block; border:1px solid #141414; border-radius:999px; padding:1px 10px; font-weight:700; font-size:10.5px; letter-spacing:.04em; }
+  .socials{ display:flex; flex-direction:column; align-items:center; gap:5px; margin-top:4px; }
+  .soc{ display:flex; align-items:center; gap:7px; font-size:11.5px; font-weight:600; }
+  .soc svg{ width:14px; height:14px; flex:none; }
+  .socrow{ display:flex; gap:16px; justify-content:center; flex-wrap:wrap; }
+  .webline{ font-weight:800; letter-spacing:.02em; font-size:12.5px; margin-top:2px; }
+</style>
+</head>
+<body>
+  <h1>Mrs. Samuel — Receipt Designs</h1>
+  <p class="sub">True 80mm width · black &amp; white as printed on the XP-80T · live QR → mrssamuel.com</p>
+  <p class="note"><b>All data below is real, pulled from your production database:</b> Ajao Estate branch &amp; address, real flavours/sizes (330ml &amp; 650ml) &amp; prices, real order-number format (SO-2026-…), real channels &amp; payment methods. Example basket is a cash walk-in so you can see tendered/change.</p>
+
+  <div class="row">
+
+    <!-- ===== DESIGN 1 — CLASSIC TILL ===== -->
+    <div class="col">
+      <div class="label">Design 1 — “Classic Till”<small>traditional · compact · ultra-legible</small></div>
+      <div class="paper">
+        <img class="logo" src="logo.png" alt="Mrs. Samuel Fruit Juice"/>
+        <div class="center sm muted">
+          Ajao Estate Branch<br/>
+          30 Asa Afariogun Street, Ajao Estate<br/>Ikeja, Lagos<br/>
+          Tel · 0706 722 0914
+        </div>
+        <hr class="hr"/>
+        <div class="mono sm">
+          <div class="kv"><span class="muted">RECEIPT</span><span class="b">SO-2026-00008</span></div>
+          <div class="kv"><span class="muted">DATE</span><span>16 Jun 2026 · 21:18</span></div>
+          <div class="kv"><span class="muted">SERVED BY</span><span>Blessing A.</span></div>
+          <div class="kv"><span class="muted">CHANNEL</span><span>Walk-in</span></div>
+          <div class="kv"><span class="muted">PAYMENT</span><span>Cash</span></div>
+        </div>
+        <hr class="hr"/>
+        <table class="items mono sm">
+          <tr><td class="q b">2</td><td>Crimson Garden Glow 650ml<div class="xs muted">@ 3,500</div></td><td class="a">7,000</td></tr>
+          <tr><td class="q b">1</td><td>Tropical Mango 650ml<div class="xs muted">@ 4,500</div></td><td class="a">4,500</td></tr>
+          <tr><td class="q b">1</td><td>Pineapple Juice 330ml<div class="xs muted">@ 2,500</div></td><td class="a">2,500</td></tr>
+        </table>
+        <hr class="hr"/>
+        <div class="mono sm"><div class="kv"><span>Subtotal</span><span>14,000</span></div></div>
+        <hr class="hr2"/>
+        <div class="mono kv b" style="font-size:16px;"><span>TOTAL</span><span>₦14,000</span></div>
+        <div class="mono sm" style="margin-top:8px;">
+          <div class="kv"><span class="muted">Cash</span><span>15,000</span></div>
+          <div class="kv"><span class="muted">Change</span><span>1,000</span></div>
+        </div>
+        <hr class="hr"/>
+        <img class="qr" width="116" height="116" alt="QR"
+          src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=https%3A%2F%2Fmrssamuel.com"/>
+        <div class="center xs muted" style="margin-top:6px;">Scan to order fresh again<br/><span class="b" style="color:#141414;">mrssamuel.com</span></div>
+        <hr class="hr"/>
+        <div class="center sm b">Thank you! Keep chilled · drink fresh</div>
+        <div class="socials"><div class="socrow">
+          <span class="soc"><svg viewBox="0 0 24 24" fill="none" stroke="#141414" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#141414" stroke="none"/></svg>@Mrs_samuelfruitjuice</span>
+          <span class="soc"><svg viewBox="0 0 24 24" fill="#141414"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.82 11.82 0 018.413 3.488 11.82 11.82 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zM6.597 20.13c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.523 5.26l-.999 3.648 3.65-.957z"/></svg>0901 951 2246</span>
+        </div><div class="webline">mrssamuel.com</div></div>
+      </div>
+    </div>
+
+    <!-- ===== DESIGN 2 — BRANDED CLEAN ===== -->
+    <div class="col">
+      <div class="label">Design 2 — “Branded Clean”<small>logo-led · airy · bold total bar</small></div>
+      <div class="paper">
+        <img class="logo" src="logo.png" alt="Mrs. Samuel Fruit Juice" style="width:186px;margin-bottom:6px;"/>
+        <div class="center xs muted">Ajao Estate · 30 Asa Afariogun Street, Ikeja, Lagos · 0706 722 0914</div>
+        <hr class="hr"/>
+        <div class="sm">
+          <div class="kv"><span class="b mono">SO-2026-00008</span><span class="muted">16 Jun 2026 · 21:18</span></div>
+          <div class="kv"><span class="muted">Served by · Blessing A.</span><span class="muted">Walk-in · Cash</span></div>
+        </div>
+        <hr class="hr"/>
+        <table class="items sm">
+          <tr><td class="q b mono">2×</td><td>Crimson Garden Glow 650ml</td><td class="a mono">7,000</td></tr>
+          <tr><td class="q b mono">1×</td><td>Tropical Mango 650ml</td><td class="a mono">4,500</td></tr>
+          <tr><td class="q b mono">1×</td><td>Pineapple Juice 330ml</td><td class="a mono">2,500</td></tr>
+        </table>
+        <hr class="hr"/>
+        <div class="kv sm muted" style="margin-bottom:8px;"><span>Subtotal</span><span class="mono">14,000</span></div>
+        <div class="totbar"><span>TOTAL</span><span class="mono">₦14,000</span></div>
+        <div class="kv sm muted" style="margin-top:8px;"><span>Cash · 15,000</span><span>Change · ₦1,000</span></div>
+        <div class="qrbox">
+          <img class="qr" width="118" height="118" alt="QR"
+            src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=https%3A%2F%2Fmrssamuel.com"/>
+          <div class="b sm" style="margin-top:8px;">Scan to shop fresh again</div>
+          <div class="webline">mrssamuel.com</div>
+        </div>
+        <hr class="hr"/>
+        <div class="socials"><div class="socrow">
+          <span class="soc"><svg viewBox="0 0 24 24" fill="none" stroke="#141414" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#141414" stroke="none"/></svg>@Mrs_samuelfruitjuice</span>
+          <span class="soc"><svg viewBox="0 0 24 24" fill="#141414"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.82 11.82 0 018.413 3.488 11.82 11.82 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zM6.597 20.13c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.523 5.26l-.999 3.648 3.65-.957z"/></svg>0901 951 2246</span>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- ===== DESIGN 3 — MARKETING MAGNET ===== -->
+    <div class="col">
+      <div class="label">Design 3 — “Marketing Magnet”<small>thank-you · referral hook · repeat sales</small></div>
+      <div class="paper">
+        <img class="logo" src="logo.png" alt="Mrs. Samuel Fruit Juice"/>
+        <div class="center xs muted" style="text-transform:uppercase;letter-spacing:.14em;">Ajao Estate · Pressed fresh in Lagos</div>
+        <hr class="hr"/>
+        <div class="sm">
+          <div class="kv"><span class="b mono">SO-2026-00008</span><span class="muted mono">16 Jun 2026 21:18</span></div>
+          <div class="kv muted"><span>Blessing A.</span><span>Walk-in · Cash</span></div>
+        </div>
+        <hr class="hr"/>
+        <table class="items sm">
+          <tr><td class="q mono">2</td><td>Crimson Garden Glow 650ml</td><td class="a mono">7,000</td></tr>
+          <tr><td class="q mono">1</td><td>Tropical Mango 650ml</td><td class="a mono">4,500</td></tr>
+          <tr><td class="q mono">1</td><td>Pineapple Juice 330ml</td><td class="a mono">2,500</td></tr>
+        </table>
+        <hr class="hr"/>
+        <div class="kv sm muted"><span>Subtotal</span><span class="mono">14,000</span></div>
+        <div class="kv b" style="font-size:16px;border-top:2px solid #141414;padding-top:6px;margin-top:6px;"><span>TOTAL</span><span class="mono">₦14,000</span></div>
+        <div class="kv sm muted" style="margin-top:4px;"><span>Cash · 15,000</span><span>Change · ₦1,000</span></div>
+        <div class="center b md" style="margin-top:12px;">Thank you — see you again! 💚</div>
+        <div class="coupon">
+          <span class="pill">NEXT ORDER PERK</span>
+          <img class="qr" width="112" height="112" alt="QR" style="margin-top:8px;"
+            src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=https%3A%2F%2Fmrssamuel.com"/>
+          <div class="big">Scan for 10% off your next order</div>
+          <div class="webline" style="margin-top:2px;">mrssamuel.com</div>
+        </div>
+        <hr class="hr"/>
+        <div class="socials"><div class="socrow">
+          <span class="soc"><svg viewBox="0 0 24 24" fill="none" stroke="#141414" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#141414" stroke="none"/></svg>@Mrs_samuelfruitjuice</span>
+          <span class="soc"><svg viewBox="0 0 24 24" fill="#141414"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.82 11.82 0 018.413 3.488 11.82 11.82 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zM6.597 20.13c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.523 5.26l-.999 3.648 3.65-.957z"/></svg>0901 951 2246</span>
+        </div></div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

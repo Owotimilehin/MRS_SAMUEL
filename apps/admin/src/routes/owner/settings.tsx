@@ -3,6 +3,11 @@ import { Shell } from "../../components/Shell.js";
 import { api, ApiError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { StatHero } from "../../components/StatHero.js";
+import {
+  getReceiptStyle,
+  setReceiptStyle,
+  RECEIPT_STYLES,
+} from "../../lib/receipt-settings.js";
 
 interface Branch {
   id: string;
@@ -100,6 +105,7 @@ export function SettingsPage(): JSX.Element {
         <InlineLoader />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <ReceiptStyleCard />
           <section className="card">
             <h2 className="t-h2" style={{ marginBottom: 4 }}>
               Operating hours & contact
@@ -259,6 +265,52 @@ export function SettingsPage(): JSX.Element {
         </div>
       )}
     </Shell>
+  );
+}
+
+function ReceiptStyleCard(): JSX.Element {
+  const [style, setStyle] = useState(getReceiptStyle());
+  return (
+    <section className="card">
+      <h2 className="t-h2" style={{ marginBottom: 4 }}>
+        Receipt style
+      </h2>
+      <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 12 }}>
+        Choose how printed receipts look. Applies to every till and reprint on this device.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {RECEIPT_STYLES.map((s) => (
+          <label
+            key={s.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 12px",
+              borderRadius: 12,
+              cursor: "pointer",
+              border: `1px solid ${style === s.id ? "var(--accent, #0b6b3a)" : "var(--line)"}`,
+              background: style === s.id ? "rgba(11,107,58,0.05)" : "transparent",
+            }}
+          >
+            <input
+              type="radio"
+              name="receipt-style"
+              checked={style === s.id}
+              onChange={() => {
+                setReceiptStyle(s.id);
+                setStyle(s.id);
+              }}
+              style={{ width: 18, height: 18, accentColor: "var(--accent, #0b6b3a)" }}
+            />
+            <span>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>{s.label}</span>
+              <span style={{ display: "block", color: "var(--ink-soft)", fontSize: 12 }}>{s.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </section>
   );
 }
 

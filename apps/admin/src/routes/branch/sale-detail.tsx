@@ -7,6 +7,10 @@ import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { useAuthUser } from "../../lib/auth.js";
+import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
+import { getReceiptStyle } from "../../lib/receipt-settings.js";
+import { fetchBranchInfo, printAndToast } from "../../lib/reprint.js";
 
 interface SaleItem {
   id: string;
@@ -163,6 +167,37 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
 
   const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
 
+  const authUser = useAuthUser();
+  const [printing, setPrinting] = useState(false);
+  async function printReceiptForSale(): Promise<void> {
+    if (!sale) return;
+    setPrinting(true);
+    try {
+      const branch = await fetchBranchInfo(branchId);
+      const data = buildReceiptFromOrder({
+        style: getReceiptStyle(),
+        orderNumber: sale.orderNumber,
+        createdAtIso: sale.createdAtLocal,
+        branch,
+        servedBy: (authUser.email.split("@")[0] || authUser.role).replace(/[._]/g, " "),
+        channel: sale.channel,
+        payment: sale.paymentMethod,
+        items: sale.items.map((it) => ({
+          name: productName(it.productId),
+          sizeMl: null,
+          quantity: it.quantity,
+          unitPriceNgn: it.unitPriceNgn,
+          lineTotalNgn: it.lineTotalNgn,
+        })),
+        subtotalNgn: sale.subtotalNgn,
+        totalNgn: sale.totalNgn,
+      });
+      await printAndToast(data);
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   const canPay = sale?.status === "confirmed" && sale.channel !== "online";
   const canHandOver = sale?.status === "paid" && ["walkup", "whatsapp", "chowdeck_pickup"].includes(sale.channel);
   const canDeliver = sale?.status === "paid" && ["online", "phone"].includes(sale.channel);
@@ -180,9 +215,21 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
       branchId={branchId}
       title={sale?.orderNumber ?? "Order"}
       actions={
-        <Link to="/branch/sales" className="btn btn--subtle btn--sm">
-          ← All sales
-        </Link>
+        <>
+          {sale && (
+            <button
+              type="button"
+              className="btn btn--subtle btn--sm"
+              disabled={printing}
+              onClick={() => void printReceiptForSale()}
+            >
+              {printing ? "Printing…" : "🖨 Print receipt"}
+            </button>
+          )}
+          <Link to="/branch/sales" className="btn btn--subtle btn--sm">
+            ← All sales
+          </Link>
+        </>
       }
     >
       <StatHero

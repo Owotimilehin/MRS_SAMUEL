@@ -7,6 +7,10 @@ import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import type { StatChip } from "../../components/StatHero.js";
+import { useAuthUser } from "../../lib/auth.js";
+import { buildReturnSlip } from "../../lib/receipt-data.js";
+import { getReceiptStyle } from "../../lib/receipt-settings.js";
+import { fetchBranchInfo, printAndToast } from "../../lib/reprint.js";
 
 interface ReturnItem {
   id: string;
@@ -101,6 +105,36 @@ export function ReturnDetailPage({
 
   const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
 
+  const authUser = useAuthUser();
+  const [printing, setPrinting] = useState(false);
+  async function printReturnSlip(): Promise<void> {
+    if (!ret) return;
+    setPrinting(true);
+    try {
+      const branch = await fetchBranchInfo(branchId);
+      const reason = [ret.reasonCategory.replace(/_/g, " "), ret.reasonNote].filter(Boolean).join(" — ");
+      const data = buildReturnSlip({
+        style: getReceiptStyle(),
+        returnNumber: ret.returnNumber,
+        createdAtIso: ret.createdAt,
+        branch,
+        servedBy: (authUser.email.split("@")[0] || authUser.role).replace(/[._]/g, " "),
+        items: ret.items.map((it) => ({
+          name: productName(it.productId),
+          sizeMl: null,
+          quantity: it.quantityReturned,
+          unitPriceNgn: it.unitRefundNgn,
+          lineTotalNgn: it.unitRefundNgn * it.quantityReturned,
+        })),
+        refundNgn: ret.refundAmountNgn,
+        reason,
+      });
+      await printAndToast(data);
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   const detailChips: StatChip[] = [
     { label: "Items", value: ret?.items.length ?? "—" },
     { label: "Refund ₦", value: ret ? ngn(ret.refundAmountNgn) : "—" },
@@ -112,9 +146,21 @@ export function ReturnDetailPage({
       branchId={branchId}
       title={ret?.returnNumber ?? "Return"}
       actions={
-        <Link to="/branch/returns" className="btn btn--subtle btn--sm">
-          ← All returns
-        </Link>
+        <>
+          {ret && (
+            <button
+              type="button"
+              className="btn btn--subtle btn--sm"
+              disabled={printing}
+              onClick={() => void printReturnSlip()}
+            >
+              {printing ? "Printing…" : "🖨 Print slip"}
+            </button>
+          )}
+          <Link to="/branch/returns" className="btn btn--subtle btn--sm">
+            ← All returns
+          </Link>
+        </>
       }
     >
       <StatHero

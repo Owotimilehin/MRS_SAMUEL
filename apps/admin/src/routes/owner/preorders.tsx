@@ -5,6 +5,10 @@ import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import { StatHero } from "../../components/StatHero.js";
+import { useAuthUser } from "../../lib/auth.js";
+import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
+import { getReceiptStyle } from "../../lib/receipt-settings.js";
+import { fetchBranchInfo, printAndToast } from "../../lib/reprint.js";
 
 interface PreorderItem {
   product_id: string;
@@ -41,6 +45,38 @@ export function PreordersPage(): JSX.Element {
   const [rows, setRows] = useState<Preorder[]>([]);
   const [loading, setLoading] = useState(true);
   const [fulfilling, setFulfilling] = useState<string | null>(null);
+  const [printingId, setPrintingId] = useState<string | null>(null);
+  const authUser = useAuthUser();
+
+  async function printPreorder(o: Preorder): Promise<void> {
+    setPrintingId(o.id);
+    try {
+      const branch = await fetchBranchInfo(o.branch_id);
+      const receipt = buildReceiptFromOrder({
+        style: getReceiptStyle(),
+        orderNumber: o.order_number,
+        createdAtIso: o.created_at_local,
+        branch,
+        servedBy: (authUser.email.split("@")[0] || authUser.role).replace(/[._]/g, " "),
+        channel: o.channel,
+        payment: "prepaid",
+        items: o.items.map((i) => ({
+          name: i.name ?? "Item",
+          sizeMl: i.size_ml,
+          quantity: i.quantity,
+          unitPriceNgn: i.unit_price_ngn,
+          lineTotalNgn: i.unit_price_ngn * i.quantity,
+        })),
+        subtotalNgn: o.total_ngn,
+        totalNgn: o.total_ngn,
+        isPreorder: true,
+        ...(o.scheduled_delivery_at ? { fulfilIso: o.scheduled_delivery_at } : {}),
+      });
+      await printAndToast(receipt);
+    } finally {
+      setPrintingId(null);
+    }
+  }
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -159,6 +195,16 @@ export function PreordersPage(): JSX.Element {
                     {ngn(o.total_ngn)}
                   </td>
                   <td className="table__num">
+                    <button
+                      type="button"
+                      className="btn btn--subtle btn--sm"
+                      disabled={printingId === o.id}
+                      onClick={() => void printPreorder(o)}
+                      style={{ marginRight: 6 }}
+                      title="Print receipt"
+                    >
+                      {printingId === o.id ? "…" : "🖨"}
+                    </button>
                     <button
                       type="button"
                       className="btn btn--primary btn--sm"

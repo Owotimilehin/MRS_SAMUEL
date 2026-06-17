@@ -6,6 +6,10 @@ import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
+import { useAuthUser } from "../../lib/auth.js";
+import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
+import { getReceiptStyle } from "../../lib/receipt-settings.js";
+import { fetchBranchInfo, printAndToast } from "../../lib/reprint.js";
 
 interface SaleItem {
   id: string;
@@ -56,6 +60,37 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   const [products, setProducts] = useState<Record<string, { name: string; slug: string }>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const authUser = useAuthUser();
+  const [printing, setPrinting] = useState(false);
+
+  async function printOrderReceipt(): Promise<void> {
+    if (!data) return;
+    setPrinting(true);
+    try {
+      const branch = await fetchBranchInfo(data.branchId);
+      const receipt = buildReceiptFromOrder({
+        style: getReceiptStyle(),
+        orderNumber: data.orderNumber,
+        createdAtIso: data.createdAtLocal,
+        branch,
+        servedBy: (authUser.email.split("@")[0] || authUser.role).replace(/[._]/g, " "),
+        channel: data.channel,
+        payment: data.paymentMethod,
+        items: data.items.map((it) => ({
+          name: products[it.productId]?.name ?? "Item",
+          sizeMl: null,
+          quantity: it.quantity,
+          unitPriceNgn: it.unitPriceNgn,
+          lineTotalNgn: it.lineTotalNgn,
+        })),
+        subtotalNgn: data.subtotalNgn,
+        totalNgn: data.totalNgn,
+      });
+      await printAndToast(receipt);
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   // Sale items only carry productId; resolve names/bottles client-side so the
   // Items table shows the flavour instead of a raw id fragment.
@@ -117,9 +152,21 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
       title={data ? `Order ${data.orderNumber}` : "Order"}
       crumb="Owner"
       actions={
-        <Link to="/owner/orders" className="btn btn--subtle btn--sm">
-          ← All orders
-        </Link>
+        <>
+          {data && (
+            <button
+              type="button"
+              className="btn btn--subtle btn--sm"
+              disabled={printing}
+              onClick={() => void printOrderReceipt()}
+            >
+              {printing ? "Printing…" : "🖨 Print receipt"}
+            </button>
+          )}
+          <Link to="/owner/orders" className="btn btn--subtle btn--sm">
+            ← All orders
+          </Link>
+        </>
       }
     >
       <StatHero
