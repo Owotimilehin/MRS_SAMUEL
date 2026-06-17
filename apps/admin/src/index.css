@@ -750,7 +750,10 @@ h1, h2, h3, h4,
     transition: transform 0.25s ease;
     box-shadow: 0 0 48px rgba(10, 20, 15, 0.22);
   }
-  .app-shell.nav-open .app-side { transform: none; }
+  /* z-index here (specificity 0,3,0) must beat the later unscoped
+   * `.app-side { z-index: 2 }` in the Juice-skin layer — otherwise the open
+   * drawer drops below the scrim (55) and becomes unclickable / unscrollable. */
+  .app-shell.nav-open .app-side { transform: none; z-index: 60; }
   .app-scrim {
     display: block;
     position: fixed;
