@@ -13,6 +13,7 @@ type Role = AdminRole;
 interface AdminUserRow {
   id: string;
   email: string;
+  name: string | null;
   phone: string | null;
   role: Role;
   branchId: string | null;
@@ -134,6 +135,7 @@ export function UsersPage(): JSX.Element {
           <table className="table">
             <thead>
               <tr>
+                <th>Name</th>
                 <th>Email</th>
                 <th>Role</th>
                 <th>Branch</th>
@@ -145,7 +147,8 @@ export function UsersPage(): JSX.Element {
             <tbody>
               {rows.map((u) => (
                 <tr key={u.id}>
-                  <td style={{ fontWeight: 600 }}>{u.email}</td>
+                  <td style={{ fontWeight: 600 }}>{u.name?.trim() || u.email.split("@")[0]}</td>
+                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>{u.email}</td>
                   <td>{rolePill(u.role)}</td>
                   <td>{branchName(u.branchId)}</td>
                   <td>
@@ -255,6 +258,7 @@ function InviteModal({
   onClose: () => void;
   onSaved: () => void;
 }): JSX.Element {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("branch_staff");
   const [branchId, setBranchId] = useState<string>(branches[0]?.id ?? "");
@@ -279,6 +283,7 @@ function InviteModal({
       await api(`/admin/users`, {
         method: "POST",
         body: JSON.stringify({
+          name: name.trim() || undefined,
           email,
           role,
           branch_id: role === "owner" || role === "admin" ? null : branchId || null,
@@ -299,6 +304,10 @@ function InviteModal({
   return (
     <Modal title="Invite user" onClose={onClose}>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="field">
+          <label className="field__label">Full name</label>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Aisha Bello" />
+        </div>
         <div className="field">
           <label className="field__label">Email</label>
           <input
@@ -385,6 +394,7 @@ function EditUserModal({
   onClose: () => void;
   onSaved: () => void;
 }): JSX.Element {
+  const [name, setName] = useState(user.name ?? "");
   const [role, setRole] = useState<Role>(user.role);
   const [branchId, setBranchId] = useState<string>(user.branchId ?? "");
   const [gates, setGates] = useState<GateValue>(user.permissionOverrides);
@@ -401,6 +411,7 @@ function EditUserModal({
       await api(`/admin/users/${user.id}`, {
         method: "PATCH",
         body: JSON.stringify({
+          name: name.trim() || null,
           role,
           branch_id: needsBranch ? branchId || null : null,
           permission_overrides: gates,
@@ -417,6 +428,10 @@ function EditUserModal({
   return (
     <Modal title={`Edit user · ${user.email}`} onClose={onClose}>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="field">
+          <label className="field__label">Full name</label>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Aisha Bello" />
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: needsBranch ? "1fr 1fr" : "1fr", gap: 12 }}>
           <div className="field">
             <label className="field__label">Role</label>
