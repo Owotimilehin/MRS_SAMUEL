@@ -36,4 +36,6 @@ export * from "./cart.js";
 export * from "./contact-message.js";
 export * from "./subscription-plan.js";
 export * from "./subscription-lead.js";
+export * from "./customer-subscription.js";
+export * from "./subscription-charge.js";
 export * from "./bundle.js";

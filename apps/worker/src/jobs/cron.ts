@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { cronRun, type DbClient } from "@ms/db";
 import { fireMonthlyPnlDigest, shouldFirePnlDigestNow } from "./pnl-digest.js";
 import { sweepRecurringExpenses } from "./recurring-expense-sweeper.js";
+import { sweepSubscriptionBilling, sweepPastDueCancellations } from "./subscription-billing.js";
 
 /** Take the current moment in Africa/Lagos as { year, month, day, hour }. */
 export function nowLagos(d: Date = new Date()): {
@@ -88,4 +89,11 @@ export async function runDueCronJobs(db: DbClient): Promise<void> {
       await sweepRecurringExpenses(db, todayIso, lagos);
     }
   }
+
+  // Subscription billing: charge anything due, then cancel past-due grace
+  // expiries. Runs every tick (charges are due at specific timestamps, not a
+  // daily window); the sweep is self-claiming per row via FOR UPDATE, and
+  // cancellation is an idempotent guarded UPDATE — so no cron_run claim needed.
+  await sweepSubscriptionBilling(db);
+  await sweepPastDueCancellations(db);
 }

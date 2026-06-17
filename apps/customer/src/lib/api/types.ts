@@ -126,6 +126,11 @@ export interface ApiPlacedOrder {
   payment: { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig };
 }
 
+export interface ApiSubscribeResult {
+  subscription_id: string;
+  payment: { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig };
+}
+
 export interface ApiOrderTracking {
   order_number: string;
   status: string;

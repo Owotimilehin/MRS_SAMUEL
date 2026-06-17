@@ -8,7 +8,7 @@ import {
 } from "./mappers";
 import type {
   ApiProduct, ApiBranch, ApiBlogSummary, ApiBlogPost, ApiBundle, ApiSubscriptionPlan,
-  ApiQuote, ApiPlacedOrder, ApiOrderTracking,
+  ApiQuote, ApiPlacedOrder, ApiOrderTracking, ApiSubscribeResult,
 } from "./types";
 
 // ---------- Catalog ----------
@@ -142,13 +142,18 @@ export const sendContactMessage = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const requestSubscription = createServerFn({ method: "POST" })
-  .validator((d: { name: string; phone: string; plan_slug: string }) => d)
-  .handler(async ({ data }): Promise<{ ok: true }> => {
-    await apiFetch("/v1/public/subscriptions", {
+export const subscribe = createServerFn({ method: "POST" })
+  .validator(
+    (d: {
+      plan_slug: string;
+      customer: { name: string; phone: string; email?: string; address?: string };
+      turnstile_token?: string;
+    }) => d,
+  )
+  .handler(async ({ data }): Promise<ApiSubscribeResult> => {
+    return await apiFetch<ApiSubscribeResult>("/v1/public/subscriptions", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(data),
     });
-    return { ok: true };
   });

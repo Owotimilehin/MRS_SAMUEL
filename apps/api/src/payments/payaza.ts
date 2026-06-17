@@ -28,6 +28,8 @@ export interface PayazaTransactionStatus {
   status: string;
   amountNgn: number | null;
   processorReference: string | null;
+  /** Reusable card authorization captured for recurring subscription charges. */
+  authorization: { token: string; reusable: boolean } | null;
 }
 
 // `||` not `??` — empty string in .env should fall back to the default, not
@@ -95,7 +97,13 @@ export async function verifyPayazaTransaction(
   reference: string,
 ): Promise<PayazaTransactionStatus> {
   if (!process.env.PAYAZA_PUBLIC_KEY) {
-    return { status: "Completed", amountNgn: null, processorReference: `mock-${reference}` };
+    return {
+      status: "Completed",
+      amountNgn: null,
+      processorReference: `mock-${reference}`,
+      // Mock a reusable token so the subscription activation path is exercisable.
+      authorization: { token: `mock-token-${reference}`, reusable: true },
+    };
   }
   const url =
     `${BASE}/merchant-collection/transfer_notification_controller/merchant/transaction-query` +
@@ -122,6 +130,7 @@ export async function verifyPayazaTransaction(
       amount_received?: number;
       transaction_reference?: string;
       merchant_transaction_reference?: string;
+      authorization?: { authorization_code?: string; reusable?: boolean };
     } | null;
   };
   try {
@@ -130,10 +139,14 @@ export async function verifyPayazaTransaction(
     throw new Error(`payaza verify failed: ${res.status} ${text}`);
   }
   const d = body.data ?? {};
+  const authCode = d.authorization?.authorization_code;
   return {
     status: d.transaction_status ?? (body.success ? "Completed" : "PENDING"),
     amountNgn: typeof d.amount_received === "number" ? Math.round(d.amount_received) : null,
     processorReference: d.transaction_reference ?? d.merchant_transaction_reference ?? null,
+    authorization: authCode
+      ? { token: authCode, reusable: d.authorization?.reusable ?? false }
+      : null,
   };
 }
 

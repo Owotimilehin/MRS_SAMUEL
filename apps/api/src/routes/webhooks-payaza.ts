@@ -10,6 +10,7 @@ import {
   type DbClient,
 } from "@ms/db";
 import { verifyPayazaTransaction, verifyPayazaSignature, isPayazaSuccess } from "../payments/payaza.js";
+import { activateSubscriptionFromPayment } from "../lib/subscriptions.js";
 import { isOutsideLagos } from "@ms/shared";
 
 /**
@@ -55,6 +56,16 @@ export function payazaWebhookRoutes(db: DbClient) {
     // Authoritative confirmation — never trust the callback body for money.
     const confirmed = await verifyPayazaTransaction(reference);
     if (!isPayazaSuccess(confirmed.status)) return c.json({ ok: true });
+
+    // Subscription first-payment references are SUB_<subscriptionId>; route them
+    // to activation (capture token, first cycle order, schedule next charge).
+    if (reference.startsWith("SUB_")) {
+      const subscriptionId = reference.slice("SUB_".length);
+      await db.transaction(async (tx) => {
+        await activateSubscriptionFromPayment(tx, subscriptionId, confirmed);
+      });
+      return c.json({ ok: true });
+    }
 
     await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.orderNumber, reference));

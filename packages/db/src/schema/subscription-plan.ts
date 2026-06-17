@@ -13,5 +13,9 @@ export const subscriptionPlan = pgTable("subscription_plan", {
   popular: boolean("popular").notNull().default(false),
   displayOrder: integer("display_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
+  // Optional native-plan code (unused while billing is self-managed) + a
+  // fulfilment hint for the per-cycle staff order.
+  payazaPlanCode: text("payaza_plan_code"),
+  bottlesPerCycle: integer("bottles_per_cycle"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

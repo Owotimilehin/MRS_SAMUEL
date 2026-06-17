@@ -6,6 +6,10 @@ import {
   bundle,
   subscriptionLead,
   contactMessage,
+  customerSubscription,
+  subscriptionCharge,
+  customer,
+  outboxEvent,
   type DbClient,
 } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
@@ -256,6 +260,70 @@ export function marketingRoutes(db: DbClient) {
       .orderBy(desc(contactMessage.createdAt))
       .limit(500);
     return c.json({ data: rows });
+  });
+
+  // ---------------- Active subscriptions ----------------
+  r.get("/subscriptions", async (c) => {
+    const rows = await db
+      .select({
+        id: customerSubscription.id,
+        status: customerSubscription.status,
+        priceNgn: customerSubscription.priceNgn,
+        period: customerSubscription.period,
+        nextChargeAt: customerSubscription.nextChargeAt,
+        lastChargeAt: customerSubscription.lastChargeAt,
+        failedAttempts: customerSubscription.failedAttempts,
+        createdAt: customerSubscription.createdAt,
+        cancelledAt: customerSubscription.cancelledAt,
+        planName: subscriptionPlan.name,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+      })
+      .from(customerSubscription)
+      .leftJoin(subscriptionPlan, eq(subscriptionPlan.id, customerSubscription.planId))
+      .leftJoin(customer, eq(customer.id, customerSubscription.customerId))
+      .orderBy(desc(customerSubscription.createdAt))
+      .limit(500);
+    return c.json({ data: rows });
+  });
+
+  r.get("/subscriptions/:id/charges", async (c) => {
+    const id = c.req.param("id");
+    const rows = await db
+      .select()
+      .from(subscriptionCharge)
+      .where(eq(subscriptionCharge.subscriptionId, id))
+      .orderBy(desc(subscriptionCharge.attemptedAt))
+      .limit(200);
+    return c.json({ data: rows });
+  });
+
+  // Cancel a subscription (admin). Stops future billing. (Payaza-side mandate
+  // teardown is a no-op here — we self-manage charges by token, so simply not
+  // charging stops it.)
+  r.post("/subscriptions/:id/cancel", async (c) => {
+    const id = c.req.param("id");
+    const [sub] = await db
+      .select()
+      .from(customerSubscription)
+      .where(eq(customerSubscription.id, id));
+    if (!sub) throw new BusinessError("not_found", "subscription not found", 404);
+    if (sub.status === "cancelled") return c.json({ data: { ok: true } });
+    const now = new Date();
+    await db
+      .update(customerSubscription)
+      .set({ status: "cancelled", cancelledAt: now, updatedAt: now })
+      .where(eq(customerSubscription.id, id));
+    await db.insert(outboxEvent).values({
+      eventType: "subscription.cancelled",
+      payload: { subscription_id: id, reason: "admin_cancelled" },
+    });
+    await writeAudit(db, c, {
+      action: "subscription.cancel",
+      entityType: "customer_subscription",
+      entityId: id,
+    });
+    return c.json({ data: { ok: true } });
   });
 
   return r;

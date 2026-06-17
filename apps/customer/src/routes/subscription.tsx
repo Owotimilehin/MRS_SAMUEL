@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Check, Calendar, Repeat, Truck } from "lucide-react";
+import { Check, Calendar, Repeat, Truck, Loader2, X } from "lucide-react";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
-import { fetchSubscriptionPlans, requestSubscription } from "@/lib/api/server-fns";
+import { fetchSubscriptionPlans, subscribe } from "@/lib/api/server-fns";
+import { launchPayazaCheckout } from "@/lib/payaza";
+import type { ApiSubscriptionPlan } from "@/lib/api/types";
 import bottleGreen from "@/assets/bottle-green.png";
 
 export const Route = createFileRoute("/subscription")({
@@ -19,18 +22,6 @@ export const Route = createFileRoute("/subscription")({
   component: Page,
 });
 
-// Fire-and-forget interest signal when a visitor clicks a plan CTA. The real
-// details are captured in the WhatsApp thread the CTA opens; this just registers
-// the lead so the owner gets a heads-up. Placeholder phone satisfies API
-// validation (min 7 chars) since the public CTA has no form fields.
-function registerInterest(planSlug: string): void {
-  void requestSubscription({ data: { name: "Website visitor", phone: "0000000", plan_slug: planSlug } }).catch(
-    () => {
-      /* best-effort; WhatsApp is the real channel */
-    },
-  );
-}
-
 const steps = [
   { Icon: Calendar, title: "Pick a plan", desc: "Weekly, monthly detox, or family. Change later anytime." },
   { Icon: Repeat, title: "Customise your bottles", desc: "Tell us your flavour preferences and any ingredient you don't want." },
@@ -39,8 +30,10 @@ const steps = [
 
 function Page() {
   const { plans } = Route.useLoaderData();
+  const [selected, setSelected] = useState<ApiSubscriptionPlan | null>(null);
   return (
     <SiteShell>
+      {selected && <SubscribeModal plan={selected} onClose={() => setSelected(null)} />}
       <PageHero
         eyebrow="Subscription Plans"
         title={<>Goodness delivered<br /><span className="text-[color:var(--brand-orange)]">to your door.</span></>}
@@ -85,11 +78,9 @@ function Page() {
                   </li>
                 ))}
               </ul>
-              <a
-                href={`https://wa.me/2349019512246?text=${encodeURIComponent(`Hi Mrs. Samuel — I'd like to subscribe to the ${p.name}.`)}`}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => registerInterest(p.slug)}
+              <button
+                type="button"
+                onClick={() => setSelected(p)}
                 className={`mt-7 inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition w-full ${
                   p.popular
                     ? "bg-[color:var(--brand-orange)] text-white hover:opacity-90"
@@ -97,7 +88,7 @@ function Page() {
                 }`}
               >
                 Start this plan
-              </a>
+              </button>
             </motion.div>
           ))}
         </div>
@@ -122,5 +113,117 @@ function Page() {
         </div>
       </section>
     </SiteShell>
+  );
+}
+
+function SubscribeModal({ plan, onClose }: { plan: ApiSubscriptionPlan; onClose: () => void }) {
+  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function submit() {
+    setError(null);
+    if (!form.name.trim() || form.phone.trim().length < 7) {
+      setError("Please enter your name and a valid phone number.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await subscribe({
+        data: {
+          plan_slug: plan.slug,
+          customer: {
+            name: form.name.trim(),
+            phone: form.phone.trim(),
+            ...(form.email.trim() ? { email: form.email.trim() } : {}),
+            ...(form.address.trim() ? { address: form.address.trim() } : {}),
+          },
+        },
+      });
+      await launchPayazaCheckout(res.payment.payaza, {
+        onPaid: () => setDone(true),
+        onClose: () => setBusy(false),
+      });
+    } catch {
+      setError("Something went wrong starting your subscription. Please try again.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-2xl bg-white p-6 text-[color:var(--brand)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="font-display text-2xl">{plan.name}</h3>
+            <p className="text-sm text-[color:var(--brand)]/60">
+              ₦{plan.price.toLocaleString("en-NG")} {plan.period}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {done ? (
+          <div className="mt-6 text-center">
+            <Check className="mx-auto h-10 w-10 text-[color:var(--brand-orange)]" />
+            <p className="mt-3 text-sm">
+              You're subscribed to the {plan.name}. We'll prepare and deliver each cycle —
+              you can cancel anytime.
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="mt-5 w-full rounded-full bg-[color:var(--brand)] px-5 py-3 text-sm font-semibold text-white"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
+          <div className="mt-5 space-y-3">
+            {(["name", "phone", "email", "address"] as const).map((field) => (
+              <input
+                key={field}
+                value={form[field]}
+                onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
+                placeholder={
+                  field === "name"
+                    ? "Full name"
+                    : field === "phone"
+                      ? "Phone number"
+                      : field === "email"
+                        ? "Email (optional)"
+                        : "Delivery address (optional)"
+                }
+                className="w-full rounded-xl border border-black/10 px-4 py-3 text-sm outline-none focus:border-[color:var(--brand-orange)]"
+              />
+            ))}
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={submit}
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-[color:var(--brand-orange)] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Opening payment…
+                </>
+              ) : (
+                <>Subscribe — ₦{plan.price.toLocaleString("en-NG")}</>
+              )}
+            </button>
+            <p className="text-center text-[11px] text-[color:var(--brand)]/50">
+              You'll pay securely via Payaza. Cancel anytime.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
