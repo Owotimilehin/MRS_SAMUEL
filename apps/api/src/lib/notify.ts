@@ -1,3 +1,7 @@
+import type { Context } from "hono";
+import { eq } from "drizzle-orm";
+import { adminUser, branch, outboxEvent, type DbClient } from "@ms/db";
+
 /** Fields that are noise in a change log — never surfaced to the owner. */
 const SKIP_FIELDS = new Set([
   "id", "createdAt", "updatedAt", "created_at", "updated_at",
@@ -54,4 +58,45 @@ export function diffChanges(
     out.push({ label: LABELS[key] ?? humanizeKey(key), from: fmt(key, bv), to: fmt(key, av) });
   }
   return out.slice(0, 6);
+}
+
+export function displayName(u: { name?: string | null; email: string }): string {
+  return u.name?.trim() || u.email.split("@")[0] || u.email;
+}
+
+type Exec = Pick<DbClient, "insert" | "select">;
+
+export interface ActorBlock {
+  actor_name: string | null;
+  actor_role: string | null;
+  actor_branch_name: string | null;
+}
+
+/** Resolve the acting admin into the fields every notification needs. */
+export async function resolveActor(db: Exec, c: Context): Promise<ActorBlock> {
+  const auth = c.get("auth") as { userId: string; role: string; branchId: string | null } | undefined;
+  if (!auth) return { actor_name: null, actor_role: null, actor_branch_name: null };
+  const [u] = await db.select({ name: adminUser.name, email: adminUser.email })
+    .from(adminUser).where(eq(adminUser.id, auth.userId)).limit(1);
+  let branchName: string | null = null;
+  if (auth.branchId) {
+    const [b] = await db.select({ name: branch.name }).from(branch).where(eq(branch.id, auth.branchId)).limit(1);
+    branchName = b?.name ?? null;
+  }
+  return {
+    actor_name: u ? displayName(u) : null,
+    actor_role: auth.role,
+    actor_branch_name: branchName,
+  };
+}
+
+/** Insert an outbox event with the acting admin stamped onto the payload. */
+export async function enqueueOutbox(
+  exec: Exec,
+  c: Context,
+  eventType: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const actor = await resolveActor(exec, c);
+  await exec.insert(outboxEvent).values({ eventType, payload: { ...payload, ...actor } });
 }
