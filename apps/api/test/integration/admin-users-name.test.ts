@@ -31,6 +31,17 @@ describe("admin_user name field", () => {
     });
   }
 
+  async function patch(id: string, body: Record<string, unknown>): Promise<Response> {
+    return fetch(`${baseUrl}/v1/admin/users/${id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        cookie: ownerCookie,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
   beforeAll(async () => {
     const tdb = await setupTestDb();
     container = tdb.container;
@@ -60,5 +71,45 @@ describe("admin_user name field", () => {
     const list = await api("/v1/admin/users");
     const row = (await list.json()).data.find((u: any) => u.email === "aisha@example.com");
     expect(row.name).toBe("Aisha Bello");
+  });
+
+  it("PATCH name updates the stored name", async () => {
+    const inviteRes = await invite({
+      email: "patch-name@example.com",
+      name: "Original Name",
+      role: "branch_staff",
+      branch_id: null,
+      password: "password12345",
+    });
+    expect(inviteRes.status).toBe(201);
+    const { data: created } = await inviteRes.json();
+    const userId = created.id;
+
+    const patchRes = await patch(userId, { name: "Updated Name" });
+    expect(patchRes.status).toBe(200);
+
+    const list = await api("/v1/admin/users");
+    const row = (await list.json()).data.find((u: any) => u.id === userId);
+    expect(row.name).toBe("Updated Name");
+  });
+
+  it("PATCH name: null clears the stored name", async () => {
+    const inviteRes = await invite({
+      email: "clear-name@example.com",
+      name: "Some Name",
+      role: "branch_staff",
+      branch_id: null,
+      password: "password12345",
+    });
+    expect(inviteRes.status).toBe(201);
+    const { data: created } = await inviteRes.json();
+    const userId = created.id;
+
+    const patchRes = await patch(userId, { name: null });
+    expect(patchRes.status).toBe(200);
+
+    const list = await api("/v1/admin/users");
+    const row = (await list.json()).data.find((u: any) => u.id === userId);
+    expect(row.name).toBeNull();
   });
 });
