@@ -4,6 +4,7 @@ import "fake-indexeddb/auto";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { local, localAvailableForVariant, type OutboxRow } from "../db/local.js";
 import { dedupeSaleLedger, flushOutbox, pullDeltas, reclaimInFlight } from "./engine.js";
+import { createLocalSale } from "./local-sale.js";
 
 /**
  * Bad-network resilience suite for the offline-first POS sync engine.
@@ -310,6 +311,43 @@ describe("sync engine under bad networks", () => {
     await dedupeSaleLedger();
 
     expect(await localAvailableForVariant("B1", "P1", "V1")).toBe(10); // both kept
+  });
+
+  it("end-to-end: a sale deducts the count exactly once across optimistic write + server sync", async () => {
+    // Branch starts with 10 on hand (e.g. a received transfer).
+    await local.ledger.put({
+      id: "seed", location_type: "branch", location_id: "B1", product_id: "P1", variant_id: "V1",
+      delta: 10, source_type: "transfer_receive", source_id: "T1", recorded_at: new Date().toISOString(),
+    });
+    expect(await localAvailableForVariant("B1", "P1", "V1")).toBe(10);
+
+    // Cashier sells 3 at the till — the count drops immediately (optimistic).
+    const { saleId } = await createLocalSale({
+      branchId: "B1",
+      items: [{ product_id: "P1", variant_id: "V1", size_ml: 650, quantity: 3, unit_price_ngn: 1000 }],
+      payment_method: "cash",
+      channel: "walkup",
+    });
+    expect(await localAvailableForVariant("B1", "P1", "V1")).toBe(7); // 10 - 3, once
+
+    // The sale syncs; the server writes its OWN authoritative row for the same
+    // order (source_id === saleId) and the next pull delivers it.
+    mockFetch(() =>
+      jsonResponse(
+        200,
+        pullBody([
+          {
+            id: "srv-sale-row", locationType: "branch", locationId: "B1", productId: "P1",
+            variantId: "V1", delta: -3, sourceType: "sale", sourceId: saleId,
+            recordedAt: new Date().toISOString(),
+          },
+        ]),
+      ),
+    );
+    await pullDeltas("B1");
+
+    // Still 7 — the sale was NOT applied a second time. Graceful single deduction.
+    expect(await localAvailableForVariant("B1", "P1", "V1")).toBe(7);
   });
 
   it("pull is idempotent — re-pulling the same server row never inflates the count", async () => {
