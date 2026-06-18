@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
@@ -7,6 +7,9 @@ import { local, type ProductRow, type VariantRow } from "../../db/local.js";
 import { api } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { useAuthUser } from "../../lib/auth.js";
+import { hasCapability } from "@ms/shared";
+import { adjustBranchStockBulk, REASONS, type BulkAdjustItem } from "../../lib/stock-adjust.js";
 
 interface ServerBalance {
   product_id: string;
@@ -23,23 +26,32 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
   const [balances, setBalances] = useState<ServerBalance[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
+  const user = useAuthUser();
+  const canAdjust = hasCapability(user.capabilities, "stock.adjust");
+
+  // Adjust mode: editable new-count drafts keyed by row key, a shared reason,
+  // and a saving flag. Drafts start from the current balances when entering mode.
+  const [adjusting, setAdjusting] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [reasonCode, setReasonCode] = useState("physical_recount");
+  const [reasonNote, setReasonNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true);
-    void (async () => {
-      try {
-        const res = await api<{ data: ServerBalance[] }>(`/stock/branch/${branchId}`);
-        if (!cancelled) setBalances(res.data);
-      } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const res = await api<{ data: ServerBalance[] }>(`/stock/branch/${branchId}`);
+      setBalances(res.data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
   }, [branchId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const productName = (id: string): string =>
     (products as ProductRow[]).find((p) => p.id === id)?.name ?? id.slice(0, 8);
@@ -82,6 +94,71 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
     stockChips.push({ label: "Low (≤5)", value: lowCount });
   }
 
+  function enterAdjust(): void {
+    const seed: Record<string, string> = {};
+    for (const r of rows) seed[r.key] = String(r.balance);
+    setDrafts(seed);
+    setReasonCode("physical_recount");
+    setReasonNote("");
+    setAdjusting(true);
+  }
+
+  function cancelAdjust(): void {
+    setAdjusting(false);
+    setDrafts({});
+  }
+
+  async function saveAdjust(): Promise<void> {
+    // Only rows whose draft differs from the current balance and parses to a
+    // non-negative integer become adjustment items. Unsized rows (variant_id
+    // null) are skipped — they're a reconciliation concern, not a recount here.
+    const items: BulkAdjustItem[] = [];
+    for (const r of rows) {
+      if (r.unsized) continue;
+      const raw = drafts[r.key];
+      if (raw == null || raw.trim() === "") continue;
+      const next = Number(raw);
+      if (!Number.isInteger(next) || next < 0) {
+        toast.error(`Enter a whole number ≥ 0 for ${r.name} ${sizeLabel(r.size_ml)}.`);
+        return;
+      }
+      if (next === r.balance) continue;
+      const variantId = balances.find(
+        (b) => b.product_id === r.product_id && sizeForVariant(b.variant_id) === r.size_ml,
+      )?.variant_id ?? null;
+      if (variantId == null) continue;
+      items.push({ productId: r.product_id, variantId, newQuantity: next });
+    }
+    if (items.length === 0) {
+      toast.error("No counts changed.");
+      return;
+    }
+    if (reasonCode === "other_with_note" && reasonNote.trim().length === 0) {
+      toast.error("Add a note for 'Other'.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await adjustBranchStockBulk({
+        branchId,
+        reasonCode,
+        reasonNote: reasonNote.trim() || undefined,
+        items,
+      });
+      toast.success(`Updated ${items.length} stock ${items.length === 1 ? "line" : "lines"}.`);
+      setAdjusting(false);
+      setDrafts({});
+      await load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(
+        /would_go_negative|negative/i.test(msg) ? "A count would go below 0 — re-check and try again." : msg,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <BranchShell branchId={branchId} title="Stock">
       <StatHero
@@ -91,6 +168,36 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
         loading={loading}
         chips={stockChips}
       />
+
+      {canAdjust && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "14px 0" }}>
+          {!adjusting ? (
+            <button type="button" className="btn btn--subtle btn--sm" onClick={enterAdjust} disabled={loading || rows.length === 0}>
+              Adjust stock
+            </button>
+          ) : (
+            <>
+              <select className="select" style={{ maxWidth: 220 }} value={reasonCode} onChange={(e) => setReasonCode(e.target.value)} disabled={saving}>
+                {REASONS.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+              {reasonCode === "other_with_note" && (
+                <input className="input" style={{ maxWidth: 240 }} placeholder="Describe what happened" value={reasonNote} onChange={(e) => setReasonNote(e.target.value)} disabled={saving} />
+              )}
+              <button type="button" className="btn btn--primary btn--sm" onClick={() => void saveAdjust()} disabled={saving}>
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+              <button type="button" className="btn btn--subtle btn--sm" onClick={cancelAdjust} disabled={saving}>
+                Cancel
+              </button>
+              <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+                Enter new on-hand per size. Selling continues from the new count.
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <InlineLoader />
@@ -131,7 +238,20 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
                                 : "var(--ink)",
                       }}
                     >
-                      {r.balance}
+                      {adjusting && !r.unsized ? (
+                        <input
+                          className="input"
+                          type="number"
+                          min={0}
+                          inputMode="numeric"
+                          value={drafts[r.key] ?? String(r.balance)}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [r.key]: e.target.value }))}
+                          disabled={saving}
+                          style={{ width: 84, textAlign: "right" }}
+                        />
+                      ) : (
+                        r.balance
+                      )}
                     </td>
                     <td style={{ textAlign: "right" }}>
                       {r.unsized && r.balance !== 0 ? (
