@@ -214,6 +214,14 @@ interface PullResponse {
       sourceId: string;
       recordedAt: string;
     }>;
+    // Authoritative current on-hand per flavour+size (server `SUM(delta)`).
+    // Replaces the local snapshot wholesale each pull. Optional so an older
+    // server that doesn't send it can't wipe the till's stock to zero.
+    stock?: Array<{
+      productId: string;
+      variantId: string | null;
+      qty: number;
+    }>;
     transfers: Array<{
       id: string;
       transferNumber: string;
@@ -256,6 +264,7 @@ export async function pullDeltas(branchId: string): Promise<void> {
       local.variants,
       local.prices,
       local.ledger,
+      local.stock,
       local.transfers,
       local.sales,
       local.meta,
@@ -293,31 +302,36 @@ export async function pullDeltas(branchId: string): Promise<void> {
           valid_to: pr.validTo,
         });
       }
-      // Reconcile against the optimistic rows the till wrote at sale time. A
-      // local sale decrements stock immediately with a CLIENT-generated row id
-      // keyed to the order id as its source_id; the server then writes its OWN
-      // authoritative row (a different id, same source_id) which arrives here.
-      // Keyed by id alone the two would coexist and the sale would be counted
-      // twice, so the till's stock drops by 2× what was sold and never settles.
-      // Drop every local row whose source is in this batch, then insert the
-      // server's rows — making the server the single source of truth and the
-      // whole pull idempotent across overlapping cursor windows.
+      // Acknowledge optimistic sale rows. A local sale decrements stock
+      // immediately with a CLIENT-generated row keyed to the order id as its
+      // source_id; once the server has booked that sale its ledger row arrives
+      // here (same source_id) AND the authoritative `stock` snapshot below
+      // already reflects it. So we simply DROP every local row whose source is
+      // in this batch — the snapshot is now the single source of truth and the
+      // till's ledger keeps only sales the server hasn't acknowledged yet. We no
+      // longer persist server ledger rows locally (that incremental replay was
+      // what let a server-side wipe leave phantom stock behind).
       const incomingSourceIds = new Set(body.data.ledger.map((lg) => lg.sourceId));
       if (incomingSourceIds.size > 0) {
         await local.ledger.filter((row) => incomingSourceIds.has(row.source_id)).delete();
       }
-      for (const lg of body.data.ledger) {
-        await local.ledger.put({
-          id: lg.id,
-          location_type: lg.locationType,
-          location_id: lg.locationId,
-          product_id: lg.productId,
-          variant_id: lg.variantId ?? null,
-          delta: lg.delta,
-          source_type: lg.sourceType,
-          source_id: lg.sourceId,
-          recorded_at: lg.recordedAt,
-        });
+
+      // Overwrite the authoritative on-hand snapshot wholesale. Guard on the
+      // field being present so an older server (no `stock` key) can never wipe
+      // the till to zero; an empty array IS a valid "branch holds nothing" truth.
+      if (Array.isArray(body.data.stock)) {
+        await local.stock.clear();
+        if (body.data.stock.length > 0) {
+          await local.stock.bulkPut(
+            body.data.stock.map((s) => ({
+              id: `${s.productId}::${s.variantId ?? ""}`,
+              product_id: s.productId,
+              variant_id: s.variantId ?? null,
+              qty: s.qty,
+              synced_at: body.next_cursor,
+            })),
+          );
+        }
       }
       for (const t of body.data.transfers) {
         await local.transfers.put({
@@ -369,6 +383,26 @@ export async function pullDeltas(branchId: string): Promise<void> {
       });
     },
   );
+}
+
+/**
+ * Manual recovery: force the till's stock back in line with the server. Clears
+ * the local snapshot and resets the pull cursor, then pulls a fresh
+ * authoritative snapshot. Un-synced optimistic sale rows are left untouched so
+ * a pending sale isn't double-counted back in. Returns true if it refreshed
+ * (online), false if offline.
+ */
+export async function resyncStock(branchId: string): Promise<boolean> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return false;
+  await local.stock.clear();
+  const meta = await local.meta.get("default");
+  await local.meta.put({
+    id: "default",
+    last_pull_at: null,
+    branch_id: meta?.branch_id ?? branchId,
+  });
+  await pullDeltas(branchId);
+  return true;
 }
 
 let stopLoop: (() => void) | null = null;

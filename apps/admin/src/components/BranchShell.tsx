@@ -172,7 +172,12 @@ export function BranchShell({
           </button>
           <h1 className="app-head__title">{title}</h1>
           <div style={{ flex: 1 }} />
-          <SyncBadge online={sync.online} queued={sync.queued} dead={sync.dead} />
+          <SyncBadge
+            online={sync.online}
+            queued={sync.queued}
+            dead={sync.dead}
+            lastPullAt={sync.lastPullAt}
+          />
           <RefreshAppButton />
           {actions}
         </header>
@@ -182,15 +187,35 @@ export function BranchShell({
   );
 }
 
+// Stock is considered "stale" if the last successful pull is older than this
+// while we're online — the till is up but hasn't heard fresh numbers in a while.
+const STALE_MS = 10 * 60_000;
+
+/** Compact "updated 2m ago" relative label; "never" if we've not synced yet. */
+function relTime(iso: string | null): string {
+  if (!iso) return "never";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(ms)) return "never";
+  if (ms < 45_000) return "just now";
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
 function SyncBadge({
   online,
   queued,
   dead,
+  lastPullAt,
 }: {
   online: boolean;
   queued: number;
   dead: number;
+  lastPullAt: string | null;
 }): JSX.Element {
+  const updated = relTime(lastPullAt);
   if (dead > 0) {
     return (
       <span className="pill pill--danger" title="Some mutations failed — see /v1/health or contact support.">
@@ -200,8 +225,12 @@ function SyncBadge({
   }
   if (!online) {
     return (
-      <span className="pill pill--warning" title="No network — sales saved locally, will sync when online.">
-        ● Offline · {queued} queued
+      <span
+        className="pill pill--warning"
+        title="No network — showing last known stock; sales save locally and sync when online."
+      >
+        ● Offline · last update {updated}
+        {queued > 0 ? ` · ${queued} queued` : ""}
       </span>
     );
   }
@@ -212,9 +241,20 @@ function SyncBadge({
       </span>
     );
   }
+  const stale = lastPullAt != null && Date.now() - new Date(lastPullAt).getTime() > STALE_MS;
+  if (stale) {
+    return (
+      <span
+        className="pill pill--warning"
+        title="Haven't refreshed stock from the server recently. Tap Resync on the Device page if numbers look off."
+      >
+        ● Stock may be stale · {updated}
+      </span>
+    );
+  }
   return (
-    <span className="pill pill--success" title="All sales synced">
-      ● Synced
+    <span className="pill pill--success" title="Stock and sales in sync with the server">
+      ● Synced · {updated}
     </span>
   );
 }

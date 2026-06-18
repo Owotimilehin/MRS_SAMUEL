@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, isNull, gte, inArray } from "drizzle-orm";
+import { and, eq, isNull, gte, inArray, sql } from "drizzle-orm";
 import {
   product,
   productVariant,
@@ -99,6 +99,32 @@ export function syncRoutes(db: DbClient) {
         ),
       );
 
+    // Authoritative current on-hand for the branch: net SUM(delta) per
+    // flavour+size, NOT date-filtered. This is the small, bounded snapshot the
+    // till overwrites its local stock with on every successful pull — making the
+    // server the single source of truth for availability. Because it's a full
+    // re-derivation (not a delta), any server-side correction or wipe propagates
+    // to the till on the next pull, so phantom stock can never accumulate.
+    const stockRows = await db
+      .select({
+        productId: stockLedger.productId,
+        variantId: stockLedger.variantId,
+        qty: sql<string>`coalesce(sum(${stockLedger.delta}), 0)`,
+      })
+      .from(stockLedger)
+      .where(
+        and(
+          eq(stockLedger.locationType, "branch"),
+          eq(stockLedger.locationId, branchIdParam),
+        ),
+      )
+      .groupBy(stockLedger.productId, stockLedger.variantId);
+    const stock = stockRows.map((s) => ({
+      productId: s.productId,
+      variantId: s.variantId,
+      qty: Number(s.qty),
+    }));
+
     const sales = await db
       .select()
       .from(saleOrder)
@@ -122,6 +148,7 @@ export function syncRoutes(db: DbClient) {
         transfers,
         transfer_items: transferItems,
         ledger,
+        stock,
         sales,
         sale_items: saleItems,
         customers,
