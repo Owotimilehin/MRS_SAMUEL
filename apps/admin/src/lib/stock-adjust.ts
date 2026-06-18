@@ -72,3 +72,50 @@ export async function adjustBranchStock(input: AdjustBranchStockInput): Promise<
   // Pull a fresh authoritative snapshot so the till's live availability updates.
   await resyncStock(input.branchId);
 }
+
+export interface BulkAdjustItem {
+  productId: string;
+  /** null targets the legacy untyped (variant-less) pool, mirroring the server. */
+  variantId: string | null;
+  newQuantity: number;
+}
+
+/**
+ * Set absolute on-hand counts for MANY flavour+size rows at one branch in a
+ * single audited adjustment. Same `/inventory/adjust` mutation as the single
+ * helper — the endpoint already accepts an `items[]` array — then resyncs the
+ * authoritative snapshot so the till's live availability reflects the new
+ * counts immediately. Online-only (a correction must reach the server to be
+ * authoritative). Caller renders its own inline errors (`silentError`).
+ */
+export async function adjustBranchStockBulk(input: {
+  branchId: string;
+  reasonCode: string;
+  reasonNote?: string;
+  items: BulkAdjustItem[];
+}): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    throw new Error("You're offline — connect to the internet to adjust stock.");
+  }
+  if (input.items.length === 0) return;
+  const note = input.reasonNote?.trim();
+  await api(
+    "/inventory/adjust",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        location_type: "branch",
+        location_id: input.branchId,
+        reason_code: input.reasonCode,
+        ...(note ? { reason_note: note } : {}),
+        items: input.items.map((i) => ({
+          product_id: i.productId,
+          variant_id: i.variantId,
+          new_quantity: i.newQuantity,
+        })),
+      }),
+    },
+    { silentError: true },
+  );
+  await resyncStock(input.branchId);
+}
