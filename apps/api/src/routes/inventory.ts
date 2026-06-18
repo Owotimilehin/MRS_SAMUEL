@@ -4,7 +4,6 @@ import { z } from "zod";
 import {
   stockAdjustment,
   stockLedger,
-  outboxEvent,
   product,
   factory,
   branch,
@@ -14,6 +13,7 @@ import {
 import { requireAuth, requireCapability, requireAnyCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+import { enqueueOutbox } from "../lib/notify.js";
 
 const AdjustBody = z
   .object({
@@ -157,16 +157,13 @@ export function inventoryRoutes(db: DbClient) {
         });
       }
 
-      await tx.insert(outboxEvent).values({
-        eventType: "stock_adjustment.recorded",
-        payload: {
-          adjustment_id: header.id,
-          location_type: body.location_type,
-          location_id: body.location_id,
-          reason_code: body.reason_code,
-          reason_note: body.reason_note?.trim() ?? null,
-          items: lines,
-        },
+      await enqueueOutbox(tx, c, "stock_adjustment.recorded", {
+        adjustment_id: header.id,
+        location_type: body.location_type,
+        location_id: body.location_id,
+        reason_code: body.reason_code,
+        reason_note: body.reason_note?.trim() ?? null,
+        items: lines,
       });
 
       return { adjustmentId: header.id, itemsRecorded: lines.length };

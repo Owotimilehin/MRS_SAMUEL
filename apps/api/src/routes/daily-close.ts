@@ -4,7 +4,6 @@ import { z } from "zod";
 import {
   dailyClose,
   dailyCloseStockCount,
-  outboxEvent,
   adminUser,
   type DbClient,
 } from "@ms/db";
@@ -13,6 +12,7 @@ import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+import { enqueueOutbox } from "../lib/notify.js";
 
 const Submit = z.object({
   business_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -98,17 +98,14 @@ export function dailyCloseRoutes(db: DbClient) {
         .select({ email: adminUser.email })
         .from(adminUser)
         .where(eq(adminUser.id, auth.userId));
-      await tx.insert(outboxEvent).values({
-        eventType: "daily_close.submitted",
-        payload: {
-          daily_close_id: close.id,
-          branch_id: branchId,
-          business_date: body.business_date,
-          cash_ngn: body.cash_counted_ngn,
-          transfer_ngn: body.transfers_counted_ngn,
-          variance_ngn: variance,
-          filed_by: filer?.email ?? auth.userId,
-        },
+      await enqueueOutbox(tx, c, "daily_close.submitted", {
+        daily_close_id: close.id,
+        branch_id: branchId,
+        business_date: body.business_date,
+        cash_ngn: body.cash_counted_ngn,
+        transfer_ngn: body.transfers_counted_ngn,
+        variance_ngn: variance,
+        filed_by: filer?.email ?? auth.userId,
       });
       return close;
     });

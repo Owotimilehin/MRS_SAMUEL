@@ -5,7 +5,6 @@ import {
   productionRun,
   productionRunItem,
   stockLedger,
-  outboxEvent,
   productVariant,
   packagingStockLedger,
   packagingBalanceAt,
@@ -14,6 +13,7 @@ import {
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+import { enqueueOutbox } from "../lib/notify.js";
 
 const ItemInput = z.object({
   product_id: z.string().uuid(),
@@ -227,13 +227,10 @@ export function productionRunRoutes(db: DbClient) {
         .returning();
       if (!updated) throw new BusinessError("internal_error", "update returned no rows", 500);
       const bottleCount = items.reduce((sum, it) => sum + it.quantityProduced, 0);
-      await tx.insert(outboxEvent).values({
-        eventType: "production_run.completed",
-        payload: {
-          production_run_id: updated.id,
-          run_date: updated.runDate,
-          bottle_count: bottleCount,
-        },
+      await enqueueOutbox(tx, c, "production_run.completed", {
+        production_run_id: updated.id,
+        run_date: updated.runDate,
+        bottle_count: bottleCount,
       });
       return updated;
       });

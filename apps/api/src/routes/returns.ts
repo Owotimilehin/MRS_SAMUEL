@@ -25,6 +25,7 @@ import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+import { enqueueOutbox } from "../lib/notify.js";
 
 const ReasonEnum = z.enum([
   "changed_mind",
@@ -202,15 +203,12 @@ export function returnRoutes(db: DbClient) {
       if (status === "completed") {
         await applyReturnEffects(tx, ret.id, auth.userId);
       } else {
-        await tx.insert(outboxEvent).values({
-          eventType: "sale_return.pending_approval",
-          payload: {
-            sale_return_id: ret.id,
-            return_number: ret.returnNumber,
-            branch_id: branchId,
-            refund_amount_ngn: refundAmount,
-            reason: body.reason_category,
-          },
+        await enqueueOutbox(tx, c, "sale_return.pending_approval", {
+          sale_return_id: ret.id,
+          return_number: ret.returnNumber,
+          branch_id: branchId,
+          refund_amount_ngn: refundAmount,
+          reason: body.reason_category,
         });
       }
 

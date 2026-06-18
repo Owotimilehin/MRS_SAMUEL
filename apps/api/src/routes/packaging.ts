@@ -8,12 +8,12 @@ import {
   packagingPurchase,
   packagingBalanceAt,
   businessExpense,
-  outboxEvent,
   type DbClient,
 } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+import { enqueueOutbox } from "../lib/notify.js";
 
 const MaterialCreate = z.object({
   name: z.string().min(1).max(200),
@@ -223,19 +223,16 @@ export function packagingRoutes(db: DbClient) {
         note: noteText,
       });
 
-      await tx.insert(outboxEvent).values({
-        eventType: "packaging.stock_adjusted",
-        payload: {
-          location_type: body.location_type,
-          location_id: body.location_id,
-          material_id: body.packaging_material_id,
-          material_name: material.name,
-          old_count: current,
-          new_count: body.new_count,
-          delta,
-          reason: REASON_LABEL[body.reason],
-          note: body.note?.trim() || null,
-        },
+      await enqueueOutbox(tx, c, "packaging.stock_adjusted", {
+        location_type: body.location_type,
+        location_id: body.location_id,
+        material_id: body.packaging_material_id,
+        material_name: material.name,
+        old_count: current,
+        new_count: body.new_count,
+        delta,
+        reason: REASON_LABEL[body.reason],
+        note: body.note?.trim() || null,
       });
     });
 
@@ -336,17 +333,14 @@ export function packagingRoutes(db: DbClient) {
         note: body.supplier_name?.trim() || null,
       });
 
-      await tx.insert(outboxEvent).values({
-        eventType: "packaging.purchase_recorded",
-        payload: {
-          purchase_id: purchase.id,
-          factory_id: body.factory_id,
-          material_id: body.packaging_material_id,
-          material_name: material.name,
-          quantity: body.quantity,
-          total_cost_ngn: body.total_cost_ngn,
-          supplier_name: body.supplier_name ?? null,
-        },
+      await enqueueOutbox(tx, c, "packaging.purchase_recorded", {
+        purchase_id: purchase.id,
+        factory_id: body.factory_id,
+        material_id: body.packaging_material_id,
+        material_name: material.name,
+        quantity: body.quantity,
+        total_cost_ngn: body.total_cost_ngn,
+        supplier_name: body.supplier_name ?? null,
       });
 
       return { purchase, expenseId };

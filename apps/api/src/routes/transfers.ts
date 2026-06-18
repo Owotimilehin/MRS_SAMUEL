@@ -8,7 +8,6 @@ import {
   packagingStockLedger,
   packagingMaterial,
   packagingBalanceAt,
-  outboxEvent,
   product,
   productVariant,
   type DbClient,
@@ -17,6 +16,7 @@ import { checkFactoryStockAvailableByVariant, nextTransferNumber } from "@ms/dom
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+import { enqueueOutbox } from "../lib/notify.js";
 
 function actsOnAnyBranch(role: string): boolean {
   return role === "owner" || role === "admin" || role === "manager";
@@ -334,14 +334,11 @@ export function transferRoutes(db: DbClient) {
         });
       }
 
-      await tx.insert(outboxEvent).values({
-        eventType: "stock_transfer.dispatched",
-        payload: {
-          transfer_id: t.id,
-          transfer_number: t.transferNumber,
-          branch_id: t.branchId,
-          factory_id: t.factoryId,
-        },
+      await enqueueOutbox(tx, c, "stock_transfer.dispatched", {
+        transfer_id: t.id,
+        transfer_number: t.transferNumber,
+        branch_id: t.branchId,
+        factory_id: t.factoryId,
       });
 
       return t;
@@ -376,9 +373,10 @@ export function transferRoutes(db: DbClient) {
         .where(eq(stockTransfer.id, id))
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
-      await tx.insert(outboxEvent).values({
-        eventType: "stock_transfer.arrived",
-        payload: { transfer_id: id, transfer_number: t.transferNumber, branch_id: t.branchId },
+      await enqueueOutbox(tx, c, "stock_transfer.arrived", {
+        transfer_id: id,
+        transfer_number: t.transferNumber,
+        branch_id: t.branchId,
       });
       return u;
     });
@@ -493,13 +491,10 @@ export function transferRoutes(db: DbClient) {
           })
           .where(eq(stockTransfer.id, id));
       } else {
-        await tx.insert(outboxEvent).values({
-          eventType: "stock_transfer.variance_review",
-          payload: {
-            transfer_id: id,
-            transfer_number: t.transferNumber,
-            branch_id: t.branchId,
-          },
+        await enqueueOutbox(tx, c, "stock_transfer.variance_review", {
+          transfer_id: id,
+          transfer_number: t.transferNumber,
+          branch_id: t.branchId,
         });
       }
       return u;
@@ -614,14 +609,11 @@ export function transferRoutes(db: DbClient) {
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
 
-      await tx.insert(outboxEvent).values({
-        eventType: "stock_transfer.rejected",
-        payload: {
-          transfer_id: id,
-          transfer_number: t.transferNumber,
-          branch_id: t.branchId,
-          reason,
-        },
+      await enqueueOutbox(tx, c, "stock_transfer.rejected", {
+        transfer_id: id,
+        transfer_number: t.transferNumber,
+        branch_id: t.branchId,
+        reason,
       });
       return u;
     });
@@ -716,17 +708,14 @@ export function transferRoutes(db: DbClient) {
 
       // Telegram alert so the owner (and the side whose count moved) sees
       // every after-the-fact correction in real time.
-      await tx.insert(outboxEvent).values({
-        eventType: "stock_transfer.count_corrected",
-        payload: {
-          transfer_id: id,
-          transfer_number: t.transferNumber,
-          side: body.side,
-          old_quantity: oldQty,
-          new_quantity: body.new_quantity,
-          delta,
-          reason: body.reason,
-        },
+      await enqueueOutbox(tx, c, "stock_transfer.count_corrected", {
+        transfer_id: id,
+        transfer_number: t.transferNumber,
+        side: body.side,
+        old_quantity: oldQty,
+        new_quantity: body.new_quantity,
+        delta,
+        reason: body.reason,
       });
 
       return { transferItem: { ...it, quantitySent: body.side === "sent" ? body.new_quantity : it.quantitySent, quantityReceived: body.side === "received" ? body.new_quantity : it.quantityReceived }, ledgerDelta: delta };

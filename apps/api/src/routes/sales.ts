@@ -13,7 +13,6 @@ import {
   productPrice,
   productVariant,
   product,
-  outboxEvent,
   type DbClient,
 } from "@ms/db";
 import { availableAtBranch, nextOrderNumber } from "@ms/domain";
@@ -22,6 +21,7 @@ import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 import { resolveCustomer } from "../lib/customers.js";
+import { enqueueOutbox } from "../lib/notify.js";
 
 const ConfirmSale = z.object({
   // Optional client-supplied UUID. The branch PWA generates this offline so the
@@ -438,15 +438,12 @@ export function saleRoutes(db: DbClient) {
         line_total_ngn: r.lineTotal,
       }));
       // Branch sale completed — owner wants to see this.
-      await tx.insert(outboxEvent).values({
-        eventType: "sale.branch_sold",
-        payload: {
-          sale_order_id: u.id,
-          order_number: u.orderNumber,
-          total_ngn: u.totalNgn,
-          channel: u.channel,
-          items,
-        },
+      await enqueueOutbox(tx, c, "sale.branch_sold", {
+        sale_order_id: u.id,
+        order_number: u.orderNumber,
+        total_ngn: u.totalNgn,
+        channel: u.channel,
+        items,
       });
       return u;
     });
