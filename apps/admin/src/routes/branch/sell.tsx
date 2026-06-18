@@ -227,7 +227,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           size_ml: s.variant.size_ml,
           quantity: 1,
           unit_price_ngn: s.price,
-          is_preorder: s.variant.preorder_only ?? false,
+          is_preorder: false,
         },
       ];
     });
@@ -247,9 +247,31 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   }
 
   const total = cart.reduce((sum, l) => sum + l.quantity * l.unit_price_ngn, 0);
-  // A 330ml (preorder_only) line forces the whole ticket to a preorder; the
-  // cashier can also opt in for any other cans via the cashout toggle.
-  const forcedPreorder = cart.some((l) => l.is_preorder);
+
+  // Live per-variant availability for everything in the cart, so we can tell
+  // when a line can't be covered from stock and the order must become a preorder.
+  const cartVariantIds = cart.map((l) => l.variant_id).join(",");
+  const availByVariant = useLiveQuery(
+    async () => {
+      const entries = await Promise.all(
+        cart.map(
+          async (l) =>
+            [l.variant_id, await localAvailableForVariant(branchId, l.product_id, l.variant_id)] as const,
+        ),
+      );
+      return Object.fromEntries(entries) as Record<string, number>;
+    },
+    [branchId, cartVariantIds],
+    {} as Record<string, number>,
+  );
+
+  // A line the branch can't cover from stock forces the whole ticket to a
+  // preorder (made to order — paid now, fulfilled later). The cashier can also
+  // opt any in-stock order in via the cashout toggle. preorder_only is no longer
+  // a till trigger: an in-stock 330ml sells instantly (see sales.ts).
+  const forcedPreorder = cart.some(
+    (l) => (availByVariant[l.variant_id] ?? Infinity) < l.quantity,
+  );
   const orderIsPreorder = forcedPreorder || preorderChoice;
 
   async function checkout(): Promise<void> {
@@ -565,7 +587,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
               </label>
               {forcedPreorder && (
                 <span className="field__hint">
-                  A 330ml can is in the cart — this order must be taken as a preorder.
+                  An item in the cart is out of stock — this order must be taken as a preorder.
                 </span>
               )}
               {orderIsPreorder && (
