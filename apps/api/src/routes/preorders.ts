@@ -151,6 +151,24 @@ export function preorderRoutes(db: DbClient) {
           payload: { sale_order_id: id, order_number: o.orderNumber, branch_id: o.branchId },
         });
       }
+      // Gather flavour + size names for the notification line items.
+      const notifItemRows = await tx
+        .select({
+          qty: saleOrderItem.quantity,
+          lineTotal: saleOrderItem.lineTotalNgn,
+          name: product.name,
+          sizeMl: productVariant.sizeMl,
+        })
+        .from(saleOrderItem)
+        .leftJoin(product, eq(product.id, saleOrderItem.productId))
+        .leftJoin(productVariant, eq(productVariant.id, saleOrderItem.variantId))
+        .where(eq(saleOrderItem.saleOrderId, id));
+      const notifItems = notifItemRows.map((r) => ({
+        name: r.name ?? "Item",
+        size: r.sizeMl ? `${r.sizeMl}ml` : "",
+        qty: r.qty,
+        line_total_ngn: r.lineTotal,
+      }));
       await tx.insert(outboxEvent).values({
         eventType: "sale.preorder_fulfilled",
         payload: {
@@ -158,6 +176,7 @@ export function preorderRoutes(db: DbClient) {
           order_number: o.orderNumber,
           branch_id: o.branchId,
           channel: o.channel,
+          items: notifItems,
         },
       });
       return u;

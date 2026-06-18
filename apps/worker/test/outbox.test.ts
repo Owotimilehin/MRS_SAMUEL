@@ -198,3 +198,22 @@ describe("audit.logged formatting", () => {
     expect(text).toContain("Price: ₦1,800 → ₦2,000");
   });
 });
+
+describe("sale.branch_sold item lines", () => {
+  it("lists flavour, size and quantity", async () => {
+    const { format } = await import("../src/outbox.js");
+    const { text } = format({
+      eventType: "sale.branch_sold",
+      payload: {
+        sale_order_id: "s1", order_number: "ORD-00123", total_ngn: 4200, channel: "pos",
+        items: [
+          { name: "Zobo", size: "50cl", qty: 2, line_total_ngn: 1600 },
+          { name: "Pineapple", size: "35cl", qty: 3, line_total_ngn: 2600 },
+        ],
+      },
+    });
+    expect(text).toContain("ORD-00123");
+    expect(text).toContain("2× Zobo 50cl");
+    expect(text).toContain("3× Pineapple 35cl");
+  });
+});

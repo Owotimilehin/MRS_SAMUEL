@@ -37,6 +37,21 @@ function roleLabel(role: string): string {
   return role.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
+function itemLines(payload: Record<string, unknown>): string {
+  const items = Array.isArray(payload["items"])
+    ? (payload["items"] as Array<Record<string, unknown>>) : [];
+  if (!items.length) return "";
+  const lines = items.slice(0, 8).map((it) => {
+    const qty = Number(it["qty"] ?? 0);
+    const name = String(it["name"] ?? "?");
+    const size = it["size"] ? ` ${String(it["size"])}` : "";
+    const lt = it["line_total_ngn"] != null ? ` — ₦${Number(it["line_total_ngn"]).toLocaleString()}` : "";
+    return `• ${qty}× ${name}${size}${lt}`;
+  });
+  const more = items.length > 8 ? `\n…and ${items.length - 8} more` : "";
+  return `\n${lines.join("\n")}${more}`;
+}
+
 /**
  * Append the uniform "who · when" footer to a message body. Degrades to the
  * bare body when the event carries no actor (webhook/system events).
@@ -225,8 +240,9 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         text:
           `🆕 *New online order*\n` +
           `${p["order_number"]} · ₦${p["total_ngn"]}\n` +
-          `${p["customer_name"]} · ${p["customer_phone"]}\n` +
-          `Waiting on payment.\n` +
+          `${p["customer_name"]} · ${p["customer_phone"]}` +
+          itemLines(event.payload) +
+          `\nWaiting on payment.\n` +
           `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
       };
     case "sale.paid_online": {
@@ -261,8 +277,9 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         chatIds: [owner],
         text:
           `🛒 *Branch sale*\n` +
-          `${p["order_number"]} · ₦${p["total_ngn"]} · ${p["channel"]}\n` +
-          `👉 ${ADMIN_URL}/branch/sales/${p["sale_order_id"]}`,
+          `${p["order_number"]} · ₦${p["total_ngn"]} · ${p["channel"]}` +
+          itemLines(event.payload) +
+          `\n👉 ${ADMIN_URL}/branch/sales/${p["sale_order_id"]}`,
       };
     case "payment.refund_request":
       return {
@@ -388,8 +405,9 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         chatIds: [owner],
         text:
           `🎁 *Preorder fulfilled*\n` +
-          `${p["order_number"]} · ${p["channel"] ?? ""}\n` +
-          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
+          `${p["order_number"]} · ${p["channel"] ?? ""}` +
+          itemLines(event.payload) +
+          `\n👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
       };
     case "sale.preorder_paid":
       return {

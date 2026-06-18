@@ -7,6 +7,7 @@ import {
   outboxEvent,
   productPrice,
   productVariant,
+  product,
   customer,
   stockReservation,
   branch,
@@ -460,6 +461,24 @@ export function publicOrderRoutes(db: DbClient) {
           });
         }
       }
+      // Gather flavour + size names for the notification line items.
+      const itemRows = await tx
+        .select({
+          qty: saleOrderItem.quantity,
+          lineTotal: saleOrderItem.lineTotalNgn,
+          name: product.name,
+          sizeMl: productVariant.sizeMl,
+        })
+        .from(saleOrderItem)
+        .leftJoin(product, eq(product.id, saleOrderItem.productId))
+        .leftJoin(productVariant, eq(productVariant.id, saleOrderItem.variantId))
+        .where(eq(saleOrderItem.saleOrderId, o.id));
+      const items = itemRows.map((r) => ({
+        name: r.name ?? "Item",
+        size: r.sizeMl ? `${r.sizeMl}ml` : "",
+        qty: r.qty,
+        line_total_ngn: r.lineTotal,
+      }));
       // Tell the owner (and anyone else subscribed) that a new online order
       // just landed and is waiting on payment.
       await tx.insert(outboxEvent).values({
@@ -474,6 +493,7 @@ export function publicOrderRoutes(db: DbClient) {
             ? o.scheduledDeliveryAt.toISOString()
             : null,
           delivery_state: o.deliveryState ?? null,
+          items,
         },
       });
       return { order: o, customerEmail: body.customer.email ?? null };

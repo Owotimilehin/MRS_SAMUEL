@@ -12,6 +12,7 @@ import {
   stockLedger,
   productPrice,
   productVariant,
+  product,
   outboxEvent,
   type DbClient,
 } from "@ms/db";
@@ -418,6 +419,24 @@ export function saleRoutes(db: DbClient) {
         .where(eq(saleOrder.id, id))
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
+      // Gather flavour + size names for the notification line items.
+      const itemRows = await tx
+        .select({
+          qty: saleOrderItem.quantity,
+          lineTotal: saleOrderItem.lineTotalNgn,
+          name: product.name,
+          sizeMl: productVariant.sizeMl,
+        })
+        .from(saleOrderItem)
+        .leftJoin(product, eq(product.id, saleOrderItem.productId))
+        .leftJoin(productVariant, eq(productVariant.id, saleOrderItem.variantId))
+        .where(eq(saleOrderItem.saleOrderId, id));
+      const items = itemRows.map((r) => ({
+        name: r.name ?? "Item",
+        size: r.sizeMl ? `${r.sizeMl}ml` : "",
+        qty: r.qty,
+        line_total_ngn: r.lineTotal,
+      }));
       // Branch sale completed — owner wants to see this.
       await tx.insert(outboxEvent).values({
         eventType: "sale.branch_sold",
@@ -426,6 +445,7 @@ export function saleRoutes(db: DbClient) {
           order_number: u.orderNumber,
           total_ngn: u.totalNgn,
           channel: u.channel,
+          items,
         },
       });
       return u;
