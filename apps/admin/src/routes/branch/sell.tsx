@@ -19,6 +19,7 @@ import { buildReceiptFromCart, type ReceiptData } from "../../lib/receipt-data.j
 import { getReceiptStyle } from "../../lib/receipt-settings.js";
 import { getFlavourVisual } from "../../lib/flavour-visuals.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
+import { adjustBranchStock, REASONS } from "../../lib/stock-adjust.js";
 
 interface BagMaterial {
   id: string;
@@ -94,6 +95,9 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   // Who is serving (for "Served by" on the receipt). admin_user has no name
   // field yet, so fall back to the email prefix then the role.
   const authUser = useAuthUser();
+  // Only the owner may correct on-hand from the till (matches the Inventory
+  // page, which also restricts click-to-adjust to the owner).
+  const isOwner = authUser.role === "owner";
   const servedBy = (authUser.email.split("@")[0] || authUser.role).replace(/[._]/g, " ");
   // Branch header for the receipt, fetched best-effort (works online; offline we
   // still print with just the branch id-derived fallbacks).
@@ -195,11 +199,15 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
 
   // Flavour whose size picker is open (null = no modal).
   const [picking, setPicking] = useState<Flavour | null>(null);
+  // Owner-only: the size whose on-hand is being corrected from the till.
+  const [editTarget, setEditTarget] = useState<Sellable | null>(null);
 
   // Pick a flavour: single-size flavours skip straight to the cart; multi-size
-  // flavours open the size picker so the cashier chooses the can.
+  // flavours open the size picker so the cashier chooses the can. The owner
+  // always gets the picker — even for a single size — so the per-size "Edit
+  // stock" affordance is reachable for every flavour.
   function pickFlavour(f: Flavour): void {
-    if (f.sizes.length === 1) addToCart(f.sizes[0]!);
+    if (f.sizes.length === 1 && !isOwner) addToCart(f.sizes[0]!);
     else setPicking(f);
   }
 
@@ -664,11 +672,25 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
         <SizePicker
           flavour={picking}
           branchId={branchId}
+          canEdit={isOwner}
           onPick={(s) => {
             addToCart(s);
             setPicking(null);
           }}
+          onEdit={(s) => setEditTarget(s)}
           onClose={() => setPicking(null)}
+        />
+      )}
+      {editTarget && (
+        <EditStockModal
+          branchId={branchId}
+          sellable={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => {
+            setEditTarget(null);
+            setFlash("Stock updated");
+            setTimeout(() => setFlash(null), 2500);
+          }}
         />
       )}
       {successSale && (
@@ -687,12 +709,16 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
 function SizePicker({
   flavour,
   branchId,
+  canEdit,
   onPick,
+  onEdit,
   onClose,
 }: {
   flavour: Flavour;
   branchId: string;
+  canEdit: boolean;
   onPick: (s: Sellable) => void;
+  onEdit: (s: Sellable) => void;
   onClose: () => void;
 }): JSX.Element {
   const { product, sizes } = flavour;
@@ -731,46 +757,241 @@ function SizePicker({
                 ? "out of stock · preorder"
                 : `${avail} left`;
           return (
-            <button
+            <div
               key={s.variant.id}
-              type="button"
-              onClick={() => onPick(s)}
               className="card card--hoverable"
               style={{
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
+                gap: 8,
                 padding: "12px 14px",
                 borderRadius: 12,
-                cursor: "pointer",
-                textAlign: "left",
               }}
             >
-              <span style={{ fontWeight: 700, fontSize: 15 }}>
-                {sizeLabel(s.variant.size_ml)}
-                <span
-                  style={{
-                    marginLeft: 8,
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: isPreorder
-                      ? "var(--warning, #d97706)"
-                      : sizeOos
-                        ? "var(--danger)"
-                        : "var(--ink-soft)",
-                  }}
-                >
-                  {statusText}
+              <button
+                type="button"
+                onClick={() => onPick(s)}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ fontWeight: 700, fontSize: 15 }}>
+                  {sizeLabel(s.variant.size_ml)}
+                  <span
+                    style={{
+                      marginLeft: 8,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: isPreorder
+                        ? "var(--warning, #d97706)"
+                        : sizeOos
+                          ? "var(--danger)"
+                          : "var(--ink-soft)",
+                    }}
+                  >
+                    {statusText}
+                  </span>
                 </span>
-              </span>
-              <span className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 17 }}>
-                {ngn(s.price)}
-              </span>
-            </button>
+                <span className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 17 }}>
+                  {ngn(s.price)}
+                </span>
+              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  className="btn btn--subtle btn--sm"
+                  onClick={() => onEdit(s)}
+                  title="Correct on-hand for this size"
+                  style={{ flexShrink: 0 }}
+                >
+                  Edit stock
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
+    </Modal>
+  );
+}
+
+// Owner-only stock correction from the till. Posts the SAME audited
+// /inventory/adjust the Inventory page uses (scoped to this BRANCH), then
+// resyncs the authoritative snapshot. Online-only: a correction must reach the
+// server to be authoritative, so when offline the form is disabled (reads stay
+// fully offline — only editing needs a connection).
+function EditStockModal({
+  branchId,
+  sellable,
+  onClose,
+  onSaved,
+}: {
+  branchId: string;
+  sellable: Sellable;
+  onClose: () => void;
+  onSaved: () => void;
+}): JSX.Element {
+  const { product, variant } = sellable;
+  // Current authoritative on-hand for exactly this size (the variant bucket the
+  // server keys the adjust to) — NOT availability, which nets out un-synced
+  // sales. This is the number the owner is recounting against.
+  const onHand = useLiveQuery(
+    async () => {
+      const rows = await local.stock.where("product_id").equals(product.id).toArray();
+      return rows.filter((r) => r.variant_id === variant.id).reduce((acc, r) => acc + r.qty, 0);
+    },
+    [product.id, variant.id],
+    null as number | null,
+  );
+
+  const [online, setOnline] = useState<boolean>(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  useEffect(() => {
+    const sync = (): void => setOnline(navigator.onLine);
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
+
+  const [newQty, setNewQty] = useState<string>("");
+  // Default the input to the current count once it loads (only if untouched).
+  useEffect(() => {
+    if (onHand !== null && newQty === "") setNewQty(String(onHand));
+  }, [onHand, newQty]);
+
+  const [reasonCode, setReasonCode] = useState<string>("physical_recount");
+  const [reasonNote, setReasonNote] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!online) {
+      setError("You're offline — connect to the internet to edit stock.");
+      return;
+    }
+    const qty = Number(newQty);
+    if (!Number.isInteger(qty) || qty < 0) {
+      setError("Enter a whole number of bottles (0 or more).");
+      return;
+    }
+    if (reasonCode === "other_with_note" && reasonNote.trim().length === 0) {
+      setError("Add a note for 'Other'.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await adjustBranchStock({
+        branchId,
+        productId: product.id,
+        variantId: variant.id,
+        newQuantity: qty,
+        reasonCode,
+        reasonNote: reasonNote.trim() || undefined,
+      });
+      onSaved();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(
+        /would_go_negative|stock would go negative|negative/i.test(msg)
+          ? `Can't go below 0 — this size currently shows ${onHand ?? 0}.`
+          : msg,
+      );
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal title={`Edit stock — ${product.name} · ${sizeLabel(variant.size_ml)}`} onClose={onClose} maxWidth={440}>
+      {!online && (
+        <div
+          className="card"
+          style={{
+            borderColor: "rgba(245,158,11,0.35)",
+            color: "var(--warning, #b45309)",
+            marginBottom: 12,
+            fontSize: 13,
+          }}
+        >
+          You're offline. Connect to the internet to correct stock — the till keeps selling offline.
+        </div>
+      )}
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="field">
+          <label className="field__label">Currently on hand</label>
+          <div style={{ fontSize: 14, color: "var(--ink-soft)" }}>
+            {onHand === null ? "…" : `${onHand} bottles`}
+          </div>
+        </div>
+        <div className="field">
+          <label className="field__label" htmlFor="edit-on-hand">New on-hand</label>
+          <input
+            id="edit-on-hand"
+            className="input"
+            type="number"
+            min={0}
+            inputMode="numeric"
+            autoFocus
+            value={newQty}
+            onChange={(e) => setNewQty(e.target.value)}
+            disabled={!online}
+            style={{ textAlign: "right" }}
+          />
+        </div>
+        <div className="field">
+          <label className="field__label" htmlFor="edit-reason">Reason</label>
+          <select
+            id="edit-reason"
+            className="select"
+            value={reasonCode}
+            onChange={(e) => setReasonCode(e.target.value)}
+            disabled={!online}
+          >
+            {REASONS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {reasonCode === "other_with_note" && (
+          <div className="field">
+            <label className="field__label" htmlFor="edit-note">Notes</label>
+            <textarea
+              id="edit-note"
+              className="textarea"
+              rows={2}
+              value={reasonNote}
+              onChange={(e) => setReasonNote(e.target.value)}
+              placeholder="Describe what happened"
+              disabled={!online}
+            />
+          </div>
+        )}
+        {error && <div className="field__error" style={{ marginTop: 4 }}>{error}</div>}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+          <button type="button" className="btn btn--subtle" onClick={onClose} disabled={submitting}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn--primary" disabled={submitting || !online}>
+            {submitting ? "Saving…" : "Save count"}
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }

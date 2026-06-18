@@ -6,6 +6,7 @@ import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 interface Factory { id: string; name: string }
+interface Branch { id: string; name: string }
 interface Product { id: string; slug: string }
 
 describe("inventory adjust", () => {
@@ -14,6 +15,7 @@ describe("inventory adjust", () => {
   let cookies: string;
   let server: ReturnType<typeof serve>;
   let factory: Factory;
+  let branch: Branch;
   let product: Product;
   let secondFactory: Factory;
 
@@ -44,11 +46,16 @@ describe("inventory adjust", () => {
     baseUrl = `http://localhost:${addr.port}`;
     cookies = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
 
-    const { factory: factoryTable } = await import("@ms/db");
+    const { factory: factoryTable, branch: branchTable } = await import("@ms/db");
     const [f1] = await tdb.db.insert(factoryTable).values({ name: "Adj Factory" }).returning();
     factory = f1 as Factory;
     const [f2] = await tdb.db.insert(factoryTable).values({ name: "Other Factory" }).returning();
     secondFactory = f2 as Factory;
+    const [b1] = await tdb.db
+      .insert(branchTable)
+      .values({ name: "Adj Branch", code: "ADJ-BR" })
+      .returning();
+    branch = b1 as Branch;
 
     const p = await call<{ data: Product }>("POST", "/v1/products", {
       name: "Adj Sunrise",
@@ -91,6 +98,30 @@ describe("inventory adjust", () => {
       `/v1/stock/factory/${factory.id}`,
     );
     expect(stockBalance(after.body.data, product.id)).toBe(95);
+  });
+
+  it("owner sets a new on-hand at a BRANCH; branch-stock reflects it (the till's source of truth)", async () => {
+    const res = await call<{ data: { id: string; items_recorded: number } }>(
+      "POST",
+      "/v1/inventory/adjust",
+      {
+        location_type: "branch",
+        location_id: branch.id,
+        reason_code: "physical_recount",
+        items: [{ product_id: product.id, new_quantity: 37 }],
+      },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.data.items_recorded).toBe(1);
+
+    // /reports/branch-stock is what the Inventory branch grid AND /sync/pull read.
+    const after = await call<{
+      data: Array<{ branch_id: string; product_id: string; variant_id: string | null; balance: number }>;
+    }>("GET", `/v1/reports/branch-stock`);
+    const row = after.body.data.find(
+      (r) => r.branch_id === branch.id && r.product_id === product.id,
+    );
+    expect(row?.balance).toBe(37);
   });
 
   it("adjusts two sizes of one flavour independently", async () => {
