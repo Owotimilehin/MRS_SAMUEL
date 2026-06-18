@@ -189,7 +189,6 @@ export function saleRoutes(db: DbClient) {
         // callers can still send product_id which maps to the smallest can).
         let variantId: string | undefined = it.variant_id;
         let productId: string;
-        let preorderOnly = false;
         if (variantId) {
           const [v] = await tx
             .select()
@@ -199,7 +198,6 @@ export function saleRoutes(db: DbClient) {
             throw new BusinessError("not_found", `variant ${variantId} not found`, 404);
           }
           productId = v.productId;
-          preorderOnly = v.preorderOnly;
           if (it.product_id && it.product_id !== v.productId) {
             throw new BusinessError(
               "validation_failed",
@@ -221,7 +219,6 @@ export function saleRoutes(db: DbClient) {
             throw new BusinessError("not_found", `no variant for product ${productId}`, 404);
           }
           variantId = v.id;
-          preorderOnly = v.preorderOnly;
         }
 
         const [price] = await tx
@@ -237,19 +234,17 @@ export function saleRoutes(db: DbClient) {
           branchId,
           productId,
         });
-        // A preorder_only item is always made-to-order (any channel). For a
-        // normal item that's short, only REMOTE channels (phone/whatsapp/online,
-        // fulfilled later) become a preorder — immediate-handover channels
-        // (walk-up, chowdeck pickup) can't hand over absent stock, so they're
-        // still rejected to protect inventory integrity at the counter.
+        // The till treats every size the same: a line only becomes a preorder
+        // when it can't be covered from stock (or the cashier explicitly took
+        // the order as a preorder via is_preorder). preorder_only is a STOREFRONT
+        // rule (see public-orders.ts) and is intentionally ignored here so an
+        // in-stock 330ml sells instantly at the counter.
         const immediateHandover =
           body.channel === "walkup" || body.channel === "chowdeck_pickup";
-        if (preorderOnly) {
-          orderIsPreorder = true;
-        } else if (available < it.quantity) {
-          // A deliberate till preorder (forcePreorder) is allowed to be short —
-          // it's made to order. Otherwise an immediate-handover channel can't
-          // give away absent stock, so it's still rejected.
+        if (available < it.quantity) {
+          // An immediate-handover channel (walk-up / chowdeck pickup) can't give
+          // away absent stock unless the cashier deliberately took it as a
+          // made-to-order preorder.
           if (immediateHandover && !forcePreorder) {
             throw new BusinessError("conflict", "insufficient stock", 422, {
               product_id: productId,

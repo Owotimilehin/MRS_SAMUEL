@@ -107,12 +107,17 @@ describe("preorders: pay-without-deduct + queue + fulfil", () => {
 
   let orderId: string;
 
-  it("POS confirm of a preorder_only item with 0 stock → 201 + is_preorder (no 422)", async () => {
+  it("POS confirm of a preorder_only item with 0 stock → 201 + is_preorder when cashier explicitly takes it as preorder", async () => {
     expect(await branchBalance()).toBe(0);
+    // Under the new rule, preorder_only is a storefront hint only. At the till
+    // a 0-stock walkup must be explicitly flagged is_preorder:true (with a
+    // scheduled_delivery_at) — otherwise the server rejects it as out-of-stock.
     const confirm = await call<{ data: SaleOrder }>("POST", `/v1/branches/${branch.id}/sales`, {
       channel: "walkup",
       items: [{ product_id: product.id, quantity: 3 }],
       payment_method: "cash",
+      is_preorder: true,
+      scheduled_delivery_at: new Date(Date.now() + 86_400_000).toISOString(),
       created_at_local: new Date().toISOString(),
     });
     expect(confirm.status).toBe(201);
@@ -169,6 +174,7 @@ describe("preorders: pay-without-deduct + queue + fulfil", () => {
       channel: "walkup",
       items: [{ product_id: product.id, quantity: 1 }],
       payment_method: "cash",
+      is_preorder: true,
       scheduled_delivery_at: fulfilBy,
       created_at_local: new Date().toISOString(),
     });

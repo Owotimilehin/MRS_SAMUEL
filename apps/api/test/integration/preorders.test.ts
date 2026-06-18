@@ -218,6 +218,36 @@ describe("Preorder-aware order creation", () => {
     expect(reservations.length, "out-of-stock preorder must have no reservations").toBe(0);
   });
 
+  // ── (d) till: in-stock preorder_only line is an instant sale ────────────
+  it("till: an in-stock preorder_only (330ml) line is an instant sale, not forced to preorder", async () => {
+    // preorderProductId/preorderVariantId is the 330ml preorder_only variant.
+    // Seed stock so it CAN be handed over at the counter.
+    const { stockLedger } = await import("@ms/db");
+    await db.insert(stockLedger).values({
+      locationType: "branch",
+      locationId: branchId,
+      productId: preorderProductId,
+      variantId: preorderVariantId,
+      delta: 10,
+      sourceType: "adjustment",
+      sourceId: uuid(),
+    });
+
+    const res = await fetch(`${baseUrl}/v1/branches/${branchId}/sales`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookies, "idempotency-key": uuid() },
+      body: JSON.stringify({
+        channel: "walkup",
+        payment_method: "cash",
+        items: [{ variant_id: preorderVariantId, quantity: 1 }],
+        created_at_local: new Date().toISOString(),
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { data: { isPreorder: boolean } };
+    expect(body.data.isPreorder).toBe(false);
+  });
+
   // ── (c) in-stock normal order: NOT a preorder, DOES reserve ──────────────
   it("(c) in-stock normal order is NOT a preorder and DOES create a reservation", async () => {
     const { saleOrder, stockReservation } = await import("@ms/db");
