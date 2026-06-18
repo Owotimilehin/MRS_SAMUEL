@@ -72,8 +72,15 @@ export interface ActorBlock {
   actor_branch_name: string | null;
 }
 
-/** Resolve the acting admin into the fields every notification needs. */
+/**
+ * Resolve the acting admin into the fields every notification needs. The
+ * result is memoized on the Hono context, so a request that emits several
+ * events (e.g. a transfer flow firing multiple outbox rows) does the
+ * adminUser/branch lookups once rather than per event.
+ */
 export async function resolveActor(db: Exec, c: Context): Promise<ActorBlock> {
+  const cached = c.get("actorBlock" as never) as ActorBlock | undefined;
+  if (cached) return cached;
   const auth = c.get("auth") as { userId: string; role: string; branchId: string | null } | undefined;
   if (!auth) return { actor_name: null, actor_role: null, actor_branch_name: null };
   const [u] = await db.select({ name: adminUser.name, email: adminUser.email })
@@ -83,11 +90,13 @@ export async function resolveActor(db: Exec, c: Context): Promise<ActorBlock> {
     const [b] = await db.select({ name: branch.name }).from(branch).where(eq(branch.id, auth.branchId)).limit(1);
     branchName = b?.name ?? null;
   }
-  return {
+  const block: ActorBlock = {
     actor_name: u ? displayName(u) : null,
     actor_role: auth.role,
     actor_branch_name: branchName,
   };
+  c.set("actorBlock" as never, block as never);
+  return block;
 }
 
 /** Insert an outbox event with the acting admin stamped onto the payload. */
