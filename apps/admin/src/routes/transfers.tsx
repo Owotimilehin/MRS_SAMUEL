@@ -5,6 +5,7 @@ import { StatHero } from "../components/StatHero.js";
 import { api } from "../lib/api.js";
 import { formatDateTime } from "../lib/format.js";
 import { InlineLoader } from "../components/Spinner.js";
+import { ConfirmModal } from "../components/ConfirmModal.js";
 
 type TransferStatus =
   | "dispatched"
@@ -276,6 +277,7 @@ function CreateTransferModal({
   // doesn't hold.
   const [stock, setStock] = useState<FactoryStockRow[]>([]);
   const [stockLoading, setStockLoading] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   // Reload the source factory's stock whenever it changes, and clear any
   // already-added lines (they referenced the previous factory's inventory).
@@ -344,7 +346,7 @@ function CreateTransferModal({
     setItems((it) => it.filter((_, i) => i !== idx));
   }
 
-  async function submit(e: FormEvent): Promise<void> {
+  function submit(e: FormEvent): void {
     e.preventDefault();
     if (items.length === 0 || !factoryId || !branchId) return;
     const overSent = items.find(
@@ -355,6 +357,11 @@ function CreateTransferModal({
       setError(`Only ${availableFor(overSent.product_id, overSent.variant_id)} of ${pName} in stock at this factory.`);
       return;
     }
+    setError(null);
+    setShowConfirm(true);
+  }
+
+  async function doSubmit(): Promise<void> {
     setSubmitting(true);
     setError(null);
     try {
@@ -385,6 +392,7 @@ function CreateTransferModal({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setSubmitting(false);
+      setShowConfirm(false);
     }
   }
 
@@ -643,6 +651,63 @@ function CreateTransferModal({
             {submitting ? "Sending…" : "Send transfer"}
           </button>
         </form>
+        {showConfirm && (
+          <ConfirmModal
+            title="Confirm transfer"
+            confirmLabel="Send transfer"
+            busyLabel="Sending…"
+            busy={submitting}
+            onCancel={() => setShowConfirm(false)}
+            onConfirm={() => void doSubmit()}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>
+                {factories.find((f) => f.id === factoryId)?.name ?? "Factory"}
+                <span style={{ color: "var(--ink-soft)" }}> → </span>
+                {branches.find((b) => b.id === branchId)?.name ?? "Branch"}
+              </div>
+              {(vehicle || driver) && (
+                <div style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                  {vehicle && <span>Vehicle: {vehicle}</span>}
+                  {vehicle && driver && <span> · </span>}
+                  {driver && <span>Driver: {driver}</span>}
+                </div>
+              )}
+              <div className="table-wrap" style={{ border: 0 }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th className="table__num">Quantity</th>
+                      <th className="table__num">Unit cost (₦)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((it, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          {it.kind === "bag"
+                            ? `🛍 ${bags.find((b) => b.id === it.packaging_material_id)?.name ?? "Bag"}`
+                            : `${products.find((p) => p.id === it.product_id)?.name ?? "Flavour"} · ${sizeLabel(
+                                stock.find((s) => s.variant_id === it.variant_id)?.size_ml ?? null,
+                              )}`}
+                        </td>
+                        <td className="table__num" style={{ fontWeight: 700 }}>
+                          {Number(it.quantity_sent).toLocaleString()}
+                        </td>
+                        <td className="table__num">{it.unit_cost_ngn ? Number(it.unit_cost_ngn).toLocaleString() : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                <span>{items.length} line{items.length === 1 ? "" : "s"}</span>
+                <span>{items.reduce((sum, it) => sum + Number(it.quantity_sent), 0).toLocaleString()} total</span>
+              </div>
+            </div>
+          </ConfirmModal>
+        )}
       </div>
     </div>
   );
