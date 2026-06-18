@@ -60,6 +60,25 @@ export interface LedgerRow {
   recorded_at: string;
 }
 
+/**
+ * Authoritative current on-hand for one flavour+size at the branch, as last
+ * pulled from the server (`SUM(delta)` over the server ledger). Replaced
+ * wholesale on every successful pull, so a server-side correction or wipe
+ * always propagates here — the till never accumulates phantom stock. The
+ * offline POS reads availability from this snapshot MINUS its own un-synced
+ * optimistic sale rows, never by replaying a growing local ledger.
+ */
+export interface StockRow {
+  // `${product_id}::${variant_id ?? ""}` — one row per flavour+size pool.
+  id: string;
+  product_id: string;
+  // null = the legacy "untyped" pool not yet assigned to a size; counts toward
+  // any size, mirroring the ledger's untyped handling.
+  variant_id: string | null;
+  qty: number;
+  synced_at: string;
+}
+
 export interface IncomingTransferRow {
   id: string;
   transfer_number: string;
@@ -114,6 +133,7 @@ export class BranchDB extends Dexie {
   variants!: Table<VariantRow, string>;
   prices!: Table<PriceRow, string>;
   ledger!: Table<LedgerRow, string>;
+  stock!: Table<StockRow, string>;
   transfers!: Table<IncomingTransferRow, string>;
   sales!: Table<SaleRow, string>;
   outbox!: Table<OutboxRow, string>;
@@ -148,64 +168,96 @@ export class BranchDB extends Dexie {
       variants: "id, product_id, size_ml",
       prices: "id, product_id, variant_id, valid_from",
     });
+    // v4: availability now derives from a server-authoritative `stock` snapshot
+    // (replaced wholesale each pull), not from replaying the local ledger. Add
+    // the snapshot store, and one-time-heal existing tills: clear the old
+    // accumulated server ledger rows (these could hold phantom stock a
+    // server-side wipe/correction never reached — see the 130-in-stock bug) and
+    // reset the pull cursor so the next sync re-fetches a full snapshot. The
+    // ledger now only ever holds the till's own un-synced optimistic sale rows.
+    this.version(4)
+      .stores({
+        stock: "id, product_id",
+      })
+      .upgrade(async (tx) => {
+        await tx.table("ledger").clear();
+        const meta = await tx.table("meta").get("default");
+        if (meta) await tx.table("meta").put({ ...meta, last_pull_at: null });
+      });
   }
 }
 
 export const local = new BranchDB();
 
+/** Sum the till's own un-synced optimistic sale rows for a product (negative). */
+async function optimisticDeltaForProduct(
+  branchId: string,
+  productId: string,
+): Promise<{ sized: Map<string, number>; untyped: number; total: number }> {
+  const rows = await local.ledger
+    .where("[location_type+location_id+product_id]")
+    .equals(["branch", branchId, productId])
+    .toArray();
+  const sized = new Map<string, number>();
+  let untyped = 0;
+  let total = 0;
+  for (const r of rows) {
+    total += r.delta;
+    if (r.variant_id == null) untyped += r.delta;
+    else sized.set(r.variant_id, (sized.get(r.variant_id) ?? 0) + r.delta);
+  }
+  return { sized, untyped, total };
+}
+
+async function reservedForProduct(productId: string): Promise<number> {
+  const now = Date.now();
+  const reservations = await local.reservations.where("product_id").equals(productId).toArray();
+  return reservations.filter((r) => r.expires_at > now).reduce((acc, r) => acc + r.quantity, 0);
+}
+
 /**
- * Compute available branch stock from local data — server ledger minus
- * active reservations. Used by the offline POS so the till can refuse
- * out-of-stock sales without a network call.
+ * Compute available branch stock for the offline POS:
+ *   server snapshot (authoritative on-hand) + this till's un-synced optimistic
+ *   sale rows (negative) − active reservations.
+ * The snapshot is overwritten wholesale on every pull, so this self-heals after
+ * any server-side correction/wipe; the only local rows left in the ledger are
+ * the till's own sales that the server hasn't acknowledged yet.
  */
 export async function localAvailableForProduct(
   branchId: string,
   productId: string,
 ): Promise<number> {
-  const ledgerRows = await local.ledger
-    .where("[location_type+location_id+product_id]")
-    .equals(["branch", branchId, productId])
-    .toArray();
-  const ledgerSum = ledgerRows.reduce((acc, r) => acc + r.delta, 0);
-
-  const now = Date.now();
-  const reservations = await local.reservations.where("product_id").equals(productId).toArray();
-  const reserved = reservations
-    .filter((r) => r.expires_at > now)
-    .reduce((acc, r) => acc + r.quantity, 0);
-
-  return ledgerSum - reserved;
+  const snapRows = await local.stock.where("product_id").equals(productId).toArray();
+  const snapshot = snapRows.reduce((acc, r) => acc + r.qty, 0);
+  const { total: optimistic } = await optimisticDeltaForProduct(branchId, productId);
+  const reserved = await reservedForProduct(productId);
+  return snapshot + optimistic - reserved;
 }
 
 /**
- * Available stock for ONE can size at a branch. Size-tagged ledger rows for the
+ * Available stock for ONE can size at a branch. Size-tagged snapshot for the
  * chosen variant, PLUS the product's untyped (variant-less) pool — that legacy
  * stock isn't assigned to a size yet, so it stays available to any size until
- * reconciled. A flavour whose stock is fully size-tagged is now enforced per
- * size: e.g. 96 on 330ml and 0 on 650ml means 650ml shows 0 and can't be sold.
+ * reconciled. A flavour whose stock is fully size-tagged is enforced per size:
+ * e.g. 96 on 330ml and 0 on 650ml means 650ml shows 0 and can't be sold. The
+ * till's own un-synced optimistic sale rows are layered on top.
  */
 export async function localAvailableForVariant(
   branchId: string,
   productId: string,
   variantId: string,
 ): Promise<number> {
-  const rows = await local.ledger
-    .where("[location_type+location_id+product_id]")
-    .equals(["branch", branchId, productId])
-    .toArray();
-  const sized = rows
+  const snapRows = await local.stock.where("product_id").equals(productId).toArray();
+  const snapSized = snapRows
     .filter((r) => r.variant_id === variantId)
-    .reduce((acc, r) => acc + r.delta, 0);
-  const untyped = rows
+    .reduce((acc, r) => acc + r.qty, 0);
+  const snapUntyped = snapRows
     .filter((r) => r.variant_id == null)
-    .reduce((acc, r) => acc + r.delta, 0);
+    .reduce((acc, r) => acc + r.qty, 0);
 
-  const now = Date.now();
-  const reservations = await local.reservations.where("product_id").equals(productId).toArray();
+  const opt = await optimisticDeltaForProduct(branchId, productId);
   // Reservations are per-flavour today, so they reduce the untyped pool side.
-  const reserved = reservations
-    .filter((r) => r.expires_at > now)
-    .reduce((acc, r) => acc + r.quantity, 0);
+  const reserved = await reservedForProduct(productId);
 
-  return sized + untyped - reserved;
+  return snapSized + snapUntyped + (opt.sized.get(variantId) ?? 0) + opt.untyped - reserved;
 }

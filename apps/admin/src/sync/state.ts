@@ -5,17 +5,20 @@ export interface SyncState {
   online: boolean;
   queued: number;
   dead: number;
+  /** ISO timestamp of the last successful pull, or null if never synced. */
+  lastPullAt: string | null;
 }
 
 /**
  * Subscribe to sync indicator state for display in the branch shell.
- * Polls the local outbox table every few seconds — cheap because IDB.
+ * Polls the local outbox + sync meta every few seconds — cheap because IDB.
  */
 export function useSyncState(): SyncState {
   const [state, setState] = useState<SyncState>({
     online: typeof navigator === "undefined" ? true : navigator.onLine,
     queued: 0,
     dead: 0,
+    lastPullAt: null,
   });
 
   useEffect(() => {
@@ -23,8 +26,9 @@ export function useSyncState(): SyncState {
     const tick = async (): Promise<void> => {
       const queued = await local.outbox.where("status").equals("pending").count();
       const dead = await local.outbox.where("status").equals("dead").count();
+      const meta = await local.meta.get("default");
       if (alive) {
-        setState((s) => ({ ...s, queued, dead }));
+        setState((s) => ({ ...s, queued, dead, lastPullAt: meta?.last_pull_at ?? null }));
       }
     };
     void tick();

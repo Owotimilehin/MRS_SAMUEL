@@ -3,9 +3,10 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { useSyncState } from "../../sync/state.js";
-import { flushOutbox } from "../../sync/engine.js";
+import { flushOutbox, resyncStock } from "../../sync/engine.js";
 import { local } from "../../db/local.js";
 import { formatDateTime } from "../../lib/format.js";
+import { toast } from "../../lib/toast.js";
 
 const APP_VERSION = import.meta.env?.VITE_APP_VERSION ?? "dev";
 
@@ -21,6 +22,7 @@ function deviceId(): string {
 export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Element {
   const sync = useSyncState();
   const [syncing, setSyncing] = useState(false);
+  const [resyncing, setResyncing] = useState(false);
   const [lastPull, setLastPull] = useState<string | null>(null);
 
   const meta = useLiveQuery(() => local.meta.get("default"), []);
@@ -35,6 +37,25 @@ export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Elemen
       await flushOutbox();
     } finally {
       setSyncing(false);
+    }
+  }
+
+  // Pull a fresh authoritative stock snapshot from the server, discarding the
+  // local one. The fix for "wrong number on the till" — e.g. phantom stock left
+  // over from a server-side correction the incremental sync never reached.
+  async function resyncStockNow(): Promise<void> {
+    setResyncing(true);
+    try {
+      const refreshed = await resyncStock(branchId);
+      toast[refreshed ? "success" : "error"](
+        refreshed
+          ? "Stock refreshed from the server."
+          : "Can't resync while offline — reconnect and try again.",
+      );
+    } catch {
+      toast.error("Couldn't refresh stock. Check the connection and retry.");
+    } finally {
+      setResyncing(false);
     }
   }
 
@@ -88,6 +109,20 @@ export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Elemen
             label="Last server pull"
             value={lastPull ? formatDateTime(lastPull) : "—"}
           />
+          <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 12 }}>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              disabled={resyncing || !sync.online}
+              onClick={resyncStockNow}
+            >
+              {resyncing ? "Refreshing…" : "Resync stock now"}
+            </button>
+            <span style={{ color: "var(--ink-soft)", fontSize: 12 }}>
+              Pulls fresh on-hand counts from the server. Use if a flavour shows the wrong
+              number on the till.
+            </span>
+          </div>
         </section>
 
         <section className="card">
