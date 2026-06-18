@@ -24,6 +24,7 @@ import {
   ScrollText,
   Smartphone,
   PenLine,
+  Settings,
   ShoppingCart,
   Search,
   ChevronRight,
@@ -91,6 +92,7 @@ const NAV_ADMIN: NavLink[] = [
   { to: "/owner/users", label: "Admin users", Icon: Users, cap: "users.manage" },
   { to: "/owner/devices", label: "Devices", Icon: Smartphone, cap: "devices.view" },
   { to: "/owner/audit-log", label: "Audit log", Icon: ScrollText, cap: "audit.view" },
+  { to: "/owner/settings", label: "Settings", Icon: Settings, cap: "branches.manage" },
 ];
 
 interface ShellProps {
