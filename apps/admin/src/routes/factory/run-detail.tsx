@@ -7,6 +7,7 @@ import { api } from "../../lib/api.js";
 import { formatDate, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { ConfirmModal } from "../../components/ConfirmModal.js";
 
 interface RunItem {
   id: string;
@@ -47,6 +48,7 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -159,7 +161,7 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
                   type="button"
                   className="btn btn--primary"
                   disabled={acting}
-                  onClick={() => void complete()}
+                  onClick={() => setShowConfirm(true)}
                 >
                   {acting ? "Completing…" : "Complete run · post to ledger"}
                 </button>
@@ -200,6 +202,57 @@ export function RunDetailPage({ runId }: { runId: string }): JSX.Element {
               </div>
             )}
           </section>
+
+          {showConfirm && (
+            <ConfirmModal
+              title="Complete production run"
+              confirmLabel="Complete run"
+              busyLabel="Completing…"
+              busy={acting}
+              onCancel={() => setShowConfirm(false)}
+              onConfirm={async () => {
+                await complete();
+                setShowConfirm(false);
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>
+                  {factoryName(run.factoryId)} · {formatDate(run.runDate)}
+                </div>
+                <div className="table-wrap" style={{ border: 0 }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th>Size</th>
+                        <th className="table__num">Quantity</th>
+                        <th>Batch code</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {run.items.map((it) => (
+                        <tr key={it.id}>
+                          <td>{productName(it.productId)}</td>
+                          <td style={{ color: "var(--ink-soft)" }}>{sizeLabel(it.sizeMl)}</td>
+                          <td className="table__num" style={{ fontWeight: 700 }}>
+                            {it.quantityProduced.toLocaleString()}
+                          </td>
+                          <td style={{ fontFamily: "monospace", fontSize: 13 }}>{it.batchCode ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                  <span>{run.items.length} line{run.items.length === 1 ? "" : "s"}</span>
+                  <span>{totalBottles.toLocaleString()} bottles</span>
+                </div>
+                <div style={{ color: "var(--danger)", fontSize: 13 }}>
+                  Completing posts these bottles to the factory ledger and can't be undone.
+                </div>
+              </div>
+            </ConfirmModal>
+          )}
         </>
       )}
     </Shell>
