@@ -163,3 +163,38 @@ describe("packaging.purchase_recorded formatting", () => {
     expect(out.text).toContain("/owner/packaging");
   });
 });
+
+describe("appendFooter", () => {
+  it("adds the actor and Lagos time", async () => {
+    const { appendFooter } = await import("../src/outbox.js");
+    const out = appendFooter("body", {
+      actor_name: "Aisha Bello", actor_role: "branch_staff", actor_branch_name: "Ajao",
+    }, "2026-06-17T14:42:00.000Z");
+    expect(out).toContain("body");
+    expect(out).toContain("Aisha Bello");
+    expect(out).toContain("Branch staff");
+    expect(out).toContain("Ajao");
+    expect(out).toMatch(/🕒/);
+  });
+  it("omits the actor line when no actor is present", async () => {
+    const { appendFooter } = await import("../src/outbox.js");
+    const out = appendFooter("body", {});
+    expect(out).toBe("body");
+  });
+});
+
+describe("audit.logged formatting", () => {
+  it("renders before→after change lines", async () => {
+    const { format } = await import("../src/outbox.js");
+    const { text } = format({
+      eventType: "audit.logged",
+      payload: {
+        action: "product.update", entity_noun: "Product", identifier: "Zobo",
+        changes: [{ label: "Price", from: "₦1,800", to: "₦2,000" }],
+      },
+    });
+    expect(text).toContain("Product");
+    expect(text).toContain("Zobo");
+    expect(text).toContain("Price: ₦1,800 → ₦2,000");
+  });
+});

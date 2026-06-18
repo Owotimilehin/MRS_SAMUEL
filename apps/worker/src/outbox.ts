@@ -33,6 +33,30 @@ function lagosTime(iso: unknown): string {
   });
 }
 
+function roleLabel(role: string): string {
+  return role.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+
+/**
+ * Append the uniform "who · when" footer to a message body. Degrades to the
+ * bare body when the event carries no actor (webhook/system events).
+ */
+export function appendFooter(
+  text: string,
+  payload: Record<string, unknown>,
+  createdAt?: Date | string,
+): string {
+  if (!text) return text;
+  const lines: string[] = [];
+  const who: string[] = [];
+  if (payload["actor_name"]) who.push(String(payload["actor_name"]));
+  if (payload["actor_role"]) who.push(roleLabel(String(payload["actor_role"])));
+  if (payload["actor_branch_name"]) who.push(String(payload["actor_branch_name"]));
+  if (who.length) lines.push(`👤 ${who.join(" · ")}`);
+  if (createdAt) lines.push(`🕒 ${lagosTime(typeof createdAt === "string" ? createdAt : createdAt.toISOString())}`);
+  return lines.length ? `${text}\n${lines.join("\n")}` : text;
+}
+
 interface FormattedMessage {
   chatIds: (string | undefined)[];
   text: string;
@@ -402,13 +426,13 @@ export function format(event: { eventType: string; payload: Record<string, unkno
       const verbKey = String(p["action"] ?? "").split(".")[1] ?? "";
       const verb = VERB[verbKey] ?? verbKey.replace(/_/g, " ") ?? "changed";
       const identifier = p["identifier"] ? ` — ${p["identifier"]}` : "";
-      const role = p["actor_role"]
-        ? ` (by ${String(p["actor_role"]).replace(/_/g, " ")})`
-        : "";
-      return {
-        chatIds: [owner],
-        text: `📝 *${noun} ${verb}*${identifier}${role}\n👉 ${ADMIN_URL}/owner/audit-log`,
-      };
+      const changes = Array.isArray(event.payload["changes"]) ? (event.payload["changes"] as Array<{ label: string; from: string; to: string }>) : [];
+      const changeLines = changes.slice(0, 6).map((c) => `• ${c.label}: ${c.from} → ${c.to}`).join("\n");
+      const more = changes.length > 6 ? `\n…and ${changes.length - 6} more` : "";
+      const body = `📝 *${noun} ${verb}*${identifier}`
+        + (changeLines ? `\n${changeLines}${more}` : "")
+        + `\n👉 ${ADMIN_URL}/owner/audit-log`;
+      return { chatIds: [owner], text: body };
     }
     default:
       // Unknown event — tell the owner so we never silently drop something new.
@@ -436,7 +460,8 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
   let processed = 0;
   for (const ev of pending) {
     try {
-      const { chatIds, text } = format(ev);
+      const { chatIds, text: body } = format(ev);
+      const text = appendFooter(body, ev.payload as Record<string, unknown>, ev.createdAt);
       if (text) {
         for (const chatId of chatIds) {
           if (chatId) await sendMessage(chatId, text);
