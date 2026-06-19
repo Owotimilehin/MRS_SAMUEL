@@ -411,7 +411,7 @@ describe("Phase 5 daily close flow", () => {
         shift_open: {
           id: string;
           opened_by: string | null;
-          stock_counts: Array<{ productId: string; countedQuantity: number }>;
+          stock_counts: Array<{ productId: string; variantId: string | null; countedQuantity: number }>;
         } | null;
       };
     }>("GET", `/v1/branches/${branch.id}/daily-close/${target.id}`);

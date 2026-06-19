@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { shiftOpen, shiftOpenStockCount, adminUser, type DbClient } from "@ms/db";
-import { expectedStockForDay } from "@ms/domain";
+import { expectedStockForDay, expectedStockKey, expectedStockMap } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
@@ -16,6 +16,7 @@ const Submit = z.object({
     .array(
       z.object({
         product_id: z.string().uuid(),
+        variant_id: z.string().uuid().nullable().optional(),
         counted_quantity: z.number().int().nonnegative(),
         variance_reason: z.string().optional(),
       }),
@@ -41,9 +42,10 @@ export function shiftOpenRoutes(db: DbClient) {
     const auth = c.get("auth");
 
     // Server-side guard: a varianced line must carry a reason.
-    const expected = await expectedStockForDay(db, branchId);
+    const expectedLines = await expectedStockForDay(db, branchId);
+    const expectedByKey = expectedStockMap(expectedLines);
     for (const sc of body.stock_counts) {
-      const exp = expected[sc.product_id] ?? 0;
+      const exp = expectedByKey.get(expectedStockKey(sc.product_id, sc.variant_id ?? null)) ?? 0;
       if (sc.counted_quantity - exp !== 0 && !sc.variance_reason) {
         throw new BusinessError("validation_failed", "variance_reason required on varianced line", 400);
       }
@@ -89,16 +91,18 @@ export function shiftOpenRoutes(db: DbClient) {
           open = inserted;
         }
 
-        // Replace count rows atomically (re-count = delete + reinsert).
+        // Replace count rows atomically (re-count = delete + reinsert), per (product, variant).
         await tx.delete(shiftOpenStockCount).where(eq(shiftOpenStockCount.shiftOpenId, open.id));
         let varianceCount = 0;
         for (const sc of body.stock_counts) {
-          const exp = expected[sc.product_id] ?? 0;
+          const variantId = sc.variant_id ?? null;
+          const exp = expectedByKey.get(expectedStockKey(sc.product_id, variantId)) ?? 0;
           const variance = sc.counted_quantity - exp;
           if (variance !== 0) varianceCount += 1;
           await tx.insert(shiftOpenStockCount).values({
             shiftOpenId: open.id,
             productId: sc.product_id,
+            variantId,
             systemQuantity: exp,
             countedQuantity: sc.counted_quantity,
             variance,
