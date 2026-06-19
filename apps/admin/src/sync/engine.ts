@@ -239,6 +239,8 @@ interface PullResponse {
       createdAtLocal: string;
       idempotencyKey: string;
     }>;
+    /** Server signals that today's opening count is already on file for this branch. */
+    opened_today?: boolean;
   };
   next_cursor: string;
 }
@@ -380,6 +382,7 @@ export async function pullDeltas(branchId: string): Promise<void> {
         id: "default",
         last_pull_at: body.next_cursor,
         branch_id: branchId,
+        opened_today: body.data.opened_today ?? false,
       });
     },
   );
