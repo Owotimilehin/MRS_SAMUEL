@@ -15,6 +15,10 @@ export const CAPABILITIES = [
   "blog.manage",
   "marketing.manage",
   "reports.view",
+  // Owner-only by default: the daily-profit financial view (revenue, packaging
+  // cost, profit). Deliberately NOT in ADMIN_CAPS/MANAGER_CAPS — admins/managers
+  // see operational signals only. Grantable per-user via overrides.
+  "finance.view",
   "audit.view",
   "devices.view",
   "customers.view",
