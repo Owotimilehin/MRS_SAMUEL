@@ -126,6 +126,15 @@ export interface SyncMetaRow {
   id: "default";
   last_pull_at: string | null;
   branch_id: string | null;
+  opened_today?: boolean;
+}
+
+export interface ShiftOpenMarkerRow {
+  // `${branch_id}::${business_date}`
+  id: string;
+  branch_id: string;
+  business_date: string;
+  opened_at: string;
 }
 
 export class BranchDB extends Dexie {
@@ -139,6 +148,7 @@ export class BranchDB extends Dexie {
   outbox!: Table<OutboxRow, string>;
   reservations!: Table<ReservationRow, string>;
   meta!: Table<SyncMetaRow, "default">;
+  shiftOpenMarker!: Table<ShiftOpenMarkerRow, string>;
 
   constructor() {
     super("ms_branch");
@@ -184,6 +194,12 @@ export class BranchDB extends Dexie {
         const meta = await tx.table("meta").get("default");
         if (meta) await tx.table("meta").put({ ...meta, last_pull_at: null });
       });
+    // v5: open-gate marker. Records, per (branch, business_date), that an
+    // opening count was filed ON THIS DEVICE — unlocks the till offline and
+    // survives logout (only "Refresh app" / local.delete() clears it).
+    this.version(5).stores({
+      shiftOpenMarker: "id, branch_id, business_date",
+    });
   }
 }
 

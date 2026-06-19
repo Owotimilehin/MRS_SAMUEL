@@ -93,6 +93,29 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   // field yet, so fall back to the email prefix then the role.
   const authUser = useAuthUser();
   const servedBy = (authUser.email.split("@")[0] || authUser.role).replace(/[._]/g, " ");
+  // Stock-consuming sales need pos.sell (owner + branch_staff). Manager/admin
+  // have only pos.preorder — they can take orders but never draw down stock.
+  const canSellStock = authUser.capabilities.includes("pos.sell");
+  const canPreorder = authUser.capabilities.includes("pos.preorder");
+  const isOwner = authUser.role === "owner";
+  // Has this branch filed today's opening count? null = still loading.
+  const [opened, setOpened] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { isOpenedToday } = await import("../../sync/local-shift-open.js");
+      const v = await isOpenedToday(branchId);
+      if (!cancelled) setOpened(v);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
+  // branch_staff is gated until they file today's opening count. Owner is exempt.
+  // Manager/admin have no pos.sell (preorder-only) so are never gated.
+  const stockSaleBlocked = canSellStock && !isOwner && opened === false;
+  // Defensive: a user with neither selling capability can't check out at all.
+  const checkoutDisabled = !canSellStock && !canPreorder;
   // Branch header for the receipt, fetched best-effort (works online; offline we
   // still print with just the branch id-derived fallbacks).
   const [branchInfo, setBranchInfo] = useState<{ name: string; address: string | null; phone: string | null }>({
@@ -259,9 +282,11 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   // preorder (made to order — paid now, fulfilled later). The cashier can also
   // opt any in-stock order in via the cashout toggle. preorder_only is no longer
   // a till trigger: an in-stock 330ml sells instantly (see sales.ts).
-  const forcedPreorder = cart.some(
-    (l) => (availByVariant[l.variant_id] ?? Infinity) < l.quantity,
-  );
+  // Managers/admins have no pos.sell — every order they place is a preorder
+  // (no stock consumed), regardless of availability. Otherwise a line the branch
+  // can't cover from stock forces the whole ticket to a preorder.
+  const forcedPreorder =
+    !canSellStock || cart.some((l) => (availByVariant[l.variant_id] ?? Infinity) < l.quantity);
   const orderIsPreorder = forcedPreorder || preorderChoice;
 
   async function checkout(): Promise<void> {
@@ -365,6 +390,23 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (stockSaleBlocked) {
+    return (
+      <BranchShell branchId={branchId} title="Sell">
+        <section className="card" style={{ textAlign: "center", padding: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🌅</div>
+          <h2 className="t-h2">Start your shift</h2>
+          <p style={{ color: "var(--ink-soft)", margin: "8px 0 20px" }}>
+            Count the stock you&rsquo;re starting with to unlock the till.
+          </p>
+          <a className="btn btn--primary btn--lg" href="/branch/shift-start">
+            Count opening stock
+          </a>
+        </section>
+      </BranchShell>
+    );
   }
 
   return (
@@ -632,7 +674,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
             <button
               type="button"
               className="btn btn--primary btn--block btn--cta"
-              disabled={submitting || cart.length === 0}
+              disabled={submitting || cart.length === 0 || checkoutDisabled}
               onClick={() => void checkout()}
             >
               {submitting

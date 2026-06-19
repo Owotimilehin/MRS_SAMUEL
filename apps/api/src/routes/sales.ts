@@ -16,7 +16,7 @@ import {
   type DbClient,
 } from "@ms/db";
 import { availableAtBranch, nextOrderNumber } from "@ms/domain";
-import { requireAuth, requireCapability } from "../middleware/auth.js";
+import { requireAuth, requireCapability, requireAnyCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -110,7 +110,7 @@ export function saleRoutes(db: DbClient) {
   // ============ Bag stock for the POS (pos.sell — branch staff have no packaging.view) ============
   // Lists active bag materials with this branch's on-hand count so the till can
   // show "Bags on hand" without granting the cashier the packaging admin views.
-  r.get("/bags", requireCapability("pos.sell"), async (c) => {
+  r.get("/bags", requireAnyCapability("pos.sell", "pos.preorder"), async (c) => {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const balances = await db.execute<{ packaging_material_id: string; balance: number }>(sql`
@@ -130,7 +130,7 @@ export function saleRoutes(db: DbClient) {
   });
 
   // ============ Confirm (creates DRAFT→CONFIRMED with stock reservation) ============
-  r.post("/", requireCapability("pos.sell"), async (c) => {
+  r.post("/", requireAnyCapability("pos.sell", "pos.preorder"), async (c) => {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const body = ConfirmSale.parse(await c.req.json());
@@ -139,6 +139,13 @@ export function saleRoutes(db: DbClient) {
       throw new BusinessError("validation_failed", "idempotency-key header required", 400);
     }
     const auth = c.get("auth");
+
+    // Preorder-only roles (manager/admin: pos.preorder without pos.sell) may pass
+    // the gate to take preorders, but must never ring a stock-consuming sale. The
+    // gate is open to either capability, so enforce the restriction here.
+    if (!auth.capabilities.includes("pos.sell") && body.is_preorder !== true) {
+      throw new BusinessError("forbidden", "this role may only create preorders", 403);
+    }
 
     const created = await db.transaction(async (tx) => {
       // Resolve or create the customer by phone (shared identity rule). Returns
@@ -342,7 +349,7 @@ export function saleRoutes(db: DbClient) {
   });
 
   // ============ Pay (CONFIRMED→PAID, converts reservation to ledger) ============
-  r.patch("/:id/pay", requireCapability("pos.sell"), async (c) => {
+  r.patch("/:id/pay", requireAnyCapability("pos.sell", "pos.preorder"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const auth = c.get("auth");
@@ -350,6 +357,10 @@ export function saleRoutes(db: DbClient) {
     const updated = await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
       if (!o) throw new BusinessError("not_found", "sale not found", 404);
+      // Preorder-only roles may only pay preorders, never stock-consuming sales.
+      if (!auth.capabilities.includes("pos.sell") && !o.isPreorder) {
+        throw new BusinessError("forbidden", "this role may only pay preorders", 403);
+      }
       if (o.status !== "confirmed") {
         throw new BusinessError("conflict", `cannot pay from ${o.status}`, 409);
       }

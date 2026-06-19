@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { type DbClient } from "@ms/db";
-import { requireAuth, requireCapability } from "../middleware/auth.js";
+import { requireAuth, requireAnyCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { BusinessError } from "../lib/errors.js";
 import { listOpenPreorders, fulfilPreorderTx } from "./preorder-shared.js";
@@ -14,14 +14,14 @@ export function branchPreorderRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth(), requireBranchScope());
 
-  r.get("/", requireCapability("pos.sell"), async (c) => {
+  r.get("/", requireAnyCapability("pos.sell", "pos.preorder"), async (c) => {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const data = await listOpenPreorders(db, { branchId });
     return c.json({ data });
   });
 
-  r.patch("/:id/fulfil", requireCapability("pos.sell"), async (c) => {
+  r.patch("/:id/fulfil", requireAnyCapability("pos.sell", "pos.preorder"), async (c) => {
     const branchId = c.req.param("branchId");
     const id = c.req.param("id");
     if (!branchId || !id) throw new BusinessError("validation_failed", "branchId and id required", 400);

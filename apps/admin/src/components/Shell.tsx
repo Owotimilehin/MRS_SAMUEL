@@ -178,7 +178,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
           {renderSection("Finance", NAV_FINANCE)}
           {renderSection("Marketing", NAV_MARKETING)}
           {renderSection("Admin", NAV_ADMIN)}
-          {can("pos.sell") ? (
+          {can("pos.preorder") ? (
             <>
               <div className="app-nav__section">Branch tools</div>
               <Link

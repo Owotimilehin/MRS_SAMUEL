@@ -69,10 +69,6 @@ describe("Phase 5 daily close flow", () => {
     });
     branch = bRes.body.data;
 
-    const { factory: factoryTable } = await import("@ms/db");
-    const [fac] = await tdb.db.insert(factoryTable).values({ name: "Close Test Factory" }).returning();
-    const factory = fac as { id: string };
-
     const pRes = await call<{ data: ProductRow }>("POST", "/v1/products", {
       name: "Close Test Sunrise",
       slug: "close-test-sunrise",
@@ -82,27 +78,13 @@ describe("Phase 5 daily close flow", () => {
     });
     product = pRes.body.data;
 
-    // Pre-stock 20 bottles.
-    const run = await call<{ data: { id: string } }>("POST", "/v1/production-runs", {
-      factory_id: factory.id,
-      run_date: "2026-05-11",
-      items: [{ product_id: product.id, quantity_produced: 20 }],
-    });
-    await call("PATCH", `/v1/production-runs/${run.body.data.id}/complete`);
-    const xfer = await call<{ data: { id: string } }>("POST", "/v1/transfers", {
-      factory_id: factory.id,
-      branch_id: branch.id,
-      items: [{ product_id: product.id, quantity_sent: 20 }],
-    });
-    // POST /v1/transfers creates the row already in `dispatched` status —
-    // no separate /dispatch call is needed (or exists on the route table).
-    await call("PATCH", `/v1/transfers/${xfer.body.data.id}/arrive`);
-    const detail = await call<{ data: { items: Array<{ id: string }> } }>(
-      "GET",
-      `/v1/transfers/${xfer.body.data.id}`,
-    );
-    await call("PATCH", `/v1/transfers/${xfer.body.data.id}/receive`, {
-      items: [{ item_id: detail.body.data.items[0]!.id, quantity_received: 20 }],
+    // Pre-stock 20 bottles directly at the branch via inventory adjust
+    // (avoids production-run + transfer which now requires variant_id + bottle material).
+    await call("POST", "/v1/inventory/adjust", {
+      location_type: "branch",
+      location_id: branch.id,
+      reason_code: "opening_balance",
+      items: [{ product_id: product.id, new_quantity: 20 }],
     });
 
     // Sell 3 bottles by transfer today (the till books every sale as transfer).
@@ -205,5 +187,40 @@ describe("Phase 5 daily close flow", () => {
     expect(hit).toBeDefined();
     expect(hit!.quantity).toBe(3);
     expect(hit!.revenue_ngn).toBe(7500);
+  });
+
+  it("close detail includes the matching shift_open when one was filed", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    // File a shift-open with counted 9 (system had 17 after 3 sales, but the
+    // opening count is what branch_staff filed at the START of today).
+    await call("POST", `/v1/branches/${branch.id}/shift-open`, {
+      business_date: today,
+      stock_counts: [{ product_id: product.id, counted_quantity: 9, variance_reason: "short" }],
+    });
+    // Submit a daily close for the same date.
+    const closeRes = await call<{ data: CloseRow }>(
+      "POST",
+      `/v1/branches/${branch.id}/daily-close`,
+      {
+        business_date: today,
+        cash_counted_ngn: 0,
+        transfers_counted_ngn: 7500,
+        stock_counts: [{ product_id: product.id, counted_quantity: 7, variance_reason: "sold" }],
+      },
+    );
+    expect(closeRes.status).toBe(201);
+    // GET the close detail and assert shift_open is included.
+    const detailRes = await call<{
+      data: {
+        shift_open: {
+          id: string;
+          opened_by: string | null;
+          stock_counts: Array<{ productId: string; countedQuantity: number }>;
+        } | null;
+      };
+    }>("GET", `/v1/branches/${branch.id}/daily-close/${closeRes.body.data.id}`);
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.body.data.shift_open).not.toBeNull();
+    expect(detailRes.body.data.shift_open!.stock_counts[0]!.countedQuantity).toBe(9);
   });
 });

@@ -359,5 +359,12 @@
       "tag": "0051_admin_user_name",
       "breakpoints": true
     }
+    ,{
+      "idx": 51,
+      "version": "7",
+      "when": 1781876921730,
+      "tag": "0052_shift_open",
+      "breakpoints": true
+    }
   ]
 }

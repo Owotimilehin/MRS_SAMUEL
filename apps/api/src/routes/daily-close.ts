@@ -1,9 +1,11 @@
 import { Hono } from "hono";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   dailyClose,
   dailyCloseStockCount,
+  shiftOpen,
+  shiftOpenStockCount,
   adminUser,
   type DbClient,
 } from "@ms/db";
@@ -213,8 +215,21 @@ export function dailyCloseRoutes(db: DbClient) {
     const approvedBy = close.approvedByUserId
       ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, close.approvedByUserId)))[0]?.email ?? null
       : null;
+    // Fetch the matching shift-open record for the same (branchId, businessDate)
+    // so the owner can compare opening vs closing stock counts.
+    const [open] = await db
+      .select()
+      .from(shiftOpen)
+      .where(and(eq(shiftOpen.branchId, close.branchId), eq(shiftOpen.businessDate, close.businessDate)));
+    const openCounts = open
+      ? await db.select().from(shiftOpenStockCount).where(eq(shiftOpenStockCount.shiftOpenId, open.id))
+      : [];
+    const openedBy = open?.openedByUserId
+      ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, open.openedByUserId)))[0]?.email ?? null
+      : null;
+    const shiftOpenOut = open ? { ...open, opened_by: openedBy, stock_counts: openCounts } : null;
     return c.json({
-      data: { ...close, submitted_by: submittedBy, approved_by: approvedBy, stock_counts: counts, cash_sales: cashSales },
+      data: { ...close, submitted_by: submittedBy, approved_by: approvedBy, stock_counts: counts, cash_sales: cashSales, shift_open: shiftOpenOut },
     });
   });
 

@@ -10,9 +10,10 @@ import {
   saleOrderItem,
   stockLedger,
   customer,
+  shiftOpen,
   type DbClient,
 } from "@ms/db";
-import { requireAuth, requireCapability } from "../middleware/auth.js";
+import { requireAuth, requireAnyCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { BusinessError } from "../lib/errors.js";
 
@@ -37,7 +38,7 @@ export function syncRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth(), requireBranchScope());
 
-  r.get("/pull", requireCapability("pos.sell"), async (c) => {
+  r.get("/pull", requireAnyCapability("pos.sell", "pos.preorder"), async (c) => {
     const auth = c.get("auth");
     const url = new URL(c.req.url);
     const branchIdParam = url.searchParams.get("branch_id");
@@ -140,6 +141,16 @@ export function syncRoutes(db: DbClient) {
 
     const customers = await db.select().from(customer).where(gte(customer.updatedAt, since));
 
+    // Has this branch filed an opening count for today (Lagos)? The till uses
+    // this to satisfy the open-gate without a local marker (e.g. a 2nd device).
+    const todayLagos = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+    const openRows = await db
+      .select({ id: shiftOpen.id })
+      .from(shiftOpen)
+      .where(and(eq(shiftOpen.branchId, branchIdParam), eq(shiftOpen.businessDate, todayLagos)))
+      .limit(1);
+    const openedToday = openRows.length > 0;
+
     return c.json({
       data: {
         products,
@@ -152,6 +163,7 @@ export function syncRoutes(db: DbClient) {
         sales,
         sale_items: saleItems,
         customers,
+        opened_today: openedToday,
       },
       next_cursor: new Date().toISOString(),
     });

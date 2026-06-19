@@ -1,0 +1,138 @@
+import { Hono } from "hono";
+import { eq, and } from "drizzle-orm";
+import { z } from "zod";
+import { shiftOpen, shiftOpenStockCount, adminUser, type DbClient } from "@ms/db";
+import { expectedStockForDay } from "@ms/domain";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
+import { requireBranchScope } from "../middleware/scope.js";
+import { writeAudit } from "../middleware/audit.js";
+import { BusinessError } from "../lib/errors.js";
+import { enqueueOutbox } from "../lib/notify.js";
+
+const Submit = z.object({
+  business_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  notes: z.string().optional(),
+  stock_counts: z
+    .array(
+      z.object({
+        product_id: z.string().uuid(),
+        counted_quantity: z.number().int().nonnegative(),
+        variance_reason: z.string().optional(),
+      }),
+    )
+    .default([]), // empty allowed so an empty catalog cannot deadlock the gate
+});
+
+export function shiftOpenRoutes(db: DbClient) {
+  const r = new Hono();
+  r.use("*", requireAuth(), requireBranchScope());
+
+  r.get("/preview", async (c) => {
+    const branchId = c.req.param("branchId");
+    if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
+    const stock = await expectedStockForDay(db, branchId);
+    return c.json({ data: { expected_stock: stock } });
+  });
+
+  r.post("/", requireCapability("shift_open.submit"), async (c) => {
+    const branchId = c.req.param("branchId");
+    if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
+    const body = Submit.parse(await c.req.json());
+    const auth = c.get("auth");
+
+    // Server-side guard: a varianced line must carry a reason.
+    const expected = await expectedStockForDay(db, branchId);
+    for (const sc of body.stock_counts) {
+      const exp = expected[sc.product_id] ?? 0;
+      if (sc.counted_quantity - exp !== 0 && !sc.variance_reason) {
+        throw new BusinessError("validation_failed", "variance_reason required on varianced line", 400);
+      }
+    }
+
+    const created = await db.transaction(async (tx) => {
+      const [open] = await tx
+        .insert(shiftOpen)
+        .values({
+          branchId,
+          businessDate: body.business_date,
+          openedByUserId: auth.userId,
+          openedAt: new Date(),
+          notes: body.notes ?? null,
+        })
+        .onConflictDoUpdate({
+          target: [shiftOpen.branchId, shiftOpen.businessDate],
+          set: {
+            openedByUserId: auth.userId,
+            openedAt: new Date(),
+            notes: body.notes ?? null,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      if (!open) throw new BusinessError("internal_error", "shift open upsert failed", 500);
+
+      // Replace count rows atomically (re-count = upsert).
+      await tx.delete(shiftOpenStockCount).where(eq(shiftOpenStockCount.shiftOpenId, open.id));
+      let varianceCount = 0;
+      for (const sc of body.stock_counts) {
+        const exp = expected[sc.product_id] ?? 0;
+        const variance = sc.counted_quantity - exp;
+        if (variance !== 0) varianceCount += 1;
+        await tx.insert(shiftOpenStockCount).values({
+          shiftOpenId: open.id,
+          productId: sc.product_id,
+          systemQuantity: exp,
+          countedQuantity: sc.counted_quantity,
+          variance,
+          varianceReason: sc.variance_reason ?? null,
+        });
+      }
+
+      const [filer] = await tx
+        .select({ email: adminUser.email })
+        .from(adminUser)
+        .where(eq(adminUser.id, auth.userId));
+      await enqueueOutbox(tx, c, "shift_open.submitted", {
+        shift_open_id: open.id,
+        branch_id: branchId,
+        business_date: body.business_date,
+        opened_by: filer?.email ?? auth.userId,
+        variance_count: varianceCount,
+      });
+      return open;
+    });
+
+    await writeAudit(db, c, {
+      action: "shift_open.submit",
+      entityType: "shift_open",
+      entityId: created.id,
+      after: created,
+    });
+    return c.json({ data: created }, 201);
+  });
+
+  r.get("/", async (c) => {
+    const branchId = c.req.param("branchId");
+    if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
+    const date = c.req.query("date");
+    const [open] = await db
+      .select()
+      .from(shiftOpen)
+      .where(
+        date
+          ? and(eq(shiftOpen.branchId, branchId), eq(shiftOpen.businessDate, date))
+          : eq(shiftOpen.branchId, branchId),
+      );
+    if (!open) return c.json({ data: null });
+    const counts = await db
+      .select()
+      .from(shiftOpenStockCount)
+      .where(eq(shiftOpenStockCount.shiftOpenId, open.id));
+    const openedBy = open.openedByUserId
+      ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, open.openedByUserId)))[0]?.email ?? null
+      : null;
+    return c.json({ data: { ...open, opened_by: openedBy, stock_counts: counts } });
+  });
+
+  return r;
+}

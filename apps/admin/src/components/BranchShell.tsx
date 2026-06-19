@@ -32,12 +32,13 @@ interface BranchNavLink {
 }
 
 const NAV: BranchNavLink[] = [
+  { to: "/branch/shift-start", label: "Shift start", icon: "🌅", cap: "shift_open.submit" },
   { to: "/branch", label: "Today", icon: "🏠", cap: "sales.view" },
-  { to: "/branch/sell", label: "Sell", icon: "🥤", cap: "pos.sell" },
+  { to: "/branch/sell", label: "Sell", icon: "🥤", cap: "pos.preorder" },
   { to: "/branch/sales", label: "Today's sales", icon: "🧾", cap: "sales.view" },
   { to: "/branch/transfers", label: "Incoming", icon: "📦", cap: "transfers.receive" },
   { to: "/branch/stock", label: "Stock", icon: "📊" },
-  { to: "/branch/preorders", label: "Preorders", icon: "📅", cap: "pos.sell" },
+  { to: "/branch/preorders", label: "Preorders", icon: "📅", cap: "pos.preorder" },
   { to: "/branch/returns", label: "Returns", icon: "↩️", cap: "returns.create" },
   { to: "/branch/close", label: "Shift end", icon: "📋", cap: "daily_close.submit" },
   { to: "/branch/closes", label: "Shift history", icon: "📚" },

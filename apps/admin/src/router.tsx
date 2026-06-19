@@ -150,6 +150,10 @@ const BranchClosePage = lazyNamed<{ branchId: string }>(
   () => import("./routes/branch/close.js"),
   "BranchClosePage",
 );
+const BranchShiftStartPage = lazyNamed<{ branchId: string }>(
+  () => import("./routes/branch/shift-start.js"),
+  "BranchShiftStartPage",
+);
 const BranchClosesPage = lazyNamed<{ branchId: string }>(
   () => import("./routes/branch/closes.js"),
   "BranchClosesPage",
@@ -567,6 +571,12 @@ const branchCloseRoute = createRoute({
   component: () =>
     guarded(<L><WithBranchId render={(id) => <BranchClosePage branchId={id} />} /></L>),
 });
+const branchShiftStartRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/branch/shift-start",
+  component: () =>
+    guarded(<L><WithBranchId render={(id) => <BranchShiftStartPage branchId={id} />} /></L>),
+});
 const branchClosesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/branch/closes",
@@ -646,6 +656,7 @@ const routeTree = rootRoute.addChildren([
   branchPreordersRoute,
   branchReturnsRoute,
   branchReturnDetailRoute,
+  branchShiftStartRoute,
   branchCloseRoute,
   branchClosesRoute,
   branchQueueRoute,
