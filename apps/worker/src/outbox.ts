@@ -37,6 +37,19 @@ function roleLabel(role: string): string {
   return role.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
+function varianceLines(raw: unknown): string {
+  if (!Array.isArray(raw) || raw.length === 0) return "";
+  const lines = (raw as Array<{ label?: string; variance?: number; reason?: string | null }>)
+    .map((v) => {
+      const n = Number(v.variance ?? 0);
+      const sign = n > 0 ? "+" : "";
+      const reason = v.reason ? ` — ${v.reason}` : "";
+      return `• ${v.label ?? "?"}: ${sign}${n}${reason}`;
+    })
+    .join("\n");
+  return `\n${lines}`;
+}
+
 function itemLines(payload: Record<string, unknown>): string {
   const items = Array.isArray(payload["items"])
     ? (payload["items"] as Array<Record<string, unknown>>) : [];
@@ -231,8 +244,9 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         text:
           `📋 *Shift-end report filed*\n` +
           `${p["business_date"]}${p["filed_by"] ? ` · by ${p["filed_by"]}` : ""}\n` +
-          `Transfers: ₦${p["transfer_ngn"] ?? "?"} · Variance: ₦${p["variance_ngn"] ?? "0"}\n` +
-          `👉 ${ADMIN_URL}/owner/closes`,
+          `Transfers: ₦${p["transfer_ngn"] ?? "?"} · Variance: ₦${p["variance_ngn"] ?? "0"}` +
+          varianceLines(event.payload["variances"]) +
+          `\n👉 ${ADMIN_URL}/owner/closes`,
       };
     case "shift_open.submitted":
       return {
@@ -240,8 +254,9 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         text:
           `🌅 *Shift start — opening count filed*\n` +
           `${p["business_date"]}${p["opened_by"] ? ` · by ${p["opened_by"]}` : ""}\n` +
-          `Opening variances: ${p["variance_count"] ?? 0}\n` +
-          `👉 ${ADMIN_URL}/branch/shift-start`,
+          `Opening variances: ${p["variance_count"] ?? 0}` +
+          varianceLines(event.payload["variances"]) +
+          `\n👉 ${ADMIN_URL}/branch/shift-start`,
       };
     case "sale.online_placed":
       return {

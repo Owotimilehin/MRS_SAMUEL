@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { shiftOpen, shiftOpenStockCount, adminUser, type DbClient } from "@ms/db";
+import { shiftOpen, shiftOpenStockCount, adminUser, product, type DbClient } from "@ms/db";
 import { expectedStockForDay, expectedStockKey, expectedStockMap } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
@@ -114,12 +114,39 @@ export function shiftOpenRoutes(db: DbClient) {
           .select({ email: adminUser.email })
           .from(adminUser)
           .where(eq(adminUser.id, auth.userId));
+        const variances = body.stock_counts
+          .map((sc) => {
+            const variantId = sc.variant_id ?? null;
+            const exp = expectedByKey.get(expectedStockKey(sc.product_id, variantId)) ?? 0;
+            const size = expectedLines.find(
+              (l) => l.product_id === sc.product_id && l.variant_id === variantId,
+            )?.size_ml;
+            return {
+              product_id: sc.product_id,
+              variance: sc.counted_quantity - exp,
+              variance_reason: sc.variance_reason ?? null,
+              size_ml: size ?? null,
+            };
+          })
+          .filter((v) => v.variance !== 0);
+        const nameRows = variances.length
+          ? await tx
+              .select({ id: product.id, name: product.name })
+              .from(product)
+              .where(inArray(product.id, [...new Set(variances.map((v) => v.product_id))]))
+          : [];
+        const nameOf = new Map(nameRows.map((n) => [n.id, n.name]));
         await enqueueOutbox(tx, c, "shift_open.submitted", {
           shift_open_id: open.id,
           branch_id: branchId,
           business_date: body.business_date,
           opened_by: filer?.email ?? auth.userId,
           variance_count: varianceCount,
+          variances: variances.map((v) => ({
+            label: `${nameOf.get(v.product_id) ?? v.product_id.slice(0, 8)}${v.size_ml ? ` ${v.size_ml}ml` : ""}`,
+            variance: v.variance,
+            reason: v.variance_reason,
+          })),
         });
         return open;
       });
