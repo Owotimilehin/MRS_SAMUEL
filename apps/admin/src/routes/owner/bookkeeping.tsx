@@ -83,10 +83,10 @@ export function BookkeepingPage(): JSX.Element {
         api<{ data: Expense[]; pagination: { total: number } }>(
           `/expenses?from=${from}&to=${to}&page_size=200`,
         ),
-        api<{ data: Pnl }>(`/reports/pnl?month=${month}`),
+        canFinance ? api<{ data: Pnl }>(`/reports/pnl?month=${month}`) : Promise.resolve(null),
       ]);
       setExpenses(ex.data);
-      setPnl(p.data);
+      if (p) setPnl(p.data);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -151,14 +151,18 @@ export function BookkeepingPage(): JSX.Element {
       <StatHero
         eyebrow="Finance"
         title="Bookkeeping"
-        sub={`Revenue, expenses and profit for ${month}.`}
+        sub={canFinance ? `Revenue, expenses and profit for ${month}.` : `Expense records for ${month}.`}
         loading={loading}
-        chips={[
-          { label: "Revenue", value: pnl ? ngn(pnl.net_revenue_ngn) : "—" },
-          { label: "Expenses", value: pnl ? ngn(pnl.expenses_total_ngn) : "—" },
-          { label: "Profit", value: pnl ? ngn(pnl.net_ngn) : "—", tone: pnl ? (pnl.net_ngn >= 0 ? "good" : "danger") : "default" },
-          { label: "Margin", value: pnl ? `${marginPct}%` : "—" },
-        ]}
+        chips={
+          canFinance
+            ? [
+                { label: "Revenue", value: pnl ? ngn(pnl.net_revenue_ngn) : "—" },
+                { label: "Expenses", value: pnl ? ngn(pnl.expenses_total_ngn) : "—" },
+                { label: "Profit", value: pnl ? ngn(pnl.net_ngn) : "—", tone: pnl ? (pnl.net_ngn >= 0 ? "good" : "danger") : "default" },
+                { label: "Margin", value: pnl ? `${marginPct}%` : "—" },
+              ]
+            : []
+        }
       />
       {error && (
         <div
