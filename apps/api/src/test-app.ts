@@ -31,6 +31,7 @@ import { publicInstagramRoutes } from "./routes/public-instagram.js";
 import { payazaWebhookRoutes } from "./routes/webhooks-payaza.js";
 import { returnRoutes } from "./routes/returns.js";
 import { dailyCloseRoutes } from "./routes/daily-close.js";
+import { shiftOpenRoutes } from "./routes/shift-open.js";
 import { reportRoutes } from "./routes/reports.js";
 import { telemetryRoutes } from "./routes/telemetry.js";
 import { adminUserRoutes } from "./routes/admin-users.js";
@@ -96,6 +97,7 @@ export function buildApp(): Hono {
   app.route("/v1/branches/:branchId/preorders", branchPreorderRoutes(db));
   app.route("/v1/branches/:branchId/returns", returnRoutes(db));
   app.route("/v1/branches/:branchId/daily-close", dailyCloseRoutes(db));
+  app.route("/v1/branches/:branchId/shift-open", shiftOpenRoutes(db));
   app.route("/v1/reports", reportRoutes(db));
   app.route("/v1/expenses", expenseRoutes(db));
   app.route("/v1/packaging", packagingRoutes(db));
