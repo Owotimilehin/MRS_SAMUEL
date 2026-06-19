@@ -105,7 +105,7 @@ describe("Phase 5 daily close flow", () => {
       items: [{ item_id: detail.body.data.items[0]!.id, quantity_received: 20 }],
     });
 
-    // Sell 3 bottles cash today.
+    // Sell 3 bottles by transfer today (the till books every sale as transfer).
     for (let i = 0; i < 3; i++) {
       const confirm = await call<{ data: SaleOrderRow }>(
         "POST",
@@ -113,7 +113,7 @@ describe("Phase 5 daily close flow", () => {
         {
           channel: "walkup",
           items: [{ product_id: product.id, quantity: 1 }],
-          payment_method: "cash",
+          payment_method: "transfer",
           created_at_local: new Date().toISOString(),
         },
       );
@@ -133,6 +133,7 @@ describe("Phase 5 daily close flow", () => {
       `/v1/branches/${branch.id}/daily-close/preview?date=${today}`,
     );
     expect(res.status).toBe(200);
+    // Expected reconcile figure now sums transfer sales (the till is transfer-only).
     expect(res.body.data.expected_cash_ngn).toBe(7500); // 3 × ₦2,500
     expect(res.body.data.expected_stock[product.id]).toBe(17); // 20 − 3 sold
   });
@@ -144,8 +145,8 @@ describe("Phase 5 daily close flow", () => {
       `/v1/branches/${branch.id}/daily-close`,
       {
         business_date: today,
-        cash_counted_ngn: 7500,
-        transfers_counted_ngn: 0,
+        cash_counted_ngn: 0,
+        transfers_counted_ngn: 7500,
         stock_counts: [{ product_id: product.id, counted_quantity: 17 }],
       },
     );
@@ -173,8 +174,8 @@ describe("Phase 5 daily close flow", () => {
       `/v1/branches/${branch.id}/daily-close`,
       {
         business_date: today,
-        cash_counted_ngn: 7000,
-        transfers_counted_ngn: 0,
+        cash_counted_ngn: 0,
+        transfers_counted_ngn: 7000,
         stock_counts: [{ product_id: product.id, counted_quantity: 16, variance_reason: "spillage" }],
       },
     );

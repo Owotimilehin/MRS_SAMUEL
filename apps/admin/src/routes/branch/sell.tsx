@@ -69,7 +69,8 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [channel, setChannel] = useState<Channel>("walkup");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  // Payment is always taken by bank transfer — the cashier no longer picks it.
+  const paymentMethod: PaymentMethod = "transfer";
   // Optional customer — phone is the identity (server merges returning customers
   // by phone); name is just for readability. Both blank = anonymous walk-up.
   const [customerPhone, setCustomerPhone] = useState("");
@@ -84,9 +85,6 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   // size in the cart forces it on — you can't complete that as an instant sale.
   const [preorderChoice, setPreorderChoice] = useState(false);
 
-  // Cash handling for the receipt: how much the customer handed over (cash only)
-  // so the modal + printed receipt can show change due.
-  const [cashReceived, setCashReceived] = useState("");
   // The just-completed sale, surfaced as a success modal with a Print option.
   const [successSale, setSuccessSale] = useState<{ receipt: ReceiptData; itemCount: number } | null>(
     null,
@@ -322,8 +320,6 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       });
       // Build the receipt from the live cart BEFORE we clear it, then surface a
       // success modal with a Print option (replaces the old green flash banner).
-      const cashNum =
-        paymentMethod === "cash" ? Number(cashReceived.replace(/[^0-9]/g, "")) : NaN;
       const receipt = buildReceiptFromCart({
         style: getReceiptStyle(),
         receiptNo: sale.orderNumber,
@@ -338,7 +334,6 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           qty: l.quantity,
           unitNgn: l.unit_price_ngn,
         })),
-        ...(Number.isFinite(cashNum) && cashNum > 0 ? { cashNgn: cashNum } : {}),
         ...(orderIsPreorder
           ? { isPreorder: true, fulfilIso: new Date(`${fulfillBy}T12:00:00`).toISOString() }
           : {}),
@@ -350,7 +345,6 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       setPreorderChoice(false);
       setCustomerPhone("");
       setCustomerName("");
-      setCashReceived("");
       // Optimistically reflect the bags just handed out. The server decrements
       // branch bag stock when this queued sale syncs (at /pay), so refetching
       // now would read the pre-sale balance and snap the count back to the
@@ -521,35 +515,6 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 <option value="chowdeck_pickup">Chowdeck pickup</option>
               </select>
             </div>
-            <div className="field">
-              <label className="field__label" htmlFor="sell-payment">Payment</label>
-              <select
-                id="sell-payment"
-                className="select"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-              >
-                <option value="cash">Cash</option>
-                <option value="card">Card</option>
-                <option value="transfer">Transfer</option>
-              </select>
-            </div>
-            {paymentMethod === "cash" && cart.length > 0 && (
-              <div className="field">
-                <label className="field__label" htmlFor="sell-cash">Cash received</label>
-                <input
-                  id="sell-cash"
-                  className="input"
-                  inputMode="numeric"
-                  placeholder={`${total}`}
-                  value={cashReceived}
-                  onChange={(e) => setCashReceived(e.target.value.replace(/[^0-9]/g, ""))}
-                />
-                {cashReceived !== "" && Number(cashReceived) >= total && (
-                  <span className="field__hint">Change: {ngn(Number(cashReceived) - total)}</span>
-                )}
-              </div>
-            )}
             {/* Order-level preorder. A 330ml in the cart forces it on. */}
             <div
               className="card card--soft"

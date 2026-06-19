@@ -9,7 +9,7 @@ import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import type { StatChip } from "../../components/StatHero.js";
 
-interface CashSale {
+interface TransferSale {
   order_number: string;
   channel: string;
   status: string;
@@ -19,9 +19,11 @@ interface CashSale {
 
 interface PreviewBody {
   data: {
+    // `expected_cash_ngn` / `cash_sales` keep their historical names on the wire,
+    // but now hold the transfer figures (the till books every sale as transfer).
     expected_cash_ngn: number;
     expected_stock: Record<string, number>;
-    cash_sales: CashSale[];
+    cash_sales: TransferSale[];
   };
 }
 
@@ -33,7 +35,6 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
   const products = useLiveQuery(() => local.products.toArray(), [], []);
   const [businessDate, setBusinessDate] = useState(today());
   const [preview, setPreview] = useState<PreviewBody["data"] | null>(null);
-  const [cash, setCash] = useState("");
   const [transfers, setTransfers] = useState("");
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
@@ -73,9 +74,9 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
     id.slice(0, 8);
 
   const expectedCash = preview?.expected_cash_ngn ?? 0;
-  const cashSales = preview?.cash_sales ?? [];
+  const transferSales = preview?.cash_sales ?? [];
   const [showSales, setShowSales] = useState(false);
-  const counted = (Number(cash) || 0) + (Number(transfers) || 0);
+  const counted = Number(transfers) || 0;
   const variance = counted - expectedCash;
 
   const stockRows = useMemo(() => {
@@ -108,7 +109,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
         method: "POST",
         body: JSON.stringify({
           business_date: businessDate,
-          cash_counted_ngn: Number(cash) || 0,
+          cash_counted_ngn: 0,
           transfers_counted_ngn: Number(transfers) || 0,
           notes: notes || undefined,
           stock_counts: stockRows.map((r) => ({
@@ -119,7 +120,6 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
         }),
       });
       toast.success("Shift-end report submitted. Awaiting owner approval.");
-      setCash("");
       setTransfers("");
       setNotes("");
     } catch (err) {
@@ -235,20 +235,9 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
         </section>
 
         <aside className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <h2 className="t-h2">Cash reconcile</h2>
+          <h2 className="t-h2">Transfer reconcile</h2>
           <div className="field">
-            <label className="field__label">Cash on hand (₦)</label>
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              value={cash}
-              onChange={(e) => setCash(e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <div className="field">
-            <label className="field__label">Bank transfers counted (₦)</label>
+            <label className="field__label">Bank transfers received (₦)</label>
             <input
               className="input"
               type="number"
@@ -262,9 +251,9 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
           <div className="card card--soft" style={{ padding: 12 }}>
             <Row label="System expected" value={ngn(expectedCash)} />
             <div style={{ marginTop: -2, marginBottom: 4 }}>
-              {cashSales.length === 0 ? (
+              {transferSales.length === 0 ? (
                 <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
-                  No cash sales recorded today.
+                  No transfer sales recorded today.
                 </span>
               ) : (
                 <button
@@ -280,13 +269,13 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
                     fontWeight: 600,
                   }}
                 >
-                  {showSales ? "Hide" : "Show"} {cashSales.length} cash{" "}
-                  {cashSales.length === 1 ? "sale" : "sales"} →
+                  {showSales ? "Hide" : "Show"} {transferSales.length} transfer{" "}
+                  {transferSales.length === 1 ? "sale" : "sales"} →
                 </button>
               )}
-              {showSales && cashSales.length > 0 && (
+              {showSales && transferSales.length > 0 && (
                 <ul style={{ margin: "6px 0 0", padding: 0, listStyle: "none", fontSize: 12 }}>
-                  {cashSales.map((s) => (
+                  {transferSales.map((s) => (
                     <li
                       key={s.order_number}
                       style={{

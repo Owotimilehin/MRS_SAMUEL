@@ -2,8 +2,13 @@ import { sql } from "drizzle-orm";
 import type { DbExecutor } from "@ms/db";
 
 /**
- * Expected cash for a branch on a given business date:
- *   sum(paid cash sales) − sum(cash refunds completed that day)
+ * Expected money taken at a branch on a given business date:
+ *   sum(paid transfer sales) − sum(transfer refunds completed that day)
+ *
+ * The till books every walk-in sale as a bank transfer, so the shift-end
+ * reconciliation expects transfers (not cash). Named `expectedCashForDay` /
+ * `system_cash_total_ngn` for historical reasons — the persisted column predates
+ * the transfer-only switch and isn't worth a rename migration.
  */
 export async function expectedCashForDay(
   db: DbExecutor,
@@ -17,14 +22,14 @@ export async function expectedCashForDay(
 
   const salesRows = await db.execute<{ total: number | string | null }>(sql`
     SELECT COALESCE(SUM(total_ngn), 0)::int AS total FROM sale_order
-    WHERE branch_id = ${branchId} AND payment_method = 'cash'
+    WHERE branch_id = ${branchId} AND payment_method = 'transfer'
       AND status IN ('paid','handed_over','delivered')
       AND created_at_local >= ${start.toISOString()}
       AND created_at_local <  ${end.toISOString()}
   `);
   const refundRows = await db.execute<{ total: number | string | null }>(sql`
     SELECT COALESCE(SUM(refund_amount_ngn), 0)::int AS total FROM sale_return
-    WHERE branch_id = ${branchId} AND refund_method = 'cash'
+    WHERE branch_id = ${branchId} AND refund_method = 'transfer'
       AND status = 'completed'
       AND created_at >= ${start.toISOString()}
       AND created_at <  ${end.toISOString()}
@@ -34,7 +39,7 @@ export async function expectedCashForDay(
   return gross - refunds;
 }
 
-/** One cash sale contributing to a day's expected cash, for the close screen. */
+/** One transfer sale contributing to a day's expected take, for the close screen. */
 export interface CashSaleLine {
   order_number: string;
   channel: string;
@@ -44,7 +49,7 @@ export interface CashSaleLine {
 }
 
 /**
- * The individual cash sales that make up `expectedCashForDay`'s gross figure —
+ * The individual transfer sales that make up `expectedCashForDay`'s gross figure —
  * same filter, itemised. The close screen shows these so staff can see exactly
  * which sales produced "System expected ₦X" instead of assuming it's phantom.
  */
@@ -68,7 +73,7 @@ export async function cashSalesForDay(
     SELECT order_number, channel, status, total_ngn::int AS total_ngn,
            created_at_local::text AS created_at_local
     FROM sale_order
-    WHERE branch_id = ${branchId} AND payment_method = 'cash'
+    WHERE branch_id = ${branchId} AND payment_method = 'transfer'
       AND status IN ('paid','handed_over','delivered')
       AND created_at_local >= ${start.toISOString()}
       AND created_at_local <  ${end.toISOString()}

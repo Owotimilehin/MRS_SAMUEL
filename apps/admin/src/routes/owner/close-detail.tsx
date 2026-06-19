@@ -180,7 +180,7 @@ export function CloseDetailPage({
               {statusPill(data.status)}
             </header>
 
-            {/* Plain-English verdict on the cash drawer, with the math spelled out. */}
+            {/* Plain-English verdict on the transfers, with the math spelled out. */}
             {(() => {
               const v = data.varianceNgn;
               const tone = v < 0 ? "danger" : v > 0 ? "warning" : "success";
@@ -188,10 +188,10 @@ export function CloseDetailPage({
                 tone === "danger" ? "var(--danger)" : tone === "warning" ? "var(--warning)" : "var(--success)";
               const verdict =
                 v === 0
-                  ? "Drawer balances"
+                  ? "Transfers balance"
                   : v < 0
-                    ? `Drawer is ${ngn(-v)} short`
-                    : `Drawer is ${ngn(v)} over`;
+                    ? `Transfers are ${ngn(-v)} short`
+                    : `Transfers are ${ngn(v)} over`;
               return (
                 <div
                   className="card card--soft"
@@ -199,8 +199,8 @@ export function CloseDetailPage({
                 >
                   <div style={{ fontWeight: 800, fontSize: 18, color }}>{verdict}</div>
                   <div className="tabular-nums" style={{ color: "var(--ink-soft)", fontSize: 13, marginTop: 4 }}>
-                    Cash counted {ngn(data.cashCountedNgn)} − recorded cash sales {ngn(data.systemCashTotalNgn)} ={" "}
-                    {v > 0 ? "+" : ""}
+                    Transfers received {ngn(data.transfersCountedNgn)} − recorded transfer sales{" "}
+                    {ngn(data.systemCashTotalNgn)} = {v > 0 ? "+" : ""}
                     {ngn(v)}
                   </div>
                 </div>
@@ -214,18 +214,13 @@ export function CloseDetailPage({
                 gap: 12,
               }}
             >
-              <CashBox label="Recorded cash sales" value={ngn(data.systemCashTotalNgn)} />
-              <CashBox label="Cash counted in drawer" value={ngn(data.cashCountedNgn)} />
+              <CashBox label="Recorded transfer sales" value={ngn(data.systemCashTotalNgn)} />
+              <CashBox label="Transfers received" value={ngn(data.transfersCountedNgn)} />
               <CashBox
                 label="Difference"
                 value={`${data.varianceNgn > 0 ? "+" : ""}${ngn(data.varianceNgn)}`}
                 tone={data.varianceNgn < 0 ? "danger" : data.varianceNgn > 0 ? "warning" : "default"}
               />
-            </div>
-            <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-soft)" }}>
-              Bank transfers counted:{" "}
-              <strong className="tabular-nums">{ngn(data.transfersCountedNgn)}</strong> — recorded separately;
-              not part of the cash-drawer check above.
             </div>
 
             {data.notes && (
@@ -248,14 +243,14 @@ export function CloseDetailPage({
 
           <section className="card" style={{ marginBottom: 18 }}>
             <h2 className="t-h2" style={{ marginBottom: 4 }}>
-              Cash sales behind &ldquo;recorded cash sales&rdquo;
+              Transfer sales behind &ldquo;recorded transfer sales&rdquo;
             </h2>
             <div style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 12 }}>
-              The {data.cash_sales.length} cash {data.cash_sales.length === 1 ? "sale" : "sales"} on{" "}
+              The {data.cash_sales.length} transfer {data.cash_sales.length === 1 ? "sale" : "sales"} on{" "}
               {data.businessDate} that add up to {ngn(data.systemCashTotalNgn)}.
             </div>
             {data.cash_sales.length === 0 ? (
-              <div className="empty">No cash sales recorded for this day.</div>
+              <div className="empty">No transfer sales recorded for this day.</div>
             ) : (
               <div className="table-wrap" style={{ border: 0 }}>
                 <table className="table">

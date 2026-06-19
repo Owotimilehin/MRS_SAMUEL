@@ -231,7 +231,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         text:
           `📋 *Shift-end report filed*\n` +
           `${p["business_date"]}${p["filed_by"] ? ` · by ${p["filed_by"]}` : ""}\n` +
-          `Cash: ₦${p["cash_ngn"] ?? "?"} · Transfers: ₦${p["transfer_ngn"] ?? "?"} · Variance: ₦${p["variance_ngn"] ?? "0"}\n` +
+          `Transfers: ₦${p["transfer_ngn"] ?? "?"} · Variance: ₦${p["variance_ngn"] ?? "0"}\n` +
           `👉 ${ADMIN_URL}/owner/closes`,
       };
     case "sale.online_placed":
