@@ -34,42 +34,25 @@ describe("GET /v1/reports/overview", () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
       data: {
-        stock: { low_stock_skus: number; expiring_48h: number };
-        fulfilment: { orders_pending: number; preorders_open: number; bags_queue: number };
-        today: { net_ngn: number; yesterday_net_ngn: number; wtd_net_ngn: number };
-        growth: {
-          month_revenue_ngn: number;
-          month_expenses_ngn: number;
-          month_profit_ngn: number;
-          active_subscriptions: number;
-          mrr_ngn: number;
-          new_leads: number;
-        };
+        stock: { low_stock_factory: number; low_stock_branch: number; expiring_48h: number };
+        fulfilment: { orders_pending: number; preorders_open: number; bags_queue: number; pending_transfers: number };
+        today: { total_units: number; units_by_size: Array<{ size_ml: number; units: number }> };
       };
     };
     const { data } = json;
 
-    // stock block
-    expect(typeof data.stock.low_stock_skus).toBe("number");
+    expect(typeof data.stock.low_stock_factory).toBe("number");
+    expect(typeof data.stock.low_stock_branch).toBe("number");
     expect(typeof data.stock.expiring_48h).toBe("number");
-
-    // fulfilment block
     expect(typeof data.fulfilment.orders_pending).toBe("number");
     expect(typeof data.fulfilment.preorders_open).toBe("number");
     expect(typeof data.fulfilment.bags_queue).toBe("number");
-
-    // today block
-    expect(typeof data.today.net_ngn).toBe("number");
-    expect(typeof data.today.yesterday_net_ngn).toBe("number");
-    expect(typeof data.today.wtd_net_ngn).toBe("number");
-
-    // growth block
-    expect(typeof data.growth.month_revenue_ngn).toBe("number");
-    expect(typeof data.growth.month_expenses_ngn).toBe("number");
-    expect(typeof data.growth.month_profit_ngn).toBe("number");
-    expect(typeof data.growth.active_subscriptions).toBe("number");
-    expect(typeof data.growth.mrr_ngn).toBe("number");
-    expect(typeof data.growth.new_leads).toBe("number");
+    expect(typeof data.fulfilment.pending_transfers).toBe("number");
+    expect(typeof data.today.total_units).toBe("number");
+    expect(Array.isArray(data.today.units_by_size)).toBe(true);
+    // money must NOT leak into the operational overview
+    expect((data as Record<string, unknown>).growth).toBeUndefined();
+    expect((data.today as Record<string, unknown>).net_ngn).toBeUndefined();
   });
 
   it("empty seeded DB yields all zeros", async () => {
@@ -77,41 +60,23 @@ describe("GET /v1/reports/overview", () => {
       headers: { cookie: cookies },
     });
     expect(res.status).toBe(200);
-    const { data } = (await res.json()) as { data: Record<string, Record<string, number>> };
+    const { data } = (await res.json()) as {
+      data: {
+        stock: { low_stock_factory: number; low_stock_branch: number; expiring_48h: number };
+        fulfilment: { orders_pending: number; preorders_open: number; bags_queue: number; pending_transfers: number };
+        today: { total_units: number; units_by_size: Array<{ size_ml: number; units: number }> };
+      };
+    };
 
-    expect(data.stock.low_stock_skus).toBe(0);
+    expect(data.stock.low_stock_factory).toBe(0);
+    expect(data.stock.low_stock_branch).toBe(0);
     expect(data.stock.expiring_48h).toBe(0);
     expect(data.fulfilment.orders_pending).toBe(0);
     expect(data.fulfilment.preorders_open).toBe(0);
     expect(data.fulfilment.bags_queue).toBe(0);
-    expect(data.today.net_ngn).toBe(0);
-    expect(data.today.yesterday_net_ngn).toBe(0);
-    expect(data.today.wtd_net_ngn).toBe(0);
-    expect(data.growth.month_revenue_ngn).toBe(0);
-    expect(data.growth.month_expenses_ngn).toBe(0);
-    expect(data.growth.month_profit_ngn).toBe(0);
-    expect(data.growth.active_subscriptions).toBe(0);
-    expect(data.growth.mrr_ngn).toBe(0);
-    expect(data.growth.new_leads).toBe(0);
-  });
-
-  it("month_profit_ngn === month_revenue_ngn - month_expenses_ngn", async () => {
-    const res = await fetch(`${baseUrl}/v1/reports/overview`, {
-      headers: { cookie: cookies },
-    });
-    expect(res.status).toBe(200);
-    const { data } = (await res.json()) as {
-      data: {
-        growth: {
-          month_revenue_ngn: number;
-          month_expenses_ngn: number;
-          month_profit_ngn: number;
-        };
-      };
-    };
-    expect(data.growth.month_profit_ngn).toBe(
-      data.growth.month_revenue_ngn - data.growth.month_expenses_ngn,
-    );
+    expect(data.fulfilment.pending_transfers).toBe(0);
+    expect(data.today.total_units).toBe(0);
+    expect(data.today.units_by_size).toEqual([]);
   });
 
   it("returns 401 without auth cookie", async () => {

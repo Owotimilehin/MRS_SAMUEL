@@ -297,146 +297,75 @@ export function reportRoutes(db: DbClient) {
       try { return await fn(); } catch (err) { console.error(`[overview] ${label} block failed:`, err); return fallback; }
     }
 
-    // Current calendar month boundaries — same pattern as /pnl.
-    const now = new Date();
-    const monthStr = now.toISOString().slice(0, 7); // "YYYY-MM"
-    const from = `${monthStr}-01`;
-    const [yy, mm] = monthStr.split("-").map((s) => Number(s));
-    const nextMonth =
-      mm === 12
-        ? `${yy! + 1}-01-01`
-        : `${yy}-${String(mm! + 1).padStart(2, "0")}-01`;
-
-    const [stockBlock, fulfilmentBlock, todayBlock, growthBlock] = await Promise.all([
-      // ── stock ───────────────────────────────────────────────────────────────
+    const [stockBlock, fulfilmentBlock, todayBlock] = await Promise.all([
       block("stock", async () => {
-        const rows = await db.execute<{ low_stock_skus: number }>(sql`
-          SELECT COUNT(*)::int AS low_stock_skus
-          FROM (
-            SELECT product_id, variant_id, COALESCE(SUM(delta), 0) AS balance
-            FROM stock_ledger
-            WHERE location_type = 'branch'
-            GROUP BY product_id, variant_id
-          ) t
-          WHERE balance BETWEEN 1 AND 10
-        `);
+        const [factory, branch] = await Promise.all([
+          db.execute<{ n: number }>(sql`
+            SELECT COUNT(*)::int AS n FROM (
+              SELECT product_id, variant_id, COALESCE(SUM(delta),0) AS balance
+              FROM stock_ledger WHERE location_type = 'factory'
+              GROUP BY product_id, variant_id
+            ) t WHERE balance BETWEEN 1 AND 10
+          `),
+          db.execute<{ n: number }>(sql`
+            SELECT COUNT(*)::int AS n FROM (
+              SELECT product_id, variant_id, COALESCE(SUM(delta),0) AS balance
+              FROM stock_ledger WHERE location_type = 'branch'
+              GROUP BY product_id, variant_id
+            ) t WHERE balance BETWEEN 1 AND 10
+          `),
+        ]);
         return {
-          low_stock_skus: Number(rows[0]?.low_stock_skus ?? 0),
-          expiring_48h: 0, // no batch-expiry source in schema yet
+          low_stock_factory: Number(factory[0]?.n ?? 0),
+          low_stock_branch: Number(branch[0]?.n ?? 0),
+          expiring_48h: 0,
         };
-      }, { low_stock_skus: 0, expiring_48h: 0 }),
+      }, { low_stock_factory: 0, low_stock_branch: 0, expiring_48h: 0 }),
 
-      // ── fulfilment ──────────────────────────────────────────────────────────
       block("fulfilment", async () => {
-        const [pendingRow, preorderRow, bagsRow] = await Promise.all([
-          // Regular pending orders (not preorders, awaiting handover)
+        const [pendingRow, preorderRow, bagsRow, transferRow] = await Promise.all([
           db.execute<{ cnt: number }>(sql`
-            SELECT COUNT(*)::int AS cnt
-            FROM sale_order
+            SELECT COUNT(*)::int AS cnt FROM sale_order
             WHERE is_preorder = false
-              AND status IN ('confirmed', 'paid', 'handed_over', 'out_for_delivery')
-          `),
-          // Open preorders (placed but not yet fulfilled)
+              AND status IN ('confirmed','paid','handed_over','out_for_delivery')`),
           db.execute<{ cnt: number }>(sql`
-            SELECT COUNT(*)::int AS cnt
-            FROM sale_order
+            SELECT COUNT(*)::int AS cnt FROM sale_order
             WHERE is_preorder = true
-              AND status IN ('confirmed', 'paid', 'handed_over', 'out_for_delivery')
-          `),
-          // Orders with bags attached that are still in confirmed (unfulfilled) state
+              AND status IN ('confirmed','paid','handed_over','out_for_delivery')`),
           db.execute<{ cnt: number }>(sql`
             SELECT COUNT(DISTINCT sop.sale_order_id)::int AS cnt
             FROM sale_order_packaging sop
             JOIN sale_order so ON so.id = sop.sale_order_id
-            WHERE so.status = 'confirmed'
-          `),
+            WHERE so.status = 'confirmed'`),
+          db.execute<{ cnt: number }>(sql`
+            SELECT COUNT(*)::int AS cnt FROM stock_transfer
+            WHERE status IN ('dispatched','in_transit','arrived')`),
         ]);
         return {
           orders_pending: Number(pendingRow[0]?.cnt ?? 0),
           preorders_open: Number(preorderRow[0]?.cnt ?? 0),
           bags_queue: Number(bagsRow[0]?.cnt ?? 0),
+          pending_transfers: Number(transferRow[0]?.cnt ?? 0),
         };
-      }, { orders_pending: 0, preorders_open: 0, bags_queue: 0 }),
+      }, { orders_pending: 0, preorders_open: 0, bags_queue: 0, pending_transfers: 0 }),
 
-      // ── today ───────────────────────────────────────────────────────────────
       block("today", async () => {
-        const rows = await db.execute<{ bucket: string; net_ngn: number }>(sql`
-          SELECT
-            CASE
-              WHEN created_at_local::date = CURRENT_DATE     THEN 'today'
-              WHEN created_at_local::date = CURRENT_DATE - 1 THEN 'yesterday'
-              ELSE 'wtd'
-            END AS bucket,
-            COALESCE(SUM(total_ngn), 0)::int AS net_ngn
-          FROM sale_order
-          WHERE status IN ('paid', 'handed_over', 'delivered')
-            AND created_at_local::date >= date_trunc('week', CURRENT_DATE)::date
-          GROUP BY 1
+        const rows = await db.execute<{ size_ml: number; units: number }>(sql`
+          SELECT pv.size_ml, SUM(i.quantity)::int AS units
+          FROM sale_order_item i
+          JOIN sale_order o ON o.id = i.sale_order_id
+          JOIN product_variant pv ON pv.id = i.variant_id
+          WHERE o.status IN ('paid','handed_over','delivered')
+            AND o.created_at_local::date = CURRENT_DATE
+          GROUP BY pv.size_ml ORDER BY pv.size_ml
         `);
-        const byBucket = Object.fromEntries(rows.map((r) => [r.bucket, Number(r.net_ngn)]));
-        const todayNet = byBucket["today"] ?? 0;
-        const yesterdayNet = byBucket["yesterday"] ?? 0;
-        // wtd = sum of all week-to-date paid revenue (today + earlier days this week)
-        const wtdNet = rows.reduce((s, r) => s + Number(r.net_ngn), 0);
-        return {
-          net_ngn: todayNet,
-          yesterday_net_ngn: yesterdayNet,
-          wtd_net_ngn: wtdNet,
-        };
-      }, { net_ngn: 0, yesterday_net_ngn: 0, wtd_net_ngn: 0 }),
-
-      // ── growth ──────────────────────────────────────────────────────────────
-      block("growth", async () => {
-        const [revRow, expRow, leadsRow] = await Promise.all([
-          db.execute<{ revenue_ngn: number }>(sql`
-            SELECT COALESCE(SUM(total_ngn), 0)::int AS revenue_ngn
-            FROM sale_order
-            WHERE status IN ('paid', 'handed_over', 'delivered')
-              AND created_at_local::date >= ${from}::date
-              AND created_at_local::date <  ${nextMonth}::date
-          `),
-          db.execute<{ expenses_ngn: number }>(sql`
-            SELECT COALESCE(SUM(amount_ngn), 0)::int AS expenses_ngn
-            FROM business_expense
-            WHERE deleted_at IS NULL
-              AND expense_date >= ${from}::date
-              AND expense_date <  ${nextMonth}::date
-          `),
-          db.execute<{ cnt: number }>(sql`
-            SELECT COUNT(*)::int AS cnt
-            FROM subscription_lead
-            WHERE created_at::date >= ${from}::date
-              AND created_at::date <  ${nextMonth}::date
-          `),
-        ]);
-        const month_revenue_ngn = Number(revRow[0]?.revenue_ngn ?? 0);
-        const month_expenses_ngn = Number(expRow[0]?.expenses_ngn ?? 0);
-        return {
-          month_revenue_ngn,
-          month_expenses_ngn,
-          month_profit_ngn: month_revenue_ngn - month_expenses_ngn,
-          // No customer_subscription table exists — subscription_plan is a catalogue only.
-          active_subscriptions: 0,
-          mrr_ngn: 0,
-          new_leads: Number(leadsRow[0]?.cnt ?? 0),
-        };
-      }, {
-        month_revenue_ngn: 0,
-        month_expenses_ngn: 0,
-        month_profit_ngn: 0,
-        active_subscriptions: 0,
-        mrr_ngn: 0,
-        new_leads: 0,
-      }),
+        const units_by_size = rows.map((r) => ({ size_ml: Number(r.size_ml), units: Number(r.units) }));
+        return { total_units: units_by_size.reduce((s, r) => s + r.units, 0), units_by_size };
+      }, { total_units: 0, units_by_size: [] as Array<{ size_ml: number; units: number }> }),
     ]);
 
     return c.json({
-      data: {
-        stock: stockBlock,
-        fulfilment: fulfilmentBlock,
-        today: todayBlock,
-        growth: growthBlock,
-      },
+      data: { stock: stockBlock, fulfilment: fulfilmentBlock, today: todayBlock },
     });
   });
 
