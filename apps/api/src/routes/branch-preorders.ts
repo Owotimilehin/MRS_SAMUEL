@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
+import { requireBranchScope } from "../middleware/scope.js";
 import { BusinessError } from "../lib/errors.js";
 import { listOpenPreorders, fulfilPreorderTx } from "./preorder-shared.js";
 
@@ -11,7 +12,7 @@ import { listOpenPreorders, fulfilPreorderTx } from "./preorder-shared.js";
  */
 export function branchPreorderRoutes(db: DbClient) {
   const r = new Hono();
-  r.use("*", requireAuth());
+  r.use("*", requireAuth(), requireBranchScope());
 
   r.get("/", requireCapability("pos.sell"), async (c) => {
     const branchId = c.req.param("branchId");
