@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { toCsv } from "../lib/csv.js";
+import { allocateFifo, type CostLayer } from "../lib/packaging-cost.js";
 
 export function reportRoutes(db: DbClient) {
   const r = new Hono();
@@ -435,6 +436,183 @@ export function reportRoutes(db: DbClient) {
         fulfilment: fulfilmentBlock,
         today: todayBlock,
         growth: growthBlock,
+      },
+    });
+  });
+
+  r.get("/daily", requireCapability("finance.view"), async (c) => {
+    const date = c.req.query("date") ?? new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return c.json(
+        { error: { code: "validation_failed", message: "date must be YYYY-MM-DD" } },
+        400,
+      );
+    }
+
+    const ALL_CATEGORIES = [
+      "raw_materials", "packaging", "utilities", "transport", "salaries",
+      "rent", "marketing", "equipment", "regulatory", "other_with_note",
+    ] as const;
+    const LABEL: Record<string, string> = {
+      raw_materials: "Raw materials", packaging: "Packaging", utilities: "Utilities",
+      transport: "Transport", salaries: "Salaries", rent: "Rent", marketing: "Marketing",
+      equipment: "Equipment", regulatory: "Regulatory", other_with_note: "Other",
+    };
+    const requested = c.req.query("expense_categories");
+    // packaging is ALWAYS excluded (counted per-unit). Default = all non-packaging.
+    const selected = (requested
+      ? requested.split(",").map((s) => s.trim()).filter((s) => ALL_CATEGORIES.includes(s as never))
+      : ALL_CATEGORIES.filter((cat) => cat !== "packaging")
+    ).filter((cat) => cat !== "packaging");
+
+    // ── revenue + refunds for the day ──
+    const revRow = await db.execute<{ revenue_ngn: number; refunds_ngn: number }>(sql`
+      SELECT
+        COALESCE((SELECT SUM(total_ngn) FROM sale_order
+          WHERE status IN ('paid','handed_over','delivered')
+            AND created_at_local::date = ${date}::date), 0)::int AS revenue_ngn,
+        COALESCE((SELECT SUM(refund_amount_ngn) FROM sale_return
+          WHERE status = 'completed' AND created_at::date = ${date}::date), 0)::int AS refunds_ngn
+    `);
+    const revenue = Number(revRow[0]?.revenue_ngn ?? 0);
+    const refunds = Number(revRow[0]?.refunds_ngn ?? 0);
+
+    // ── bottle units (day + prior) per bottle_material_id ──
+    const bottleDay = await db.execute<{ material_id: string; units: number }>(sql`
+      SELECT pv.bottle_material_id AS material_id, SUM(i.quantity)::int AS units
+      FROM sale_order_item i
+      JOIN sale_order o ON o.id = i.sale_order_id
+      JOIN product_variant pv ON pv.id = i.variant_id
+      WHERE o.status IN ('paid','handed_over','delivered')
+        AND o.created_at_local::date = ${date}::date
+        AND pv.bottle_material_id IS NOT NULL
+      GROUP BY pv.bottle_material_id
+    `);
+    const bottlePrior = await db.execute<{ material_id: string; units: number }>(sql`
+      SELECT pv.bottle_material_id AS material_id, SUM(i.quantity)::int AS units
+      FROM sale_order_item i
+      JOIN sale_order o ON o.id = i.sale_order_id
+      JOIN product_variant pv ON pv.id = i.variant_id
+      WHERE o.status IN ('paid','handed_over','delivered')
+        AND o.created_at_local::date < ${date}::date
+        AND pv.bottle_material_id IS NOT NULL
+      GROUP BY pv.bottle_material_id
+    `);
+
+    // ── bag units (day + prior) per packaging_material_id ──
+    const bagDay = await db.execute<{ material_id: string; units: number }>(sql`
+      SELECT sop.packaging_material_id AS material_id, SUM(sop.quantity)::int AS units
+      FROM sale_order_packaging sop
+      JOIN sale_order o ON o.id = sop.sale_order_id
+      WHERE o.status IN ('paid','handed_over','delivered')
+        AND o.created_at_local::date = ${date}::date
+      GROUP BY sop.packaging_material_id
+    `);
+    const bagPrior = await db.execute<{ material_id: string; units: number }>(sql`
+      SELECT sop.packaging_material_id AS material_id, SUM(sop.quantity)::int AS units
+      FROM sale_order_packaging sop
+      JOIN sale_order o ON o.id = sop.sale_order_id
+      WHERE o.status IN ('paid','handed_over','delivered')
+        AND o.created_at_local::date < ${date}::date
+      GROUP BY sop.packaging_material_id
+    `);
+
+    // ── purchase layers (oldest first) + latest fallback price + names ──
+    const layerRows = await db.execute<{ material_id: string; quantity: number; unit_cost_ngn: number }>(sql`
+      SELECT packaging_material_id AS material_id, quantity, unit_cost_ngn
+      FROM packaging_purchase
+      ORDER BY purchase_date ASC, id ASC
+    `);
+    const latestRows = await db.execute<{ material_id: string; unit_cost_ngn: number }>(sql`
+      SELECT DISTINCT ON (packaging_material_id) packaging_material_id AS material_id, unit_cost_ngn
+      FROM packaging_purchase
+      ORDER BY packaging_material_id, purchase_date DESC, id DESC
+    `);
+    const nameRows = await db.execute<{ id: string; name: string }>(sql`
+      SELECT id, name FROM packaging_material
+    `);
+
+    const layersByMat = new Map<string, CostLayer[]>();
+    for (const row of layerRows) {
+      const list = layersByMat.get(row.material_id) ?? [];
+      list.push({ quantity: Number(row.quantity), unitCostNgn: Number(row.unit_cost_ngn) });
+      layersByMat.set(row.material_id, list);
+    }
+    const fallbackByMat = new Map(latestRows.map((r) => [r.material_id, Number(r.unit_cost_ngn)]));
+    const nameById = new Map(nameRows.map((r) => [r.id, r.name]));
+    const priorBottle = new Map(bottlePrior.map((r) => [r.material_id, Number(r.units)]));
+    const priorBag = new Map(bagPrior.map((r) => [r.material_id, Number(r.units)]));
+    const caveats: string[] = [];
+
+    function costFor(
+      dayRows: Array<{ material_id: string; units: number }>,
+      priorMap: Map<string, number>,
+    ): number {
+      let total = 0;
+      for (const row of dayRows) {
+        const layers = layersByMat.get(row.material_id) ?? [];
+        const fallback = fallbackByMat.get(row.material_id) ?? 0;
+        if (layers.length === 0 && fallback === 0) {
+          caveats.push(`${nameById.get(row.material_id) ?? "A material"} has no purchase history — costed at ₦0`);
+        }
+        const res = allocateFifo(layers, priorMap.get(row.material_id) ?? 0, Number(row.units), fallback);
+        total += res.costNgn;
+      }
+      return total;
+    }
+
+    const bottlesCost = costFor(bottleDay, priorBottle);
+    const bagsCost = costFor(bagDay, priorBag);
+
+    // ── expenses for the day (selected categories, never packaging) ──
+    const expRows = await db.execute<{ category_code: string; amount_ngn: number }>(sql`
+      SELECT category_code, COALESCE(SUM(amount_ngn), 0)::int AS amount_ngn
+      FROM business_expense
+      WHERE deleted_at IS NULL
+        AND expense_date = ${date}::date
+        AND category_code = ANY(${sql.raw(`ARRAY[${selected.map((s) => `'${s}'`).join(",") || "''"}]::business_expense_category[]`)})
+      GROUP BY category_code
+    `);
+    const expensesByCat = expRows.map((r) => ({
+      category_code: r.category_code,
+      label: LABEL[r.category_code] ?? r.category_code,
+      amount_ngn: Number(r.amount_ngn),
+    }));
+    const expenses = expensesByCat.reduce((s, r) => s + r.amount_ngn, 0);
+
+    // ── units by size ──
+    const sizeRows = await db.execute<{ size_ml: number; units: number }>(sql`
+      SELECT pv.size_ml, SUM(i.quantity)::int AS units
+      FROM sale_order_item i
+      JOIN sale_order o ON o.id = i.sale_order_id
+      JOIN product_variant pv ON pv.id = i.variant_id
+      WHERE o.status IN ('paid','handed_over','delivered')
+        AND o.created_at_local::date = ${date}::date
+      GROUP BY pv.size_ml
+      ORDER BY pv.size_ml
+    `);
+    const unitsBySize = sizeRows.map((r) => ({ size_ml: Number(r.size_ml), units: Number(r.units) }));
+    const totalUnits = unitsBySize.reduce((s, r) => s + r.units, 0);
+
+    const netRevenue = revenue - refunds;
+    const packagingCost = bottlesCost + bagsCost;
+    const dailyProfit = netRevenue - packagingCost - expenses;
+
+    return c.json({
+      data: {
+        date,
+        revenue_ngn: revenue,
+        refunds_ngn: refunds,
+        net_revenue_ngn: netRevenue,
+        packaging_cost_ngn: packagingCost,
+        packaging_cost_bottles_ngn: bottlesCost,
+        packaging_cost_bags_ngn: bagsCost,
+        expenses_ngn: expenses,
+        expenses_by_category: expensesByCat,
+        daily_profit_ngn: dailyProfit,
+        total_units: totalUnits,
+        units_by_size: unitsBySize,
+        caveats: Array.from(new Set(caveats)),
       },
     });
   });
