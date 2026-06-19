@@ -146,21 +146,71 @@ export async function cashSalesForShift(
 }
 
 // ---------------------------------------------------------------------------
-// Stock helper (unchanged)
+// Stock helper (per-size)
 // ---------------------------------------------------------------------------
 
+/** One per-size expected-balance line at a branch. `variant_id`/`size_ml` are
+ *  null for the legacy "untyped" pool (ledger rows with no variant). */
+export interface ExpectedStockLine {
+  product_id: string;
+  variant_id: string | null;
+  size_ml: number | null;
+  balance: number;
+}
+
+/** Stable map key for a (product, variant) pair; untyped variant → trailing "". */
+export function expectedStockKey(productId: string, variantId: string | null): string {
+  return `${productId}::${variantId ?? ""}`;
+}
+
+/** Build a balance lookup keyed by `expectedStockKey`. */
+export function expectedStockMap(lines: ExpectedStockLine[]): Map<string, number> {
+  return new Map(lines.map((l) => [expectedStockKey(l.product_id, l.variant_id), l.balance]));
+}
+
 /**
- * Current expected stock balance per product at a branch (ledger sum).
+ * Current expected stock balance per (flavour, size) at a branch.
+ *
+ * Returns one line for EVERY active variant of any flavour that has branch
+ * ledger activity — including sizes whose balance is 0, so staff can record
+ * found stock for a size that "shouldn't" have any. Any legacy untyped pool
+ * (ledger rows with a null variant) is surfaced as a separate null-variant
+ * line when its balance is non-zero, so nothing is hidden.
  */
 export async function expectedStockForDay(
   db: DbExecutor,
   branchId: string,
-): Promise<Record<string, number>> {
-  const rows = await db.execute<{ product_id: string; balance: number | string }>(sql`
-    SELECT product_id, COALESCE(SUM(delta), 0)::int AS balance
-    FROM stock_ledger
-    WHERE location_type = 'branch' AND location_id = ${branchId}
-    GROUP BY product_id
+): Promise<ExpectedStockLine[]> {
+  const rows = await db.execute<{
+    product_id: string;
+    variant_id: string | null;
+    size_ml: number | null;
+    balance: number | string;
+  }>(sql`
+    WITH bal AS (
+      SELECT product_id, variant_id, COALESCE(SUM(delta), 0)::int AS balance
+      FROM stock_ledger
+      WHERE location_type = 'branch' AND location_id = ${branchId}
+      GROUP BY product_id, variant_id
+    )
+    SELECT pv.product_id::text AS product_id,
+           pv.id::text         AS variant_id,
+           pv.size_ml          AS size_ml,
+           COALESCE(b.balance, 0)::int AS balance
+    FROM product_variant pv
+    JOIN (SELECT DISTINCT product_id FROM bal) ap ON ap.product_id = pv.product_id
+    LEFT JOIN bal b ON b.product_id = pv.product_id AND b.variant_id = pv.id
+    WHERE pv.is_active = true AND pv.deleted_at IS NULL
+    UNION ALL
+    SELECT b.product_id::text, NULL::text AS variant_id, NULL::int AS size_ml, b.balance
+    FROM bal b
+    WHERE b.variant_id IS NULL AND b.balance <> 0
+    ORDER BY product_id, size_ml NULLS LAST
   `);
-  return Object.fromEntries(rows.map((r) => [r.product_id, Number(r.balance)]));
+  return rows.map((r) => ({
+    product_id: r.product_id,
+    variant_id: r.variant_id,
+    size_ml: r.size_ml === null ? null : Number(r.size_ml),
+    balance: Number(r.balance),
+  }));
 }
