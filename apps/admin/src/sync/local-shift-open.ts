@@ -1,4 +1,5 @@
 import { local } from "../db/local.js";
+import { lagosToday } from "../lib/biz-date.js";
 
 interface FileShiftOpenInput {
   branchId: string;
@@ -10,7 +11,7 @@ interface FileShiftOpenInput {
 /** True iff this device has filed today's opening (local marker) OR the last
  *  pull said the server already has one (opened_today). */
 export async function isOpenedToday(branchId: string): Promise<boolean> {
-  const today = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+  const today = lagosToday();
   const marker = await local.shiftOpenMarker.get(`${branchId}::${today}`);
   if (marker) return true;
   const meta = await local.meta.get("default");

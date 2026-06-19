@@ -378,7 +378,9 @@ export async function pullDeltas(branchId: string): Promise<void> {
         await local.prices.filter((pr) => !livePrices.has(pr.id)).delete();
       }
 
+      const existingMeta = await local.meta.get("default");
       await local.meta.put({
+        ...existingMeta,
         id: "default",
         last_pull_at: body.next_cursor,
         branch_id: branchId,
