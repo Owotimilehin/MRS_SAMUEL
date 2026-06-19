@@ -23,8 +23,8 @@ describe("local shift-open filing", () => {
     expect(await isOpenedToday(BRANCH)).toBe(true);
     const outbox = await local.outbox.toArray();
     expect(outbox).toHaveLength(1);
-    expect(outbox[0].endpoint).toBe(`/v1/branches/${BRANCH}/shift-open`);
-    expect(outbox[0].method).toBe("POST");
+    expect(outbox[0]!.endpoint).toBe(`/v1/branches/${BRANCH}/shift-open`);
+    expect(outbox[0]!.method).toBe("POST");
   });
 
   it("isOpenedToday is satisfied by meta.opened_today even with no marker", async () => {

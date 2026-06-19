@@ -66,11 +66,11 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
       await fileLocalShiftOpen({
         branchId,
         businessDate,
-        notes: notes || undefined,
+        ...(notes ? { notes } : {}),
         stockCounts: rows.map((r) => ({
           product_id: r.product_id,
           counted_quantity: r.counted,
-          variance_reason: r.variance !== 0 ? r.reason : undefined,
+          ...(r.variance !== 0 && r.reason ? { variance_reason: r.reason } : {}),
         })),
       });
       toast.success("Opening stock confirmed. Your till is unlocked.");

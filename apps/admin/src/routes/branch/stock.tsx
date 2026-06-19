@@ -142,7 +142,7 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
       await adjustBranchStockBulk({
         branchId,
         reasonCode,
-        reasonNote: reasonNote.trim() || undefined,
+        ...(reasonNote.trim() ? { reasonNote: reasonNote.trim() } : {}),
         items,
       });
       toast.success(`Updated ${items.length} stock ${items.length === 1 ? "line" : "lines"}.`);

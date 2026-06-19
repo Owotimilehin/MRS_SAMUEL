@@ -15,6 +15,7 @@ describe("Branch-scoped preorder session", () => {
   let branchA: string;
   let branchB: string;
   let preorderId: string;
+  let variantId: string;
   let db: Awaited<ReturnType<typeof setupTestDb>>["db"];
 
   beforeAll(async () => {
@@ -71,6 +72,7 @@ describe("Branch-scoped preorder session", () => {
     const { productVariant } = await import("@ms/db");
     const { eq } = await import("drizzle-orm");
     const [variant] = await db.select().from(productVariant).where(eq(productVariant.productId, productId));
+    variantId = variant!.id;
 
     const saleRes = await fetch(`${baseUrl}/v1/branches/${branchA}/sales`, {
       method: "POST",
@@ -137,5 +139,39 @@ describe("Branch-scoped preorder session", () => {
       headers: { cookie: managerCookies },
     });
     expect(res.status).toBe(200);
+  });
+
+  it("manager (no pos.sell) CAN create a preorder sale", async () => {
+    // pos.preorder lets a preorder-only role open the till's create path, but
+    // only for is_preorder orders — the gate is open, the handler enforces.
+    const res = await fetch(`${baseUrl}/v1/branches/${branchA}/sales`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: managerCookies, "idempotency-key": uuid() },
+      body: JSON.stringify({
+        channel: "walkup",
+        payment_method: "cash",
+        is_preorder: true,
+        scheduled_delivery_at: new Date(Date.now() + 86400000).toISOString(),
+        created_at_local: new Date().toISOString(),
+        items: [{ variant_id: variantId, quantity: 1 }],
+      }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("manager (no pos.sell) is 403 ringing a stock-consuming sale", async () => {
+    // No is_preorder — this would consume stock, which requires pos.sell. The
+    // handler must reject it even though the gate accepted pos.preorder.
+    const res = await fetch(`${baseUrl}/v1/branches/${branchA}/sales`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: managerCookies, "idempotency-key": uuid() },
+      body: JSON.stringify({
+        channel: "walkup",
+        payment_method: "cash",
+        created_at_local: new Date().toISOString(),
+        items: [{ variant_id: variantId, quantity: 1 }],
+      }),
+    });
+    expect(res.status).toBe(403);
   });
 });
