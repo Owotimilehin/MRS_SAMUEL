@@ -217,3 +217,16 @@ describe("sale.branch_sold item lines", () => {
     expect(text).toContain("3× Pineapple 35cl");
   });
 });
+
+describe("shift_open.submitted message formatting", () => {
+  it("formats shift_open.submitted for the owner", async () => {
+    const { format } = await import("../src/outbox.js");
+    const msg = format({
+      eventType: "shift_open.submitted",
+      payload: { business_date: "2026-06-19", opened_by: "amaka", variance_count: 2, branch_name: "Ajao" },
+    });
+    expect(msg.text).toContain("Shift start");
+    expect(msg.text).toContain("amaka");
+    expect(msg.text).toContain("2");
+  });
+});

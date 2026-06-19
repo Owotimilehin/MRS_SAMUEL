@@ -289,6 +289,10 @@ export function humanizeAction(row: AuditRow, branches: BranchLookup[]): string 
     case "daily_close.approve":
       return `Approved shift-end report for ${branchName(pick(after, "branchId", "branch_id"))} (${s(pick(after, "businessDate", "business_date"))})`;
 
+    // ── Shift start (opening count) ──
+    case "shift_open.submit":
+      return "Filed opening stock count";
+
     default:
       // Last-resort fallback — turn "some_thing.did_action" into
       // "Some thing — did action" so even an unmapped row is readable.

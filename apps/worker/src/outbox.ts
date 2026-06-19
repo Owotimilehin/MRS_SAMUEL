@@ -234,6 +234,15 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Transfers: ₦${p["transfer_ngn"] ?? "?"} · Variance: ₦${p["variance_ngn"] ?? "0"}\n` +
           `👉 ${ADMIN_URL}/owner/closes`,
       };
+    case "shift_open.submitted":
+      return {
+        chatIds: [owner],
+        text:
+          `🌅 *Shift start — opening count filed*\n` +
+          `${p["business_date"]}${p["opened_by"] ? ` · by ${p["opened_by"]}` : ""}\n` +
+          `Opening variances: ${p["variance_count"] ?? 0}\n` +
+          `👉 ${ADMIN_URL}/branch/shift-start`,
+      };
     case "sale.online_placed":
       return {
         chatIds: [owner],
