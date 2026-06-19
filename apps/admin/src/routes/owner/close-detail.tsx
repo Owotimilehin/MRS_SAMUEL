@@ -15,6 +15,16 @@ interface StockCount {
   variance: number;
   varianceReason: string | null;
 }
+interface OpeningCount {
+  productId: string;
+  countedQuantity: number;
+  variance: number;
+}
+interface ShiftOpen {
+  id: string;
+  opened_by: string | null;
+  stock_counts: OpeningCount[];
+}
 interface CashSale {
   order_number: string;
   channel: string;
@@ -38,6 +48,7 @@ interface CloseDetail {
   notes: string | null;
   stock_counts: StockCount[];
   cash_sales: CashSale[];
+  shift_open: ShiftOpen | null;
 }
 interface Product {
   id: string;
@@ -300,39 +311,74 @@ export function CloseDetailPage({
                     <tr>
                       <th>Product</th>
                       <th className="table__num">System</th>
+                      <th className="table__num">Opening</th>
                       <th className="table__num">Counted</th>
                       <th className="table__num">Variance</th>
+                      <th className="table__num">Shift Δ</th>
                       <th>Reason</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.stock_counts.map((sc) => (
-                      <tr key={sc.id}>
-                        <td>{productName(sc.productId)}</td>
-                        <td className="table__num">{sc.systemQuantity}</td>
-                        <td className="table__num" style={{ fontWeight: 700 }}>
-                          {sc.countedQuantity}
-                        </td>
-                        <td
-                          className="table__num"
-                          style={{
-                            fontWeight: 700,
-                            color:
-                              sc.variance < 0
-                                ? "var(--danger)"
-                                : sc.variance > 0
-                                  ? "var(--warning)"
-                                  : "var(--ink-soft)",
-                          }}
-                        >
-                          {sc.variance > 0 ? "+" : ""}
-                          {sc.variance}
-                        </td>
-                        <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
-                          {sc.varianceReason ?? "—"}
-                        </td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      const openingByProduct = new Map<string, number>(
+                        (data.shift_open?.stock_counts ?? []).map((s) => [s.productId, s.countedQuantity]),
+                      );
+                      return data.stock_counts.map((sc) => {
+                        const opening = openingByProduct.get(sc.productId);
+                        // Shift-attributable variance = closing variance − opening variance
+                        // opening variance = opening.countedQuantity − sc.systemQuantity
+                        const openingVariance = opening !== undefined ? opening - sc.systemQuantity : null;
+                        const shiftDelta = openingVariance !== null ? sc.variance - openingVariance : null;
+                        return (
+                          <tr key={sc.id}>
+                            <td>{productName(sc.productId)}</td>
+                            <td className="table__num">{sc.systemQuantity}</td>
+                            <td className="table__num" style={{ color: "var(--ink-soft)" }}>
+                              {opening !== undefined ? opening : "—"}
+                            </td>
+                            <td className="table__num" style={{ fontWeight: 700 }}>
+                              {sc.countedQuantity}
+                            </td>
+                            <td
+                              className="table__num"
+                              style={{
+                                fontWeight: 700,
+                                color:
+                                  sc.variance < 0
+                                    ? "var(--danger)"
+                                    : sc.variance > 0
+                                      ? "var(--warning)"
+                                      : "var(--ink-soft)",
+                              }}
+                            >
+                              {sc.variance > 0 ? "+" : ""}
+                              {sc.variance}
+                            </td>
+                            <td
+                              className="table__num"
+                              style={{
+                                fontWeight: 700,
+                                color:
+                                  shiftDelta === null
+                                    ? "var(--ink-soft)"
+                                    : shiftDelta < 0
+                                      ? "var(--danger)"
+                                      : shiftDelta > 0
+                                        ? "var(--warning)"
+                                        : "var(--ink-soft)",
+                              }}
+                            >
+                              {shiftDelta === null
+                                ? "—"
+                                : `${shiftDelta > 0 ? "+" : ""}${shiftDelta}`}
+                            </td>
+                            <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                              {sc.varianceReason ?? "—"}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
