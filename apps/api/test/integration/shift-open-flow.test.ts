@@ -182,4 +182,38 @@ describe("shift-open flow", () => {
     );
     expect(res.status).toBe(201);
   });
+
+  it("sync pull reports opened_today after an opening is filed", async () => {
+    const { branch, product } = await seedBranch(4);
+    const branchId = branch.id;
+    const productId = product!.id;
+    const todayLagos = new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
+
+    // Before filing: pull should report opened_today === false
+    const pre = await call<{ data: { opened_today: boolean } }>(
+      "GET",
+      `/v1/sync/pull?branch_id=${branchId}`,
+    );
+    expect(pre.status).toBe(200);
+    expect(pre.body.data.opened_today).toBe(false);
+
+    // File the opening count for today's Lagos date
+    const openRes = await call(
+      "POST",
+      `/v1/branches/${branchId}/shift-open`,
+      {
+        business_date: todayLagos,
+        stock_counts: [{ product_id: productId, counted_quantity: 4 }],
+      },
+    );
+    expect(openRes.status).toBe(201);
+
+    // After filing: pull should report opened_today === true
+    const post = await call<{ data: { opened_today: boolean } }>(
+      "GET",
+      `/v1/sync/pull?branch_id=${branchId}`,
+    );
+    expect(post.status).toBe(200);
+    expect(post.body.data.opened_today).toBe(true);
+  });
 });
