@@ -43,17 +43,9 @@ interface ReviewBody {
   };
 }
 interface Overview {
-  stock: { low_stock_skus: number; expiring_48h: number };
-  fulfilment: { orders_pending: number; preorders_open: number; bags_queue: number };
-  today: { net_ngn: number; yesterday_net_ngn: number; wtd_net_ngn: number };
-  growth: {
-    month_revenue_ngn: number;
-    month_expenses_ngn: number;
-    month_profit_ngn: number;
-    active_subscriptions: number;
-    mrr_ngn: number;
-    new_leads: number;
-  };
+  stock: { low_stock_factory: number; low_stock_branch: number; expiring_48h: number };
+  fulfilment: { orders_pending: number; preorders_open: number; bags_queue: number; pending_transfers: number };
+  today: { total_units: number; units_by_size: Array<{ size_ml: number; units: number }> };
 }
 
 // Top-products / revenue endpoints return a product name but no slug; derive a
@@ -68,11 +60,6 @@ function today(): string {
 }
 function nDaysAgo(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
-}
-function deltaPct(current: number, prior: number): string | undefined {
-  if (prior <= 0) return undefined;
-  const pct = Math.round(((current - prior) / prior) * 100);
-  return `${pct >= 0 ? "+" : ""}${pct}%`;
 }
 
 export function DashboardPage(): JSX.Element {
@@ -223,10 +210,9 @@ export function DashboardPage(): JSX.Element {
           className="ed-rise"
         >
           <Stat
-            label="Low-stock SKUs"
-            value={String(overview.stock.low_stock_skus)}
-            tone={overview.stock.low_stock_skus > 0 ? "bad" : "good"}
-            hint={overview.stock.expiring_48h > 0 ? `${overview.stock.expiring_48h} expiring ≤48h` : "Stock healthy"}
+            label="Units sold today"
+            value={String(overview.today.total_units)}
+            hint={overview.today.units_by_size.map((u) => `${u.size_ml}ml: ${u.units}`).join(" · ") || "No sales yet"}
           />
           <Stat
             label="Orders pending"
@@ -234,28 +220,17 @@ export function DashboardPage(): JSX.Element {
             tone={overview.fulfilment.orders_pending > 0 ? "warn" : "good"}
             hint={`${overview.fulfilment.preorders_open} preorders · ${overview.fulfilment.bags_queue} bags`}
           />
-          {(() => {
-            const d = deltaPct(overview.today.net_ngn, overview.today.yesterday_net_ngn);
-            return d !== undefined ? (
-              <Stat
-                label="Today's sales"
-                value={ngn(overview.today.net_ngn)}
-                delta={d}
-                hint={`Week so far ${ngn(overview.today.wtd_net_ngn)}`}
-              />
-            ) : (
-              <Stat
-                label="Today's sales"
-                value={ngn(overview.today.net_ngn)}
-                hint={`Week so far ${ngn(overview.today.wtd_net_ngn)}`}
-              />
-            );
-          })()}
           <Stat
-            label="Month profit"
-            value={ngn(overview.growth.month_profit_ngn)}
-            tone={overview.growth.month_profit_ngn >= 0 ? "good" : "bad"}
-            hint={`${overview.growth.active_subscriptions} subs · ${ngn(overview.growth.mrr_ngn)} MRR · ${overview.growth.new_leads} leads`}
+            label="Pending transfers"
+            value={String(overview.fulfilment.pending_transfers)}
+            tone={overview.fulfilment.pending_transfers > 0 ? "warn" : "good"}
+            hint={overview.fulfilment.pending_transfers > 0 ? "Awaiting receipt" : "All received"}
+          />
+          <Stat
+            label="Low stock — factory"
+            value={String(overview.stock.low_stock_factory)}
+            tone={overview.stock.low_stock_factory > 0 ? "bad" : "good"}
+            hint={`Branch: ${overview.stock.low_stock_branch} low`}
           />
         </div>
       )}
