@@ -10,6 +10,12 @@ import { ngn } from "../../lib/format.js";
 import { downloadCsv } from "../../lib/csv.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import {
+  DAILY_EXPENSE_CATEGORIES,
+  getIncludedExpenseCategories,
+  setIncludedExpenseCategories,
+  type DailyExpenseCategory,
+} from "../../lib/finance-settings.js";
 
 interface RevenueRow {
   branch_id: string;
@@ -47,6 +53,18 @@ interface Overview {
   fulfilment: { orders_pending: number; preorders_open: number; bags_queue: number; pending_transfers: number };
   today: { total_units: number; units_by_size: Array<{ size_ml: number; units: number }> };
 }
+interface DailyFinancials {
+  date: string;
+  net_revenue_ngn: number;
+  packaging_cost_ngn: number;
+  packaging_cost_bottles_ngn: number;
+  packaging_cost_bags_ngn: number;
+  expenses_ngn: number;
+  daily_profit_ngn: number;
+  total_units: number;
+  units_by_size: Array<{ size_ml: number; units: number }>;
+  caveats: string[];
+}
 
 // Top-products / revenue endpoints return a product name but no slug; derive a
 // slug from the name so FlavourMedia can resolve the right bottle (exact for
@@ -73,6 +91,33 @@ export function DashboardPage(): JSX.Element {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const can = useCan();
+  const showFinance = can("finance.view");
+  const [finDate, setFinDate] = useState(today());
+  const [includedCats, setIncludedCats] = useState<DailyExpenseCategory[]>(getIncludedExpenseCategories());
+  const [daily, setDaily] = useState<DailyFinancials | null>(null);
+
+  useEffect(() => {
+    if (!showFinance) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const qs = `date=${finDate}&expense_categories=${includedCats.join(",")}`;
+        const res = await api<{ data: DailyFinancials }>(`/reports/daily?${qs}`);
+        if (!cancelled) setDaily(res.data);
+      } catch (err) {
+        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showFinance, finDate, includedCats]);
+
+  function toggleCat(code: DailyExpenseCategory): void {
+    setIncludedCats((prev) => {
+      const next = prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code];
+      setIncludedExpenseCategories(next);
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -177,27 +222,91 @@ export function DashboardPage(): JSX.Element {
         bottleSlug={topProducts[0] ? slugify(topProducts[0].product_name) : "sunrise"}
       />
 
+      {showFinance && (
+        <section className="card" style={{ marginBottom: 26 }}>
+          <header className="card__head">
+            <h2 className="t-h2">Daily financials</h2>
+            <input
+              type="date"
+              className="input"
+              style={{ width: 160, height: 36 }}
+              value={finDate}
+              max={today()}
+              onChange={(e) => setFinDate(e.target.value)}
+            />
+          </header>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gap: 16,
+            }}
+          >
+            <Stat label="Net revenue" value={ngn(daily?.net_revenue_ngn ?? 0)} tone="accent" />
+            <Stat
+              label="Packaging cost"
+              value={ngn(daily?.packaging_cost_ngn ?? 0)}
+              hint={`Bottles ${ngn(daily?.packaging_cost_bottles_ngn ?? 0)} · Bags ${ngn(daily?.packaging_cost_bags_ngn ?? 0)}`}
+            />
+            <Stat label="Daily expenses" value={ngn(daily?.expenses_ngn ?? 0)} />
+            <Stat
+              label="Daily profit"
+              value={ngn(daily?.daily_profit_ngn ?? 0)}
+              tone={(daily?.daily_profit_ngn ?? 0) >= 0 ? "good" : "bad"}
+              hint={`${daily?.total_units ?? 0} units sold`}
+            />
+          </div>
 
+          {daily && daily.units_by_size.length > 0 && (
+            <div style={{ marginTop: 14, fontSize: 13, color: "var(--ink-soft)" }}>
+              Cans by size: {daily.units_by_size.map((u) => `${u.size_ml}ml — ${u.units}`).join("  ·  ")}
+            </div>
+          )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-          gap: 16,
-          marginBottom: 26,
-        }}
-        className="ed-rise"
-      >
-        <Stat label="Net revenue" value={ngn(totals.net)} hint={`${from} → ${to}`} tone="accent" />
-        <Stat label="Gross" value={ngn(totals.gross)} hint={`${totals.orders} orders`} />
-        <Stat label="Refunds" value={ngn(totals.refunds)} tone={totals.refunds > 0 ? "warn" : "default"} />
-        <Stat
-          label="Needs review"
-          value={String(reviewCount)}
-          tone={reviewCount > 0 ? "warn" : "good"}
-          hint={reviewCount > 0 ? "Open the inbox" : "All clear"}
-        />
-      </div>
+          {daily && daily.caveats.length > 0 && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "var(--warning)" }}>
+              {daily.caveats.join(" · ")}
+            </div>
+          )}
+
+          <details style={{ marginTop: 14 }}>
+            <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--accent)", fontWeight: 600 }}>
+              Which expenses count?
+            </summary>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10 }}>
+              {DAILY_EXPENSE_CATEGORIES.map((cat) => (
+                <label key={cat.code} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    checked={includedCats.includes(cat.code)}
+                    onChange={() => toggleCat(cat.code)}
+                  />
+                  {cat.label}
+                </label>
+              ))}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-soft)" }}>
+              Bottle &amp; bag purchases are always excluded — they're counted per unit sold.
+            </div>
+          </details>
+        </section>
+      )}
+
+      {showFinance && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+            gap: 16,
+            marginBottom: 26,
+          }}
+          className="ed-rise"
+        >
+          <Stat label="Net revenue" value={ngn(totals.net)} hint={`${from} → ${to}`} tone="accent" />
+          <Stat label="Gross" value={ngn(totals.gross)} hint={`${totals.orders} orders`} />
+          <Stat label="Refunds" value={ngn(totals.refunds)} tone={totals.refunds > 0 ? "warn" : "default"} />
+        </div>
+      )}
 
       {overview && (
         <div
@@ -232,9 +341,16 @@ export function DashboardPage(): JSX.Element {
             tone={overview.stock.low_stock_factory > 0 ? "bad" : "good"}
             hint={`Branch: ${overview.stock.low_stock_branch} low`}
           />
+          <Stat
+            label="Needs review"
+            value={String(reviewCount)}
+            tone={reviewCount > 0 ? "warn" : "good"}
+            hint={reviewCount > 0 ? "Open the inbox" : "All clear"}
+          />
         </div>
       )}
 
+      {showFinance && (
       <div className="l-split l-split--dash" style={{ marginBottom: 18 }}>
         <section className="card">
           <header className="card__head">
@@ -339,7 +455,9 @@ export function DashboardPage(): JSX.Element {
           )}
         </section>
       </div>
+      )}
 
+      {showFinance && (
       <section className="card">
         <header className="card__head">
           <h2 className="t-h2">Recent variances</h2>
@@ -408,6 +526,7 @@ export function DashboardPage(): JSX.Element {
           </div>
         )}
       </section>
+      )}
     </Shell>
   );
 }
