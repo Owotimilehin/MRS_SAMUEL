@@ -32,6 +32,7 @@ interface BranchNavLink {
 }
 
 const NAV: BranchNavLink[] = [
+  { to: "/branch/shift-start", label: "Shift start", icon: "🌅", cap: "shift_open.submit" },
   { to: "/branch", label: "Today", icon: "🏠", cap: "sales.view" },
   { to: "/branch/sell", label: "Sell", icon: "🥤", cap: "pos.sell" },
   { to: "/branch/sales", label: "Today's sales", icon: "🧾", cap: "sales.view" },
