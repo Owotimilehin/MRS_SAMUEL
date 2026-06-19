@@ -320,21 +320,20 @@ export function CloseDetailPage({
                   </thead>
                   <tbody>
                     {(() => {
-                      const openingByProduct = new Map<string, number>(
-                        (data.shift_open?.stock_counts ?? []).map((s) => [s.productId, s.countedQuantity]),
+                      const openingByProduct = new Map<string, { countedQuantity: number; variance: number }>(
+                        (data.shift_open?.stock_counts ?? []).map((s) => [s.productId, { countedQuantity: s.countedQuantity, variance: s.variance }]),
                       );
                       return data.stock_counts.map((sc) => {
                         const opening = openingByProduct.get(sc.productId);
-                        // Shift-attributable variance = closing variance − opening variance
-                        // opening variance = opening.countedQuantity − sc.systemQuantity
-                        const openingVariance = opening !== undefined ? opening - sc.systemQuantity : null;
-                        const shiftDelta = openingVariance !== null ? sc.variance - openingVariance : null;
+                        // Shift-attributable shrinkage = closing variance − opening variance
+                        // Uses stored variances so sales are netted out correctly.
+                        const shiftDelta = opening !== undefined ? sc.variance - opening.variance : null;
                         return (
                           <tr key={sc.id}>
                             <td>{productName(sc.productId)}</td>
                             <td className="table__num">{sc.systemQuantity}</td>
                             <td className="table__num" style={{ color: "var(--ink-soft)" }}>
-                              {opening !== undefined ? opening : "—"}
+                              {opening !== undefined ? opening.countedQuantity : "—"}
                             </td>
                             <td className="table__num" style={{ fontWeight: 700 }}>
                               {sc.countedQuantity}
