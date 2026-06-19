@@ -10,6 +10,7 @@ describe("Branch-scoped preorder session", () => {
   let baseUrl: string;
   let ownerCookies: string;
   let staffCookies: string;
+  let managerCookies: string;
   let server: ReturnType<typeof serve>;
   let branchA: string;
   let branchB: string;
@@ -49,6 +50,15 @@ describe("Branch-scoped preorder session", () => {
       branchId: branchA,
     });
     staffCookies = await loginAs(baseUrl, "staff@example.com", "staffpassword123");
+
+    // Seed a manager (cross-branch: no branchId pin). Managers have pos.preorder
+    // but NOT pos.sell after Task 1, so they must still reach the preorder queue.
+    await seedUser(tdb.db, {
+      email: "manager@example.com",
+      password: "managerpassword123",
+      role: "manager",
+    });
+    managerCookies = await loginAs(baseUrl, "manager@example.com", "managerpassword123");
 
     // Create a product + take an explicit preorder at branch A (out of stock,
     // is_preorder:true, with a delivery date) so it lands paid+unfulfilled.
@@ -118,5 +128,14 @@ describe("Branch-scoped preorder session", () => {
       headers: { cookie: ownerCookies },
     });
     expect(res.status).toBe(404);
+  });
+
+  it("manager (no pos.sell) can still list branch preorders", async () => {
+    // Managers hold pos.preorder but NOT pos.sell after Task 1. This test
+    // asserts the GET / gate now accepts either capability.
+    const res = await fetch(`${baseUrl}/v1/branches/${branchA}/preorders`, {
+      headers: { cookie: managerCookies },
+    });
+    expect(res.status).toBe(200);
   });
 });
