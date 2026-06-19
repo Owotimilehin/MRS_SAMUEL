@@ -371,5 +371,6 @@
     ,{ "idx": 54, "version": "7", "when": 1783010000000, "tag": "0055_straw_packaging_kind", "breakpoints": true }
     ,{ "idx": 55, "version": "7", "when": 1783040000000, "tag": "0056_refund_owed", "breakpoints": true }
     ,{ "idx": 56, "version": "7", "when": 1783070000000, "tag": "0057_hot_path_indexes", "breakpoints": true }
+    ,{ "idx": 57, "version": "7", "when": 1783100000000, "tag": "0058_shift_counts_variant", "breakpoints": true }
   ]
 }

@@ -1,6 +1,7 @@
 import { pgTable, uuid, integer, text, timestamp, date } from "drizzle-orm/pg-core";
 import { branch } from "./branch.js";
 import { product } from "./product.js";
+import { productVariant } from "./product-variant.js";
 import { adminUser } from "./admin-user.js";
 
 export const shiftOpen = pgTable(
@@ -27,6 +28,7 @@ export const shiftOpenStockCount = pgTable("shift_open_stock_count", {
     .notNull()
     .references(() => shiftOpen.id, { onDelete: "cascade" }),
   productId: uuid("product_id").notNull().references(() => product.id),
+  variantId: uuid("variant_id").references(() => productVariant.id),
   systemQuantity: integer("system_quantity").notNull(),
   countedQuantity: integer("counted_quantity").notNull(),
   variance: integer("variance").notNull(),
