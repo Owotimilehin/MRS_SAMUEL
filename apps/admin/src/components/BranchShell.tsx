@@ -37,6 +37,7 @@ const NAV: BranchNavLink[] = [
   { to: "/branch/sales", label: "Today's sales", icon: "🧾", cap: "sales.view" },
   { to: "/branch/transfers", label: "Incoming", icon: "📦", cap: "transfers.receive" },
   { to: "/branch/stock", label: "Stock", icon: "📊" },
+  { to: "/branch/preorders", label: "Preorders", icon: "📅", cap: "pos.sell" },
   { to: "/branch/returns", label: "Returns", icon: "↩️", cap: "returns.create" },
   { to: "/branch/close", label: "Shift end", icon: "📋", cap: "daily_close.submit" },
   { to: "/branch/closes", label: "Shift history", icon: "📚" },
@@ -53,6 +54,7 @@ export function BranchShell({
   const sync = useSyncState();
   const user = useAuthUser();
   const [branchName, setBranchName] = useState<string | null>(null);
+  const [preorderCount, setPreorderCount] = useState(0);
   const rail = useRailOpen();
 
   useEffect(() => {
@@ -76,6 +78,29 @@ export function BranchShell({
     })();
     return () => {
       cancelled = true;
+    };
+  }, [branchId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refresh(): Promise<void> {
+      try {
+        const res = await fetch(`/v1/branches/${branchId}/preorders`, { credentials: "include" });
+        if (!res.ok) return;
+        const body = (await res.json()) as { data: unknown[] };
+        if (!cancelled) setPreorderCount(Array.isArray(body.data) ? body.data.length : 0);
+      } catch {
+        /* offline or no access — leave the last known count */
+      }
+    }
+    void refresh();
+    const id = window.setInterval(() => void refresh(), 60_000);
+    const onFocus = (): void => void refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
     };
   }, [branchId]);
 
@@ -139,6 +164,15 @@ export function BranchShell({
             >
               <span className="app-nav__icon">{item.icon}</span>
               <span>{item.label}</span>
+              {item.to === "/branch/preorders" && preorderCount > 0 && (
+                <span
+                  className="pill pill--danger"
+                  style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, minWidth: 20, textAlign: "center" }}
+                  aria-label={`${preorderCount} preorders awaiting fulfilment`}
+                >
+                  {preorderCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>
