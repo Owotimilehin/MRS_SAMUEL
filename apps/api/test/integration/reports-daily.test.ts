@@ -223,8 +223,12 @@ describe("GET /v1/reports/daily", () => {
     expect(res.status).toBe(200);
     const { data } = (await res.json()) as {
       data: {
+        packaging_cost_ngn: number;
         packaging_cost_bottles_ngn: number;
         packaging_cost_bags_ngn: number;
+        net_revenue_ngn: number;
+        expenses_ngn: number;
+        daily_profit_ngn: number;
         total_units: number;
         units_by_size: Array<{ size_ml: number; units: number }>;
       };
@@ -235,6 +239,26 @@ describe("GET /v1/reports/daily", () => {
     expect(data.packaging_cost_bags_ngn).toBe(300);
     expect(data.total_units).toBe(30);
     expect(data.units_by_size).toEqual([{ size_ml: 650, units: 30 }]);
+    // Top-level packaging_cost_ngn must be the sum of bottles + bags.
+    expect(data.packaging_cost_ngn).toBe(1700);
+    // End-to-end math: daily_profit = net_revenue - packaging_cost - expenses,
+    // using whatever expense set the default (non-packaging) query selected.
+    expect(data.daily_profit_ngn).toBe(
+      data.net_revenue_ngn - data.packaging_cost_ngn - data.expenses_ngn,
+    );
+  });
+
+  it("returns 200 with expenses_ngn=0 when the selected category set is empty after stripping packaging", async () => {
+    const res = await fetch(
+      `${baseUrl}/v1/reports/daily?date=${DATE}&expense_categories=packaging`,
+      { headers: { cookie: ownerCookies } },
+    );
+    expect(res.status).toBe(200);
+    const { data } = (await res.json()) as {
+      data: { expenses_ngn: number; expenses_by_category: unknown[] };
+    };
+    expect(data.expenses_ngn).toBe(0);
+    expect(data.expenses_by_category).toEqual([]);
   });
 
   it("excludes the packaging category from daily expenses but includes selected ones", async () => {

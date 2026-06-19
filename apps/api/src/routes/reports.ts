@@ -494,19 +494,28 @@ export function reportRoutes(db: DbClient) {
     const bagsCost = costFor(bagDay, priorBag);
 
     // ── expenses for the day (selected categories, never packaging) ──
-    const expRows = await db.execute<{ category_code: string; amount_ngn: number }>(sql`
-      SELECT category_code, COALESCE(SUM(amount_ngn), 0)::int AS amount_ngn
-      FROM business_expense
-      WHERE deleted_at IS NULL
-        AND expense_date = ${date}::date
-        AND category_code = ANY(${sql.raw(`ARRAY[${selected.map((s) => `'${s}'`).join(",") || "''"}]::business_expense_category[]`)})
-      GROUP BY category_code
-    `);
-    const expensesByCat = expRows.map((r) => ({
-      category_code: r.category_code,
-      label: LABEL[r.category_code] ?? r.category_code,
-      amount_ngn: Number(r.amount_ngn),
-    }));
+    // When no categories are selected (e.g. every checkbox unchecked, or the
+    // only requested category was "packaging" which is always stripped), skip
+    // the query entirely — `ANY(ARRAY[]::business_expense_category[])` with an
+    // empty list is fine, but building it from `''` is not a valid enum value
+    // and Postgres rejects it with a 500. Zero categories selected means zero
+    // expenses counted, by definition.
+    let expensesByCat: Array<{ category_code: string; label: string; amount_ngn: number }> = [];
+    if (selected.length > 0) {
+      const expRows = await db.execute<{ category_code: string; amount_ngn: number }>(sql`
+        SELECT category_code, COALESCE(SUM(amount_ngn), 0)::int AS amount_ngn
+        FROM business_expense
+        WHERE deleted_at IS NULL
+          AND expense_date = ${date}::date
+          AND category_code = ANY(${sql.raw(`ARRAY[${selected.map((s) => `'${s}'`).join(",")}]::business_expense_category[]`)})
+        GROUP BY category_code
+      `);
+      expensesByCat = expRows.map((r) => ({
+        category_code: r.category_code,
+        label: LABEL[r.category_code] ?? r.category_code,
+        amount_ngn: Number(r.amount_ngn),
+      }));
+    }
     const expenses = expensesByCat.reduce((s, r) => s + r.amount_ngn, 0);
 
     // ── units by size ──

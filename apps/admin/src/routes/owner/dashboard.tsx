@@ -131,19 +131,35 @@ export function DashboardPage(): JSX.Element {
         const reviewP = can("orders.manage")
           ? api<ReviewBody>(`/review`).catch(() => null)
           : Promise.resolve(null);
-        const [rev, top, vari, br, rev2, ov] = await Promise.all([
-          api<{ data: RevenueRow[] }>(`/reports/revenue?from=${from}&to=${to}`),
-          api<{ data: TopProductRow[] }>(`/reports/top-products?from=${from}&to=${to}&limit=5`),
-          api<{ data: VarianceRow[] }>(`/reports/variances?from=${nDaysAgo(30)}`),
-          api<{ data: BranchRow[] }>(`/branches`),
+        // Money tables (revenue/top-products/variances/branches) are rendered
+        // only behind `showFinance` — don't even fetch them for non-finance
+        // roles so the money payloads never travel to those browsers.
+        const moneyP = showFinance
+          ? Promise.all([
+              api<{ data: RevenueRow[] }>(`/reports/revenue?from=${from}&to=${to}`),
+              api<{ data: TopProductRow[] }>(`/reports/top-products?from=${from}&to=${to}&limit=5`),
+              api<{ data: VarianceRow[] }>(`/reports/variances?from=${nDaysAgo(30)}`),
+              api<{ data: BranchRow[] }>(`/branches`),
+            ])
+          : Promise.resolve(null);
+        const [money, rev2, ov] = await Promise.all([
+          moneyP,
           reviewP,
           api<{ data: Overview }>(`/reports/overview`),
         ]);
         if (cancelled) return;
-        setRevenue(rev.data);
-        setTopProducts(top.data);
-        setVariances(vari.data);
-        setBranches(br.data);
+        if (money) {
+          const [rev, top, vari, br] = money;
+          setRevenue(rev.data);
+          setTopProducts(top.data);
+          setVariances(vari.data);
+          setBranches(br.data);
+        } else {
+          setRevenue([]);
+          setTopProducts([]);
+          setVariances([]);
+          setBranches([]);
+        }
         setReviewCount(
           rev2 ? rev2.data.transfer_variances.length + rev2.data.return_approvals.length : 0,
         );
@@ -159,7 +175,8 @@ export function DashboardPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-    // `can` is session-stable; depending on it would refetch on every render.
+    // `can` (and the `showFinance` derived from it) is session-stable;
+    // depending on it would refetch on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
