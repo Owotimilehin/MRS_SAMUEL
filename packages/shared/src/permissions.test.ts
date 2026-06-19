@@ -8,14 +8,15 @@ describe("resolveCapabilities", () => {
 
   it("branch_staff gets only the pos/sales/receive defaults", () => {
     expect(resolveCapabilities("branch_staff").sort()).toEqual(
-      ["pos.sell", "sales.view", "transfers.receive"].sort(),
+      ["pos.sell", "pos.preorder", "shift_open.submit", "sales.view", "transfers.receive"].sort(),
     );
   });
 
-  it("admin can run a till (POS + the branch flow it depends on)", () => {
+  it("admin can oversee a till (preorders + branch flow, not stock-consuming sales)", () => {
     const caps = resolveCapabilities("admin");
     for (const cap of [
-      "pos.sell",
+      "pos.preorder",
+      "shift_open.submit",
       "sales.view",
       "daily_close.submit",
       "returns.create",
@@ -61,5 +62,26 @@ describe("hasCapability", () => {
     const caps = resolveCapabilities("branch_staff");
     expect(hasCapability(caps, "pos.sell")).toBe(true);
     expect(hasCapability(caps, "users.manage")).toBe(false);
+  });
+});
+
+describe("till sell-policy capability split", () => {
+  it("pos.sell (stock-consuming) is owner + branch_staff only", () => {
+    expect(ROLE_DEFAULTS.owner).toContain("pos.sell");
+    expect(ROLE_DEFAULTS.branch_staff).toContain("pos.sell");
+    expect(ROLE_DEFAULTS.admin).not.toContain("pos.sell");
+    expect(ROLE_DEFAULTS.manager).not.toContain("pos.sell");
+  });
+
+  it("pos.preorder is granted to all four roles", () => {
+    for (const role of ["owner", "admin", "manager", "branch_staff"] as const) {
+      expect(ROLE_DEFAULTS[role]).toContain("pos.preorder");
+    }
+  });
+
+  it("shift_open.submit is granted to the roles that can file counts", () => {
+    for (const role of ["owner", "admin", "manager", "branch_staff"] as const) {
+      expect(ROLE_DEFAULTS[role]).toContain("shift_open.submit");
+    }
   });
 });

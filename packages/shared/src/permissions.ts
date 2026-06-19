@@ -24,6 +24,8 @@ export const CAPABILITIES = [
   "transfers.receive",
   "orders.manage",
   "pos.sell",
+  "pos.preorder",
+  "shift_open.submit",
   "sales.view",
   "daily_close.submit",
   "returns.create",
@@ -56,10 +58,12 @@ const ADMIN_CAPS: Capability[] = [
   "expenses.view",
   "packaging.view",
   "packaging.write",
-  // Branch / POS: admins can step in and run a till end-to-end (sell, view
-  // sales, submit shift-end, take returns, adjust stock) like a manager, and
-  // manage the orders/preorders/review queues that the dashboard surfaces.
-  "pos.sell",
+  // Branch / POS: admins oversee the till — they create/fulfil preorders and
+  // view sales, but DO NOT ring up stock-consuming walk-up sales (pos.sell is
+  // branch_staff/owner only). They never deplete stock, so they're never gated
+  // by the opening count.
+  "pos.preorder",
+  "shift_open.submit",
   "sales.view",
   "daily_close.submit",
   "returns.create",
@@ -77,7 +81,8 @@ const MANAGER_CAPS: Capability[] = [
   "transfers.create",
   "transfers.receive",
   "orders.manage",
-  "pos.sell",
+  "pos.preorder",
+  "shift_open.submit",
   "sales.view",
   "daily_close.submit",
   "returns.create",
@@ -86,7 +91,13 @@ const MANAGER_CAPS: Capability[] = [
   "packaging.view",
 ];
 
-const BRANCH_STAFF_CAPS: Capability[] = ["pos.sell", "sales.view", "transfers.receive"];
+const BRANCH_STAFF_CAPS: Capability[] = [
+  "pos.sell",
+  "pos.preorder",
+  "shift_open.submit",
+  "sales.view",
+  "transfers.receive",
+];
 
 export const ROLE_DEFAULTS: Record<AdminRole, readonly Capability[]> = {
   owner: [...CAPABILITIES],
