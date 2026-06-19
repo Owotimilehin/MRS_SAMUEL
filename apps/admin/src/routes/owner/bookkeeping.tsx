@@ -62,7 +62,10 @@ function shiftMonth(month: string, delta: number): string {
 export function BookkeepingPage(): JSX.Element {
   const user = useAuthUser();
   const canWrite = user.capabilities.includes("expenses.write");
+  const canFinance = user.capabilities.includes("finance.view");
   const [tab, setTab] = useState<"expenses" | "pnl" | "recurring">("expenses");
+  // If finance is off and somehow on the pnl tab, fall back to expenses.
+  const activeTab = !canFinance && tab === "pnl" ? "expenses" : tab;
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [pnl, setPnl] = useState<Pnl | null>(null);
@@ -126,13 +129,15 @@ export function BookkeepingPage(): JSX.Element {
           >
             Expenses
           </button>
-          <button
-            type="button"
-            className={tab === "pnl" ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
-            onClick={() => setTab("pnl")}
-          >
-            P&L
-          </button>
+          {canFinance && (
+            <button
+              type="button"
+              className={tab === "pnl" ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+              onClick={() => setTab("pnl")}
+            >
+              P&L
+            </button>
+          )}
           <button
             type="button"
             className={tab === "recurring" ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
@@ -188,7 +193,7 @@ export function BookkeepingPage(): JSX.Element {
           Today
         </button>
         <div style={{ flex: 1 }} />
-        {tab === "expenses" && (
+        {activeTab === "expenses" && (
           <button
             type="button"
             className="btn btn--subtle btn--sm"
@@ -201,7 +206,7 @@ export function BookkeepingPage(): JSX.Element {
             ⬇ CSV
           </button>
         )}
-        {tab === "pnl" && (
+        {activeTab === "pnl" && (
           <button
             type="button"
             className="btn btn--subtle btn--sm"
@@ -213,7 +218,7 @@ export function BookkeepingPage(): JSX.Element {
             ⬇ CSV
           </button>
         )}
-        {tab === "expenses" && canWrite && (
+        {activeTab === "expenses" && canWrite && (
           <button
             type="button"
             className="btn btn--primary btn--sm"
@@ -226,7 +231,7 @@ export function BookkeepingPage(): JSX.Element {
 
       {loading ? (
         <InlineLoader />
-      ) : tab === "expenses" ? (
+      ) : activeTab === "expenses" ? (
         <>
           <div className="table-wrap">
             <table className="table">
@@ -300,7 +305,7 @@ export function BookkeepingPage(): JSX.Element {
             {expenses.length} entr{expenses.length === 1 ? "y" : "ies"}.
           </p>
         </>
-      ) : tab === "pnl" ? (
+      ) : activeTab === "pnl" ? (
         <PnlPanel pnl={pnl} />
       ) : (
         <RecurringPanel canWrite={canWrite} />
