@@ -6,7 +6,7 @@ import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 interface Branch { id: string; name: string }
-interface ProductRow { id: string; name: string }
+interface ProductRow { id: string; name: string; variants: Array<{ id: string; size_ml: number }> }
 interface SaleOrderRow {
   id: string;
   orderNumber: string;
@@ -15,7 +15,7 @@ interface SaleOrderRow {
 }
 interface ClosePreview {
   expected_cash_ngn: number;
-  expected_stock: Record<string, number>;
+  expected_stock: Array<{ product_id: string; variant_id: string | null; size_ml: number | null; balance: number }>;
 }
 interface CloseRow {
   id: string;
@@ -41,6 +41,7 @@ describe("Phase 5 daily close flow", () => {
   let server: ReturnType<typeof serve>;
   let branch: Branch;
   let product: ProductRow;
+  let variantId: string;
 
   async function call<T>(
     method: string,
@@ -109,13 +110,14 @@ describe("Phase 5 daily close flow", () => {
       initial_price_ngn: 2500,
     });
     product = pRes.body.data;
+    variantId = product.variants[0]!.id;
 
     // Pre-stock 20 bottles directly at the branch via inventory adjust
     await call("POST", "/v1/inventory/adjust", {
       location_type: "branch",
       location_id: branch.id,
       reason_code: "opening_balance",
-      items: [{ product_id: product.id, new_quantity: 20 }],
+      items: [{ product_id: product.id, variant_id: variantId, new_quantity: 20 }],
     });
 
     // Open a shift so the sale-creation gate is satisfied for the 3 beforeAll sales.
@@ -171,7 +173,8 @@ describe("Phase 5 daily close flow", () => {
     expect(res.status).toBe(200);
     // Expected reconcile figure now sums transfer sales (the till is transfer-only).
     expect(res.body.data.expected_cash_ngn).toBe(7500); // 3 × ₦2,500
-    expect(res.body.data.expected_stock[product.id]).toBe(17); // 20 − 3 sold
+    const line = res.body.data.expected_stock.find((l) => l.variant_id === variantId);
+    expect(line?.balance).toBe(17); // 20 − 3 sold
   });
 
   // -------------------------------------------------------------------------
@@ -210,7 +213,7 @@ describe("Phase 5 daily close flow", () => {
         business_date: today,
         cash_counted_ngn: 0,
         transfers_counted_ngn: 7500,
-        stock_counts: [{ product_id: product.id, counted_quantity: 17 }],
+        stock_counts: [{ product_id: product.id, variant_id: variantId, counted_quantity: 17 }],
       },
     );
     expect(res.status).toBe(201);
@@ -240,8 +243,8 @@ describe("Phase 5 daily close flow", () => {
       {
         business_date: today,
         cash_counted_ngn: 0,
-        transfers_counted_ngn: 7500,
-        stock_counts: [{ product_id: product.id, counted_quantity: 17 }],
+        transfers_counted_ngn: 7000,
+        stock_counts: [{ product_id: product.id, variant_id: variantId, counted_quantity: 16, variance_reason: "spillage" }],
       },
     );
     expect(res.status).toBe(409);

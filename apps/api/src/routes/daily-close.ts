@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   dailyClose,
@@ -7,9 +7,18 @@ import {
   shiftOpen,
   shiftOpenStockCount,
   adminUser,
+  product,
   type DbClient,
 } from "@ms/db";
-import { cashSalesForDay, cashSalesForShift, expectedCashForDay, expectedCashForShift, expectedStockForDay } from "@ms/domain";
+import {
+  cashSalesForDay,
+  cashSalesForShift,
+  expectedCashForDay,
+  expectedCashForShift,
+  expectedStockForDay,
+  expectedStockKey,
+  expectedStockMap,
+} from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
@@ -25,6 +34,7 @@ const Submit = z.object({
     .array(
       z.object({
         product_id: z.string().uuid(),
+        variant_id: z.string().uuid().nullable().optional(),
         counted_quantity: z.number().int().nonnegative(),
         variance_reason: z.string().optional(),
       }),
@@ -54,8 +64,13 @@ export function dailyCloseRoutes(db: DbClient) {
 
       const now = new Date();
       const openedAt = openShift.openedAt ?? new Date(0);
+      // Expected money is scoped to the shift window; expected stock is per (product, variant).
       const expectedCash = await expectedCashForShift(tx, branchId, openedAt, now);
-      const expectedStock = await expectedStockForDay(tx, branchId);
+      const expectedLines = await expectedStockForDay(tx, branchId);
+      const expectedByKey = expectedStockMap(expectedLines);
+      const sizeByKey = new Map(
+        expectedLines.map((l) => [expectedStockKey(l.product_id, l.variant_id), l.size_ml]),
+      );
       const variance = body.cash_counted_ngn + body.transfers_counted_ngn - expectedCash;
 
       // Plain INSERT (no upsert) — shift uniqueness is the conclusive guard.
@@ -77,15 +92,28 @@ export function dailyCloseRoutes(db: DbClient) {
         .returning();
       if (!close) throw new BusinessError("internal_error", "daily close insert failed", 500);
 
-      // Insert stock counts.
+      // Insert stock counts, per (product, variant). The close row is freshly
+      // inserted above (shift uniqueness is the conclusive guard), so there are
+      // no prior counts to replace.
       for (const sc of body.stock_counts) {
-        const expected = expectedStock[sc.product_id] ?? 0;
+        const variantId = sc.variant_id ?? null;
+        const expected = expectedByKey.get(expectedStockKey(sc.product_id, variantId)) ?? 0;
+        const lineVariance = sc.counted_quantity - expected;
+        // Per-size reason is required when that size moved.
+        if (lineVariance !== 0 && !sc.variance_reason) {
+          throw new BusinessError(
+            "validation_failed",
+            "variance_reason required on varianced line",
+            400,
+          );
+        }
         await tx.insert(dailyCloseStockCount).values({
           dailyCloseId: close.id,
           productId: sc.product_id,
+          variantId,
           systemQuantity: expected,
           countedQuantity: sc.counted_quantity,
-          variance: sc.counted_quantity - expected,
+          variance: lineVariance,
           varianceReason: sc.variance_reason ?? null,
         });
       }
@@ -101,7 +129,27 @@ export function dailyCloseRoutes(db: DbClient) {
         })
         .where(eq(shiftOpen.id, openShift.id));
 
-      // Notify owner.
+      // Build a per-size variance list for the owner notification.
+      const variancedInputs = body.stock_counts
+        .map((sc) => {
+          const variantId = sc.variant_id ?? null;
+          const expected = expectedByKey.get(expectedStockKey(sc.product_id, variantId)) ?? 0;
+          return { ...sc, variantId, variance: sc.counted_quantity - expected };
+        })
+        .filter((x) => x.variance !== 0);
+      const nameRows = variancedInputs.length
+        ? await tx
+            .select({ id: product.id, name: product.name })
+            .from(product)
+            .where(inArray(product.id, [...new Set(variancedInputs.map((v) => v.product_id))]))
+        : [];
+      const nameOf = new Map(nameRows.map((n) => [n.id, n.name]));
+      const variances = variancedInputs.map((v) => {
+        const size = sizeByKey.get(expectedStockKey(v.product_id, v.variantId));
+        const label = `${nameOf.get(v.product_id) ?? v.product_id.slice(0, 8)}${size ? ` ${size}ml` : ""}`;
+        return { label, variance: v.variance, reason: v.variance_reason ?? null };
+      });
+
       const [filer] = await tx
         .select({ email: adminUser.email })
         .from(adminUser)
@@ -115,6 +163,7 @@ export function dailyCloseRoutes(db: DbClient) {
         transfer_ngn: body.transfers_counted_ngn,
         variance_ngn: variance,
         filed_by: filer?.email ?? auth.userId,
+        variances,
       });
       return close;
     });
