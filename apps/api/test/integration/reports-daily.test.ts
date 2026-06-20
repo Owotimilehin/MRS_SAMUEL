@@ -278,4 +278,74 @@ describe("GET /v1/reports/daily", () => {
     const { data } = (await res.json()) as { data: { expenses_ngn: number } };
     expect(data.expenses_ngn).toBe(5000);
   });
+
+  it("returns size→type revenue, packaging breakdown, reconciliation, and margin", async () => {
+    const res = await fetch(`${baseUrl}/v1/reports/daily?date=${DATE}`, {
+      headers: { cookie: ownerCookies },
+    });
+    expect(res.status).toBe(200);
+    const { data } = (await res.json()) as {
+      data: {
+        net_revenue_ngn: number;
+        product_sales_ngn: number;
+        delivery_fees_ngn: number;
+        other_adjustments_ngn: number;
+        refunds_ngn: number;
+        daily_profit_ngn: number;
+        margin_pct: number | null;
+        revenue_by_size: Array<{
+          size_ml: number;
+          revenue_ngn: number;
+          units: number;
+          rows: Array<{ category: string; units: number; revenue_ngn: number; avg_unit_price_ngn: number }>;
+        }>;
+        packaging_breakdown: Array<{
+          material_id: string;
+          name: string;
+          kind: string;
+          units: number;
+          unit_cost_ngn: number;
+          cost_ngn: number;
+        }>;
+        packaging_cost_ngn: number;
+      };
+    };
+
+    // revenue_by_size: one size (650ml), one category row (regular)
+    expect(data.revenue_by_size).toEqual([
+      {
+        size_ml: 650,
+        revenue_ngn: 45000,
+        units: 30,
+        rows: [{ category: "regular", units: 30, revenue_ngn: 45000, avg_unit_price_ngn: 1500 }],
+      },
+    ]);
+
+    // reconciliation: product sales + delivery + other − refunds == net revenue.
+    // For ordinary line-item orders the residual is 0; the identity holds
+    // regardless (it's an identity by construction of other_adjustments_ngn).
+    expect(data.product_sales_ngn).toBe(45000);
+    expect(data.delivery_fees_ngn).toBe(0);
+    expect(data.other_adjustments_ngn).toBe(0);
+    expect(
+      data.product_sales_ngn +
+        data.delivery_fees_ngn +
+        data.other_adjustments_ngn -
+        data.refunds_ngn,
+    ).toBe(data.net_revenue_ngn);
+
+    // packaging_breakdown: a bottle line (30 @ ~₦47) + a bag line (12 @ ₦25),
+    // summing to the unchanged packaging_cost_ngn.
+    const bottle = data.packaging_breakdown.find((b) => b.kind === "bottle");
+    const bag = data.packaging_breakdown.find((b) => b.kind === "bag");
+    expect(bottle).toMatchObject({ units: 30, cost_ngn: 1400, unit_cost_ngn: 47 });
+    expect(bag).toMatchObject({ units: 12, cost_ngn: 300, unit_cost_ngn: 25 });
+    expect(data.packaging_breakdown.reduce((s, b) => s + b.cost_ngn, 0)).toBe(
+      data.packaging_cost_ngn,
+    );
+
+    // margin = profit / net revenue, one decimal. profit = 45000 − 1700 − 13000 = 30300.
+    expect(data.daily_profit_ngn).toBe(30300);
+    expect(data.margin_pct).toBeCloseTo(67.3, 1);
+  });
 });

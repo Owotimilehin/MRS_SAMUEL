@@ -53,14 +53,42 @@ interface Overview {
   fulfilment: { awaiting_fulfilment: number; preorders_open: number; bags_queue: number; pending_transfers: number };
   today: { total_units: number; units_by_size: Array<{ size_ml: number; units: number }> };
 }
+interface RevenueSizeRow {
+  category: string;
+  units: number;
+  revenue_ngn: number;
+  avg_unit_price_ngn: number;
+}
+interface RevenueBySize {
+  size_ml: number;
+  revenue_ngn: number;
+  units: number;
+  rows: RevenueSizeRow[];
+}
+interface PackagingLine {
+  material_id: string;
+  name: string;
+  kind: "bottle" | "bag";
+  units: number;
+  unit_cost_ngn: number;
+  cost_ngn: number;
+}
 interface DailyFinancials {
   date: string;
+  revenue_ngn: number;
+  refunds_ngn: number;
   net_revenue_ngn: number;
+  product_sales_ngn: number;
+  delivery_fees_ngn: number;
+  other_adjustments_ngn: number;
+  revenue_by_size: RevenueBySize[];
   packaging_cost_ngn: number;
   packaging_cost_bottles_ngn: number;
   packaging_cost_bags_ngn: number;
+  packaging_breakdown: PackagingLine[];
   expenses_ngn: number;
   daily_profit_ngn: number;
+  margin_pct: number | null;
   total_units: number;
   units_by_size: Array<{ size_ml: number; units: number }>;
   caveats: string[];
@@ -78,6 +106,39 @@ function today(): string {
 }
 function nDaysAgo(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
+  regular: "Regular",
+  special: "Special",
+  punch: "Punch",
+};
+
+function ReconLine({
+  label,
+  value,
+  strong,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}): JSX.Element {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        padding: "3px 0",
+        fontSize: strong ? 15 : 13,
+        fontWeight: strong ? 800 : 500,
+        color: strong ? "var(--ink)" : "var(--ink-soft)",
+      }}
+    >
+      <span>{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </div>
+  );
 }
 
 export function DashboardPage(): JSX.Element {
@@ -252,39 +313,133 @@ export function DashboardPage(): JSX.Element {
               onChange={(e) => setFinDate(e.target.value)}
             />
           </header>
+
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
               gap: 16,
             }}
           >
-            <Stat label="Net revenue" value={ngn(daily?.net_revenue_ngn ?? 0)} tone="accent" />
-            <Stat
-              label="Packaging cost"
-              value={ngn(daily?.packaging_cost_ngn ?? 0)}
-              hint={`Bottles ${ngn(daily?.packaging_cost_bottles_ngn ?? 0)} · Bags ${ngn(daily?.packaging_cost_bags_ngn ?? 0)}`}
-            />
-            <Stat label="Daily expenses" value={ngn(daily?.expenses_ngn ?? 0)} />
-            <Stat
-              label="Daily profit"
-              value={ngn(daily?.daily_profit_ngn ?? 0)}
-              tone={(daily?.daily_profit_ngn ?? 0) >= 0 ? "good" : "bad"}
-              hint={`${daily?.total_units ?? 0} units sold`}
-            />
+            {/* ── Card 1: Net revenue (nested size → type, reconciled) ── */}
+            <div className="card card--soft" style={{ padding: 16 }}>
+              <Stat label="Net revenue" value={ngn(daily?.net_revenue_ngn ?? 0)} tone="accent" />
+              {daily && daily.revenue_by_size.length > 0 ? (
+                <div style={{ marginTop: 12 }}>
+                  {daily.revenue_by_size.map((s) => (
+                    <div key={s.size_ml} style={{ marginBottom: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                        <span>{s.size_ml}ml</span>
+                        <span className="tabular-nums">{ngn(s.revenue_ngn)}</span>
+                      </div>
+                      {s.rows.map((r) => (
+                        <div
+                          key={r.category}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            fontSize: 13,
+                            color: "var(--ink-soft)",
+                            paddingLeft: 12,
+                          }}
+                        >
+                          <span>
+                            {CATEGORY_LABEL[r.category] ?? r.category} · {r.units} × {ngn(r.avg_unit_price_ngn)} avg
+                          </span>
+                          <span className="tabular-nums">{ngn(r.revenue_ngn)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  <div style={{ borderTop: "1px solid var(--line)", marginTop: 8, paddingTop: 8 }}>
+                    <ReconLine label="Product sales" value={ngn(daily.product_sales_ngn)} />
+                    {daily.delivery_fees_ngn > 0 && (
+                      <ReconLine label="+ Delivery fees" value={ngn(daily.delivery_fees_ngn)} />
+                    )}
+                    {daily.other_adjustments_ngn !== 0 && (
+                      <ReconLine
+                        label="+ Other (subscriptions/adjustments)"
+                        value={ngn(daily.other_adjustments_ngn)}
+                      />
+                    )}
+                    {daily.refunds_ngn > 0 && (
+                      <ReconLine label="− Refunds" value={ngn(daily.refunds_ngn)} />
+                    )}
+                    <ReconLine label="= Net revenue" value={ngn(daily.net_revenue_ngn)} strong />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginTop: 12, fontSize: 13, color: "var(--ink-soft)" }}>No sales recorded.</div>
+              )}
+            </div>
+
+            {/* ── Card 2: Packaging cost (per material, grouped) ── */}
+            <div className="card card--soft" style={{ padding: 16 }}>
+              <Stat label="Packaging cost" value={ngn(daily?.packaging_cost_ngn ?? 0)} />
+              {daily && daily.packaging_breakdown.length > 0 ? (
+                <div style={{ marginTop: 12 }}>
+                  {(["bottle", "bag"] as const).map((kind) => {
+                    const lines = daily.packaging_breakdown.filter((p) => p.kind === kind);
+                    if (lines.length === 0) return null;
+                    const subtotal = lines.reduce((s, p) => s + p.cost_ngn, 0);
+                    return (
+                      <div key={kind} style={{ marginBottom: 10 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                          <span>{kind === "bottle" ? "Bottles" : "Bags"}</span>
+                          <span className="tabular-nums">{ngn(subtotal)}</span>
+                        </div>
+                        {lines.map((p) => (
+                          <div
+                            key={p.material_id}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              fontSize: 13,
+                              color: "var(--ink-soft)",
+                              paddingLeft: 12,
+                            }}
+                          >
+                            <span>
+                              {p.name} · {p.units} × {ngn(p.unit_cost_ngn)}
+                            </span>
+                            <span className="tabular-nums">{ngn(p.cost_ngn)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ marginTop: 12, fontSize: 13, color: "var(--ink-soft)" }}>No packaging consumed.</div>
+              )}
+              {daily && daily.caveats.length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 12, color: "var(--warning)" }}>
+                  {daily.caveats.join(" · ")}
+                </div>
+              )}
+            </div>
+
+            {/* ── Card 3: Profit (waterfall + margin %) ── */}
+            <div className="card card--soft" style={{ padding: 16 }}>
+              <Stat
+                label="Daily profit"
+                value={ngn(daily?.daily_profit_ngn ?? 0)}
+                tone={(daily?.daily_profit_ngn ?? 0) >= 0 ? "good" : "bad"}
+              />
+              <div style={{ marginTop: 12 }}>
+                <ReconLine label="Net revenue" value={ngn(daily?.net_revenue_ngn ?? 0)} />
+                <ReconLine label="− Packaging cost" value={ngn(daily?.packaging_cost_ngn ?? 0)} />
+                <ReconLine label="− Expenses" value={ngn(daily?.expenses_ngn ?? 0)} />
+                <div style={{ borderTop: "1px solid var(--line)", marginTop: 8, paddingTop: 8 }}>
+                  <ReconLine label="= Profit" value={ngn(daily?.daily_profit_ngn ?? 0)} strong />
+                  <ReconLine
+                    label="Margin"
+                    value={daily?.margin_pct == null ? "—" : `${daily.margin_pct}%`}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-
-          {daily && daily.units_by_size.length > 0 && (
-            <div style={{ marginTop: 14, fontSize: 13, color: "var(--ink-soft)" }}>
-              Cans by size: {daily.units_by_size.map((u) => `${u.size_ml}ml — ${u.units}`).join("  ·  ")}
-            </div>
-          )}
-
-          {daily && daily.caveats.length > 0 && (
-            <div style={{ marginTop: 10, fontSize: 12, color: "var(--warning)" }}>
-              {daily.caveats.join(" · ")}
-            </div>
-          )}
 
           <details style={{ marginTop: 14 }}>
             <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--accent)", fontWeight: 600 }}>
