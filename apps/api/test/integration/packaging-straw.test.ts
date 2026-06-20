@@ -2,13 +2,11 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
-import type { createDbClient } from "@ms/db";
 import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 describe("packaging: straw kind", () => {
   let container: StartedPostgreSqlContainer;
-  let db: ReturnType<typeof createDbClient>;
   let baseUrl: string;
   let cookies: string;
   let server: ReturnType<typeof serve>;
@@ -30,7 +28,6 @@ describe("packaging: straw kind", () => {
   beforeAll(async () => {
     const tdb = await setupTestDb();
     container = tdb.container;
-    db = tdb.db;
     await seedOwner(tdb.db);
     const { buildApp } = await import("../../src/test-app.js");
     server = serve({ fetch: buildApp().fetch, port: 0 });
