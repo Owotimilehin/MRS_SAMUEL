@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { eq, desc } from "drizzle-orm";
 import { saleOrder, deliveryOrder, branch, customer, type DbClient } from "@ms/db";
-import { requireCapability } from "../middleware/auth.js";
+import { requireAuth, requireCapability } from "../middleware/auth.js";
+import { requireBranchScope } from "../middleware/scope.js";
 import { BusinessError } from "../lib/errors.js";
 import { getDeliveryProvider } from "../delivery/index.js";
 
@@ -14,6 +15,7 @@ import { getDeliveryProvider } from "../delivery/index.js";
  */
 export function deliveryAdminRoutes(db: DbClient) {
   const r = new Hono();
+  r.use("*", requireAuth(), requireBranchScope());
 
   // Resolve the order + its pickup branch + customer contact, or throw.
   async function load(saleId: string) {

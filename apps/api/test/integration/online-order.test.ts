@@ -440,6 +440,9 @@ describe("Phase 3 customer-site online order flow", () => {
   });
 
   it("immediate Lagos order: emits sale.paid_online but NOT delivery.request when auto-dispatch is off", async () => {
+    // Guard: this test assumes AUTO_DISPATCH_DELIVERY is not "true". Ensure it is
+    // unset regardless of the ambient environment so the assertion is reliable.
+    delete process.env["AUTO_DISPATCH_DELIVERY"];
     const order = await placeAndPay({}, "+2348025550004");
     const mine = await eventsForOrder(order.id);
     expect(mine.some((e) => e.eventType === "sale.paid_online")).toBe(true);

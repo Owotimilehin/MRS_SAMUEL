@@ -184,6 +184,16 @@ describe("admin delivery endpoints (mock provider)", () => {
     await container.stop();
   });
 
+  it("unauthenticated request to GET options returns 401 (requireAuth enforced)", async () => {
+    // Proves requireAuth() runs explicitly on the delivery router — not via
+    // mount-order side effects. No cookie header = should be rejected before any
+    // business logic runs.
+    const res = await fetch(
+      `${baseUrl}/v1/branches/${branchId}/sales/${saleId}/delivery/options`,
+    );
+    expect(res.status).toBe(401);
+  });
+
   it("GET options returns at least one courier", async () => {
     const res = await fetch(
       `${baseUrl}/v1/branches/${branchId}/sales/${saleId}/delivery/options`,
