@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
+import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -31,18 +32,23 @@ interface Sale {
   deliveryFeeNgn: number;
   totalNgn: number;
   customerId: string | null;
-  deliveryAddress: string | null;
+  deliveryAddressFormatted?: string | null;
   notes: string | null;
   createdAtLocal: string;
+  customerName?: string | null;
+  customerPhone?: string | null;
   items: SaleItem[];
   delivery?: {
-    provider: "bolt" | "manual";
+    provider: "bolt" | "manual" | "shipbubble";
     status: string;
+    externalRef?: string | null;
     riderName: string | null;
     riderPhone: string | null;
     riderVehicle: string | null;
     etaMinutes: number | null;
     trackingUrl: string | null;
+    quotedFeeNgn?: number | null;
+    actualFeeNgn?: number | null;
   } | null;
 }
 
@@ -62,6 +68,81 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const authUser = useAuthUser();
   const [printing, setPrinting] = useState(false);
+  const [branchId, setBranchId] = useState<string>("");
+
+  interface CourierOption { id: string; courier_name: string; fee_ngn: number; eta_minutes: number | null }
+  const [options, setOptions] = useState<CourierOption[] | null>(null);
+  const [receiverCode, setReceiverCode] = useState<number | null>(null);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [picked, setPicked] = useState<CourierOption | null>(null);
+  const [booking, setBooking] = useState(false);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+
+  async function reloadOrder(): Promise<void> {
+    const res = await api<{ data: Sale }>(`/branches/${branchId}/sales/${saleId}`);
+    setData(res.data);
+  }
+
+  async function getOptions(): Promise<void> {
+    setLoadingOptions(true);
+    setDeliveryError(null);
+    try {
+      const res = await api<{ data: { receiver_address_code: number | null; options: CourierOption[] } }>(
+        `/branches/${branchId}/sales/${saleId}/delivery/options`,
+      );
+      setOptions(res.data.options);
+      setReceiverCode(res.data.receiver_address_code);
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingOptions(false);
+    }
+  }
+
+  async function confirmBook(): Promise<void> {
+    if (!picked) return;
+    setBooking(true);
+    setDeliveryError(null);
+    try {
+      await api(`/branches/${branchId}/sales/${saleId}/delivery/book`, {
+        method: "POST",
+        body: JSON.stringify({
+          option_id: picked.id,
+          fee_ngn: picked.fee_ngn,
+          ...(receiverCode != null ? { receiver_address_code: receiverCode } : {}),
+        }),
+      });
+      setPicked(null);
+      setOptions(null);
+      await reloadOrder();
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBooking(false);
+    }
+  }
+
+  async function cancelRide(): Promise<void> {
+    setDeliveryError(null);
+    try {
+      await api(`/branches/${branchId}/sales/${saleId}/delivery/cancel`, { method: "POST", body: "{}" });
+      await reloadOrder();
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  function waLink(phone: string): string {
+    const digits = phone.replace(/\D/g, "").replace(/^0/, "234");
+    const d = data?.delivery;
+    const msg = encodeURIComponent(
+      `Hi${data?.customerName ? " " + data.customerName : ""}, your Mrs. Samuel order ${data?.orderNumber} is on the way.` +
+        (d?.riderName ? ` Rider: ${d.riderName}.` : "") +
+        (d?.riderPhone ? ` Number: ${d.riderPhone}.` : "") +
+        (d?.trackingUrl ? ` Track: ${d.trackingUrl}` : ""),
+    );
+    return `https://wa.me/${digits}?text=${msg}`;
+  }
 
   async function printOrderReceipt(): Promise<void> {
     if (!data) return;
@@ -136,6 +217,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
         }
         setData(sale);
         setBranchName(owningBranch?.name ?? "");
+        setBranchId(owningBranch?.id ?? "");
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -209,29 +291,6 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
               </div>
               <div style={{ textAlign: "right" }}>
                 {statusPill(data.status)}
-                {(data.scheduledDeliveryAt ||
-                  (data.deliveryState && data.deliveryState !== "Lagos")) && (
-                  <div style={{ marginTop: 6, fontSize: 13, color: "var(--warning)" }}>
-                    Manual fulfilment — Bolt not dispatched.
-                    {data.scheduledDeliveryAt && (
-                      <>
-                        {" "}Scheduled for{" "}
-                        {new Date(data.scheduledDeliveryAt).toLocaleString("en-NG", {
-                          weekday: "short",
-                          day: "numeric",
-                          month: "short",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                        .
-                      </>
-                    )}
-                    {data.deliveryState && data.deliveryState !== "Lagos" && (
-                      <> Outside Lagos: {data.deliveryState}.</>
-                    )}{" "}
-                    Arrange delivery manually, then mark delivered.
-                  </div>
-                )}
               </div>
             </header>
 
@@ -312,34 +371,97 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
               <div style={{ fontSize: 14 }}>Method: {data.paymentMethod}</div>
             </section>
 
-            {data.deliveryAddress && (
+            {data.deliveryAddressFormatted && (
               <section className="card">
                 <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Delivery</h3>
-                <div style={{ fontSize: 14 }}>{data.deliveryAddress}</div>
-                {data.delivery && (
-                  <div style={{ marginTop: 10, fontSize: 13, color: "var(--ink-soft)" }}>
-                    {data.delivery.provider === "bolt" ? "Bolt" : "Manual"} ·{" "}
-                    {data.delivery.status}
-                    {data.delivery.riderName && (
-                      <div>Rider: {data.delivery.riderName}</div>
-                    )}
-                    {data.delivery.trackingUrl && (
-                      <a
-                        href={data.delivery.trackingUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn--subtle btn--sm"
-                        style={{ marginTop: 8 }}
-                      >
-                        Track on Bolt →
-                      </a>
-                    )}
+                <div style={{ fontSize: 14 }}>{data.deliveryAddressFormatted}</div>
+                {data.customerPhone && (
+                  <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
+                    {data.customerName ?? "Customer"} · {data.customerPhone}
                   </div>
+                )}
+
+                {deliveryError && (
+                  <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{deliveryError}</p>
+                )}
+
+                {/* Booked delivery */}
+                {data.delivery && data.delivery.status !== "cancelled" ? (
+                  <div style={{ marginTop: 10, fontSize: 13 }}>
+                    <div style={{ color: "var(--ink-soft)" }}>
+                      {data.delivery.provider} · {data.delivery.status}
+                      {data.delivery.quotedFeeNgn != null && <> · {ngn(data.delivery.quotedFeeNgn)}</>}
+                    </div>
+                    {data.delivery.riderName && <div style={{ marginTop: 4 }}>Rider: {data.delivery.riderName}</div>}
+                    {data.delivery.riderPhone && <div>Rider phone: {data.delivery.riderPhone}</div>}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                      {data.customerPhone && (
+                        <a className="btn btn--primary btn--sm" href={waLink(data.customerPhone)} target="_blank" rel="noopener noreferrer">
+                          WhatsApp customer
+                        </a>
+                      )}
+                      {data.delivery.trackingUrl && (
+                        <a className="btn btn--subtle btn--sm" href={data.delivery.trackingUrl} target="_blank" rel="noopener noreferrer">
+                          Track →
+                        </a>
+                      )}
+                      <button type="button" className="btn btn--ghost btn--sm" onClick={() => void cancelRide()}>
+                        Cancel ride
+                      </button>
+                    </div>
+                  </div>
+                ) : !data.customerPhone ? (
+                  <p style={{ fontSize: 13, color: "var(--warning)", marginTop: 10 }}>
+                    No customer phone on this order — arrange delivery manually.
+                  </p>
+                ) : options ? (
+                  /* Options fetched — pick a courier */
+                  <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                    {options.length === 0 && <p style={{ fontSize: 13, color: "var(--ink-soft)" }}>No couriers available for this route right now.</p>}
+                    {options.map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => setPicked(o)}
+                        className="btn btn--subtle btn--sm"
+                        style={{ justifyContent: "space-between", textAlign: "left" }}
+                      >
+                        <span>{o.courier_name}{o.eta_minutes != null ? ` · ~${o.eta_minutes}m` : ""}</span>
+                        <strong>{ngn(o.fee_ngn)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--sm"
+                    style={{ marginTop: 10 }}
+                    disabled={loadingOptions || !branchId}
+                    onClick={() => void getOptions()}
+                  >
+                    {loadingOptions ? "Getting options…" : "Get delivery options"}
+                  </button>
                 )}
               </section>
             )}
           </aside>
         </div>
+      )}
+
+      {picked && (
+        <ConfirmModal
+          title="Book this ride?"
+          confirmLabel="Book ride"
+          busyLabel="Booking…"
+          busy={booking}
+          onCancel={() => setPicked(null)}
+          onConfirm={() => void confirmBook()}
+        >
+          <p style={{ fontSize: 14 }}>
+            Book <strong>{picked.courier_name}</strong> for <strong>{ngn(picked.fee_ngn)}</strong>. This debits the
+            Shipbubble wallet. Tell the customer this amount on WhatsApp.
+          </p>
+        </ConfirmModal>
       )}
     </Shell>
   );
