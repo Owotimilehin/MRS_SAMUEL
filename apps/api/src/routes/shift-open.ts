@@ -162,8 +162,10 @@ export function shiftOpenRoutes(db: DbClient) {
 
   r.get("/:id", async (c) => {
     const id = c.req.param("id");
+    const branchId = c.req.param("branchId");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
-    const [open] = await db.select().from(shiftOpen).where(eq(shiftOpen.id, id));
+    if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
+    const [open] = await db.select().from(shiftOpen).where(and(eq(shiftOpen.id, id), eq(shiftOpen.branchId, branchId)));
     if (!open) throw new BusinessError("not_found", "shift open not found", 404);
     const counts = await db
       .select()
