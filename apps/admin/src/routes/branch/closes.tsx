@@ -11,6 +11,10 @@ import type { StatChip } from "../../components/StatHero.js";
 interface CloseRow {
   id: string;
   businessDate: string;
+  // shift_number is present when the server returns multiple closes per day.
+  shiftNumber?: number | null;
+  openedAt?: string | null;
+  closedAt?: string | null;
   status: "draft" | "submitted" | "approved" | "disputed";
   cashCountedNgn: number;
   transfersCountedNgn: number;
@@ -39,9 +43,19 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
         const res = await api<{ data: CloseRow[] }>(`/branches/${branchId}/daily-close`);
         if (!cancelled) {
           // Sort newest first
-          const sorted = [...res.data].sort((a, b) =>
-            a.businessDate < b.businessDate ? 1 : -1,
-          );
+          // Sort newest date first; within the same date, highest shift number
+        // (or latest submittedAt) first — handles multiple shifts per day.
+        const sorted = [...res.data].sort((a, b) => {
+            if (a.businessDate !== b.businessDate) {
+              return a.businessDate < b.businessDate ? 1 : -1;
+            }
+            const aShift = a.shiftNumber ?? 0;
+            const bShift = b.shiftNumber ?? 0;
+            if (aShift !== bShift) return bShift - aShift;
+            const aTime = a.submittedAt ?? "";
+            const bTime = b.submittedAt ?? "";
+            return bTime < aTime ? -1 : 1;
+          });
           setRows(sorted);
         }
       } catch (err) {
@@ -112,11 +126,12 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
             <thead>
               <tr>
                 <th>Date</th>
+                <th>Shift</th>
                 <th>Status</th>
                 <th className="table__num">Counted</th>
                 <th className="table__num">Expected</th>
                 <th className="table__num">Variance</th>
-                <th>Submitted</th>
+                <th>Opened → Closed</th>
                 <th />
               </tr>
             </thead>
@@ -124,6 +139,9 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
               {rows.map((r) => (
                 <tr key={r.id}>
                   <td style={{ fontWeight: 600 }}>{r.businessDate}</td>
+                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                    {r.shiftNumber != null ? `#${r.shiftNumber}` : "—"}
+                  </td>
                   <td>{statusPill(r.status)}</td>
                   <td className="table__num">
                     {ngn(r.cashCountedNgn + r.transfersCountedNgn)}
@@ -146,8 +164,10 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
                     {r.varianceNgn > 0 ? "+" : ""}
                     {ngn(r.varianceNgn)}
                   </td>
-                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
-                    {r.submittedAt ? formatDateTime(r.submittedAt) : "—"}
+                  <td style={{ color: "var(--ink-soft)", fontSize: 12 }}>
+                    {r.openedAt ? formatDateTime(r.openedAt) : "—"}
+                    {" → "}
+                    {r.closedAt ? formatDateTime(r.closedAt) : r.submittedAt ? formatDateTime(r.submittedAt) : "—"}
                   </td>
                   <td style={{ textAlign: "right" }}>
                     <Link

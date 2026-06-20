@@ -21,6 +21,19 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // If a shift is already open, redirect to Sell immediately — no double-open.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { hasOpenShift } = await import("../../sync/local-shift-open.js");
+      const already = await hasOpenShift(branchId);
+      if (!cancelled && already) {
+        window.location.href = "/branch/sell";
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [branchId]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);

@@ -7,6 +7,7 @@ import { api } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { fileLocalShiftClose } from "../../sync/local-shift-open.js";
 import type { StatChip } from "../../components/StatHero.js";
 
 interface TransferSale {
@@ -41,6 +42,20 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // null = loading, true/false from hasOpenShift
+  const [hasShift, setHasShift] = useState<boolean | null>(null);
+  // true after a successful close — shows the "Shift closed" confirmation.
+  const [closed, setClosed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { hasOpenShift } = await import("../../sync/local-shift-open.js");
+      const v = await hasOpenShift(branchId);
+      if (!cancelled) setHasShift(v);
+    })();
+    return () => { cancelled = true; };
+  }, [branchId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +120,10 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
       if (missing) {
         throw new Error(`Pick a reason for ${missing.name}.`);
       }
+      // Online-only: close is a direct POST (no outbox). If offline the call
+      // throws, the user sees an error, and local state stays "open" — no silent
+      // split between local and server. We only flip local to "closed" AFTER a
+      // confirmed 2xx so the till gate stays accurate.
       await api(`/branches/${branchId}/daily-close`, {
         method: "POST",
         body: JSON.stringify({
@@ -119,9 +138,10 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
           })),
         }),
       });
-      toast.success("Shift-end report submitted. Awaiting owner approval.");
-      setTransfers("");
-      setNotes("");
+      // Server confirmed: flip local gate so Sell shows the reopen prompt.
+      await fileLocalShiftClose(branchId);
+      setClosed(true);
+      setHasShift(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -139,13 +159,49 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
     closeChips.push({ label: "Variance ₦", value: ngn(0), tone: "good" });
   }
 
+  // "Shift closed" confirmation — shown after a successful close.
+  if (closed) {
+    return (
+      <BranchShell branchId={branchId} title="Shift end">
+        <section className="card" style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+          <h2 className="t-h2" style={{ marginBottom: 8 }}>Shift closed</h2>
+          <p style={{ color: "var(--ink-soft)", margin: "0 0 24px" }}>
+            The shift-end report has been submitted and is awaiting owner approval.
+          </p>
+          <a className="btn btn--primary btn--lg" href="/branch/shift-start">
+            Open a new shift
+          </a>
+        </section>
+      </BranchShell>
+    );
+  }
+
+  // No open shift — block the form.
+  if (hasShift === false) {
+    return (
+      <BranchShell branchId={branchId} title="Shift end">
+        <section className="card" style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🌅</div>
+          <h2 className="t-h2" style={{ marginBottom: 8 }}>No open shift</h2>
+          <p style={{ color: "var(--ink-soft)", margin: "0 0 24px" }}>
+            There is no open shift to close. Start a new shift first.
+          </p>
+          <a className="btn btn--primary btn--lg" href="/branch/shift-start">
+            Open a shift
+          </a>
+        </section>
+      </BranchShell>
+    );
+  }
+
   return (
     <BranchShell branchId={branchId} title="Shift end">
       <StatHero
         eyebrow="Branch"
         title="Shift end"
         sub="Enter stock counts and cash on hand to close out your shift."
-        loading={loading}
+        loading={loading || hasShift === null}
         chips={closeChips}
       />
 
@@ -320,7 +376,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
           <button
             type="button"
             className="btn btn--primary btn--block btn--lg"
-            disabled={submitting || loading || !preview}
+            disabled={submitting || loading || !preview || hasShift !== true}
             onClick={() => void submit()}
           >
             {submitting ? "Submitting…" : "Submit close for approval"}

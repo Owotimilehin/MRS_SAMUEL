@@ -97,23 +97,21 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   // have only pos.preorder — they can take orders but never draw down stock.
   const canSellStock = authUser.capabilities.includes("pos.sell");
   const canPreorder = authUser.capabilities.includes("pos.preorder");
-  const isOwner = authUser.role === "owner";
-  // Has this branch filed today's opening count? null = still loading.
-  const [opened, setOpened] = useState<boolean | null>(null);
+  // Is there an open shift on this device? null = still loading (no flash).
+  // The gate is UNIVERSAL: all roles (owner included) must have an open shift
+  // before the till accepts sales.
+  const [hasShift, setHasShift] = useState<boolean | null>(null);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const { isOpenedToday } = await import("../../sync/local-shift-open.js");
-      const v = await isOpenedToday(branchId);
-      if (!cancelled) setOpened(v);
+      const { hasOpenShift } = await import("../../sync/local-shift-open.js");
+      const v = await hasOpenShift(branchId);
+      if (!cancelled) setHasShift(v);
     })();
     return () => {
       cancelled = true;
     };
   }, [branchId]);
-  // branch_staff is gated until they file today's opening count. Owner is exempt.
-  // Manager/admin have no pos.sell (preorder-only) so are never gated.
-  const stockSaleBlocked = canSellStock && !isOwner && opened === false;
   // Defensive: a user with neither selling capability can't check out at all.
   const checkoutDisabled = !canSellStock && !canPreorder;
   // Branch header for the receipt, fetched best-effort (works online; offline we
@@ -392,18 +390,28 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     }
   }
 
-  if (stockSaleBlocked) {
+  // Universal shift gate — show "open a shift" panel while loading (null) or
+  // when no open shift exists (false). Checkout is also disabled within the full
+  // page when hasShift===false so there's no race between the gate render and
+  // a fast user tapping the checkout button.
+  if (hasShift !== true) {
     return (
       <BranchShell branchId={branchId} title="Sell">
         <section className="card" style={{ textAlign: "center", padding: 32 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>🌅</div>
-          <h2 className="t-h2">Start your shift</h2>
+          <h2 className="t-h2">
+            {hasShift === null ? "Loading…" : "Open a shift to start selling"}
+          </h2>
           <p style={{ color: "var(--ink-soft)", margin: "8px 0 20px" }}>
-            Count the stock you&rsquo;re starting with to unlock the till.
+            {hasShift === null
+              ? "Checking shift status…"
+              : "Count the opening stock to unlock the till for everyone."}
           </p>
-          <a className="btn btn--primary btn--lg" href="/branch/shift-start">
-            Count opening stock
-          </a>
+          {hasShift === false && (
+            <a className="btn btn--primary btn--lg" href="/branch/shift-start">
+              Count opening stock
+            </a>
+          )}
         </section>
       </BranchShell>
     );

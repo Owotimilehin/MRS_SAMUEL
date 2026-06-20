@@ -84,10 +84,12 @@ export async function fileLocalShiftOpen(input: FileShiftOpenInput): Promise<voi
  * after the owner confirms close, even while offline.
  */
 export async function fileLocalShiftClose(branchId: string): Promise<void> {
-  const existing = await local.currentShift.get(branchId);
-  await local.currentShift.put({
-    ...(existing ?? { branchId }),
-    branchId,
-    status: "closed",
+  await local.transaction("rw", local.currentShift, async () => {
+    const existing = await local.currentShift.get(branchId);
+    await local.currentShift.put({
+      ...(existing ?? { branchId }),
+      branchId,
+      status: "closed",
+    });
   });
 }
