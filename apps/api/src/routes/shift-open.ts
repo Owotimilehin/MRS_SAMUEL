@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { shiftOpen, shiftOpenStockCount, adminUser, type DbClient } from "@ms/db";
 import { expectedStockForDay } from "@ms/domain";
@@ -49,58 +49,84 @@ export function shiftOpenRoutes(db: DbClient) {
       }
     }
 
-    const created = await db.transaction(async (tx) => {
-      const [open] = await tx
-        .insert(shiftOpen)
-        .values({
-          branchId,
-          businessDate: body.business_date,
-          openedByUserId: auth.userId,
-          openedAt: new Date(),
-          notes: body.notes ?? null,
-        })
-        .onConflictDoUpdate({
-          target: [shiftOpen.branchId, shiftOpen.businessDate],
-          set: {
-            openedByUserId: auth.userId,
-            openedAt: new Date(),
-            notes: body.notes ?? null,
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
-      if (!open) throw new BusinessError("internal_error", "shift open upsert failed", 500);
+    let created: typeof shiftOpen.$inferSelect;
+    try {
+      created = await db.transaction(async (tx) => {
+        // Look up existing open shift for this branch.
+        const [existing] = await tx
+          .select()
+          .from(shiftOpen)
+          .where(and(eq(shiftOpen.branchId, branchId), eq(shiftOpen.status, "open")));
 
-      // Replace count rows atomically (re-count = upsert).
-      await tx.delete(shiftOpenStockCount).where(eq(shiftOpenStockCount.shiftOpenId, open.id));
-      let varianceCount = 0;
-      for (const sc of body.stock_counts) {
-        const exp = expected[sc.product_id] ?? 0;
-        const variance = sc.counted_quantity - exp;
-        if (variance !== 0) varianceCount += 1;
-        await tx.insert(shiftOpenStockCount).values({
-          shiftOpenId: open.id,
-          productId: sc.product_id,
-          systemQuantity: exp,
-          countedQuantity: sc.counted_quantity,
-          variance,
-          varianceReason: sc.variance_reason ?? null,
+        let open: typeof shiftOpen.$inferSelect;
+
+        if (existing) {
+          // Re-count the existing open shift — do not create a second one.
+          open = existing;
+        } else {
+          // Compute next shift_number for this branch+date.
+          const [numRow] = await tx.execute<{ next_num: number }>(
+            sql`SELECT COALESCE(MAX(shift_number), 0) + 1 AS next_num
+                FROM shift_open
+                WHERE branch_id = ${branchId}
+                  AND business_date = ${body.business_date}`,
+          );
+          const shiftNumber = numRow?.next_num ?? 1;
+
+          const [inserted] = await tx
+            .insert(shiftOpen)
+            .values({
+              branchId,
+              businessDate: body.business_date,
+              openedByUserId: auth.userId,
+              openedAt: new Date(),
+              notes: body.notes ?? null,
+              status: "open",
+              shiftNumber,
+            })
+            .returning();
+          if (!inserted) throw new BusinessError("internal_error", "shift open insert failed", 500);
+          open = inserted;
+        }
+
+        // Replace count rows atomically (re-count = delete + reinsert).
+        await tx.delete(shiftOpenStockCount).where(eq(shiftOpenStockCount.shiftOpenId, open.id));
+        let varianceCount = 0;
+        for (const sc of body.stock_counts) {
+          const exp = expected[sc.product_id] ?? 0;
+          const variance = sc.counted_quantity - exp;
+          if (variance !== 0) varianceCount += 1;
+          await tx.insert(shiftOpenStockCount).values({
+            shiftOpenId: open.id,
+            productId: sc.product_id,
+            systemQuantity: exp,
+            countedQuantity: sc.counted_quantity,
+            variance,
+            varianceReason: sc.variance_reason ?? null,
+          });
+        }
+
+        const [filer] = await tx
+          .select({ email: adminUser.email })
+          .from(adminUser)
+          .where(eq(adminUser.id, auth.userId));
+        await enqueueOutbox(tx, c, "shift_open.submitted", {
+          shift_open_id: open.id,
+          branch_id: branchId,
+          business_date: body.business_date,
+          opened_by: filer?.email ?? auth.userId,
+          variance_count: varianceCount,
         });
-      }
-
-      const [filer] = await tx
-        .select({ email: adminUser.email })
-        .from(adminUser)
-        .where(eq(adminUser.id, auth.userId));
-      await enqueueOutbox(tx, c, "shift_open.submitted", {
-        shift_open_id: open.id,
-        branch_id: branchId,
-        business_date: body.business_date,
-        opened_by: filer?.email ?? auth.userId,
-        variance_count: varianceCount,
+        return open;
       });
-      return open;
-    });
+    } catch (err: unknown) {
+      // Partial-index unique violation (concurrent open from another request).
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("uq_shift_open_one_open_per_branch")) {
+        throw new BusinessError("conflict", "shift already open", 409);
+      }
+      throw err;
+    }
 
     await writeAudit(db, c, {
       action: "shift_open.submit",

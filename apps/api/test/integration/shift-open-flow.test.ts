@@ -4,6 +4,10 @@ import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
 import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { createDbClient, shiftOpen } from "@ms/db";
+import { eq, and } from "drizzle-orm";
+
+let testDb: ReturnType<typeof createDbClient>;
 
 interface Branch { id: string; name: string }
 interface Product { id: string; name: string; slug: string }
@@ -78,6 +82,7 @@ describe("shift-open flow", () => {
   beforeAll(async () => {
     const tdb = await setupTestDb();
     container = tdb.container;
+    testDb = tdb.db;
     await seedOwner(tdb.db);
     const { buildApp } = await import("../../src/test-app.js");
     server = serve({ fetch: buildApp().fetch, port: 0 });
@@ -181,6 +186,94 @@ describe("shift-open flow", () => {
       },
     );
     expect(res.status).toBe(201);
+  });
+
+  // Task 4 TDD: session lifecycle tests
+  it("(a) first open returns 201 with status=open and shift_number=1", async () => {
+    const { branch } = await seedBranch(0, false);
+    const branchId = branch.id;
+    const date = "2026-06-20";
+
+    const res = await call<{ data: { id: string; status: string; shiftNumber: number } }>(
+      "POST",
+      `/v1/branches/${branchId}/shift-open`,
+      { business_date: date, stock_counts: [] },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe("open");
+    expect(res.body.data.shiftNumber).toBe(1);
+  });
+
+  it("(b) second POST while open updates counts, does NOT create a 2nd shift", async () => {
+    const { branch, product } = await seedBranch(5);
+    const branchId = branch.id;
+    const productId = product!.id;
+    const date = "2026-06-20";
+
+    // First open
+    const first = await call<{ data: { id: string } }>(
+      "POST",
+      `/v1/branches/${branchId}/shift-open`,
+      { business_date: date, stock_counts: [] },
+    );
+    expect(first.status).toBe(201);
+    const firstId = first.body.data.id;
+
+    // Second POST while still open (re-count)
+    const second = await call<{ data: { id: string; status: string; shiftNumber: number } }>(
+      "POST",
+      `/v1/branches/${branchId}/shift-open`,
+      {
+        business_date: date,
+        stock_counts: [{ product_id: productId, counted_quantity: 5 }],
+      },
+    );
+    expect(second.status).toBe(201);
+    // Same row returned (same id)
+    expect(second.body.data.id).toBe(firstId);
+    expect(second.body.data.status).toBe("open");
+
+    // Only 1 shift_open row for this branch+date
+    const rows = await testDb
+      .select()
+      .from(shiftOpen)
+      .where(and(eq(shiftOpen.branchId, branchId), eq(shiftOpen.businessDate, date)));
+    expect(rows.length).toBe(1);
+    // Still open
+    expect(rows[0]!.status).toBe("open");
+  });
+
+  it("(c) after the open shift is closed, next POST opens shift_number=2", async () => {
+    const { branch } = await seedBranch(0, false);
+    const branchId = branch.id;
+    const date = "2026-06-20";
+
+    // Open shift 1
+    const first = await call<{ data: { id: string } }>(
+      "POST",
+      `/v1/branches/${branchId}/shift-open`,
+      { business_date: date, stock_counts: [] },
+    );
+    expect(first.status).toBe(201);
+    const firstId = first.body.data.id;
+
+    // Close it directly in the DB
+    await testDb
+      .update(shiftOpen)
+      .set({ status: "closed", closedAt: new Date() })
+      .where(eq(shiftOpen.id, firstId));
+
+    // Open shift 2
+    const second = await call<{ data: { id: string; status: string; shiftNumber: number } }>(
+      "POST",
+      `/v1/branches/${branchId}/shift-open`,
+      { business_date: date, stock_counts: [] },
+    );
+    expect(second.status).toBe(201);
+    expect(second.body.data.status).toBe("open");
+    expect(second.body.data.shiftNumber).toBe(2);
+    // Different row
+    expect(second.body.data.id).not.toBe(firstId);
   });
 
   it("sync pull reports opened_today after an opening is filed", async () => {
