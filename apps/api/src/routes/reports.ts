@@ -473,11 +473,11 @@ export function reportRoutes(db: DbClient) {
     const priorBag = new Map(bagPrior.map((r) => [r.material_id, Number(r.units)]));
     const caveats: string[] = [];
 
-    function costFor(
+    function costDetail(
       dayRows: Array<{ material_id: string; units: number }>,
       priorMap: Map<string, number>,
-    ): number {
-      let total = 0;
+    ): Array<{ material_id: string; units: number; cost_ngn: number }> {
+      const out: Array<{ material_id: string; units: number; cost_ngn: number }> = [];
       for (const row of dayRows) {
         const layers = layersByMat.get(row.material_id) ?? [];
         const fallback = fallbackByMat.get(row.material_id) ?? 0;
@@ -485,13 +485,33 @@ export function reportRoutes(db: DbClient) {
           caveats.push(`${nameById.get(row.material_id) ?? "A material"} has no purchase history — costed at ₦0`);
         }
         const res = allocateFifo(layers, priorMap.get(row.material_id) ?? 0, Number(row.units), fallback);
-        total += res.costNgn;
+        out.push({ material_id: row.material_id, units: Number(row.units), cost_ngn: res.costNgn });
       }
-      return total;
+      return out;
     }
 
-    const bottlesCost = costFor(bottleDay, priorBottle);
-    const bagsCost = costFor(bagDay, priorBag);
+    const bottleDetail = costDetail(bottleDay, priorBottle);
+    const bagDetail = costDetail(bagDay, priorBag);
+    const bottlesCost = bottleDetail.reduce((s, r) => s + r.cost_ngn, 0);
+    const bagsCost = bagDetail.reduce((s, r) => s + r.cost_ngn, 0);
+    const packagingBreakdown = [
+      ...bottleDetail.map((r) => ({
+        material_id: r.material_id,
+        name: nameById.get(r.material_id) ?? "—",
+        kind: "bottle" as const,
+        units: r.units,
+        unit_cost_ngn: r.units > 0 ? Math.round(r.cost_ngn / r.units) : 0,
+        cost_ngn: r.cost_ngn,
+      })),
+      ...bagDetail.map((r) => ({
+        material_id: r.material_id,
+        name: nameById.get(r.material_id) ?? "—",
+        kind: "bag" as const,
+        units: r.units,
+        unit_cost_ngn: r.units > 0 ? Math.round(r.cost_ngn / r.units) : 0,
+        cost_ngn: r.cost_ngn,
+      })),
+    ];
 
     // ── expenses for the day (selected categories, never packaging) ──
     // When no categories are selected (e.g. every checkbox unchecked, or the
@@ -532,9 +552,73 @@ export function reportRoutes(db: DbClient) {
     const unitsBySize = sizeRows.map((r) => ({ size_ml: Number(r.size_ml), units: Number(r.units) }));
     const totalUnits = unitsBySize.reduce((s, r) => s + r.units, 0);
 
+    // ── revenue by size → flavour category (actual recorded line totals) ──
+    const rbsRows = await db.execute<{
+      size_ml: number;
+      category: string;
+      units: number;
+      revenue_ngn: number;
+    }>(sql`
+      SELECT pv.size_ml AS size_ml, p.category AS category,
+             SUM(i.quantity)::int AS units,
+             SUM(i.line_total_ngn)::int AS revenue_ngn
+      FROM sale_order_item i
+      JOIN sale_order o ON o.id = i.sale_order_id
+      JOIN product_variant pv ON pv.id = i.variant_id
+      JOIN product p ON p.id = i.product_id
+      WHERE o.status IN ('paid','handed_over','delivered')
+        AND o.created_at_local::date = ${date}::date
+      GROUP BY pv.size_ml, p.category
+      ORDER BY pv.size_ml, p.category
+    `);
+    const CATEGORY_ORDER: Record<string, number> = { regular: 0, special: 1, punch: 2 };
+    const bySizeMap = new Map<
+      number,
+      {
+        size_ml: number;
+        revenue_ngn: number;
+        units: number;
+        rows: Array<{ category: string; units: number; revenue_ngn: number; avg_unit_price_ngn: number }>;
+      }
+    >();
+    for (const rbsRow of rbsRows) {
+      const size = Number(rbsRow.size_ml);
+      const units = Number(rbsRow.units);
+      const rev = Number(rbsRow.revenue_ngn);
+      const entry = bySizeMap.get(size) ?? { size_ml: size, revenue_ngn: 0, units: 0, rows: [] };
+      entry.rows.push({
+        category: rbsRow.category,
+        units,
+        revenue_ngn: rev,
+        avg_unit_price_ngn: units > 0 ? Math.round(rev / units) : 0,
+      });
+      entry.revenue_ngn += rev;
+      entry.units += units;
+      bySizeMap.set(size, entry);
+    }
+    const revenueBySize = [...bySizeMap.values()]
+      .sort((a, b) => a.size_ml - b.size_ml)
+      .map((e) => ({
+        ...e,
+        rows: e.rows.sort(
+          (a, b) => (CATEGORY_ORDER[a.category] ?? 9) - (CATEGORY_ORDER[b.category] ?? 9),
+        ),
+      }));
+    const productSales = revenueBySize.reduce((s, e) => s + e.revenue_ngn, 0);
+
+    // ── delivery fees collected on the day's counted orders (reconciliation) ──
+    const delivRow = await db.execute<{ fees: number }>(sql`
+      SELECT COALESCE(SUM(delivery_fee_ngn), 0)::int AS fees
+      FROM sale_order
+      WHERE status IN ('paid','handed_over','delivered')
+        AND created_at_local::date = ${date}::date
+    `);
+    const deliveryFees = Number(delivRow[0]?.fees ?? 0);
+
     const netRevenue = revenue - refunds;
     const packagingCost = bottlesCost + bagsCost;
     const dailyProfit = netRevenue - packagingCost - expenses;
+    const marginPct = netRevenue > 0 ? Math.round((dailyProfit / netRevenue) * 1000) / 10 : null;
 
     return c.json({
       data: {
@@ -542,14 +626,19 @@ export function reportRoutes(db: DbClient) {
         revenue_ngn: revenue,
         refunds_ngn: refunds,
         net_revenue_ngn: netRevenue,
+        product_sales_ngn: productSales,
+        delivery_fees_ngn: deliveryFees,
         packaging_cost_ngn: packagingCost,
         packaging_cost_bottles_ngn: bottlesCost,
         packaging_cost_bags_ngn: bagsCost,
         expenses_ngn: expenses,
         expenses_by_category: expensesByCat,
         daily_profit_ngn: dailyProfit,
+        margin_pct: marginPct,
         total_units: totalUnits,
         units_by_size: unitsBySize,
+        revenue_by_size: revenueBySize,
+        packaging_breakdown: packagingBreakdown,
         caveats: Array.from(new Set(caveats)),
       },
     });
