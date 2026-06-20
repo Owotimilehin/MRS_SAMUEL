@@ -368,5 +368,6 @@
     }
     ,{ "idx": 52, "version": "7", "when": 1782950000000, "tag": "0053_shift_session", "breakpoints": true }
     ,{ "idx": 53, "version": "7", "when": 1782980000000, "tag": "0054_branch_online_default", "breakpoints": true }
+    ,{ "idx": 54, "version": "7", "when": 1783010000000, "tag": "0055_straw_packaging_kind", "breakpoints": true }
   ]
 }
