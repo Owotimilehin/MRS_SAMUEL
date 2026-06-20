@@ -195,8 +195,29 @@ export function dailyCloseRoutes(db: DbClient) {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const rows = await db
-      .select()
+      .select({
+        id: dailyClose.id,
+        branchId: dailyClose.branchId,
+        businessDate: dailyClose.businessDate,
+        status: dailyClose.status,
+        cashCountedNgn: dailyClose.cashCountedNgn,
+        transfersCountedNgn: dailyClose.transfersCountedNgn,
+        systemCashTotalNgn: dailyClose.systemCashTotalNgn,
+        varianceNgn: dailyClose.varianceNgn,
+        submittedByUserId: dailyClose.submittedByUserId,
+        submittedAt: dailyClose.submittedAt,
+        approvedByUserId: dailyClose.approvedByUserId,
+        approvedAt: dailyClose.approvedAt,
+        notes: dailyClose.notes,
+        shiftId: dailyClose.shiftId,
+        createdAt: dailyClose.createdAt,
+        updatedAt: dailyClose.updatedAt,
+        shiftNumber: shiftOpen.shiftNumber,
+        openedAt: shiftOpen.openedAt,
+        closedAt: shiftOpen.closedAt,
+      })
       .from(dailyClose)
+      .leftJoin(shiftOpen, eq(dailyClose.shiftId, shiftOpen.id))
       .where(eq(dailyClose.branchId, branchId));
     return c.json({ data: rows });
   });

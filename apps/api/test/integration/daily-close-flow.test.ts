@@ -24,6 +24,9 @@ interface CloseRow {
   cashCountedNgn: number;
   systemCashTotalNgn: number;
   shiftId?: string | null;
+  shiftNumber?: number | null;
+  openedAt?: string | null;
+  closedAt?: string | null;
 }
 interface ShiftOpenRow {
   id: string;
@@ -352,6 +355,20 @@ describe("Phase 5 daily close flow", () => {
       `/v1/branches/${branch.id}/daily-close/${target!.id}/approve`,
     );
     expect(approve.body.data.status).toBe("approved");
+  });
+
+  it("list returns shift_number, opened_at, closed_at from joined shift_open", async () => {
+    const list = await call<{ data: CloseRow[] }>(
+      "GET",
+      `/v1/branches/${branch.id}/daily-close`,
+    );
+    expect(list.status).toBe(200);
+    // Find the close linked to a shift (from test b)
+    const withShift = list.body.data.find((c) => c.shiftId != null);
+    expect(withShift).toBeDefined();
+    expect(withShift!.shiftNumber).toBeGreaterThanOrEqual(1);
+    expect(withShift!.openedAt).toBeTruthy();
+    expect(withShift!.closedAt).toBeTruthy();
   });
 
   it("revenue report aggregates today's sales", async () => {
