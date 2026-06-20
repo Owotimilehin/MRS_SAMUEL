@@ -137,6 +137,22 @@ export interface ShiftOpenMarkerRow {
   opened_at: string;
 }
 
+/**
+ * One row per branch: tracks whether this device believes there is currently
+ * an open shift. Written by fileLocalShiftOpen / fileLocalShiftClose and
+ * mirrored from the server's open_shift in each /sync/pull response so that
+ * a newly-installed device or a second till heals without a manual action.
+ */
+export interface CurrentShiftRow {
+  /** Primary key: the branch id. */
+  branchId: string;
+  /** Server-assigned shift id, present once a shift has been acknowledged. */
+  shiftLocalId?: string;
+  /** ISO timestamp when the shift was opened (local or server). */
+  openedAt?: string;
+  status: "open" | "closed";
+}
+
 export class BranchDB extends Dexie {
   products!: Table<ProductRow, string>;
   variants!: Table<VariantRow, string>;
@@ -149,6 +165,7 @@ export class BranchDB extends Dexie {
   reservations!: Table<ReservationRow, string>;
   meta!: Table<SyncMetaRow, "default">;
   shiftOpenMarker!: Table<ShiftOpenMarkerRow, string>;
+  currentShift!: Table<CurrentShiftRow, string>;
 
   constructor() {
     super("ms_branch");
@@ -199,6 +216,14 @@ export class BranchDB extends Dexie {
     // survives logout (only "Refresh app" / local.delete() clears it).
     this.version(5).stores({
       shiftOpenMarker: "id, branch_id, business_date",
+    });
+    // v6: currentShift table. One row per branchId tracking open/closed state.
+    // Populated by fileLocalShiftOpen / fileLocalShiftClose and mirrored from
+    // the server's open_shift in each /sync/pull so second devices heal. No
+    // destructive clears — existing data is unaffected; new rows are created
+    // lazily on the next open/close or pull.
+    this.version(6).stores({
+      currentShift: "branchId",
     });
   }
 }

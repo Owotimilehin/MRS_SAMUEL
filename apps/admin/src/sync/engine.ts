@@ -241,6 +241,12 @@ interface PullResponse {
     }>;
     /** Server signals that today's opening count is already on file for this branch. */
     opened_today?: boolean;
+    /**
+     * The branch's currently-open shift, or null if none. Used to heal the
+     * local currentShift mirror on every pull so a second device or a
+     * reinstalled PWA knows the correct state without a manual action.
+     */
+    open_shift?: { id: string; opened_at: string | null } | null;
   };
   next_cursor: string;
 }
@@ -270,6 +276,7 @@ export async function pullDeltas(branchId: string): Promise<void> {
       local.transfers,
       local.sales,
       local.meta,
+      local.currentShift,
     ],
     async () => {
       for (const p of body.data.products) {
@@ -386,6 +393,35 @@ export async function pullDeltas(branchId: string): Promise<void> {
         branch_id: branchId,
         opened_today: body.data.opened_today ?? false,
       });
+
+      // Mirror server open_shift into currentShift so any device heals.
+      // Only act when the server sent the field (undefined = old server that
+      // doesn't know about shifts yet — leave local state untouched).
+      if ("open_shift" in body.data) {
+        const openShift = body.data.open_shift;
+        const existingShift = await local.currentShift.get(branchId);
+        if (openShift) {
+          // Server has an open shift — record it. Preserve shiftLocalId if
+          // the device already has one and the server id matches, otherwise
+          // overwrite with the authoritative server id.
+          const openedAtValue = openShift.opened_at ?? null;
+          const openedAtPatch = openedAtValue != null ? { openedAt: openedAtValue } : {};
+          await local.currentShift.put({
+            ...(existingShift ?? { branchId }),
+            branchId,
+            shiftLocalId: openShift.id,
+            ...openedAtPatch,
+            status: "open",
+          });
+        } else {
+          // Server says no open shift — mark closed (keep the row for history).
+          await local.currentShift.put({
+            ...(existingShift ?? { branchId }),
+            branchId,
+            status: "closed",
+          });
+        }
+      }
     },
   );
 }
