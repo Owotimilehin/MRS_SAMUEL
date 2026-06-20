@@ -144,10 +144,13 @@ export function deliveryAdminRoutes(db: DbClient) {
   r.post("/cancel", requireCapability("orders.manage"), async (c) => {
     const saleId = c.req.param("saleId");
     if (!saleId) throw new BusinessError("validation_failed", "saleId required", 400);
+    // Enforce the same guards as /options and /book: order must exist and must
+    // be an online order (not a walk-up till sale).
+    const { o } = await load(saleId);
     const [row] = await db
       .select()
       .from(deliveryOrder)
-      .where(eq(deliveryOrder.saleOrderId, saleId))
+      .where(eq(deliveryOrder.saleOrderId, o.id))
       .orderBy(desc(deliveryOrder.requestedAt))
       .limit(1);
     if (!row || !row.externalRef) {

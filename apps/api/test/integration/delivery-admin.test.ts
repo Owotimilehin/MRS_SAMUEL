@@ -20,6 +20,8 @@ describe("admin delivery endpoints (mock provider)", () => {
   let server: ReturnType<typeof serve>;
   let branchId: string;
   let saleId: string;
+  let productId: string;
+  let variantId: string;
 
   beforeAll(async () => {
     const tdb = await setupTestDb();
@@ -73,8 +75,8 @@ describe("admin delivery endpoints (mock provider)", () => {
     const pData = ((await pRes.json()) as {
       data: { id: string; variants: Array<{ id: string; size_ml: number }> };
     }).data;
-    const productId = pData.id;
-    const variantId = pData.variants.find((v) => v.size_ml === 330)!.id;
+    productId = pData.id;
+    variantId = pData.variants.find((v) => v.size_ml === 330)!.id;
 
     // Purchase bottles at the factory.
     const matsRes = await fetch(`${baseUrl}/v1/packaging/materials`, {
@@ -242,9 +244,56 @@ describe("admin delivery endpoints (mock provider)", () => {
     expect(again.status).toBe(409);
   });
 
-  it("POST cancel marks the delivery as cancelled", async () => {
+  it("POST cancel marks the delivery as cancelled (self-contained)", async () => {
+    // Place a fresh online order so this test is independent of the book test.
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Lagos Island",
+        delivery_fee_ngn: 1500,
+        customer: {
+          name: "Cancel Test Customer",
+          phone: "08011223344",
+          email: "cancel.delivery@example.com",
+          address: "5 Broad Street, Lagos Island, Lagos",
+        },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const cancelSaleId = ((await orderRes.json()) as { data: { id: string } }).data.id;
+
+    // Fetch options to get a valid option id.
+    const optRes = await fetch(
+      `${baseUrl}/v1/branches/${branchId}/sales/${cancelSaleId}/delivery/options`,
+      { headers: { cookie: cookies } },
+    );
+    expect(optRes.status).toBe(200);
+    const optBody = (await optRes.json()) as {
+      data: { options: Array<{ id: string; fee_ngn: number }> };
+    };
+    const opt = optBody.data.options[0]!;
+
+    // Book a delivery for this order.
+    const book = await fetch(
+      `${baseUrl}/v1/branches/${branchId}/sales/${cancelSaleId}/delivery/book`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: cookies,
+          "idempotency-key": uuid(),
+        },
+        body: JSON.stringify({ option_id: opt.id, fee_ngn: opt.fee_ngn }),
+      },
+    );
+    expect(book.status).toBe(200);
+
+    // Now cancel the delivery we just booked.
     const cancel = await fetch(
-      `${baseUrl}/v1/branches/${branchId}/sales/${saleId}/delivery/cancel`,
+      `${baseUrl}/v1/branches/${branchId}/sales/${cancelSaleId}/delivery/cancel`,
       {
         method: "POST",
         headers: {
