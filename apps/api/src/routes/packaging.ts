@@ -20,7 +20,7 @@ const MaterialCreate = z.object({
   unit_label: z.string().min(1).max(50),
   size_ml: z.number().int().positive().nullable().optional(),
   is_active: z.boolean().optional(),
-  kind: z.enum(["bottle", "bag", "other"]).optional(),
+  kind: z.enum(["bottle", "bag", "straw", "other"]).optional(),
 });
 
 const MaterialPatch = z.object({
@@ -28,7 +28,7 @@ const MaterialPatch = z.object({
   unit_label: z.string().min(1).max(50).optional(),
   size_ml: z.number().int().positive().nullable().optional(),
   is_active: z.boolean().optional(),
-  kind: z.enum(["bottle", "bag", "other"]).optional(),
+  kind: z.enum(["bottle", "bag", "straw", "other"]).optional(),
 });
 
 const PurchaseCreate = z
