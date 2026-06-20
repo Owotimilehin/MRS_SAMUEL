@@ -326,8 +326,9 @@ export function reportRoutes(db: DbClient) {
         const [pendingRow, preorderRow, bagsRow, transferRow] = await Promise.all([
           db.execute<{ cnt: number }>(sql`
             SELECT COUNT(*)::int AS cnt FROM sale_order
-            WHERE is_preorder = false
-              AND status IN ('confirmed','paid','handed_over','out_for_delivery')`),
+            WHERE is_preorder = true
+              AND fulfilled_at IS NULL
+              AND status NOT IN ('cancelled','failed')`),
           db.execute<{ cnt: number }>(sql`
             SELECT COUNT(*)::int AS cnt FROM sale_order
             WHERE is_preorder = true
@@ -342,12 +343,12 @@ export function reportRoutes(db: DbClient) {
             WHERE status IN ('dispatched','in_transit','arrived')`),
         ]);
         return {
-          orders_pending: Number(pendingRow[0]?.cnt ?? 0),
+          awaiting_fulfilment: Number(pendingRow[0]?.cnt ?? 0),
           preorders_open: Number(preorderRow[0]?.cnt ?? 0),
           bags_queue: Number(bagsRow[0]?.cnt ?? 0),
           pending_transfers: Number(transferRow[0]?.cnt ?? 0),
         };
-      }, { orders_pending: 0, preorders_open: 0, bags_queue: 0, pending_transfers: 0 }),
+      }, { awaiting_fulfilment: 0, preorders_open: 0, bags_queue: 0, pending_transfers: 0 }),
 
       block("today", async () => {
         const rows = await db.execute<{ size_ml: number; units: number }>(sql`

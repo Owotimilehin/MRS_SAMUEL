@@ -50,7 +50,7 @@ interface ReviewBody {
 }
 interface Overview {
   stock: { low_stock_factory: number; low_stock_branch: number; expiring_48h: number };
-  fulfilment: { orders_pending: number; preorders_open: number; bags_queue: number; pending_transfers: number };
+  fulfilment: { awaiting_fulfilment: number; preorders_open: number; bags_queue: number; pending_transfers: number };
   today: { total_units: number; units_by_size: Array<{ size_ml: number; units: number }> };
 }
 interface DailyFinancials {
@@ -341,10 +341,10 @@ export function DashboardPage(): JSX.Element {
             hint={overview.today.units_by_size.map((u) => `${u.size_ml}ml: ${u.units}`).join(" · ") || "No sales yet"}
           />
           <Stat
-            label="Orders pending"
-            value={String(overview.fulfilment.orders_pending)}
-            tone={overview.fulfilment.orders_pending > 0 ? "warn" : "good"}
-            hint={`${overview.fulfilment.preorders_open} preorders · ${overview.fulfilment.bags_queue} bags`}
+            label="Awaiting fulfilment"
+            value={String(overview.fulfilment.awaiting_fulfilment)}
+            tone={overview.fulfilment.awaiting_fulfilment > 0 ? "warn" : "good"}
+            hint={`${overview.fulfilment.preorders_open} open preorders`}
           />
           <Stat
             label="Pending transfers"
