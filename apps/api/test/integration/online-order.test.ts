@@ -406,11 +406,11 @@ describe("Phase 3 customer-site online order flow", () => {
     expect((paid!.payload as Record<string, unknown>)["delivery_state"]).toBe("Oyo");
   });
 
-  it("immediate Lagos order: emits BOTH sale.paid_online and delivery.request", async () => {
+  it("immediate Lagos order: emits sale.paid_online but NOT delivery.request when auto-dispatch is off", async () => {
     const order = await placeAndPay({}, "+2348025550004");
     const mine = await eventsForOrder(order.id);
-    expect(mine.some((e) => e.eventType === "delivery.request")).toBe(true);
     expect(mine.some((e) => e.eventType === "sale.paid_online")).toBe(true);
+    expect(mine.some((e) => e.eventType === "delivery.request")).toBe(false);
   });
 
   it("Lagos order: a client-sent fee with no live quote is ignored (delivery ₦0)", async () => {

@@ -11,6 +11,7 @@ import {
 } from "@ms/db";
 import { verifyPayazaTransaction, verifyPayazaSignature, isPayazaSuccess } from "../payments/payaza.js";
 import { activateSubscriptionFromPayment } from "../lib/subscriptions.js";
+import { autoDispatchEnabled } from "../lib/delivery-flags.js";
 import { isOutsideLagos } from "@ms/shared";
 
 /**
@@ -144,12 +145,13 @@ export function payazaWebhookRoutes(db: DbClient) {
           delivery_state: o.deliveryState ?? null,
         },
       });
-      // Bypass: preorders (not made yet), scheduled (future), OR outside-Lagos
-      // orders skip automated delivery dispatch entirely; they're fulfilled out
-      // of band. Only immediate, in-Lagos, in-stock orders request a ride now.
+      // Auto-dispatch is OFF by default — rides are booked manually from the
+      // admin order page. When AUTO_DISPATCH_DELIVERY=true, fall back to the
+      // legacy behavior: immediate, in-Lagos, in-stock orders request a ride now
+      // (preorders / scheduled / outside-Lagos are always fulfilled out of band).
       const outsideLagos = isOutsideLagos(o.deliveryState);
       const bypass = o.isPreorder || o.scheduledDeliveryAt != null || outsideLagos;
-      if (!bypass) {
+      if (autoDispatchEnabled() && !bypass) {
         await tx.insert(outboxEvent).values({
           eventType: "delivery.request",
           payload: {

@@ -13,6 +13,7 @@ import {
 import { availableAtBranch } from "@ms/domain";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+import { autoDispatchEnabled } from "../lib/delivery-flags.js";
 
 const COUNTER_CHANNELS = new Set(["walkup", "whatsapp", "chowdeck_pickup"]);
 
@@ -135,7 +136,7 @@ export async function fulfilPreorderTx(
       .returning();
     if (!u) throw new BusinessError("internal_error", "fulfil update returned no rows", 500);
 
-    if (!toCounter) {
+    if (!toCounter && autoDispatchEnabled()) {
       await tx.insert(outboxEvent).values({
         eventType: "delivery.request",
         payload: { sale_order_id: id, order_number: o.orderNumber, branch_id: o.branchId },
