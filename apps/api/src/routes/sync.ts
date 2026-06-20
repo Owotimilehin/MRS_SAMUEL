@@ -151,6 +151,19 @@ export function syncRoutes(db: DbClient) {
       .limit(1);
     const openedToday = openRows.length > 0;
 
+    // Current open shift for the branch (status='open', any date — covers
+    // multi-shift and overnight scenarios). The POS uses this to heal local
+    // shift state on a fresh install or second device without re-opening.
+    const openShiftRows = await db
+      .select({ id: shiftOpen.id, openedAt: shiftOpen.openedAt })
+      .from(shiftOpen)
+      .where(and(eq(shiftOpen.branchId, branchIdParam), eq(shiftOpen.status, "open")))
+      .limit(1);
+    const openShiftRow = openShiftRows[0] ?? null;
+    const openShift = openShiftRow
+      ? { id: openShiftRow.id, opened_at: openShiftRow.openedAt?.toISOString() ?? null }
+      : null;
+
     return c.json({
       data: {
         products,
@@ -164,6 +177,7 @@ export function syncRoutes(db: DbClient) {
         sale_items: saleItems,
         customers,
         opened_today: openedToday,
+        open_shift: openShift,
       },
       next_cursor: new Date().toISOString(),
     });

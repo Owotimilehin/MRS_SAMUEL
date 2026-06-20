@@ -276,6 +276,39 @@ describe("shift-open flow", () => {
     expect(second.body.data.id).not.toBe(firstId);
   });
 
+  it("sync pull includes open_shift: non-null with open shift, null without", async () => {
+    const { branch } = await seedBranch(0, false);
+    const branchId = branch.id;
+    const todayLagos = new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
+
+    // Before any shift: open_shift must be null
+    const pre = await call<{ data: { open_shift: null | { id: string; opened_at: string } } }>(
+      "GET",
+      `/v1/sync/pull?branch_id=${branchId}`,
+    );
+    expect(pre.status).toBe(200);
+    expect(pre.body.data.open_shift).toBeNull();
+
+    // Open a shift for today
+    const openRes = await call<{ data: { id: string } }>(
+      "POST",
+      `/v1/branches/${branchId}/shift-open`,
+      { business_date: todayLagos, stock_counts: [] },
+    );
+    expect(openRes.status).toBe(201);
+    const shiftId = openRes.body.data.id;
+
+    // After opening: open_shift is non-null with the right id
+    const post = await call<{ data: { open_shift: null | { id: string; opened_at: string } } }>(
+      "GET",
+      `/v1/sync/pull?branch_id=${branchId}`,
+    );
+    expect(post.status).toBe(200);
+    expect(post.body.data.open_shift).not.toBeNull();
+    expect(post.body.data.open_shift!.id).toBe(shiftId);
+    expect(post.body.data.open_shift!.opened_at).toBeDefined();
+  });
+
   it("sync pull reports opened_today after an opening is filed", async () => {
     const { branch, product } = await seedBranch(4);
     const branchId = branch.id;
