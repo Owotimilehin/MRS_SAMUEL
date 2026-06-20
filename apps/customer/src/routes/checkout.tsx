@@ -12,6 +12,7 @@ import type { ApiDeliveryOption } from "@/lib/api/types";
 import { launchPayazaCheckout } from "@/lib/payaza";
 import { NIGERIA_STATES } from "@/lib/nigeria-states";
 import { WINDOWS, scheduledIso, isWindowAvailable, type DeliveryWindow } from "@/lib/schedule";
+import { LIVE_COURIER_QUOTES } from "@/lib/flags";
 
 export const Route = createFileRoute("/checkout")({
   head: () => ({
@@ -66,7 +67,8 @@ function Page() {
   const [quoteNotice, setQuoteNotice] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const wantQuote = !outsideLagos && !scheduled && form.address.trim().length >= 5 && !!branchId;
+  const wantQuote =
+    LIVE_COURIER_QUOTES && !outsideLagos && !scheduled && form.address.trim().length >= 5 && !!branchId;
 
   useEffect(() => {
     if (!wantQuote) {
@@ -95,7 +97,8 @@ function Page() {
   }, [wantQuote, branchId, form.address, form.state]);
 
   const selectedOption = options.find((o) => o.id === selectedId) ?? null;
-  const deliveryFee = outsideLagos || scheduled ? 0 : (selectedOption?.fee_ngn ?? 0);
+  const deliveryFee =
+    !LIVE_COURIER_QUOTES || outsideLagos || scheduled ? 0 : (selectedOption?.fee_ngn ?? 0);
   const total = subtotal + deliveryFee;
 
   // --- placing the order ---
@@ -253,7 +256,7 @@ function Page() {
                   </p>
                 )}
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <Toggle active={form.when === "now"} disabled={hasPreorder} onClick={() => set("when", "now")} icon={<Truck className="h-4 w-4" />} title="Deliver now" desc={hasPreorder ? "Not available for preorder" : outsideLagos ? "Arranged after checkout" : "Live courier today"} />
+                  <Toggle active={form.when === "now"} disabled={hasPreorder} onClick={() => set("when", "now")} icon={<Truck className="h-4 w-4" />} title="Deliver now" desc={hasPreorder ? "Not available for preorder" : LIVE_COURIER_QUOTES && !outsideLagos ? "Live courier today" : "Arranged after checkout"} />
                   <Toggle active={form.when === "schedule"} onClick={() => set("when", "schedule")} icon={<CalendarClock className="h-4 w-4" />} title="Schedule" desc="Pick a day & window" />
                 </div>
                 {scheduled && (
@@ -291,6 +294,10 @@ function Page() {
                 ) : scheduled ? (
                   <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
                     <span className="font-semibold text-[color:var(--brand)]">Scheduled.</span> We'll deliver on {form.date}, {WINDOWS.find((w) => w.id === form.window)?.label}. No rider fee is charged now.
+                  </p>
+                ) : !LIVE_COURIER_QUOTES ? (
+                  <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
+                    <span className="font-semibold text-[color:var(--brand)]">We'll contact you on WhatsApp</span> to arrange delivery and confirm the cost once your order is in. No delivery fee is charged now.
                   </p>
                 ) : quoting ? (
                   <div className="mt-3 flex items-center gap-2 text-sm text-[color:var(--brand)]/60"><Loader2 className="h-4 w-4 animate-spin" /> Finding couriers…</div>
@@ -337,7 +344,7 @@ function Page() {
               </div>
               <div className="mt-5 pt-5 border-t border-white/10 space-y-2 text-sm">
                 <Row label="Subtotal" value={formatNaira(subtotal)} />
-                <Row label="Delivery" value={outsideLagos || scheduled ? "₦0" : selectedOption ? formatNaira(deliveryFee) : "—"} />
+                <Row label="Delivery" value={!LIVE_COURIER_QUOTES || outsideLagos || scheduled ? "₦0" : selectedOption ? formatNaira(deliveryFee) : "—"} />
                 <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
                   <span className="text-xs uppercase tracking-[0.2em] text-white/60">Total</span>
                   <span className="font-display text-2xl font-semibold">{formatNaira(total)}</span>
