@@ -80,6 +80,7 @@ interface DailyFinancials {
   net_revenue_ngn: number;
   product_sales_ngn: number;
   delivery_fees_ngn: number;
+  other_adjustments_ngn: number;
   revenue_by_size: RevenueBySize[];
   packaging_cost_ngn: number;
   packaging_cost_bottles_ngn: number;
@@ -354,6 +355,12 @@ export function DashboardPage(): JSX.Element {
                     <ReconLine label="Product sales" value={ngn(daily.product_sales_ngn)} />
                     {daily.delivery_fees_ngn > 0 && (
                       <ReconLine label="+ Delivery fees" value={ngn(daily.delivery_fees_ngn)} />
+                    )}
+                    {daily.other_adjustments_ngn !== 0 && (
+                      <ReconLine
+                        label="+ Other (subscriptions/adjustments)"
+                        value={ngn(daily.other_adjustments_ngn)}
+                      />
                     )}
                     {daily.refunds_ngn > 0 && (
                       <ReconLine label="− Refunds" value={ngn(daily.refunds_ngn)} />
