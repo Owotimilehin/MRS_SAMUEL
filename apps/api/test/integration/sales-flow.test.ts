@@ -127,6 +127,13 @@ describe("Phase 2 walk-up sale flow", () => {
         },
       ],
     });
+
+    // Open a shift for this branch so the sale-creation gate is satisfied.
+    const today = new Date().toISOString().slice(0, 10);
+    await call("POST", `/v1/branches/${branch.id}/shift-open`, {
+      business_date: today,
+      stock_counts: [],
+    });
   }, 180_000);
 
   afterAll(async () => {

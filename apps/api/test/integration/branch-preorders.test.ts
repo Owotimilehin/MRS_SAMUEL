@@ -74,6 +74,14 @@ describe("Branch-scoped preorder session", () => {
     const [variant] = await db.select().from(productVariant).where(eq(productVariant.productId, productId));
     variantId = variant!.id;
 
+    // Open a shift at branchA so the sale-creation gate is satisfied.
+    const today = new Date().toISOString().slice(0, 10);
+    await fetch(`${baseUrl}/v1/branches/${branchA}/shift-open`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: ownerCookies, "idempotency-key": uuid() },
+      body: JSON.stringify({ business_date: today, stock_counts: [] }),
+    });
+
     const saleRes = await fetch(`${baseUrl}/v1/branches/${branchA}/sales`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: ownerCookies, "idempotency-key": uuid() },

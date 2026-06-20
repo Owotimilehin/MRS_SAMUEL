@@ -115,6 +115,18 @@ describe("Phase 5 daily close flow", () => {
       items: [{ product_id: product.id, new_quantity: 20 }],
     });
 
+    // Open a shift so the sale-creation gate is satisfied for the 3 beforeAll sales.
+    // (These sales will be OUTSIDE the shift window for the daily-close tests,
+    // which open a fresh shift via openShift() in the test body itself.)
+    const today = new Date().toISOString().slice(0, 10);
+    const preShift = await call<{ data: { id: string } }>(
+      "POST",
+      `/v1/branches/${branch.id}/shift-open`,
+      { business_date: today, stock_counts: [] },
+    );
+    // Immediately close it in DB so the shift-close tests start with no open shift.
+    // We do this after the 3 sales are made below.
+
     // Sell 3 bottles by transfer today (the till books every sale as transfer).
     for (let i = 0; i < 3; i++) {
       const confirm = await call<{ data: SaleOrderRow }>(
@@ -128,6 +140,17 @@ describe("Phase 5 daily close flow", () => {
         },
       );
       await call("PATCH", `/v1/branches/${branch.id}/sales/${confirm.body.data.id}/pay`);
+    }
+
+    // Close the pre-seeding shift so test (a) starts with no open shift.
+    if (preShift.body?.data?.id) {
+      const { createDbClient, shiftOpen } = await import("@ms/db");
+      const { eq } = await import("drizzle-orm");
+      const tmpDb = createDbClient(process.env.DATABASE_URL!);
+      await tmpDb
+        .update(shiftOpen)
+        .set({ status: "closed", closedAt: new Date() })
+        .where(eq(shiftOpen.id, preShift.body.data.id));
     }
   }, 90_000);
 
@@ -239,7 +262,19 @@ describe("Phase 5 daily close flow", () => {
       items: [{ product_id: product.id, new_quantity: 10 }],
     });
 
-    // Sale BEFORE the shift opens — use a timestamp in the past (1 hour ago)
+    // The sale-creation gate requires an OPEN shift. Open a temporary shift so
+    // the "pre-shift" sale can be created, then close it and open the real shift.
+    // The reconciliation window is determined by opened_at of the REAL shift,
+    // so using created_at_local = 1hr ago still places this sale "before" the
+    // real shift window.
+    const today = new Date().toISOString().slice(0, 10);
+    const tempShift = await call<{ data: { id: string } }>(
+      "POST",
+      `/v1/branches/${winBranch.id}/shift-open`,
+      { business_date: today, stock_counts: [] },
+    );
+
+    // Sale BEFORE the real shift opens — use a timestamp in the past (1 hour ago)
     const beforeShift = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const saleBeforeRes = await call<{ data: SaleOrderRow }>(
       "POST",
@@ -253,10 +288,22 @@ describe("Phase 5 daily close flow", () => {
     );
     await call("PATCH", `/v1/branches/${winBranch.id}/sales/${saleBeforeRes.body.data.id}/pay`);
 
-    // Open the shift NOW (after beforeShift timestamp)
+    // Close the temp shift so we can open the real shift (shift_number=2).
+    // The real shift's opened_at will be AFTER beforeShift (1hr ago), which is
+    // what the reconciliation uses to exclude the pre-shift sale.
+    {
+      const { createDbClient, shiftOpen } = await import("@ms/db");
+      const { eq } = await import("drizzle-orm");
+      const tmpDb = createDbClient(process.env.DATABASE_URL!);
+      await tmpDb
+        .update(shiftOpen)
+        .set({ status: "closed", closedAt: new Date() })
+        .where(eq(shiftOpen.id, tempShift.body.data.id));
+    }
+
+    // Open the REAL shift NOW (after beforeShift timestamp)
     // winBranch has 10 on-hand (but 1 sale already done before shift),
     // system qty = 9 after that sale. Count 9 (no variance).
-    const today = new Date().toISOString().slice(0, 10);
     const winShift = await openShift(winBranch.id, today, 9);
     expect(winShift.status).toBe("open");
 

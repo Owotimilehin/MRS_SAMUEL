@@ -100,6 +100,16 @@ describe("POS bag consumption (A2c)", () => {
       sourceType: "opening_balance",
       sourceId: uuid(),
     });
+
+    // Open a shift so the sale-creation gate is satisfied.
+    const today = new Date().toISOString().slice(0, 10);
+    const shiftRes = await call("POST", `/v1/branches/${branch.id}/shift-open`, {
+      business_date: today,
+      stock_counts: [],
+    });
+    if ((shiftRes as { status: number }).status !== 201) {
+      throw new Error(`shift-open failed in pos-bag setup: ${JSON.stringify(shiftRes)}`);
+    }
   }, 180_000);
 
   afterAll(async () => {

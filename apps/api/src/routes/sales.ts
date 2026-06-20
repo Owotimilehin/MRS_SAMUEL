@@ -13,6 +13,7 @@ import {
   productPrice,
   productVariant,
   product,
+  shiftOpen,
   type DbClient,
 } from "@ms/db";
 import { availableAtBranch, nextOrderNumber } from "@ms/domain";
@@ -145,6 +146,17 @@ export function saleRoutes(db: DbClient) {
     // gate is open to either capability, so enforce the restriction here.
     if (!auth.capabilities.includes("pos.sell") && body.is_preorder !== true) {
       throw new BusinessError("forbidden", "this role may only create preorders", 403);
+    }
+
+    // Open-shift gate: the branch must have an open shift before any sale
+    // (walk-up or preorder) can be created. Applies to all roles including owner.
+    const [openShift] = await db
+      .select({ id: shiftOpen.id })
+      .from(shiftOpen)
+      .where(and(eq(shiftOpen.branchId, branchId), eq(shiftOpen.status, "open")))
+      .limit(1);
+    if (!openShift) {
+      throw new BusinessError("conflict", "Open a shift before selling", 409);
     }
 
     const created = await db.transaction(async (tx) => {

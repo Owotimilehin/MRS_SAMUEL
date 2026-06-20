@@ -98,6 +98,13 @@ describe("preorders: pay-without-deduct + queue + fulfil", () => {
 
     // Make this product's variant preorder-only (made-to-order).
     await db.update(productVariant).set({ preorderOnly: true }).where(eq(productVariant.productId, product.id));
+
+    // Open a shift so the sale-creation gate is satisfied.
+    const today = new Date().toISOString().slice(0, 10);
+    await call("POST", `/v1/branches/${branch.id}/shift-open`, {
+      business_date: today,
+      stock_counts: [],
+    });
   }, 180_000);
 
   afterAll(async () => {

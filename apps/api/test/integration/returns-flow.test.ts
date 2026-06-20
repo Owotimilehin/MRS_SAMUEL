@@ -160,6 +160,13 @@ describe("Phase 4 returns flow", () => {
     await call("PATCH", `/v1/transfers/${xfer.body.data.id}/receive`, {
       items: [{ item_id: detail.body.data.items[0]!.id, quantity_received: 40 }],
     });
+
+    // Open a shift for this branch so the sale-creation gate is satisfied.
+    const today = new Date().toISOString().slice(0, 10);
+    await call("POST", `/v1/branches/${branch.id}/shift-open`, {
+      business_date: today,
+      stock_counts: [],
+    });
   }, 90_000);
 
   afterAll(async () => {
