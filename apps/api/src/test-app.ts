@@ -42,6 +42,7 @@ import { publicBlogRoutes } from "./routes/public-blog.js";
 import { publicContactRoutes } from "./routes/public-contact.js";
 import { publicSubscriptionRoutes } from "./routes/public-subscriptions.js";
 import { boltWebhookRoutes, shipbubbleWebhookRoutes } from "./routes/webhooks-bolt.js";
+import { deliveryAdminRoutes } from "./routes/delivery-admin.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -92,6 +93,9 @@ export function buildApp(): Hono {
   app.route("/v1/review", reviewRoutes(db));
   app.route("/v1/factories", factoryRoutes(db));
   // Nested branch routes: /v1/branches/:branchId/sales/...
+  // Delivery sub-router must be mounted before the sales router so Hono's
+  // longer/more-specific path wins when matching /:saleId/delivery/*.
+  app.route("/v1/branches/:branchId/sales/:saleId/delivery", deliveryAdminRoutes(db));
   app.route("/v1/branches/:branchId/sales", saleRoutes(db));
   app.route("/v1/preorders", preorderRoutes(db));
   app.route("/v1/branches/:branchId/preorders", branchPreorderRoutes(db));
