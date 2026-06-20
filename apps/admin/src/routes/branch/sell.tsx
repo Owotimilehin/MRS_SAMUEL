@@ -23,12 +23,14 @@ import { FlavourMedia } from "../../components/FlavourMedia.js";
 interface BagMaterial {
   id: string;
   name: string;
+  kind: "bag" | "straw";
   balance: number;
 }
 
 interface BagStockRow {
   material_id: string;
   name: string;
+  kind: "bag" | "straw";
   balance: number;
 }
 
@@ -114,6 +116,10 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   }, [branchId]);
   // Defensive: a user with neither selling capability can't check out at all.
   const checkoutDisabled = !canSellStock && !canPreorder;
+  // The cashier must deliberately set a bag count and a straw count (0 allowed)
+  // before a sale can complete. When a group has no materials loaded (offline
+  // or no access), there's nothing to set, so that group is auto-satisfied.
+  const consumablesReady = (bagMaterials.length === 0 || bagsSet) && (strawMaterials.length === 0 || strawsSet);
   // Branch header for the receipt, fetched best-effort (works online; offline we
   // still print with just the branch id-derived fallbacks).
   const [branchInfo, setBranchInfo] = useState<{ name: string; address: string | null; phone: string | null }>({
@@ -134,17 +140,23 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     })();
   }, [branchId]);
 
-  // Optional bag add-on (tracked-only). The bag catalog + this branch's on-hand
-  // counts are fetched when online; offline the picker is hidden — the sale
-  // itself still works offline.
+  // Bags + straws are tracked-only POS consumables. The cashier MUST set a
+  // count for each (0 allowed) before a sale can complete.
   const [bagMaterials, setBagMaterials] = useState<BagMaterial[]>([]);
+  const [strawMaterials, setStrawMaterials] = useState<BagMaterial[]>([]);
   const [bagCart, setBagCart] = useState<Record<string, number>>({});
+  const [strawCart, setStrawCart] = useState<Record<string, number>>({});
+  const [bagsSet, setBagsSet] = useState(false);
+  const [strawsSet, setStrawsSet] = useState(false);
   async function loadBags(): Promise<void> {
     try {
       const res = await api<{ data: BagStockRow[] }>(`/branches/${branchId}/sales/bags`);
-      setBagMaterials(res.data.map((m) => ({ id: m.material_id, name: m.name, balance: m.balance })));
+      const rows = res.data.map((m) => ({ id: m.material_id, name: m.name, kind: m.kind, balance: m.balance }));
+      setBagMaterials(rows.filter((m) => m.kind === "bag"));
+      setStrawMaterials(rows.filter((m) => m.kind === "straw"));
     } catch {
-      setBagMaterials([]); // offline or no access — bag add-on stays hidden
+      setBagMaterials([]); // offline or no access — consumable pickers stay hidden
+      setStrawMaterials([]);
     }
   }
   useEffect(() => {
@@ -152,7 +164,17 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchId]);
   function setBagQty(id: string, qty: number): void {
+    setBagsSet(true);
     setBagCart((b) => {
+      const next = { ...b };
+      if (qty <= 0) delete next[id];
+      else next[id] = qty;
+      return next;
+    });
+  }
+  function setStrawQty(id: string, qty: number): void {
+    setStrawsSet(true);
+    setStrawCart((b) => {
       const next = { ...b };
       if (qty <= 0) delete next[id];
       else next[id] = qty;
@@ -323,6 +345,11 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
         packaging_material_id,
         quantity,
       }));
+      const strawLines = Object.entries(strawCart).map(([packaging_material_id, quantity]) => ({
+        packaging_material_id,
+        quantity,
+      }));
+      const packagingLines = [...bagLines, ...strawLines];
       const sale = await createLocalSale({
         branchId,
         channel,
@@ -331,7 +358,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
         ...(orderIsPreorder
           ? { is_preorder: true, fulfill_by: new Date(`${fulfillBy}T12:00:00`).toISOString() }
           : {}),
-        ...(bagLines.length > 0 ? { packaging: bagLines } : {}),
+        ...(packagingLines.length > 0 ? { packaging: packagingLines } : {}),
         ...(trimmedPhone || trimmedName
           ? {
               customer: {
@@ -364,6 +391,9 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       setSuccessSale({ receipt, itemCount });
       setCart([]);
       setBagCart({});
+      setStrawCart({});
+      setBagsSet(false);
+      setStrawsSet(false);
       setFulfillBy("");
       setPreorderChoice(false);
       setCustomerPhone("");
@@ -382,12 +412,64 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           }),
         );
       }
+      if (!orderIsPreorder && strawLines.length > 0) {
+        setStrawMaterials((prev) =>
+          prev.map((m) => {
+            const sold = strawLines.find((s) => s.packaging_material_id === m.id)?.quantity ?? 0;
+            return sold > 0 ? { ...m, balance: m.balance - sold } : m;
+          }),
+        );
+      }
       setTimeout(() => setFlash(null), 4000);
     } catch (err) {
       setError(humanizeError(err));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function ConsumableSection(props: {
+    title: string;
+    emoji: string;
+    materials: BagMaterial[];
+    cart: Record<string, number>;
+    setQty: (id: string, qty: number) => void;
+    isSet: boolean;
+    markNone: () => void;
+  }): JSX.Element {
+    const { title, emoji, materials, cart, setQty, isSet, markNone } = props;
+    return (
+      <div className="card card--soft" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+          <strong style={{ fontSize: 13 }}>{title}</strong>
+          <span style={{ fontSize: 11, color: isSet ? "var(--success)" : "var(--danger)" }}>
+            {isSet ? "✓ set" : "required · set a count"}
+          </span>
+        </div>
+        {materials.map((m) => {
+          const qty = cart[m.id] ?? 0;
+          const remaining = m.balance - qty;
+          const low = remaining <= 0;
+          return (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                {emoji} {m.name}
+                <span className="tabular-nums" style={{ marginLeft: 6, fontSize: 12, color: low ? "var(--danger)" : "var(--ink-soft)" }}>
+                  {remaining} left
+                </span>
+              </span>
+              <button type="button" className="btn btn--subtle btn--sm" style={{ width: 28, padding: 0, height: 26 }} onClick={() => setQty(m.id, qty - 1)}>−</button>
+              <span className="tabular-nums" style={{ width: 22, textAlign: "center" }}>{qty}</span>
+              <button type="button" className="btn btn--subtle btn--sm" style={{ width: 28, padding: 0, height: 26 }} onClick={() => setQty(m.id, qty + 1)}>+</button>
+            </div>
+          );
+        })}
+        <button type="button" className="btn btn--subtle btn--sm" onClick={markNone} disabled={isSet}>
+          None (0)
+        </button>
+        <span className="field__hint">Counts down as you add. Not added to the total; may go below zero.</span>
+      </div>
+    );
   }
 
   // Universal shift gate — show "open a shift" panel while loading (null) or
@@ -618,62 +700,18 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
               )}
             </div>
             {bagMaterials.length > 0 && (
-              <div
-                className="card card--soft"
-                style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}
-              >
-                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-                  <strong style={{ fontSize: 13 }}>Bags on hand</strong>
-                  <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>optional · tracked-only</span>
-                </div>
-                {bagMaterials.map((bag) => {
-                  const qty = bagCart[bag.id] ?? 0;
-                  const remaining = bag.balance - qty;
-                  const low = remaining <= 0;
-                  return (
-                    <div
-                      key={bag.id}
-                      style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}
-                    >
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        🛍 {bag.name}
-                        <span
-                          className="tabular-nums"
-                          style={{
-                            marginLeft: 6,
-                            fontSize: 12,
-                            color: low ? "var(--danger)" : "var(--ink-soft)",
-                          }}
-                        >
-                          {remaining} left
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        className="btn btn--subtle btn--sm"
-                        style={{ width: 28, padding: 0, height: 26 }}
-                        onClick={() => setBagQty(bag.id, qty - 1)}
-                      >
-                        −
-                      </button>
-                      <span className="tabular-nums" style={{ width: 22, textAlign: "center" }}>
-                        {qty}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn btn--subtle btn--sm"
-                        style={{ width: 28, padding: 0, height: 26 }}
-                        onClick={() => setBagQty(bag.id, qty + 1)}
-                      >
-                        +
-                      </button>
-                    </div>
-                  );
-                })}
-                <span className="field__hint">
-                  Counts down as you add bags. Not added to the total; may go below zero.
-                </span>
-              </div>
+              <ConsumableSection
+                title="Bags on hand" emoji="🛍" materials={bagMaterials}
+                cart={bagCart} setQty={setBagQty} isSet={bagsSet}
+                markNone={() => setBagsSet(true)}
+              />
+            )}
+            {strawMaterials.length > 0 && (
+              <ConsumableSection
+                title="Straws on hand" emoji="🥤" materials={strawMaterials}
+                cart={strawCart} setQty={setStrawQty} isSet={strawsSet}
+                markNone={() => setStrawsSet(true)}
+              />
             )}
             <div className="till-total">
               <span className="till-total__label">{orderIsPreorder ? "Preorder total" : "Total"}</span>
@@ -682,7 +720,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
             <button
               type="button"
               className="btn btn--primary btn--block btn--cta"
-              disabled={submitting || cart.length === 0 || checkoutDisabled}
+              disabled={submitting || cart.length === 0 || checkoutDisabled || !consumablesReady}
               onClick={() => void checkout()}
             >
               {submitting
@@ -691,6 +729,11 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                   ? `Take preorder · ${ngn(total)}`
                   : `Charge ${ngn(total)}`}
             </button>
+            {!consumablesReady && cart.length > 0 && (
+              <p style={{ fontSize: 11, color: "var(--danger)", textAlign: "center", margin: 0 }}>
+                Set bag &amp; straw counts to continue.
+              </p>
+            )}
             <p style={{ fontSize: 11, color: "var(--ink-soft)", textAlign: "center", margin: 0 }}>
               Saved locally — syncs to the server when online.
             </p>
