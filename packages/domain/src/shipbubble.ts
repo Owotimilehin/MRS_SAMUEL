@@ -92,6 +92,7 @@ export type NormalizedDeliveryStatus =
 export interface ShipbubbleWebhook {
   externalRef: string;
   status: NormalizedDeliveryStatus;
+  rider?: { name?: string; phone?: string; vehicle?: string };
   raw: unknown;
 }
 
@@ -371,11 +372,19 @@ export function mapShipbubbleStatus(status: string): NormalizedDeliveryStatus | 
  * Parse a Shipbubble webhook body into our normalized shape. Handles the
  * documented event envelopes:
  *   shipment.label.created · shipment.status.changed · shipment.cancelled
- * The order id lives at data.order_id and the status at data.status.
+ * Current Shipbubble payloads put order_id/status at the root; older/nested
+ * shapes carried them under `data`. Prefer root, fall back to data.
  */
 export function parseShipbubbleWebhook(rawBody: string): ShipbubbleWebhook | null {
   let payload: {
     event?: string;
+    order_id?: string;
+    status?: string;
+    courier?: {
+      name?: string;
+      phone?: string;
+      rider_info?: { name?: string; phone?: string; vehicle?: string } | null;
+    };
     data?: { order_id?: string; status?: string };
   };
   try {
@@ -383,17 +392,35 @@ export function parseShipbubbleWebhook(rawBody: string): ShipbubbleWebhook | nul
   } catch {
     return null;
   }
-  const orderId = payload.data?.order_id;
+  // Current Shipbubble payloads put order_id/status at the root; older/nested
+  // shapes carried them under `data`. Prefer root, fall back to data.
+  const orderId = payload.order_id ?? payload.data?.order_id;
   if (!orderId) return null;
 
+  const rider = riderFrom(payload.courier);
+
   if (payload.event === "shipment.cancelled") {
-    return { externalRef: orderId, status: "cancelled", raw: payload };
+    return { externalRef: orderId, status: "cancelled", ...(rider ? { rider } : {}), raw: payload };
   }
-  const rawStatus = payload.data?.status;
+  const rawStatus = payload.status ?? payload.data?.status;
   if (!rawStatus) return null;
   const status = mapShipbubbleStatus(rawStatus);
   if (!status) return null;
-  return { externalRef: orderId, status, raw: payload };
+  return { externalRef: orderId, status, ...(rider ? { rider } : {}), raw: payload };
+}
+
+function riderFrom(
+  courier:
+    | { name?: string; phone?: string; rider_info?: { name?: string; phone?: string; vehicle?: string } | null }
+    | undefined,
+): { name?: string; phone?: string; vehicle?: string } | undefined {
+  if (!courier) return undefined;
+  const info = courier.rider_info ?? undefined;
+  const name = info?.name ?? undefined;
+  const phone = info?.phone ?? undefined;
+  const vehicle = info?.vehicle ?? undefined;
+  if (!name && !phone && !vehicle) return undefined;
+  return { ...(name ? { name } : {}), ...(phone ? { phone } : {}), ...(vehicle ? { vehicle } : {}) };
 }
 
 interface RawCourier {

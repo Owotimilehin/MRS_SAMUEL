@@ -160,7 +160,12 @@ export class ShipbubbleLiveProvider implements DeliveryProvider {
     }
     const parsed = parseShipbubbleWebhook(rawBody);
     if (!parsed) return null;
-    return { externalRef: parsed.externalRef, status: parsed.status, raw: parsed.raw };
+    return {
+      externalRef: parsed.externalRef,
+      status: parsed.status,
+      ...(parsed.rider ? { rider: parsed.rider } : {}),
+      raw: parsed.raw,
+    };
   }
 
   /** HMAC-SHA512 of the raw body keyed with the webhook secret (x-ship-signature). */
