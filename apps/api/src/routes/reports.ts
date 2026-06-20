@@ -323,31 +323,52 @@ export function reportRoutes(db: DbClient) {
       }, { low_stock_factory: 0, low_stock_branch: 0, expiring_48h: 0 }),
 
       block("fulfilment", async () => {
-        const [pendingRow, preorderRow, bagsRow, transferRow] = await Promise.all([
-          db.execute<{ cnt: number }>(sql`
-            SELECT COUNT(*)::int AS cnt FROM sale_order
-            WHERE is_preorder = false
-              AND status IN ('confirmed','paid','handed_over','out_for_delivery')`),
-          db.execute<{ cnt: number }>(sql`
-            SELECT COUNT(*)::int AS cnt FROM sale_order
-            WHERE is_preorder = true
-              AND status IN ('confirmed','paid','handed_over','out_for_delivery')`),
-          db.execute<{ cnt: number }>(sql`
-            SELECT COUNT(DISTINCT sop.sale_order_id)::int AS cnt
-            FROM sale_order_packaging sop
-            JOIN sale_order so ON so.id = sop.sale_order_id
-            WHERE so.status = 'confirmed'`),
-          db.execute<{ cnt: number }>(sql`
-            SELECT COUNT(*)::int AS cnt FROM stock_transfer
-            WHERE status IN ('dispatched','in_transit','arrived')`),
-        ]);
+        // "Orders pending" used to count every non-preorder sale in
+        // confirmed/paid/handed_over — but a walk-up till sale ends at 'paid'
+        // the instant the cashier rings it up (the customer leaves with the
+        // juice; walkup/chowdeck are immediateHandover channels) and never
+        // advances, so completed counter sales piled up forever and inflated a
+        // meaningless "pending" alarm. We now report two honest, channel-split
+        // counts instead: POS (walk-up) sales taken today, and online orders.
+        const [posTodayRow, onlineTodayRow, onlinePendingRow, preorderRow, bagsRow, transferRow] =
+          await Promise.all([
+            db.execute<{ cnt: number }>(sql`
+              SELECT COUNT(*)::int AS cnt FROM sale_order
+              WHERE channel = 'walkup'
+                AND status NOT IN ('draft','cancelled','failed')
+                AND created_at_local::date = CURRENT_DATE`),
+            db.execute<{ cnt: number }>(sql`
+              SELECT COUNT(*)::int AS cnt FROM sale_order
+              WHERE channel IN ('online','phone','whatsapp')
+                AND status NOT IN ('draft','cancelled','failed')
+                AND created_at_local::date = CURRENT_DATE`),
+            db.execute<{ cnt: number }>(sql`
+              SELECT COUNT(*)::int AS cnt FROM sale_order
+              WHERE channel IN ('online','phone','whatsapp')
+                AND is_preorder = false
+                AND status IN ('confirmed','paid','handed_over','out_for_delivery')`),
+            db.execute<{ cnt: number }>(sql`
+              SELECT COUNT(*)::int AS cnt FROM sale_order
+              WHERE is_preorder = true
+                AND status IN ('confirmed','paid','handed_over','out_for_delivery')`),
+            db.execute<{ cnt: number }>(sql`
+              SELECT COUNT(DISTINCT sop.sale_order_id)::int AS cnt
+              FROM sale_order_packaging sop
+              JOIN sale_order so ON so.id = sop.sale_order_id
+              WHERE so.status = 'confirmed'`),
+            db.execute<{ cnt: number }>(sql`
+              SELECT COUNT(*)::int AS cnt FROM stock_transfer
+              WHERE status IN ('dispatched','in_transit','arrived')`),
+          ]);
         return {
-          orders_pending: Number(pendingRow[0]?.cnt ?? 0),
+          pos_orders_today: Number(posTodayRow[0]?.cnt ?? 0),
+          online_orders_today: Number(onlineTodayRow[0]?.cnt ?? 0),
+          online_pending: Number(onlinePendingRow[0]?.cnt ?? 0),
           preorders_open: Number(preorderRow[0]?.cnt ?? 0),
           bags_queue: Number(bagsRow[0]?.cnt ?? 0),
           pending_transfers: Number(transferRow[0]?.cnt ?? 0),
         };
-      }, { orders_pending: 0, preorders_open: 0, bags_queue: 0, pending_transfers: 0 }),
+      }, { pos_orders_today: 0, online_orders_today: 0, online_pending: 0, preorders_open: 0, bags_queue: 0, pending_transfers: 0 }),
 
       block("today", async () => {
         const rows = await db.execute<{ size_ml: number; units: number }>(sql`
