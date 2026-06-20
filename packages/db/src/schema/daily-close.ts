@@ -1,7 +1,8 @@
-import { pgTable, uuid, integer, text, timestamp, pgEnum, date, unique } from "drizzle-orm/pg-core";
+import { pgTable, uuid, integer, text, timestamp, pgEnum, date } from "drizzle-orm/pg-core";
 import { branch } from "./branch.js";
 import { product } from "./product.js";
 import { adminUser } from "./admin-user.js";
+import { shiftOpen } from "./shift-open.js";
 
 export const dailyCloseStatus = pgEnum("daily_close_status", [
   "draft",
@@ -26,10 +27,10 @@ export const dailyClose = pgTable(
     approvedByUserId: uuid("approved_by_user_id").references(() => adminUser.id),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     notes: text("notes"),
+    shiftId: uuid("shift_id").references(() => shiftOpen.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => ({ branchDateUnique: unique().on(t.branchId, t.businessDate) }),
 );
 
 export const dailyCloseStockCount = pgTable("daily_close_stock_count", {

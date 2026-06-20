@@ -1,4 +1,4 @@
-import { pgTable, uuid, integer, text, timestamp, date, unique } from "drizzle-orm/pg-core";
+import { pgTable, uuid, integer, text, timestamp, date } from "drizzle-orm/pg-core";
 import { branch } from "./branch.js";
 import { product } from "./product.js";
 import { adminUser } from "./admin-user.js";
@@ -12,10 +12,13 @@ export const shiftOpen = pgTable(
     openedByUserId: uuid("opened_by_user_id").references(() => adminUser.id),
     openedAt: timestamp("opened_at", { withTimezone: true }),
     notes: text("notes"),
+    status: text("status").notNull().default("open"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedByUserId: uuid("closed_by_user_id").references(() => adminUser.id),
+    shiftNumber: integer("shift_number").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => ({ branchDateUnique: unique().on(t.branchId, t.businessDate) }),
 );
 
 export const shiftOpenStockCount = pgTable("shift_open_stock_count", {
