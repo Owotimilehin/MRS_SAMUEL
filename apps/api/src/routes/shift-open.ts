@@ -71,7 +71,7 @@ export function shiftOpenRoutes(db: DbClient) {
                 WHERE branch_id = ${branchId}
                   AND business_date = ${body.business_date}`,
           );
-          const shiftNumber = numRow?.next_num ?? 1;
+          const shiftNumber = Number(numRow?.next_num ?? 1);
 
           const [inserted] = await tx
             .insert(shiftOpen)
