@@ -35,7 +35,14 @@ describe("GET /v1/reports/overview", () => {
     const json = (await res.json()) as {
       data: {
         stock: { low_stock_factory: number; low_stock_branch: number; expiring_48h: number };
-        fulfilment: { awaiting_fulfilment: number; preorders_open: number; bags_queue: number; pending_transfers: number };
+        fulfilment: {
+          pos_orders_today: number;
+          online_orders_today: number;
+          online_pending: number;
+          preorders_open: number;
+          bags_queue: number;
+          pending_transfers: number;
+        };
         today: { total_units: number; units_by_size: Array<{ size_ml: number; units: number }> };
       };
     };
@@ -44,8 +51,9 @@ describe("GET /v1/reports/overview", () => {
     expect(typeof data.stock.low_stock_factory).toBe("number");
     expect(typeof data.stock.low_stock_branch).toBe("number");
     expect(typeof data.stock.expiring_48h).toBe("number");
-    expect(typeof data.fulfilment.awaiting_fulfilment).toBe("number");
-    expect((data.fulfilment as Record<string, unknown>).orders_pending).toBeUndefined();
+    expect(typeof data.fulfilment.pos_orders_today).toBe("number");
+    expect(typeof data.fulfilment.online_orders_today).toBe("number");
+    expect(typeof data.fulfilment.online_pending).toBe("number");
     expect(typeof data.fulfilment.preorders_open).toBe("number");
     expect(typeof data.fulfilment.bags_queue).toBe("number");
     expect(typeof data.fulfilment.pending_transfers).toBe("number");
@@ -64,7 +72,14 @@ describe("GET /v1/reports/overview", () => {
     const { data } = (await res.json()) as {
       data: {
         stock: { low_stock_factory: number; low_stock_branch: number; expiring_48h: number };
-        fulfilment: { awaiting_fulfilment: number; preorders_open: number; bags_queue: number; pending_transfers: number };
+        fulfilment: {
+          pos_orders_today: number;
+          online_orders_today: number;
+          online_pending: number;
+          preorders_open: number;
+          bags_queue: number;
+          pending_transfers: number;
+        };
         today: { total_units: number; units_by_size: Array<{ size_ml: number; units: number }> };
       };
     };
@@ -72,7 +87,9 @@ describe("GET /v1/reports/overview", () => {
     expect(data.stock.low_stock_factory).toBe(0);
     expect(data.stock.low_stock_branch).toBe(0);
     expect(data.stock.expiring_48h).toBe(0);
-    expect(data.fulfilment.awaiting_fulfilment).toBe(0);
+    expect(data.fulfilment.pos_orders_today).toBe(0);
+    expect(data.fulfilment.online_orders_today).toBe(0);
+    expect(data.fulfilment.online_pending).toBe(0);
     expect(data.fulfilment.preorders_open).toBe(0);
     expect(data.fulfilment.bags_queue).toBe(0);
     expect(data.fulfilment.pending_transfers).toBe(0);
