@@ -617,6 +617,11 @@ export function reportRoutes(db: DbClient) {
     const deliveryFees = Number(delivRow[0]?.fees ?? 0);
 
     const netRevenue = revenue - refunds;
+    // Part of order totals not explained by product line items + delivery fees
+    // (e.g. subscription-cycle orders, which post a paid total with no line
+    // items). Surfaced as a residual so the Net-revenue card footer always
+    // balances: product_sales + delivery_fees + other_adjustments − refunds == net_revenue.
+    const otherAdjustments = revenue - productSales - deliveryFees;
     const packagingCost = bottlesCost + bagsCost;
     const dailyProfit = netRevenue - packagingCost - expenses;
     const marginPct = netRevenue > 0 ? Math.round((dailyProfit / netRevenue) * 1000) / 10 : null;
@@ -629,6 +634,7 @@ export function reportRoutes(db: DbClient) {
         net_revenue_ngn: netRevenue,
         product_sales_ngn: productSales,
         delivery_fees_ngn: deliveryFees,
+        other_adjustments_ngn: otherAdjustments,
         packaging_cost_ngn: packagingCost,
         packaging_cost_bottles_ngn: bottlesCost,
         packaging_cost_bags_ngn: bagsCost,

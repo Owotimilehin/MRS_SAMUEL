@@ -289,6 +289,7 @@ describe("GET /v1/reports/daily", () => {
         net_revenue_ngn: number;
         product_sales_ngn: number;
         delivery_fees_ngn: number;
+        other_adjustments_ngn: number;
         refunds_ngn: number;
         daily_profit_ngn: number;
         margin_pct: number | null;
@@ -320,12 +321,18 @@ describe("GET /v1/reports/daily", () => {
       },
     ]);
 
-    // reconciliation: product sales + delivery − refunds == net revenue
+    // reconciliation: product sales + delivery + other − refunds == net revenue.
+    // For ordinary line-item orders the residual is 0; the identity holds
+    // regardless (it's an identity by construction of other_adjustments_ngn).
     expect(data.product_sales_ngn).toBe(45000);
     expect(data.delivery_fees_ngn).toBe(0);
-    expect(data.product_sales_ngn + data.delivery_fees_ngn - data.refunds_ngn).toBe(
-      data.net_revenue_ngn,
-    );
+    expect(data.other_adjustments_ngn).toBe(0);
+    expect(
+      data.product_sales_ngn +
+        data.delivery_fees_ngn +
+        data.other_adjustments_ngn -
+        data.refunds_ngn,
+    ).toBe(data.net_revenue_ngn);
 
     // packaging_breakdown: a bottle line (30 @ ~₦47) + a bag line (12 @ ₦25),
     // summing to the unchanged packaging_cost_ngn.
