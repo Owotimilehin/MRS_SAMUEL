@@ -14,6 +14,7 @@ import {
   productVariant,
   product,
   shiftOpen,
+  customer,
   type DbClient,
 } from "@ms/db";
 import { availableAtBranch, nextOrderNumber } from "@ms/domain";
@@ -620,6 +621,17 @@ export function saleRoutes(db: DbClient) {
       .select()
       .from(saleOrderItem)
       .where(eq(saleOrderItem.saleOrderId, id));
+    // Customer contact for the order page (WhatsApp link + rider relay).
+    let customerName: string | null = null;
+    let customerPhone: string | null = null;
+    if (o.customerId) {
+      const [cust] = await db
+        .select({ name: customer.name, phone: customer.phone })
+        .from(customer)
+        .where(eq(customer.id, o.customerId));
+      customerName = cust?.name ?? null;
+      customerPhone = cust?.phone ?? null;
+    }
     // Latest delivery_order if any (single source of truth for rider info).
     const { deliveryOrder } = await import("@ms/db");
     const { desc: descFn } = await import("drizzle-orm");
@@ -629,7 +641,9 @@ export function saleRoutes(db: DbClient) {
       .where(eq(deliveryOrder.saleOrderId, id))
       .orderBy(descFn(deliveryOrder.requestedAt))
       .limit(1);
-    return c.json({ data: { ...o, items, delivery: delivery ?? null } });
+    return c.json({
+      data: { ...o, items, customerName, customerPhone, delivery: delivery ?? null },
+    });
   });
 
   return r;

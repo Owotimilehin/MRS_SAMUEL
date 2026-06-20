@@ -247,6 +247,39 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(new Date(detailBody.data.scheduledDeliveryAt!).toISOString()).toBe(future);
   });
 
+  it("sale detail returns customerName and customerPhone", async () => {
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Test zone",
+        delivery_fee_ngn: 1500,
+        customer: {
+          name: "Ada Test",
+          phone: "08099887766",
+          email: "ada.test@example.com",
+          address: "3 Ada Test Street",
+        },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const body = (await orderRes.json()) as { data: { id: string } };
+
+    const detail = await fetch(`${baseUrl}/v1/branches/${branchId}/sales/${body.data.id}`, {
+      headers: { cookie: cookies },
+    });
+    expect(detail.status).toBe(200);
+    const detailBody = (await detail.json()) as {
+      data: { customerName: string | null; customerPhone: string | null };
+    };
+    expect(detailBody.data.customerName).toBe("Ada Test");
+    // The public-orders flow normalizes phones to international form at customer
+    // creation, so the stored/returned value is +234… not the raw 0… input.
+    expect(detailBody.data.customerPhone).toBe("+2348099887766");
+  });
+
   it("rejects a scheduled_delivery_at in the past", async () => {
     const past = new Date(Date.now() - 60_000).toISOString();
     const res = await fetch(`${baseUrl}/v1/public/orders`, {
