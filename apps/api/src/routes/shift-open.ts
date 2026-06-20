@@ -160,5 +160,20 @@ export function shiftOpenRoutes(db: DbClient) {
     return c.json({ data: { ...open, opened_by: openedBy, stock_counts: counts } });
   });
 
+  r.get("/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!id) throw new BusinessError("validation_failed", "id required", 400);
+    const [open] = await db.select().from(shiftOpen).where(eq(shiftOpen.id, id));
+    if (!open) throw new BusinessError("not_found", "shift open not found", 404);
+    const counts = await db
+      .select()
+      .from(shiftOpenStockCount)
+      .where(eq(shiftOpenStockCount.shiftOpenId, open.id));
+    const openedBy = open.openedByUserId
+      ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, open.openedByUserId)))[0]?.email ?? null
+      : null;
+    return c.json({ data: { ...open, opened_by: openedBy, stock_counts: counts } });
+  });
+
   return r;
 }

@@ -9,7 +9,7 @@ import {
   adminUser,
   type DbClient,
 } from "@ms/db";
-import { cashSalesForDay, expectedCashForDay, expectedStockForDay } from "@ms/domain";
+import { cashSalesForDay, cashSalesForShift, expectedCashForDay, expectedCashForShift, expectedStockForDay } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
@@ -41,12 +41,24 @@ export function dailyCloseRoutes(db: DbClient) {
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
     const body = Submit.parse(await c.req.json());
     const auth = c.get("auth");
-    const businessDate = new Date(body.business_date);
 
     const created = await db.transaction(async (tx) => {
-      const expectedCash = await expectedCashForDay(tx, branchId, businessDate);
+      // Require an open shift — conclusive close guard.
+      const [openShift] = await tx
+        .select()
+        .from(shiftOpen)
+        .where(and(eq(shiftOpen.branchId, branchId), eq(shiftOpen.status, "open")));
+      if (!openShift) {
+        throw new BusinessError("conflict", "no open shift to close", 409);
+      }
+
+      const now = new Date();
+      const openedAt = openShift.openedAt ?? new Date(0);
+      const expectedCash = await expectedCashForShift(tx, branchId, openedAt, now);
       const expectedStock = await expectedStockForDay(tx, branchId);
       const variance = body.cash_counted_ngn + body.transfers_counted_ngn - expectedCash;
+
+      // Plain INSERT (no upsert) — shift uniqueness is the conclusive guard.
       const [close] = await tx
         .insert(dailyClose)
         .values({
@@ -58,30 +70,14 @@ export function dailyCloseRoutes(db: DbClient) {
           systemCashTotalNgn: expectedCash,
           varianceNgn: variance,
           submittedByUserId: auth.userId,
-          submittedAt: new Date(),
+          submittedAt: now,
           notes: body.notes ?? null,
-        })
-        .onConflictDoUpdate({
-          target: [dailyClose.branchId, dailyClose.businessDate],
-          set: {
-            cashCountedNgn: body.cash_counted_ngn,
-            transfersCountedNgn: body.transfers_counted_ngn,
-            systemCashTotalNgn: expectedCash,
-            varianceNgn: variance,
-            submittedByUserId: auth.userId,
-            submittedAt: new Date(),
-            notes: body.notes ?? null,
-            status: "submitted",
-            updatedAt: new Date(),
-          },
+          shiftId: openShift.id,
         })
         .returning();
-      if (!close) throw new BusinessError("internal_error", "daily close upsert failed", 500);
+      if (!close) throw new BusinessError("internal_error", "daily close insert failed", 500);
 
-      // Replace stock counts atomically
-      await tx
-        .delete(dailyCloseStockCount)
-        .where(eq(dailyCloseStockCount.dailyCloseId, close.id));
+      // Insert stock counts.
       for (const sc of body.stock_counts) {
         const expected = expectedStock[sc.product_id] ?? 0;
         await tx.insert(dailyCloseStockCount).values({
@@ -94,8 +90,18 @@ export function dailyCloseRoutes(db: DbClient) {
         });
       }
 
-      // Stamp the filer's identity onto the notification so the owner sees
-      // which staff member closed out the shift.
+      // Close the shift in the same transaction.
+      await tx
+        .update(shiftOpen)
+        .set({
+          status: "closed",
+          closedAt: now,
+          closedByUserId: auth.userId,
+          updatedAt: now,
+        })
+        .where(eq(shiftOpen.id, openShift.id));
+
+      // Notify owner.
       const [filer] = await tx
         .select({ email: adminUser.email })
         .from(adminUser)
@@ -104,6 +110,7 @@ export function dailyCloseRoutes(db: DbClient) {
         daily_close_id: close.id,
         branch_id: branchId,
         business_date: body.business_date,
+        shift_id: openShift.id,
         cash_ngn: body.cash_counted_ngn,
         transfer_ngn: body.transfers_counted_ngn,
         variance_ngn: variance,
@@ -203,31 +210,38 @@ export function dailyCloseRoutes(db: DbClient) {
       .select()
       .from(dailyCloseStockCount)
       .where(eq(dailyCloseStockCount.dailyCloseId, id));
-    // Itemise the cash sales that produced `system_cash_total_ngn` so the close
-    // screen can show exactly which orders make up "System expected" rather than
-    // presenting a bare, unexplained figure.
-    const cashSales = await cashSalesForDay(db, close.branchId, new Date(close.businessDate));
-    // Resolve the staff identities behind the shift-end report so the owner
-    // sees *who* filed and approved it, not bare uuids.
+    // Show itemised cash sales for this shift window (or fall back to day-window if no shift).
+    let cashSales;
+    if (close.shiftId) {
+      // Fetch the linked shift to get its window.
+      const [linkedShift] = await db.select().from(shiftOpen).where(eq(shiftOpen.id, close.shiftId));
+      if (linkedShift?.openedAt && linkedShift.closedAt) {
+        cashSales = await cashSalesForShift(db, close.branchId, linkedShift.openedAt, linkedShift.closedAt);
+      } else {
+        cashSales = await cashSalesForDay(db, close.branchId, new Date(close.businessDate));
+      }
+    } else {
+      cashSales = await cashSalesForDay(db, close.branchId, new Date(close.businessDate));
+    }
+    // Resolve staff identities.
     const submittedBy = close.submittedByUserId
       ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, close.submittedByUserId)))[0]?.email ?? null
       : null;
     const approvedBy = close.approvedByUserId
       ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, close.approvedByUserId)))[0]?.email ?? null
       : null;
-    // Fetch the matching shift-open record for the same (branchId, businessDate)
-    // so the owner can compare opening vs closing stock counts.
-    const [open] = await db
-      .select()
-      .from(shiftOpen)
-      .where(and(eq(shiftOpen.branchId, close.branchId), eq(shiftOpen.businessDate, close.businessDate)));
-    const openCounts = open
-      ? await db.select().from(shiftOpenStockCount).where(eq(shiftOpenStockCount.shiftOpenId, open.id))
-      : [];
-    const openedBy = open?.openedByUserId
-      ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, open.openedByUserId)))[0]?.email ?? null
-      : null;
-    const shiftOpenOut = open ? { ...open, opened_by: openedBy, stock_counts: openCounts } : null;
+    // Fetch the linked shift-open via daily_close.shift_id (not by branch+date).
+    let shiftOpenOut = null;
+    if (close.shiftId) {
+      const [open] = await db.select().from(shiftOpen).where(eq(shiftOpen.id, close.shiftId));
+      if (open) {
+        const openCounts = await db.select().from(shiftOpenStockCount).where(eq(shiftOpenStockCount.shiftOpenId, open.id));
+        const openedBy = open.openedByUserId
+          ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, open.openedByUserId)))[0]?.email ?? null
+          : null;
+        shiftOpenOut = { ...open, opened_by: openedBy, stock_counts: openCounts };
+      }
+    }
     return c.json({
       data: { ...close, submitted_by: submittedBy, approved_by: approvedBy, stock_counts: counts, cash_sales: cashSales, shift_open: shiftOpenOut },
     });
