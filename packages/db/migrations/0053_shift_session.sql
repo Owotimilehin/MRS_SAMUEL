@@ -21,6 +21,15 @@ FROM "shift_open" so
 WHERE so."branch_id" = dc."branch_id" AND so."business_date" = dc."business_date"
   AND dc."shift_id" IS NULL;
 
+-- Close any shift that wasn't matched to a daily_close above. The shift-session
+-- model starts with no open shift on any branch; this guarantees zero rows match
+-- the partial unique index's WHERE status='open' predicate, so it cannot fail on
+-- pre-existing data.
+UPDATE "shift_open"
+SET "status" = 'closed',
+    "closed_at" = COALESCE("closed_at", "updated_at", now())
+WHERE "status" <> 'closed';
+
 -- drop the one-per-day uniques
 ALTER TABLE "shift_open" DROP CONSTRAINT IF EXISTS "shift_open_branch_id_business_date_unique";
 ALTER TABLE "daily_close" DROP CONSTRAINT IF EXISTS "daily_close_branch_id_business_date_unique";
