@@ -132,6 +132,14 @@ export interface ApiSubscribeResult {
   payment: { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig };
 }
 
+export interface ApiOrderItem {
+  name: string;
+  size_ml: number | null;
+  quantity: number;
+  unit_price_ngn: number;
+  line_total_ngn: number;
+}
+
 export interface ApiOrderTracking {
   order_number: string;
   status: string;
@@ -143,6 +151,15 @@ export interface ApiOrderTracking {
   created_at: string;
   scheduled_delivery_at: string | null;
   delivery_state: string | null;
+  is_preorder: boolean;
+  fulfilled_at: string | null;
+  paid_at: string | null;
+  out_for_delivery_at: string | null;
+  delivered_at: string | null;
+  reservation_expires_at: string | null;
+  resume_payment: { reference: string; payaza: PayazaCheckoutConfig } | null;
+  support_whatsapp: { number: string; url: string } | null;
+  items: ApiOrderItem[];
   delivery: {
     status: string;
     rider_name: string | null;
