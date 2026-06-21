@@ -24,7 +24,11 @@ export function Nav() {
     <header className="absolute top-0 left-0 right-0 z-40">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-5 sm:px-10 py-5">
         <Link to="/" className="flex items-center gap-3">
-          <img src={logoDark} alt="Mrs. Samuel Fruit Juice" className="h-12 sm:h-14 w-auto object-contain" />
+          <img
+            src={logoDark}
+            alt="Mrs. Samuel Fruit Juice"
+            className="h-12 sm:h-14 w-auto object-contain"
+          />
         </Link>
 
         <nav className="hidden lg:flex items-center gap-7 text-[14px] font-medium text-[color:var(--brand)]">
@@ -64,7 +68,11 @@ export function Nav() {
               <ArrowRight className="h-3 w-3" />
             </span>
           </Link>
-          <button onClick={() => setMobile(true)} className="lg:hidden grid h-10 w-10 place-items-center rounded-full hover:bg-black/5" aria-label="Menu">
+          <button
+            onClick={() => setMobile(true)}
+            className="lg:hidden grid h-10 w-10 place-items-center rounded-full hover:bg-black/5"
+            aria-label="Menu"
+          >
             <Menu className="h-5 w-5" />
           </button>
         </div>
@@ -74,7 +82,11 @@ export function Nav() {
         <div className="fixed inset-0 z-50 bg-[color:var(--cream)] lg:hidden">
           <div className="flex items-center justify-between px-5 py-5">
             <img src={logoDark} alt="" className="h-12 w-auto" />
-            <button onClick={() => setMobile(false)} className="grid h-10 w-10 place-items-center rounded-full hover:bg-black/5" aria-label="Close">
+            <button
+              onClick={() => setMobile(false)}
+              className="grid h-10 w-10 place-items-center rounded-full hover:bg-black/5"
+              aria-label="Close"
+            >
               <X className="h-5 w-5" />
             </button>
           </div>

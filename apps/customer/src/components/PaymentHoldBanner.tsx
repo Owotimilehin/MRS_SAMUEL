@@ -6,7 +6,13 @@ import { launchPayazaCheckout } from "@/lib/payaza";
 import { useCountdown } from "@/hooks/useCountdown";
 import type { ApiOrderTracking } from "@/lib/api/types";
 
-export function PaymentHoldBanner({ order, onResumed }: { order: ApiOrderTracking; onResumed: () => void }) {
+export function PaymentHoldBanner({
+  order,
+  onResumed,
+}: {
+  order: ApiOrderTracking;
+  onResumed: () => void;
+}) {
   const { mmss, expired } = useCountdown(order.reservation_expires_at);
   const [busy, setBusy] = useState(false);
 
@@ -18,8 +24,15 @@ export function PaymentHoldBanner({ order, onResumed }: { order: ApiOrderTrackin
     return (
       <div className="rounded-2xl bg-[color:var(--cream)]/80 p-5 ring-1 ring-black/5">
         <div className="font-semibold text-[color:var(--brand)]">Your hold expired</div>
-        <p className="mt-1 text-sm text-[color:var(--brand)]/70">The bottles were released back to stock. You can start a fresh order any time.</p>
-        <Link to="/juices" className="mt-3 inline-block rounded-full bg-[color:var(--brand)] text-white px-5 py-2.5 text-sm font-semibold">Reorder</Link>
+        <p className="mt-1 text-sm text-[color:var(--brand)]/70">
+          The bottles were released back to stock. You can start a fresh order any time.
+        </p>
+        <Link
+          to="/juices"
+          className="mt-3 inline-block rounded-full bg-[color:var(--brand)] text-white px-5 py-2.5 text-sm font-semibold"
+        >
+          Reorder
+        </Link>
       </div>
     );
   }
@@ -35,10 +48,28 @@ export function PaymentHoldBanner({ order, onResumed }: { order: ApiOrderTrackin
 
   return (
     <div className="rounded-2xl bg-[color:var(--brand-orange)]/10 p-5 ring-1 ring-[color:var(--brand-orange)]/20">
-      <div className="flex items-center gap-2 text-[color:var(--brand-orange)] font-semibold"><Clock className="h-4 w-4" /> {hasTimer ? "We're holding your bottles" : "Finish your payment"}</div>
-      {hasTimer && <div className="mt-1 text-sm text-[color:var(--brand)]/70">Reserved for <span className="font-bold tabular-nums">{mmss}</span> — complete payment to lock it in.</div>}
-      <button onClick={() => void resume()} disabled={busy || !order.resume_payment} className="mt-3 w-full rounded-full bg-[color:var(--brand-orange)] text-white px-6 py-3 text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
-        {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening payment…</> : <>Complete payment — {formatNaira(order.total_ngn)}</>}
+      <div className="flex items-center gap-2 text-[color:var(--brand-orange)] font-semibold">
+        <Clock className="h-4 w-4" />{" "}
+        {hasTimer ? "We're holding your bottles" : "Finish your payment"}
+      </div>
+      {hasTimer && (
+        <div className="mt-1 text-sm text-[color:var(--brand)]/70">
+          Reserved for <span className="font-bold tabular-nums">{mmss}</span> — complete payment to
+          lock it in.
+        </div>
+      )}
+      <button
+        onClick={() => void resume()}
+        disabled={busy || !order.resume_payment}
+        className="mt-3 w-full rounded-full bg-[color:var(--brand-orange)] text-white px-6 py-3 text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+      >
+        {busy ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" /> Opening payment…
+          </>
+        ) : (
+          <>Complete payment — {formatNaira(order.total_ngn)}</>
+        )}
       </button>
     </div>
   );

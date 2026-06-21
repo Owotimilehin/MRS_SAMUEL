@@ -1,6 +1,11 @@
 export type Track = "live" | "scheduled" | "coordinated";
 export type StepState = "done" | "current" | "upcoming";
-export interface JourneyStep { key: string; label: string; state: StepState; at?: string }
+export interface JourneyStep {
+  key: string;
+  label: string;
+  state: StepState;
+  at?: string;
+}
 export interface Journey {
   track: Track;
   steps: JourneyStep[];
@@ -46,10 +51,13 @@ export function deriveJourney(o: TrackingOrderLike): Journey {
   const outsideLagos = !!o.delivery_state && o.delivery_state !== "Lagos";
   const track = pickTrack(o, outsideLagos);
   const special: Journey["special"] =
-    o.status === "confirmed" ? "payment_hold"
-    : o.status === "reconcile_needed" ? "reconcile"
-    : o.status === "cancelled" ? "cancelled"
-    : "none";
+    o.status === "confirmed"
+      ? "payment_hold"
+      : o.status === "reconcile_needed"
+        ? "reconcile"
+        : o.status === "cancelled"
+          ? "cancelled"
+          : "none";
 
   const paidDone = o.payment_status === "paid";
   const otwDone = !!o.out_for_delivery_at || OTW_STATUSES.has(o.delivery?.status ?? "");
@@ -61,7 +69,12 @@ export function deriveJourney(o: TrackingOrderLike): Journey {
 
   const raw: Array<{ key: string; label: string; done: boolean; at?: string }> = [
     { key: "placed", label: "Placed", done: true, at: undefined },
-    { key: "paid", label: "Paid", done: paidDone || otwDone || deliveredDone, at: o.paid_at ?? undefined },
+    {
+      key: "paid",
+      label: "Paid",
+      done: paidDone || otwDone || deliveredDone,
+      at: o.paid_at ?? undefined,
+    },
     { key: mid.key, label: midLabel, done: otwDone || deliveredDone },
     { key: otw.key, label: otw.label, done: deliveredDone, at: o.out_for_delivery_at ?? undefined },
     { key: "delivered", label: "Delivered", done: deliveredDone, at: o.delivered_at ?? undefined },
@@ -71,18 +84,24 @@ export function deriveJourney(o: TrackingOrderLike): Journey {
   const steps: JourneyStep[] = raw.map((s) => {
     let state: StepState;
     if (s.done) state = "done";
-    else if (!currentAssigned) { state = "current"; currentAssigned = true; }
-    else state = "upcoming";
-    return s.at ? { key: s.key, label: s.label, state, at: s.at } : { key: s.key, label: s.label, state };
+    else if (!currentAssigned) {
+      state = "current";
+      currentAssigned = true;
+    } else state = "upcoming";
+    return s.at
+      ? { key: s.key, label: s.label, state, at: s.at }
+      : { key: s.key, label: s.label, state };
   });
   const currentStep = steps.find((s) => s.state === "current") ?? steps[steps.length - 1]!;
 
   const methodLabel =
-    track === "live" ? "Live rider"
-    : track === "scheduled" ? "Scheduled delivery"
-    : outsideLagos
-      ? `We'll arrange delivery to ${o.delivery_state}`
-      : "We'll arrange your delivery";
+    track === "live"
+      ? "Live rider"
+      : track === "scheduled"
+        ? "Scheduled delivery"
+        : outsideLagos
+          ? `We'll arrange delivery to ${o.delivery_state}`
+          : "We'll arrange your delivery";
 
   return { track, steps, currentStep, methodLabel, isPreorder: o.is_preorder, special };
 }
