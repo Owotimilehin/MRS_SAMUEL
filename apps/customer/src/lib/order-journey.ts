@@ -23,8 +23,9 @@ export interface TrackingOrderLike {
 
 const OTW_STATUSES = new Set(["picked_up", "in_transit", "out_for_delivery"]);
 
-function pickTrack(o: TrackingOrderLike): Track {
-  if (o.delivery_state && o.delivery_state !== "Lagos") return "coordinated";
+function pickTrack(o: TrackingOrderLike, outsideLagos: boolean): Track {
+  if (o.status === "cancelled") return "coordinated";
+  if (outsideLagos) return "coordinated";
   if (o.scheduled_delivery_at) return "scheduled";
   if (o.delivery) return "live";
   return "coordinated";
@@ -42,7 +43,8 @@ function otwStep(track: Track): { key: string; label: string } {
 }
 
 export function deriveJourney(o: TrackingOrderLike): Journey {
-  const track = pickTrack(o);
+  const outsideLagos = !!o.delivery_state && o.delivery_state !== "Lagos";
+  const track = pickTrack(o, outsideLagos);
   const special: Journey["special"] =
     o.status === "confirmed" ? "payment_hold"
     : o.status === "reconcile_needed" ? "reconcile"
@@ -59,7 +61,7 @@ export function deriveJourney(o: TrackingOrderLike): Journey {
 
   const raw: Array<{ key: string; label: string; done: boolean; at?: string }> = [
     { key: "placed", label: "Placed", done: true, at: undefined },
-    { key: "paid", label: "Paid", done: paidDone, at: o.paid_at ?? undefined },
+    { key: "paid", label: "Paid", done: paidDone || otwDone || deliveredDone, at: o.paid_at ?? undefined },
     { key: mid.key, label: midLabel, done: otwDone || deliveredDone },
     { key: otw.key, label: otw.label, done: deliveredDone, at: o.out_for_delivery_at ?? undefined },
     { key: "delivered", label: "Delivered", done: deliveredDone, at: o.delivered_at ?? undefined },
@@ -78,7 +80,7 @@ export function deriveJourney(o: TrackingOrderLike): Journey {
   const methodLabel =
     track === "live" ? "Live rider"
     : track === "scheduled" ? "Scheduled delivery"
-    : o.delivery_state && o.delivery_state !== "Lagos"
+    : outsideLagos
       ? `We'll arrange delivery to ${o.delivery_state}`
       : "We'll arrange your delivery";
 

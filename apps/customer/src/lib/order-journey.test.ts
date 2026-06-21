@@ -42,6 +42,13 @@ describe("deriveJourney", () => {
   it("cancelled special + track coordinated", () => {
     const j = deriveJourney({ ...base, status: "cancelled" });
     expect(j.special).toBe("cancelled");
+    expect(j.track).toBe("coordinated");
+  });
+
+  it("cancelled forces coordinated track even with a rider or schedule", () => {
+    const j = deriveJourney({ ...base, status: "cancelled", delivery: { status: "in_transit" }, scheduled_delivery_at: "2026-06-22T11:00:00Z" });
+    expect(j.track).toBe("coordinated");
+    expect(j.special).toBe("cancelled");
   });
 
   it("out_for_delivery marks the OTW step current and preparing done", () => {
