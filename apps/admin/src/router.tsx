@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-router";
 import { LoginPage } from "./routes/login.js";
 import { NotFound } from "./components/NotFound.js";
+import { RouteErrorComponent } from "./components/RouteErrorComponent.js";
 import { InlineLoader, PageLoader } from "./components/Spinner.js";
 import { RequireAuth, useAuthUser } from "./lib/auth.js";
 import {
@@ -666,6 +667,7 @@ const routeTree = rootRoute.addChildren([
 export const router = createRouter({
   routeTree,
   defaultNotFoundComponent: NotFound,
+  defaultErrorComponent: RouteErrorComponent,
 });
 
 declare module "@tanstack/react-router" {
