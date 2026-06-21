@@ -10,6 +10,7 @@ import {
   product,
   customer,
   stockReservation,
+  payment,
   branch,
   type DbClient,
 } from "@ms/db";
@@ -560,11 +561,81 @@ export function publicOrderRoutes(db: DbClient) {
         riderVehicle: deliveryOrder.riderVehicle,
         trackingUrl: deliveryOrder.trackingUrl,
         etaMinutes: deliveryOrder.etaMinutes,
+        deliveredAt: deliveryOrder.deliveredAt,
       })
       .from(deliveryOrder)
       .where(eq(deliveryOrder.saleOrderId, o.id))
       .orderBy(descFn(deliveryOrder.requestedAt))
       .limit(1);
+
+    // Line items — flavour + size for the tracking screen's order summary.
+    const itemRows = await db
+      .select({
+        name: product.name,
+        sizeMl: productVariant.sizeMl,
+        quantity: saleOrderItem.quantity,
+        unitPriceNgn: saleOrderItem.unitPriceNgn,
+        lineTotalNgn: saleOrderItem.lineTotalNgn,
+      })
+      .from(saleOrderItem)
+      .leftJoin(product, eq(product.id, saleOrderItem.productId))
+      .leftJoin(productVariant, eq(productVariant.id, saleOrderItem.variantId))
+      .where(eq(saleOrderItem.saleOrderId, o.id));
+    const items = itemRows.map((row) => ({
+      name: row.name ?? "Item",
+      size_ml: row.sizeMl ?? null,
+      quantity: row.quantity,
+      unit_price_ngn: row.unitPriceNgn,
+      line_total_ngn: row.lineTotalNgn,
+    }));
+
+    // Latest paid-payment timestamp (if any).
+    const [pay] = await db
+      .select({ paidAt: payment.paidAt })
+      .from(payment)
+      .where(eq(payment.saleOrderId, o.id))
+      .orderBy(descFn(payment.paidAt))
+      .limit(1);
+
+    // Earliest live reservation expiry — only meaningful while unpaid and not
+    // a preorder (preorders never reserve stock up front).
+    let reservationExpiresAt: string | null = null;
+    if (o.status === "confirmed" && !o.isPreorder) {
+      const [resv] = await db
+        .select({ expiresAt: stockReservation.expiresAt })
+        .from(stockReservation)
+        .where(eq(stockReservation.saleOrderId, o.id))
+        .orderBy(asc(stockReservation.expiresAt))
+        .limit(1);
+      reservationExpiresAt = resv?.expiresAt ? resv.expiresAt.toISOString() : null;
+    }
+
+    // Resume-payment config for an unpaid order — lets the customer relaunch
+    // the Payaza popup without re-entering their details. Phone is already
+    // verified above, so this is safe to hand back.
+    let resumePayment: { reference: string; payaza: ReturnType<typeof buildPayazaCheckoutConfig> } | null =
+      null;
+    if (o.status === "confirmed") {
+      const payaza = buildPayazaCheckoutConfig({
+        amountNgn: o.totalNgn,
+        email: cust.email ?? "no-email@example.com",
+        reference: o.orderNumber,
+        ...(cust.name ? { customerName: cust.name } : {}),
+        ...(cust.phone ? { customerPhone: cust.phone } : {}),
+      });
+      resumePayment = { reference: payaza.reference, payaza };
+    }
+
+    // Support WhatsApp deep link (configured per deployment).
+    const waNumber = env.SUPPORT_WHATSAPP;
+    const supportWhatsapp = waNumber
+      ? {
+          number: waNumber,
+          url: `https://wa.me/${waNumber.replace(/[^\d]/g, "")}?text=${encodeURIComponent(
+            `Hi Mrs. Samuel, I'm checking on my order ${o.orderNumber}.`,
+          )}`,
+        }
+      : null;
 
     return c.json({
       data: {
@@ -591,6 +662,15 @@ export function publicOrderRoutes(db: DbClient) {
               provider: "bolt" as const,
             }
           : null,
+        items,
+        is_preorder: o.isPreorder,
+        fulfilled_at: o.fulfilledAt ? o.fulfilledAt.toISOString() : null,
+        paid_at: pay?.paidAt ? pay.paidAt.toISOString() : null,
+        out_for_delivery_at: o.outForDeliveryAt ? o.outForDeliveryAt.toISOString() : null,
+        delivered_at: delivery?.deliveredAt ? delivery.deliveredAt.toISOString() : null,
+        reservation_expires_at: reservationExpiresAt,
+        resume_payment: resumePayment,
+        support_whatsapp: supportWhatsapp,
       },
     });
   });

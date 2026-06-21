@@ -350,6 +350,45 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(track.status).toBe(404);
   });
 
+  it("tracking returns items, is_preorder, reservation_expires_at and resume_payment while unpaid", async () => {
+    const phone = "+2348025550012";
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Test zone",
+        delivery_fee_ngn: 1500,
+        customer: {
+          name: "Resume Pay",
+          phone,
+          email: "resumepay@example.com",
+          address: "11 Resume Street",
+        },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const orderBody = (await orderRes.json()) as { data: { order_number: string } };
+
+    const track = await fetch(
+      `${baseUrl}/v1/public/orders/${orderBody.data.order_number}?phone=${encodeURIComponent(phone)}`,
+    );
+    expect(track.status).toBe(200);
+    const { data } = (await track.json()) as { data: Record<string, unknown> };
+
+    expect(Array.isArray(data["items"])).toBe(true);
+    const items = data["items"] as Array<Record<string, unknown>>;
+    expect(items[0]).toHaveProperty("name");
+    expect(items[0]).toHaveProperty("size_ml");
+    expect(data).toHaveProperty("is_preorder");
+    expect(data).toHaveProperty("reservation_expires_at");
+    expect(data["reservation_expires_at"]).not.toBeNull(); // unpaid, non-preorder → live hold
+    expect(data["resume_payment"]).not.toBeNull(); // unpaid → resume config present
+    const resumePayment = data["resume_payment"] as { payaza: { reference: string } };
+    expect(resumePayment.payaza.reference).toBe(orderBody.data.order_number);
+  });
+
   it("tracking returns scheduled_delivery_at and delivery_state", async () => {
     const future = new Date(Date.now() + 12 * 60 * 60_000).toISOString();
     const phone = "+2348025550005";
