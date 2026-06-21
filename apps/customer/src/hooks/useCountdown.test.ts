@@ -2,7 +2,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { compute } from "./useCountdown";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("useCountdown / compute", () => {
   it("formats remaining time as M:SS", () => {
