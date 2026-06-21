@@ -23,6 +23,9 @@ export const branch = pgTable("branch", {
   closesAt: time("closes_at"),
   timezone: text("timezone").notNull().default("Africa/Lagos"),
   isActive: boolean("is_active").notNull().default(true),
+  /** The one branch that fulfils web orders. Checkout falls back to the first
+   *  active branch when none is set. App enforces at most one true. */
+  isOnlineDefault: boolean("is_online_default").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
