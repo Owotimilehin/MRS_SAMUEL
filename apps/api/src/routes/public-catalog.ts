@@ -181,6 +181,7 @@ export function publicCatalogRoutes(db: DbClient) {
         address: branch.address,
         phone: branch.phone,
         delivery_zones: branch.deliveryZones,
+        is_online_default: branch.isOnlineDefault,
         opens_at: branch.opensAt,
         closes_at: branch.closesAt,
       })

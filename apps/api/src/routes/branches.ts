@@ -24,7 +24,9 @@ const CreateBranch = z.object({
   closes_at: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
 });
 
-const PatchBranch = CreateBranch.partial();
+const PatchBranch = CreateBranch.partial().extend({
+  is_online_default: z.boolean().optional(),
+});
 
 export function branchRoutes(db: DbClient) {
   const r = new Hono();
@@ -84,8 +86,20 @@ export function branchRoutes(db: DbClient) {
     if (body.delivery_zones !== undefined) patch["deliveryZones"] = body.delivery_zones;
     if (body.opens_at !== undefined) patch["opensAt"] = body.opens_at;
     if (body.closes_at !== undefined) patch["closesAt"] = body.closes_at;
+    if (body.is_online_default !== undefined) patch["isOnlineDefault"] = body.is_online_default;
 
-    const [after] = await db.update(branch).set(patch).where(eq(branch.id, id)).returning();
+    // Exactly one branch may be the online-fulfilment default. Setting it on this
+    // branch clears it everywhere else, in one transaction so the invariant holds.
+    const after = await db.transaction(async (tx) => {
+      if (body.is_online_default === true) {
+        await tx
+          .update(branch)
+          .set({ isOnlineDefault: false, updatedAt: new Date() })
+          .where(sql`${branch.id} <> ${id} AND ${branch.isOnlineDefault} = true`);
+      }
+      const [row] = await tx.update(branch).set(patch).where(eq(branch.id, id)).returning();
+      return row;
+    });
     if (!after) throw new BusinessError("internal_error", "update returned no rows", 500);
 
     await writeAudit(db, c, {
