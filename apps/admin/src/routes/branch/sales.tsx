@@ -50,8 +50,13 @@ function todayDate(): string {
 
 export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element {
   const [sales, setSales] = useState<Sale[]>([]);
-  const [filter, setFilter] = useState<"today" | "all">("today");
+  const [filter, setFilter] = useState<"today" | "all" | "awaiting">("today");
   const [loading, setLoading] = useState(true);
+
+  // An online order that's paid but not yet handed over / delivered is waiting
+  // on staff to fulfil it. Walk-up till sales end at "paid", so the channel
+  // guard keeps them out of the queue.
+  const awaitsFulfilment = (s: Sale): boolean => s.channel === "online" && s.status === "paid";
 
   useEffect(() => {
     let cancelled = false;
@@ -75,7 +80,8 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
 
   const today = todayDate();
   const todaysSales = sales.filter((s) => s.createdAtLocal.slice(0, 10) === today);
-  const list = filter === "today" ? todaysSales : sales;
+  const awaitingList = sales.filter(awaitsFulfilment);
+  const list = filter === "today" ? todaysSales : filter === "awaiting" ? awaitingList : sales;
 
   const completed = todaysSales.filter((s) =>
     ["paid", "handed_over", "delivered"].includes(s.status),
@@ -98,6 +104,11 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
   } else {
     chips.push({ label: "Pending pay", value: pendingCount, tone: "good" });
   }
+  chips.push({
+    label: "Awaiting fulfilment",
+    value: awaitingList.length,
+    tone: awaitingList.length > 0 ? "danger" : "good",
+  });
 
   return (
     <BranchShell branchId={branchId} title="Today's sales">
@@ -137,6 +148,13 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
           onClick={() => setFilter("all")}
         >
           All recent
+        </button>
+        <button
+          type="button"
+          className={filter === "awaiting" ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+          onClick={() => setFilter("awaiting")}
+        >
+          Awaiting fulfilment{awaitingList.length > 0 ? ` (${awaitingList.length})` : ""}
         </button>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 13, color: "var(--ink-soft)" }}>{list.length} orders</span>
