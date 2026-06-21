@@ -48,7 +48,13 @@ export function OrdersPage(): JSX.Element {
   const [branchFilter, setBranchFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [channelFilter, setChannelFilter] = useState<string>("all");
+  const [onlyAwaiting, setOnlyAwaiting] = useState(false);
   const [q, setQ] = useState("");
+
+  // An online order that's been paid but not yet handed over / delivered is
+  // waiting on staff to fulfil it. Walk-up till sales end at "paid" and aren't
+  // a fulfilment queue, so the channel guard keeps them out.
+  const awaitsFulfilment = (s: Sale): boolean => s.channel === "online" && s.status === "paid";
 
   useEffect(() => {
     let cancelled = false;
@@ -91,13 +97,14 @@ export function OrdersPage(): JSX.Element {
       if (branchFilter !== "all" && s.branchId !== branchFilter) return false;
       if (statusFilter !== "all" && s.status !== statusFilter) return false;
       if (channelFilter !== "all" && s.channel !== channelFilter) return false;
+      if (onlyAwaiting && !awaitsFulfilment(s)) return false;
       if (q.trim()) {
         const term = q.trim().toLowerCase();
         if (!s.orderNumber.toLowerCase().includes(term)) return false;
       }
       return true;
     });
-  }, [sales, branchFilter, statusFilter, channelFilter, q]);
+  }, [sales, branchFilter, statusFilter, channelFilter, onlyAwaiting, q]);
 
   const channels = useMemo(() => {
     const s = new Set<string>();
@@ -139,6 +146,11 @@ export function OrdersPage(): JSX.Element {
         loading={loading}
         chips={[
           {
+            label: "Awaiting fulfilment",
+            value: sales.filter(awaitsFulfilment).length,
+            tone: sales.filter(awaitsFulfilment).length > 0 ? "danger" : "good",
+          },
+          {
             label: "Pending pay",
             value: sales.filter((s) => s.status === "confirmed").length,
             tone: sales.filter((s) => s.status === "confirmed").length > 0 ? "danger" : "good",
@@ -170,6 +182,13 @@ export function OrdersPage(): JSX.Element {
           />
         </span>
         <span className="toolbar__spacer" />
+        <button
+          type="button"
+          className={onlyAwaiting ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+          onClick={() => setOnlyAwaiting((v) => !v)}
+        >
+          Awaiting fulfilment
+        </button>
         <select
           className="select"
           value={branchFilter}
