@@ -16,6 +16,7 @@ interface BranchRow {
   deliveryZones: Array<{ name: string; fee_ngn: number }>;
   opensAt: string | null;
   closesAt: string | null;
+  isOnlineDefault: boolean;
 }
 
 export function BranchesPage(): JSX.Element {
@@ -37,11 +38,24 @@ export function BranchesPage(): JSX.Element {
     }
   }
 
+  async function makeOnlineDefault(id: string): Promise<void> {
+    try {
+      await api(`/branches/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_online_default: true }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   useEffect(() => {
     void load();
   }, []);
 
   const totalZones = rows.reduce((sum, b) => sum + b.deliveryZones.length, 0);
+  const onlineDefault = rows.find((b) => b.isOnlineDefault);
 
   return (
     <Shell
@@ -60,6 +74,11 @@ export function BranchesPage(): JSX.Element {
         chips={[
           { label: "Branches", value: rows.length },
           { label: "Delivery zones", value: totalZones },
+          {
+            label: "Online default",
+            value: onlineDefault?.name ?? "Not set",
+            tone: onlineDefault ? "good" : "danger",
+          },
         ]}
       />
 
@@ -99,6 +118,23 @@ export function BranchesPage(): JSX.Element {
                 <h3 style={{ fontWeight: 700, fontSize: 16, margin: 0 }}>{b.name}</h3>
                 <span className="pill pill--ink">{b.code}</span>
               </header>
+              <div style={{ marginBottom: 8 }}>
+                {b.isOnlineDefault ? (
+                  <span className="pill pill--success">★ Online default</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn--subtle btn--sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void makeOnlineDefault(b.id);
+                    }}
+                  >
+                    Make online default
+                  </button>
+                )}
+              </div>
               <div style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 12, minHeight: 36 }}>
                 {b.address ?? "No address set"}
                 {b.phone && (
