@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
-import { ShoppingCart, Search, User, ArrowRight, Menu, X } from "lucide-react";
+import { ShoppingCart, ArrowRight, Menu, X } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import logoDark from "@/assets/logo-dark.png";
 
@@ -40,12 +40,6 @@ export function Nav() {
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3 text-[color:var(--brand)]">
-          <button className="hidden sm:grid h-9 w-9 place-items-center rounded-full hover:bg-black/5 transition" aria-label="Search">
-            <Search className="h-5 w-5" />
-          </button>
-          <button className="hidden sm:grid h-9 w-9 place-items-center rounded-full hover:bg-black/5 transition" aria-label="Account">
-            <User className="h-5 w-5" />
-          </button>
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
