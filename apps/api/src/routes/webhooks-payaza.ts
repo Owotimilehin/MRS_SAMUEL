@@ -13,6 +13,7 @@ import { verifyPayazaTransaction, isPayazaSuccess } from "../payments/payaza.js"
 import { activateSubscriptionFromPayment } from "../lib/subscriptions.js";
 import { autoDispatchEnabled } from "../lib/delivery-flags.js";
 import { isOutsideLagos } from "@ms/shared";
+import { logger } from "../logger.js";
 
 /**
  * Payaza webhook receiver. Payaza does NOT sign its callbacks — there is no
@@ -33,12 +34,17 @@ export function payazaWebhookRoutes(db: DbClient) {
   const r = new Hono();
 
   r.post("/", async (c) => {
+    const requestId = c.get("requestId") as string | undefined;
     const raw = await c.req.raw.clone().text();
+    // Entry log — proves Payaza actually reached us, even if the body is junk.
+    // This is the line to watch when verifying the dashboard callback fires.
+    logger.info({ requestId, rawLen: raw.length }, "payaza webhook: inbound");
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
+      logger.warn({ requestId }, "payaza webhook: non-JSON body — ignored");
       return c.json({ ok: true });
     }
     // Payaza nests the transaction under a couple of shapes depending on the
@@ -50,11 +56,31 @@ export function payazaWebhookRoutes(db: DbClient) {
     };
     const reference =
       p.data?.transaction_reference ?? p.data?.reference ?? p.transaction_reference ?? p.reference;
-    if (!reference || typeof reference !== "string") return c.json({ ok: true });
+    if (!reference || typeof reference !== "string") {
+      logger.warn({ requestId }, "payaza webhook: no transaction reference in body — ignored");
+      return c.json({ ok: true });
+    }
 
-    // Authoritative confirmation — never trust the callback body for money.
-    const confirmed = await verifyPayazaTransaction(reference);
-    if (!isPayazaSuccess(confirmed.status)) return c.json({ ok: true });
+    // Authoritative confirmation — never trust the callback body for money. A
+    // verify failure (auth/outage) throws → 500 so Payaza retries; log it loudly
+    // first so a misconfigured key surfaces instead of dropping silently.
+    let confirmed;
+    try {
+      confirmed = await verifyPayazaTransaction(reference);
+    } catch (err) {
+      logger.error(
+        { requestId, reference, err },
+        "payaza webhook: verify call FAILED — returning 500 so Payaza retries",
+      );
+      throw err;
+    }
+    if (!isPayazaSuccess(confirmed.status)) {
+      logger.info(
+        { requestId, reference, payazaStatus: confirmed.status },
+        "payaza webhook: not a completed payment — no-op",
+      );
+      return c.json({ ok: true });
+    }
 
     // Subscription first-payment references are SUB_<subscriptionId>; route them
     // to activation (capture token, first cycle order, schedule next charge).
@@ -63,13 +89,14 @@ export function payazaWebhookRoutes(db: DbClient) {
       await db.transaction(async (tx) => {
         await activateSubscriptionFromPayment(tx, subscriptionId, confirmed);
       });
+      logger.info({ requestId, reference, subscriptionId }, "payaza webhook: subscription activated");
       return c.json({ ok: true });
     }
 
-    await db.transaction(async (tx) => {
+    const outcome = await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.orderNumber, reference));
-      if (!o) return;
-      if (o.status !== "confirmed") return; // already processed or invalid
+      if (!o) return { kind: "order_not_found" as const };
+      if (o.status !== "confirmed") return { kind: "already_processed" as const, status: o.status };
 
       // Reject a confirmation whose amount disagrees with our recorded total —
       // partial capture, currency drift, or a replayed test event. Leave the
@@ -90,7 +117,11 @@ export function payazaWebhookRoutes(db: DbClient) {
             payaza_reference: confirmed.processorReference ?? null,
           },
         });
-        return;
+        return {
+          kind: "amount_mismatch" as const,
+          expected: o.totalNgn,
+          reported: confirmed.amountNgn,
+        };
       }
 
       // A preorder is prepaid but not yet made — capture payment WITHOUT moving
@@ -159,7 +190,44 @@ export function payazaWebhookRoutes(db: DbClient) {
           },
         });
       }
+      return {
+        kind: "paid" as const,
+        orderNumber: o.orderNumber,
+        amountNgn: o.totalNgn,
+        isPreorder: o.isPreorder,
+      };
     });
+
+    // One conclusive line per webhook so the outcome is always traceable.
+    switch (outcome.kind) {
+      case "order_not_found":
+        logger.warn({ requestId, reference }, "payaza webhook: no matching order — no-op");
+        break;
+      case "already_processed":
+        logger.info(
+          { requestId, reference, status: outcome.status },
+          "payaza webhook: order already processed — no-op (idempotent)",
+        );
+        break;
+      case "amount_mismatch":
+        logger.warn(
+          { requestId, reference, expectedNgn: outcome.expected, reportedNgn: outcome.reported },
+          "payaza webhook: AMOUNT MISMATCH — parked for reconcile",
+        );
+        break;
+      case "paid":
+        logger.info(
+          {
+            requestId,
+            reference,
+            orderNumber: outcome.orderNumber,
+            amountNgn: outcome.amountNgn,
+            isPreorder: outcome.isPreorder,
+          },
+          "payaza webhook: order marked PAID",
+        );
+        break;
+    }
 
     return c.json({ ok: true });
   });
