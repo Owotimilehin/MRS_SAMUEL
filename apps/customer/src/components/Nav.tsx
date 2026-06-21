@@ -13,6 +13,7 @@ const links = [
   { label: "About Us", to: "/about" as const },
   { label: "Blog", to: "/blog" as const },
   { label: "Contact", to: "/contact" as const },
+  { label: "Track order", to: "/track" as const },
 ];
 
 export function Nav() {

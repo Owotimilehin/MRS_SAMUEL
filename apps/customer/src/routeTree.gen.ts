@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TrackRouteImport } from './routes/track'
 import { Route as SubscriptionRouteImport } from './routes/subscription'
 import { Route as ShopRouteImport } from './routes/shop'
 import { Route as QrRouteImport } from './routes/qr'
@@ -24,6 +25,11 @@ import { Route as OrderOrderNumberRouteImport } from './routes/order.$orderNumbe
 import { Route as JuicesIdRouteImport } from './routes/juices.$id'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 
+const TrackRoute = TrackRouteImport.update({
+  id: '/track',
+  path: '/track',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SubscriptionRoute = SubscriptionRouteImport.update({
   id: '/subscription',
   path: '/subscription',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/qr': typeof QrRoute
   '/shop': typeof ShopRoute
   '/subscription': typeof SubscriptionRoute
+  '/track': typeof TrackRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juices/$id': typeof JuicesIdRoute
   '/order/$orderNumber': typeof OrderOrderNumberRoute
@@ -119,6 +126,7 @@ export interface FileRoutesByTo {
   '/qr': typeof QrRoute
   '/shop': typeof ShopRoute
   '/subscription': typeof SubscriptionRoute
+  '/track': typeof TrackRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juices/$id': typeof JuicesIdRoute
   '/order/$orderNumber': typeof OrderOrderNumberRoute
@@ -136,6 +144,7 @@ export interface FileRoutesById {
   '/qr': typeof QrRoute
   '/shop': typeof ShopRoute
   '/subscription': typeof SubscriptionRoute
+  '/track': typeof TrackRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juices/$id': typeof JuicesIdRoute
   '/order/$orderNumber': typeof OrderOrderNumberRoute
@@ -154,6 +163,7 @@ export interface FileRouteTypes {
     | '/qr'
     | '/shop'
     | '/subscription'
+    | '/track'
     | '/blog/$slug'
     | '/juices/$id'
     | '/order/$orderNumber'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
     | '/qr'
     | '/shop'
     | '/subscription'
+    | '/track'
     | '/blog/$slug'
     | '/juices/$id'
     | '/order/$orderNumber'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '/qr'
     | '/shop'
     | '/subscription'
+    | '/track'
     | '/blog/$slug'
     | '/juices/$id'
     | '/order/$orderNumber'
@@ -201,11 +213,19 @@ export interface RootRouteChildren {
   QrRoute: typeof QrRoute
   ShopRoute: typeof ShopRoute
   SubscriptionRoute: typeof SubscriptionRoute
+  TrackRoute: typeof TrackRoute
   OrderOrderNumberRoute: typeof OrderOrderNumberRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/track': {
+      id: '/track'
+      path: '/track'
+      fullPath: '/track'
+      preLoaderRoute: typeof TrackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/subscription': {
       id: '/subscription'
       path: '/subscription'
@@ -342,6 +362,7 @@ const rootRouteChildren: RootRouteChildren = {
   QrRoute: QrRoute,
   ShopRoute: ShopRoute,
   SubscriptionRoute: SubscriptionRoute,
+  TrackRoute: TrackRoute,
   OrderOrderNumberRoute: OrderOrderNumberRoute,
 }
 export const routeTree = rootRouteImport
