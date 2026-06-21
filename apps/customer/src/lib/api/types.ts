@@ -47,6 +47,7 @@ export interface ApiBranch {
   name: string;
   address: string | null;
   phone: string | null;
+  is_online_default?: boolean;
 }
 
 export interface ApiBlogSummary {

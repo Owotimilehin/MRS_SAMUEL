@@ -39,7 +39,9 @@ function todayLagos(): string {
 function Page() {
   const { branches } = Route.useLoaderData();
   const { items, subtotal, clear, hasPreorder } = useCart();
-  const branchId = branches[0]?.id ?? null;
+  // Route to the owner-selected online-fulfilment branch; fall back to the first
+  // active branch when none is flagged (preserves prior behaviour).
+  const branchId = (branches.find((b) => b.is_online_default) ?? branches[0])?.id ?? null;
 
   // --- form ---
   const [form, setForm] = useState({
