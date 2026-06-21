@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 /**
  * Init config for Payaza's frontend checkout SDK
  * (https://checkout-v2.payaza.africa/js/v1/bundle.js). Payaza has no
@@ -153,22 +151,4 @@ export async function verifyPayazaTransaction(
 /** Payaza's verify API reports success as transaction_status "Completed". */
 export function isPayazaSuccess(status: string): boolean {
   return status.toLowerCase() === "completed";
-}
-
-/**
- * Verify the HMAC-SHA256 signature Payaza puts on webhook callbacks
- * (x-payaza-signature, keyed by the secret key — confirmed against Payaza's
- * WooCommerce plugin). Constant-time comparison via timingSafeEqual. When
- * PAYAZA_WEBHOOK_SECRET is unset (dev/mock mode) we accept anything so the mock
- * flow stays exercisable.
- */
-export function verifyPayazaSignature(rawBody: string, signature: string | null): boolean {
-  const secret = process.env.PAYAZA_WEBHOOK_SECRET;
-  if (!secret) return true; // dev/mock mode
-  if (!signature) return false;
-  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-  const a = Buffer.from(expected);
-  const b = Buffer.from(signature.trim());
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
 }

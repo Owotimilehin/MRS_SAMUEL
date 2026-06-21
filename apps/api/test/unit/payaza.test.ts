@@ -1,9 +1,7 @@
-import crypto from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPayazaCheckoutConfig,
   verifyPayazaTransaction,
-  verifyPayazaSignature,
   isPayazaSuccess,
 } from "../../src/payments/payaza.js";
 
@@ -100,30 +98,6 @@ describe("verifyPayazaTransaction", () => {
     vi.stubEnv("PAYAZA_PUBLIC_KEY", "pub_test_123");
     mockFetch(() => new Response("Unauthorized", { status: 401 }));
     await expect(verifyPayazaTransaction("ORD-1")).rejects.toThrow(/payaza verify failed: 401/);
-  });
-});
-
-describe("verifyPayazaSignature", () => {
-  afterEach(() => vi.unstubAllEnvs());
-
-  it("accepts anything when no webhook secret is configured (dev/mock)", () => {
-    vi.stubEnv("PAYAZA_WEBHOOK_SECRET", "");
-    expect(verifyPayazaSignature("{}", null)).toBe(true);
-    expect(verifyPayazaSignature("{}", "whatever")).toBe(true);
-  });
-
-  it("rejects when a secret is set but no signature is sent", () => {
-    vi.stubEnv("PAYAZA_WEBHOOK_SECRET", "whsec");
-    expect(verifyPayazaSignature("{}", null)).toBe(false);
-  });
-
-  it("accepts a correct HMAC-SHA256 signature and rejects a tampered one", () => {
-    vi.stubEnv("PAYAZA_WEBHOOK_SECRET", "whsec");
-    const body = JSON.stringify({ data: { transaction_reference: "ORD-1" } });
-    const good = crypto.createHmac("sha256", "whsec").update(body).digest("hex");
-    expect(verifyPayazaSignature(body, good)).toBe(true);
-    expect(verifyPayazaSignature(body + " ", good)).toBe(false);
-    expect(verifyPayazaSignature(body, good.replace(/.$/, "0"))).toBe(false);
   });
 });
 

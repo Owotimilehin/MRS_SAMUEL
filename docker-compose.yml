@@ -63,10 +63,11 @@ services:
       # session cookies to drop the Secure flag so the browser actually sends
       # them back. Production behind Cloudflare Tunnel = HTTPS, leave unset.
       COOKIE_INSECURE: ${COOKIE_INSECURE:-0}
-      # Payments — Payaza collection. Empty PAYAZA_SECRET_KEY = mock mode.
+      # Payments — Payaza collection. Empty PAYAZA_PUBLIC_KEY = mock mode.
+      # Payaza does not sign its callbacks (no webhook secret) — the webhook is a
+      # wake-up and payment is re-verified server-to-server by order reference.
       PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}
       PAYAZA_PUBLIC_KEY: ${PAYAZA_PUBLIC_KEY:-}
-      PAYAZA_WEBHOOK_SECRET: ${PAYAZA_WEBHOOK_SECRET:-}
       PAYAZA_API_BASE: ${PAYAZA_API_BASE:-}
       PAYAZA_AUTH_SCHEME: ${PAYAZA_AUTH_SCHEME:-}
       TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
@@ -139,8 +140,10 @@ services:
       BOLT_API_KEY: ${BOLT_API_KEY:-}
       BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET:-}
       BOLT_MOCK_WEBHOOK_URL: ${BOLT_MOCK_WEBHOOK_URL:-}
-      # Refunds — Payaza. Empty = mock refund reference.
+      # Refunds + recurring charges — Payaza. Empty = mock refund reference.
+      # PAYAZA_PUBLIC_KEY is needed by the recurring charge-authorization call.
       PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}
+      PAYAZA_PUBLIC_KEY: ${PAYAZA_PUBLIC_KEY:-}
       PAYAZA_API_BASE: ${PAYAZA_API_BASE:-}
       PAYAZA_AUTH_SCHEME: ${PAYAZA_AUTH_SCHEME:-}
       # Image processing (Cloudflare R2).

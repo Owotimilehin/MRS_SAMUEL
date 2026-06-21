@@ -9,33 +9,31 @@ import {
   outboxEvent,
   type DbClient,
 } from "@ms/db";
-import { verifyPayazaTransaction, verifyPayazaSignature, isPayazaSuccess } from "../payments/payaza.js";
+import { verifyPayazaTransaction, isPayazaSuccess } from "../payments/payaza.js";
 import { activateSubscriptionFromPayment } from "../lib/subscriptions.js";
 import { autoDispatchEnabled } from "../lib/delivery-flags.js";
 import { isOutsideLagos } from "@ms/shared";
 
 /**
- * Payaza webhook receiver. The callback is signature-verified (HMAC-SHA512,
- * x-payaza-signature) and then treated as a wake-up only — we don't trust its
- * body for the money decision. On every callback we re-read the transaction
- * from Payaza (verifyPayazaTransaction) and only flip the order to paid when
- * Payaza itself reports success. Idempotent: replaying a callback for an
- * already-paid order is a no-op.
+ * Payaza webhook receiver. Payaza does NOT sign its callbacks — there is no
+ * HMAC/x-payaza-signature scheme (its WooCommerce plugin confirms payments by
+ * re-querying the transaction, not by verifying a signature). So we treat the
+ * callback purely as a wake-up and NEVER trust its body for the money decision:
+ * on every callback we re-read the transaction from Payaza
+ * (verifyPayazaTransaction, authed server-to-server) and only flip the order to
+ * paid when Payaza itself reports success. The merchant_reference is our own
+ * order number, so a forged callback can at most trigger a status re-read of a
+ * real order — it cannot fabricate a payment. Idempotent: replaying a callback
+ * for an already-paid order is a no-op.
  *
- * Dev mode: when Payaza creds are unset, the signature check is skipped and
- * verifyPayazaTransaction returns a mock success so the mock checkout URL can
- * simulate completion.
+ * Dev mode: when Payaza creds are unset, verifyPayazaTransaction returns a mock
+ * success so the mock checkout URL can simulate completion.
  */
 export function payazaWebhookRoutes(db: DbClient) {
   const r = new Hono();
 
   r.post("/", async (c) => {
     const raw = await c.req.raw.clone().text();
-    const signature = c.req.header("x-payaza-signature") ?? null;
-    if (!verifyPayazaSignature(raw, signature)) {
-      // Bad signature — ack quietly so Payaza stops retrying, but do nothing.
-      return c.json({ ok: true });
-    }
 
     let parsed: unknown;
     try {
