@@ -9,6 +9,7 @@ interface ConfirmModalProps {
   onConfirm: () => void;
   onCancel: () => void;
   busy?: boolean;
+  confirmDisabled?: boolean;
   tone?: "primary" | "danger";
   maxWidth?: number;
 }
@@ -27,6 +28,7 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
   busy = false,
+  confirmDisabled = false,
   tone = "primary",
   maxWidth = 560,
 }: ConfirmModalProps): JSX.Element {
@@ -50,7 +52,7 @@ export function ConfirmModal({
           type="button"
           className={tone === "danger" ? "btn btn--danger" : "btn btn--primary"}
           onClick={onConfirm}
-          disabled={busy}
+          disabled={busy || confirmDisabled}
         >
           {busy ? busyLabel : confirmLabel}
         </button>

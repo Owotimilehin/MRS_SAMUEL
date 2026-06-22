@@ -93,8 +93,13 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
 
   async function reloadOrder(): Promise<void> {
-    const res = await api<{ data: Sale }>(`/branches/${branchId}/sales/${saleId}`);
-    setData(res.data);
+    if (!data) return;
+    try {
+      const res = await api<{ data: Sale }>(`/branches/${data.branchId}/sales/${saleId}`);
+      setData(res.data);
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   async function getOptions(): Promise<void> {
@@ -646,6 +651,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
           confirmLabel="Cancel & mark refund"
           busyLabel="Cancelling…"
           busy={cancelBusy}
+          confirmDisabled={cancelReason.trim() === ""}
           tone="danger"
           onCancel={() => setShowCancelModal(false)}
           onConfirm={() => void cancelAndRefund()}
