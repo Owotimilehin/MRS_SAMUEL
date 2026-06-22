@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
-import { api, ApiError, humanizeError } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { StatHero } from "../../components/StatHero.js";
 import {
@@ -66,7 +66,7 @@ export function SettingsPage(): JSX.Element {
       await load();
       window.setTimeout(() => setFlash(null), 3000);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setSaving(null);
     }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
-import { api, ApiError, humanizeError } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -83,7 +83,7 @@ export function OwnerReturnsPage(): JSX.Element {
       });
       await load();
     } catch (err) {
-      window.alert(err instanceof ApiError ? err.message : String(err));
+      window.alert(humanizeError(err));
     }
   }
 
