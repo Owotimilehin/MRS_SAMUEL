@@ -548,4 +548,22 @@ describe("admin payment reconciliation endpoints", () => {
     });
     expect(res.status).toBe(404);
   });
+
+  it("POST /mark-refunded returns 409 when order channel is walkup", async () => {
+    // Seed a walkup order by inserting directly via DB then patching channel
+    const { id } = await placeOrder("+2348091111030");
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    // Downgrade the channel to walkup to simulate a non-online order
+    await db
+      .update(saleOrder)
+      .set({ channel: "walkup", updatedAt: new Date() })
+      .where(eq(saleOrder.id, id));
+
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/mark-refunded`, {
+      method: "POST",
+      headers: { cookie: ownerCookies, "idempotency-key": uuid() },
+    });
+    expect(res.status).toBe(409);
+  });
 });

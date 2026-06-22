@@ -240,8 +240,7 @@ export function paymentsAdminRoutes(db: DbClient) {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
 
-    const [o] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
-    if (!o) throw new BusinessError("not_found", "order not found", 404);
+    const o = await loadOnlineOrder(id);
 
     await db
       .update(saleOrder)
