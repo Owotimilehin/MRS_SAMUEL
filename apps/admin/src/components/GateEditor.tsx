@@ -8,7 +8,7 @@ const GROUPS: { heading: string; caps: Capability[] }[] = [
   { heading: "Content", caps: ["blog.manage", "marketing.manage"] },
   { heading: "Bookkeeping", caps: ["expenses.view", "expenses.write", "finance.view"] },
   { heading: "Visibility", caps: ["reports.view", "audit.view", "devices.view", "customers.view", "orders.view", "stock.read"] },
-  { heading: "Operations", caps: ["production.manage", "transfers.create", "transfers.receive", "orders.manage", "packaging.view", "packaging.write", "packaging.adjust"] },
+  { heading: "Operations", caps: ["production.manage", "transfers.create", "transfers.receive", "orders.manage", "orders.accept_payment", "packaging.view", "packaging.write", "packaging.adjust"] },
   { heading: "Branch / POS", caps: ["pos.sell", "pos.preorder", "shift_open.submit", "sales.view", "daily_close.submit", "returns.create", "stock.adjust"] },
 ];
 
@@ -34,6 +34,7 @@ const LABEL: Record<Capability, string> = {
   "transfers.create": "Create transfers",
   "transfers.receive": "Receive transfers",
   "orders.manage": "Manage online orders",
+  "orders.accept_payment": "Accept payments / mark refunded (owner)",
   "pos.sell": "Use POS / sell",
   "pos.preorder": "Create/fulfil preorders",
   "shift_open.submit": "File opening stock count",

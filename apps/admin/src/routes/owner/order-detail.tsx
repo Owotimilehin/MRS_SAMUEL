@@ -7,7 +7,7 @@ import { api } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
-import { useAuthUser } from "../../lib/auth.js";
+import { useAuthUser, useCan } from "../../lib/auth.js";
 import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
 import { getReceiptStyle } from "../../lib/receipt-settings.js";
 import { fetchBranchInfo, printAndToast } from "../../lib/reprint.js";
@@ -37,6 +37,8 @@ interface Sale {
   createdAtLocal: string;
   customerName?: string | null;
   customerPhone?: string | null;
+  refundOwedNgn?: number | null;
+  reportedNgn?: number | null;
   items: SaleItem[];
   delivery?: {
     provider: "bolt" | "manual" | "shipbubble";
@@ -57,6 +59,7 @@ function statusPill(status: string): JSX.Element {
   if (status === "delivered") return <span className="pill pill--success">Delivered</span>;
   if (status === "confirmed") return <span className="pill pill--warning">Pending pay</span>;
   if (status === "cancelled") return <span className="pill pill--ink">Cancelled</span>;
+  if (status === "reconcile_needed") return <span className="pill pill--danger">Reconcile needed</span>;
   return <span className="pill">{status}</span>;
 }
 
@@ -67,8 +70,19 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const authUser = useAuthUser();
+  const can = useCan();
   const [printing, setPrinting] = useState(false);
   const [branchId, setBranchId] = useState<string>("");
+
+  // Payment action modal states
+  const [recheckBusy, setRecheckBusy] = useState(false);
+  const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [acceptBusy, setAcceptBusy] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [showMarkRefundedModal, setShowMarkRefundedModal] = useState(false);
+  const [markRefundedBusy, setMarkRefundedBusy] = useState(false);
 
   interface CourierOption { id: string; courier_name: string; fee_ngn: number; eta_minutes: number | null }
   const [options, setOptions] = useState<CourierOption[] | null>(null);
@@ -129,6 +143,54 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
       await reloadOrder();
     } catch (err) {
       setDeliveryError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function recheckPayment(): Promise<void> {
+    setRecheckBusy(true);
+    try {
+      await api(`/online-orders/${saleId}/recheck`, { method: "POST", body: "{}" });
+      await reloadOrder();
+    } finally {
+      setRecheckBusy(false);
+    }
+  }
+
+  async function acceptAsPaid(): Promise<void> {
+    setAcceptBusy(true);
+    try {
+      await api(`/online-orders/${saleId}/accept`, { method: "POST", body: "{}" });
+      setShowAcceptModal(false);
+      await reloadOrder();
+    } finally {
+      setAcceptBusy(false);
+    }
+  }
+
+  async function cancelAndRefund(): Promise<void> {
+    if (!cancelReason.trim()) return;
+    setCancelBusy(true);
+    try {
+      await api(`/online-orders/${saleId}/cancel-refund`, {
+        method: "POST",
+        body: JSON.stringify({ reason: cancelReason.trim() }),
+      });
+      setShowCancelModal(false);
+      setCancelReason("");
+      await reloadOrder();
+    } finally {
+      setCancelBusy(false);
+    }
+  }
+
+  async function markRefunded(): Promise<void> {
+    setMarkRefundedBusy(true);
+    try {
+      await api(`/online-orders/${saleId}/mark-refunded`, { method: "POST", body: "{}" });
+      setShowMarkRefundedModal(false);
+      await reloadOrder();
+    } finally {
+      setMarkRefundedBusy(false);
     }
   }
 
@@ -371,6 +433,103 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
               <div style={{ fontSize: 14 }}>Method: {data.paymentMethod}</div>
             </section>
 
+            {/* Payment resolution panel — online orders only */}
+            {data.channel === "online" && (
+              <section className="card" style={{ border: data.status === "reconcile_needed" ? "1.5px solid var(--danger)" : undefined }}>
+                <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700 }}>Payment status</h3>
+                  {statusPill(data.status)}
+                </header>
+
+                {/* Refund owed badge */}
+                {data.refundOwedNgn != null && data.refundOwedNgn > 0 && (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "var(--danger)",
+                      color: "#fff",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      borderRadius: 8,
+                      padding: "4px 10px",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <span>⚠</span>
+                    Refund owed {ngn(data.refundOwedNgn)}
+                  </div>
+                )}
+
+                {/* Amount mismatch row */}
+                {data.reportedNgn != null && data.reportedNgn !== data.totalNgn && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--ink-soft)",
+                      background: "var(--surface-raised, rgba(0,0,0,0.03))",
+                      borderRadius: 6,
+                      padding: "6px 10px",
+                      marginBottom: 12,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, color: "var(--ink)" }}>Expected</span>{" "}
+                    {ngn(data.totalNgn)}
+                    {" · "}
+                    <span style={{ fontWeight: 600, color: "var(--ink)" }}>Payaza reported</span>{" "}
+                    {ngn(data.reportedNgn)}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {can("orders.manage") && (
+                    <button
+                      type="button"
+                      className="btn btn--subtle btn--sm"
+                      disabled={recheckBusy}
+                      onClick={() => void recheckPayment()}
+                      style={{ justifyContent: "center" }}
+                    >
+                      {recheckBusy ? "Checking…" : "↻ Re-check payment"}
+                    </button>
+                  )}
+                  {can("orders.accept_payment") && (
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--sm"
+                      onClick={() => setShowAcceptModal(true)}
+                      style={{ justifyContent: "center" }}
+                    >
+                      ✓ Accept as paid
+                    </button>
+                  )}
+                  {can("orders.manage") && (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => { setCancelReason(""); setShowCancelModal(true); }}
+                      style={{ justifyContent: "center", color: "var(--danger)" }}
+                    >
+                      ✕ Cancel &amp; mark refund owed
+                    </button>
+                  )}
+                  {can("orders.accept_payment") && data.refundOwedNgn != null && data.refundOwedNgn > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn--subtle btn--sm"
+                      onClick={() => setShowMarkRefundedModal(true)}
+                      style={{ justifyContent: "center" }}
+                    >
+                      ✓ Mark refunded
+                    </button>
+                  )}
+                </div>
+              </section>
+            )}
+
             {data.deliveryAddressFormatted && (
               <section className="card">
                 <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Delivery</h3>
@@ -460,6 +619,65 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
           <p style={{ fontSize: 14 }}>
             Book <strong>{picked.courier_name}</strong> for <strong>{ngn(picked.fee_ngn)}</strong>. This debits the
             Shipbubble wallet. Tell the customer this amount on WhatsApp.
+          </p>
+        </ConfirmModal>
+      )}
+
+      {showAcceptModal && data && (
+        <ConfirmModal
+          title="Accept order as paid?"
+          confirmLabel="Accept as paid"
+          busyLabel="Accepting…"
+          busy={acceptBusy}
+          onCancel={() => setShowAcceptModal(false)}
+          onConfirm={() => void acceptAsPaid()}
+        >
+          <p style={{ fontSize: 14 }}>
+            This will manually mark order <strong>{data.orderNumber}</strong> as{" "}
+            <strong>paid</strong> ({ngn(data.totalNgn)}) without a Payaza verification.
+            Only do this if you have confirmed payment through another channel.
+          </p>
+        </ConfirmModal>
+      )}
+
+      {showCancelModal && data && (
+        <ConfirmModal
+          title="Cancel order & mark refund owed?"
+          confirmLabel="Cancel & mark refund"
+          busyLabel="Cancelling…"
+          busy={cancelBusy}
+          tone="danger"
+          onCancel={() => setShowCancelModal(false)}
+          onConfirm={() => void cancelAndRefund()}
+        >
+          <p style={{ fontSize: 14, marginBottom: 12 }}>
+            This will cancel order <strong>{data.orderNumber}</strong> and mark a refund
+            owed to the customer. Provide a reason:
+          </p>
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="e.g. Payment received but product unavailable"
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            style={{ width: "100%", resize: "vertical", fontSize: 14 }}
+          />
+        </ConfirmModal>
+      )}
+
+      {showMarkRefundedModal && data && (
+        <ConfirmModal
+          title="Mark refund as sent?"
+          confirmLabel="Mark refunded"
+          busyLabel="Saving…"
+          busy={markRefundedBusy}
+          onCancel={() => setShowMarkRefundedModal(false)}
+          onConfirm={() => void markRefunded()}
+        >
+          <p style={{ fontSize: 14 }}>
+            Confirm that the refund of{" "}
+            <strong>{ngn(data.refundOwedNgn ?? 0)}</strong> has been sent to the customer
+            for order <strong>{data.orderNumber}</strong>. This cannot be undone.
           </p>
         </ConfirmModal>
       )}

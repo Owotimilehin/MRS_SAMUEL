@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Menu,
@@ -37,6 +37,7 @@ import {
 import { useAuthUser } from "../lib/auth.js";
 import { useRailOpen } from "../lib/rail.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
+import { api } from "../lib/api.js";
 import type { Capability } from "@ms/shared";
 
 // One falling droplet's CSS vars, typed for the custom properties the
@@ -111,27 +112,80 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
   // "drawn-out" text rail on md; inert on desktop where the rail is always full.
   const rail = useRailOpen();
 
+  // Needs-review badge: total items awaiting owner attention (transfer variances +
+  // return approvals + payment attention). Fetched once per Shell mount; best-effort
+  // (ignored on error so nav doesn't break if the endpoint is slow).
+  const [reviewCount, setReviewCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!can("orders.manage")) return;
+    void (async () => {
+      try {
+        const res = await api<{
+          data: {
+            transfer_variances: unknown[];
+            return_approvals: unknown[];
+            payment_attention?: unknown[];
+          };
+        }>("/review");
+        const count =
+          res.data.transfer_variances.length +
+          res.data.return_approvals.length +
+          (res.data.payment_attention?.length ?? 0);
+        setReviewCount(count);
+      } catch {
+        /* best-effort — don't break nav */
+      }
+    })();
+    // Only run once per mount; `can` is derived from stable user object
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const renderSection = (heading: string, items: NavLink[]): JSX.Element | null => {
     const visible = items.filter((i) => can(i.cap));
     if (visible.length === 0) return null;
     return (
       <>
         <div className="app-nav__section">{heading}</div>
-        {visible.map((item) => (
-          <Link
-            key={item.to}
-            to={item.to}
-            title={item.label}
-            onClick={rail.close}
-            className="app-nav__link"
-            activeProps={{ className: "app-nav__link is-active" }}
-          >
-            <span className="app-nav__icon">
-              <item.Icon strokeWidth={1.9} />
-            </span>
-            <span>{item.label}</span>
-          </Link>
-        ))}
+        {visible.map((item) => {
+          const badge = item.to === "/owner/review" && reviewCount != null && reviewCount > 0
+            ? reviewCount
+            : null;
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              title={item.label}
+              onClick={rail.close}
+              className="app-nav__link"
+              activeProps={{ className: "app-nav__link is-active" }}
+            >
+              <span className="app-nav__icon">
+                <item.Icon strokeWidth={1.9} />
+              </span>
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {badge != null && (
+                <span
+                  style={{
+                    background: "var(--danger)",
+                    color: "#fff",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    borderRadius: 999,
+                    minWidth: 18,
+                    height: 18,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "0 5px",
+                    lineHeight: 1,
+                  }}
+                >
+                  {badge}
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </>
     );
   };

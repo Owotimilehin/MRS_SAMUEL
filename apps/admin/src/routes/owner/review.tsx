@@ -1,4 +1,5 @@
 ﻿import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { api } from "../../lib/api.js";
@@ -23,10 +24,19 @@ interface ReturnApproval {
   createdAt: string;
   branchId: string;
 }
+interface PaymentAttentionItem {
+  id: string;
+  order_number: string;
+  status: string;
+  total_ngn: number;
+  refund_owed_ngn: number | null;
+  reported_ngn: number | null;
+}
 interface ReviewResp {
   data: {
     transfer_variances: TransferVariance[];
     return_approvals: ReturnApproval[];
+    payment_attention?: PaymentAttentionItem[];
   };
 }
 
@@ -92,11 +102,10 @@ export function ReviewPage(): JSX.Element {
     }
   }
 
-  const total =
-    (data?.transfer_variances.length ?? 0) + (data?.return_approvals.length ?? 0);
-
+  const paymentAttentionCount = data?.payment_attention?.length ?? 0;
   const transferVarianceCount = data?.transfer_variances.length ?? 0;
   const returnApprovalCount = data?.return_approvals.length ?? 0;
+  const total = transferVarianceCount + returnApprovalCount + paymentAttentionCount;
 
   return (
     <Shell
@@ -114,11 +123,87 @@ export function ReviewPage(): JSX.Element {
         loading={loading}
         chips={[
           { label: "Items to review", value: total, tone: total > 0 ? "danger" : "good" },
+          { label: "Payment attention", value: paymentAttentionCount, tone: paymentAttentionCount > 0 ? "danger" : "good" },
           { label: "Transfer variances", value: transferVarianceCount, tone: transferVarianceCount > 0 ? "warn" : "good" },
           { label: "Return approvals", value: returnApprovalCount, tone: returnApprovalCount > 0 ? "warn" : "good" },
         ]}
       />
 
+
+      {/* Payment attention bucket */}
+      <section style={{ marginBottom: 24 }}>
+        <header style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
+          <h2 className="t-h2">Payment attention</h2>
+          <span className={paymentAttentionCount > 0 ? "pill pill--danger" : "pill pill--ink"}>{paymentAttentionCount}</span>
+        </header>
+        {loading ? (
+          <InlineLoader />
+        ) : !data || paymentAttentionCount === 0 ? (
+          <div className="empty">
+            <div className="empty__title">No payment issues</div>
+            All online order payments are reconciled.
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Status</th>
+                  <th className="table__num">Expected</th>
+                  <th className="table__num">Payaza reported</th>
+                  <th className="table__num">Refund owed</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {(data.payment_attention ?? []).map((p) => (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 600 }}>{p.order_number}</td>
+                    <td>
+                      {p.status === "reconcile_needed" ? (
+                        <span className="pill pill--danger">Reconcile needed</span>
+                      ) : p.status === "cancelled" ? (
+                        <span className="pill pill--ink">Cancelled</span>
+                      ) : (
+                        <span className="pill">{p.status}</span>
+                      )}
+                    </td>
+                    <td className="table__num">{ngn(p.total_ngn)}</td>
+                    <td className="table__num">
+                      {p.reported_ngn != null ? (
+                        <span style={p.reported_ngn !== p.total_ngn ? { color: "var(--danger)", fontWeight: 700 } : undefined}>
+                          {ngn(p.reported_ngn)}
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--ink-soft)" }}>—</span>
+                      )}
+                    </td>
+                    <td className="table__num">
+                      {p.refund_owed_ngn != null && p.refund_owed_ngn > 0 ? (
+                        <span style={{ color: "var(--danger)", fontWeight: 700 }}>
+                          {ngn(p.refund_owed_ngn)}
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--ink-soft)" }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <Link
+                        to="/owner/orders/$saleId"
+                        params={{ saleId: p.id }}
+                        className="pill pill--ink"
+                      >
+                        Open →
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section style={{ marginBottom: 24 }}>
         <header style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
