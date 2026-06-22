@@ -87,6 +87,10 @@ export const saleOrder = pgTable("sale_order", {
   isPreorder: boolean("is_preorder").notNull().default(false),
   fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
   fulfilledByUserId: uuid("fulfilled_by_user_id").references(() => adminUser.id),
+  // Set when payment reconciliation finds the business owes the customer
+  // money back (e.g. a confirmed Payaza charge with no matching paid order,
+  // or a duplicate charge). Null = no refund owed.
+  refundOwedNgn: integer("refund_owed_ngn"),
 });
 
 export const saleOrderItem = pgTable("sale_order_item", {
