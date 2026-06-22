@@ -1,18 +1,9 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import {
-  saleOrder,
-  saleOrderItem,
-  payment,
-  stockLedger,
-  stockReservation,
-  outboxEvent,
-  type DbClient,
-} from "@ms/db";
+import { saleOrder, type DbClient } from "@ms/db";
 import { verifyPayazaTransaction, isPayazaSuccess } from "../payments/payaza.js";
 import { activateSubscriptionFromPayment } from "../lib/subscriptions.js";
-import { autoDispatchEnabled } from "../lib/delivery-flags.js";
-import { isOutsideLagos } from "@ms/shared";
+import { applyPayazaConfirmation } from "../payments/reconcile.js";
 import { logger } from "../logger.js";
 
 /**
@@ -96,106 +87,7 @@ export function payazaWebhookRoutes(db: DbClient) {
     const outcome = await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.orderNumber, reference));
       if (!o) return { kind: "order_not_found" as const };
-      if (o.status !== "confirmed") return { kind: "already_processed" as const, status: o.status };
-
-      // Reject a confirmation whose amount disagrees with our recorded total —
-      // partial capture, currency drift, or a replayed test event. Leave the
-      // order in 'confirmed' (reservation sweep handles it) and flag for manual
-      // review rather than ledger out stock for less than paid.
-      if (confirmed.amountNgn != null && confirmed.amountNgn !== o.totalNgn) {
-        await tx
-          .update(saleOrder)
-          .set({ status: "reconcile_needed", updatedAt: new Date() })
-          .where(eq(saleOrder.id, o.id));
-        await tx.insert(outboxEvent).values({
-          eventType: "sale.amount_mismatch",
-          payload: {
-            sale_order_id: o.id,
-            order_number: o.orderNumber,
-            expected_ngn: o.totalNgn,
-            reported_ngn: confirmed.amountNgn,
-            payaza_reference: confirmed.processorReference ?? null,
-          },
-        });
-        return {
-          kind: "amount_mismatch" as const,
-          expected: o.totalNgn,
-          reported: confirmed.amountNgn,
-        };
-      }
-
-      // A preorder is prepaid but not yet made — capture payment WITHOUT moving
-      // stock. The deduction happens later when staff fulfil it (preorders.ts).
-      if (!o.isPreorder) {
-        const items = await tx
-          .select()
-          .from(saleOrderItem)
-          .where(eq(saleOrderItem.saleOrderId, o.id));
-        for (const it of items) {
-          await tx.insert(stockLedger).values({
-            locationType: "branch",
-            locationId: o.branchId,
-            productId: it.productId,
-            variantId: it.variantId ?? null,
-            delta: -it.quantity,
-            sourceType: "sale",
-            sourceId: o.id,
-            note: `Online sale ${o.orderNumber}`,
-          });
-        }
-        await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, o.id));
-      }
-      await tx.insert(payment).values({
-        saleOrderId: o.id,
-        method: "card",
-        amountNgn: o.totalNgn,
-        status: "paid",
-        processor: "payaza",
-        processorReference: confirmed.processorReference ?? null,
-        paidAt: new Date(),
-      });
-      await tx
-        .update(saleOrder)
-        .set({ status: "paid", paymentStatus: "paid", updatedAt: new Date() })
-        .where(eq(saleOrder.id, o.id));
-      await tx.insert(outboxEvent).values({
-        // A paid preorder awaits fulfilment (not delivery yet) — distinct event
-        // so the owner is alerted it has joined the Preorders queue.
-        eventType: o.isPreorder ? "sale.preorder_paid" : "sale.paid_online",
-        payload: {
-          sale_order_id: o.id,
-          order_number: o.orderNumber,
-          branch_id: o.branchId,
-          customer_id: o.customerId,
-          total_ngn: o.totalNgn,
-          scheduled_delivery_at: o.scheduledDeliveryAt
-            ? o.scheduledDeliveryAt.toISOString()
-            : null,
-          delivery_state: o.deliveryState ?? null,
-        },
-      });
-      // Auto-dispatch is OFF by default — rides are booked manually from the
-      // admin order page. When AUTO_DISPATCH_DELIVERY=true, fall back to the
-      // legacy behavior: immediate, in-Lagos, in-stock orders request a ride now
-      // (preorders / scheduled / outside-Lagos are always fulfilled out of band).
-      const outsideLagos = isOutsideLagos(o.deliveryState);
-      const bypass = o.isPreorder || o.scheduledDeliveryAt != null || outsideLagos;
-      if (autoDispatchEnabled() && !bypass) {
-        await tx.insert(outboxEvent).values({
-          eventType: "delivery.request",
-          payload: {
-            sale_order_id: o.id,
-            order_number: o.orderNumber,
-            branch_id: o.branchId,
-          },
-        });
-      }
-      return {
-        kind: "paid" as const,
-        orderNumber: o.orderNumber,
-        amountNgn: o.totalNgn,
-        isPreorder: o.isPreorder,
-      };
+      return applyPayazaConfirmation(tx, o, confirmed);
     });
 
     // One conclusive line per webhook so the outcome is always traceable.
@@ -211,7 +103,12 @@ export function payazaWebhookRoutes(db: DbClient) {
         break;
       case "amount_mismatch":
         logger.warn(
-          { requestId, reference, expectedNgn: outcome.expected, reportedNgn: outcome.reported },
+          {
+            requestId,
+            reference,
+            expectedNgn: outcome.expectedNgn,
+            reportedNgn: outcome.reportedNgn,
+          },
           "payaza webhook: AMOUNT MISMATCH — parked for reconcile",
         );
         break;
