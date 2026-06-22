@@ -3,7 +3,7 @@ import { Shell } from "../../components/Shell.js";
 import { Stat } from "../../components/Stat.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
 import { InlineLoader } from "../../components/Spinner.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { toast } from "../../lib/toast.js";
 import { channelLabel } from "../../lib/analytics-theme.js";
@@ -84,7 +84,7 @@ export function AnalyticsPage(): JSX.Element {
         setProducts(prod.data);
         setBranches(br.data);
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -101,7 +101,7 @@ export function AnalyticsPage(): JSX.Element {
         const res = await api<{ data: Pnl }>(`/reports/pnl?month=${month}`);
         if (!cancelled) setPnl(res.data);
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       }
     })();
     return () => {

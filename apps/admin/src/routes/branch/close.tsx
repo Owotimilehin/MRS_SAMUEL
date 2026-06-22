@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { local } from "../../db/local.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -74,7 +74,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
           setCounts(init);
         }
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -143,7 +143,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
       setClosed(true);
       setHasShift(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setSubmitting(false);
     }

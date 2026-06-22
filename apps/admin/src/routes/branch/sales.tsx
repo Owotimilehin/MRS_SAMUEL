@@ -4,7 +4,7 @@ import { BranchShell } from "../../components/BranchShell.js";
 import { Stat } from "../../components/Stat.js";
 import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -21,6 +21,8 @@ interface Sale {
   isPreorder?: boolean;
   fulfilledAt?: string | null;
   scheduledDeliveryAt?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
 }
 
 // Order type: an immediate walk-up sale vs a made-to-order preorder (and whether
@@ -68,7 +70,7 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
           setSales(res.data);
         }
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -173,6 +175,7 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
             <thead>
               <tr>
                 <th>Order</th>
+                <th>Customer</th>
                 <th>Type</th>
                 <th>Channel</th>
                 <th>Payment</th>
@@ -192,6 +195,20 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
                     >
                       {s.orderNumber}
                     </Link>
+                  </td>
+                  <td>
+                    {s.customerName || s.customerPhone ? (
+                      <span style={{ display: "grid" }}>
+                        <span>{s.customerName ?? "—"}</span>
+                        {s.customerPhone && (
+                          <span style={{ color: "var(--ink-soft)", fontSize: 12 }}>
+                            {s.customerPhone}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span style={{ color: "var(--ink-soft)" }}>—</span>
+                    )}
                   </td>
                   <td>{typePill(s)}</td>
                   <td style={{ textTransform: "capitalize" }}>{s.channel.replace(/_/g, " ")}</td>

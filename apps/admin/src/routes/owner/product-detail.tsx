@@ -4,7 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { Stat } from "../../components/Stat.js";
 import { Modal } from "../../components/Modal.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
@@ -84,7 +84,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
       );
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -133,7 +133,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
       showFlash(`New ${variant.size_ml}ml price published`);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setPublishingId(null);
     }
@@ -151,7 +151,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
       showFlash(product.isActive ? "Flavour hidden from storefront" : "Flavour is live again");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setActing(false);
     }
@@ -164,7 +164,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
       await api(`/products/${productId}`, { method: "DELETE" });
       void router.navigate({ to: "/owner/products" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
       setActing(false);
       setConfirmDelete(false);
     }
@@ -579,7 +579,7 @@ function EditDetailsForm({
       });
       await onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
       setSubmitting(false);
     }
   }

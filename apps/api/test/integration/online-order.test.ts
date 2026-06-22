@@ -252,7 +252,7 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(new Date(detailBody.data.scheduledDeliveryAt!).toISOString()).toBe(future);
   });
 
-  it("sale detail returns customerName and customerPhone", async () => {
+  it("sale detail returns customer name, phone, email and address", async () => {
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": uuid() },
@@ -277,12 +277,52 @@ describe("Phase 3 customer-site online order flow", () => {
     });
     expect(detail.status).toBe(200);
     const detailBody = (await detail.json()) as {
-      data: { customerName: string | null; customerPhone: string | null };
+      data: {
+        customerName: string | null;
+        customerPhone: string | null;
+        customerEmail: string | null;
+        customerAddress: string | null;
+      };
     };
     expect(detailBody.data.customerName).toBe("Ada Test");
     // The public-orders flow normalizes phones to international form at customer
     // creation, so the stored/returned value is +234… not the raw 0… input.
     expect(detailBody.data.customerPhone).toBe("+2348099887766");
+    expect(detailBody.data.customerEmail).toBe("ada.test@example.com");
+    expect(detailBody.data.customerAddress).toBe("3 Ada Test Street");
+  });
+
+  it("sale list returns customer name and phone per row", async () => {
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Test zone",
+        delivery_fee_ngn: 1500,
+        customer: {
+          name: "List Customer",
+          phone: "+2348025558888",
+          email: "list@example.com",
+          address: "8 List Street",
+        },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const body = (await orderRes.json()) as { data: { id: string } };
+
+    const list = await fetch(`${baseUrl}/v1/branches/${branchId}/sales`, {
+      headers: { cookie: cookies },
+    });
+    expect(list.status).toBe(200);
+    const listBody = (await list.json()) as {
+      data: Array<{ id: string; customerName: string | null; customerPhone: string | null }>;
+    };
+    const row = listBody.data.find((r) => r.id === body.data.id);
+    expect(row).toBeDefined();
+    expect(row!.customerName).toBe("List Customer");
+    expect(row!.customerPhone).toBe("+2348025558888");
   });
 
   it("rejects a scheduled_delivery_at in the past", async () => {

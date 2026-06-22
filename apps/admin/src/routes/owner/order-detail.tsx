@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { ConfirmModal } from "../../components/ConfirmModal.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
@@ -39,6 +39,8 @@ interface Sale {
   customerPhone?: string | null;
   refundOwedNgn?: number | null;
   reportedNgn?: number | null;
+  customerEmail?: string | null;
+  customerAddress?: string | null;
   items: SaleItem[];
   delivery?: {
     provider: "bolt" | "manual" | "shipbubble";
@@ -112,7 +114,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
       setOptions(res.data.options);
       setReceiverCode(res.data.receiver_address_code);
     } catch (err) {
-      setDeliveryError(err instanceof Error ? err.message : String(err));
+      setDeliveryError(humanizeError(err));
     } finally {
       setLoadingOptions(false);
     }
@@ -135,7 +137,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
       setOptions(null);
       await reloadOrder();
     } catch (err) {
-      setDeliveryError(err instanceof Error ? err.message : String(err));
+      setDeliveryError(humanizeError(err));
     } finally {
       setBooking(false);
     }
@@ -147,7 +149,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
       await api(`/branches/${branchId}/sales/${saleId}/delivery/cancel`, { method: "POST", body: "{}" });
       await reloadOrder();
     } catch (err) {
-      setDeliveryError(err instanceof Error ? err.message : String(err));
+      setDeliveryError(humanizeError(err));
     }
   }
 
@@ -286,7 +288,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
         setBranchName(owningBranch?.name ?? "");
         setBranchId(owningBranch?.id ?? "");
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -433,6 +435,49 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
           </section>
 
           <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {(data.customerName ||
+              data.customerPhone ||
+              data.customerEmail ||
+              data.customerAddress ||
+              data.deliveryAddressFormatted) && (
+              <section className="card">
+                <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Customer</h3>
+                <div style={{ fontSize: 14, display: "grid", gap: 4 }}>
+                  <div style={{ fontWeight: 600 }}>{data.customerName ?? "—"}</div>
+                  {data.customerPhone && (
+                    <div>
+                      <a href={`tel:${data.customerPhone}`} style={{ color: "var(--accent)" }}>
+                        {data.customerPhone}
+                      </a>
+                    </div>
+                  )}
+                  {data.customerEmail && (
+                    <div style={{ color: "var(--ink-soft)" }}>
+                      <a href={`mailto:${data.customerEmail}`} style={{ color: "var(--ink-soft)" }}>
+                        {data.customerEmail}
+                      </a>
+                    </div>
+                  )}
+                  {(data.deliveryAddressFormatted ?? data.customerAddress) && (
+                    <div style={{ color: "var(--ink-soft)" }}>
+                      {data.deliveryAddressFormatted ?? data.customerAddress}
+                    </div>
+                  )}
+                </div>
+                {data.customerPhone && (
+                  <a
+                    className="btn btn--primary btn--sm"
+                    style={{ marginTop: 10 }}
+                    href={waLink(data.customerPhone)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    WhatsApp customer
+                  </a>
+                )}
+              </section>
+            )}
+
             <section className="card">
               <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Payment</h3>
               <div style={{ fontSize: 14 }}>Method: {data.paymentMethod}</div>

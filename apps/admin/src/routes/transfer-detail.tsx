@@ -2,7 +2,7 @@
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../components/Shell.js";
 import { StatHero, type StatChip } from "../components/StatHero.js";
-import { api } from "../lib/api.js";
+import { api, humanizeError } from "../lib/api.js";
 import { ngn, formatDateTime } from "../lib/format.js";
 import { useAuthUser } from "../lib/auth.js";
 import { InlineLoader } from "../components/Spinner.js";
@@ -139,7 +139,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
         })),
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -158,7 +158,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
       await api(path, init);
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setActing(false);
     }
@@ -199,7 +199,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
       setReceiving(false);
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setActing(false);
     }
@@ -229,7 +229,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
       toast.success(`Count adjusted (${side})`);
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setActing(false);
     }

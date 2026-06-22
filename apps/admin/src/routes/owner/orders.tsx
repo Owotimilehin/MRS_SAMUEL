@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { Shell } from "../../components/Shell.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { downloadCsv } from "../../lib/csv.js";
@@ -27,6 +27,8 @@ interface Sale {
   totalNgn: number;
   createdAtLocal: string;
   notes: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
 }
 
 function statusPill(status: string): JSX.Element {
@@ -79,7 +81,7 @@ export function OrdersPage(): JSX.Element {
         );
         setSales(flat);
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -100,7 +102,10 @@ export function OrdersPage(): JSX.Element {
       if (onlyAwaiting && !awaitsFulfilment(s)) return false;
       if (q.trim()) {
         const term = q.trim().toLowerCase();
-        if (!s.orderNumber.toLowerCase().includes(term)) return false;
+        const haystack = [s.orderNumber, s.customerName ?? "", s.customerPhone ?? ""]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(term)) return false;
       }
       return true;
     });
@@ -126,6 +131,8 @@ export function OrdersPage(): JSX.Element {
               `orders-${new Date().toISOString().slice(0, 10)}`,
               filtered.map((s) => ({
                 order_number: s.orderNumber,
+                customer: s.customerName ?? "",
+                phone: s.customerPhone ?? "",
                 branch: branchName(s.branchId),
                 channel: s.channel,
                 status: s.status,
@@ -176,7 +183,7 @@ export function OrdersPage(): JSX.Element {
           <input
             className="input"
             type="search"
-            placeholder="Search order number…"
+            placeholder="Search order #, customer or phone…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -257,6 +264,7 @@ export function OrdersPage(): JSX.Element {
               <thead>
                 <tr>
                   <th>Order #</th>
+                  <th>Customer</th>
                   <th>Date</th>
                   <th>Branch</th>
                   <th>Channel</th>
@@ -269,6 +277,20 @@ export function OrdersPage(): JSX.Element {
                 {filtered.slice(0, 200).map((s) => (
                   <tr key={s.id}>
                     <td style={{ fontWeight: 600 }}>{s.orderNumber}</td>
+                    <td>
+                      {s.customerName || s.customerPhone ? (
+                        <span style={{ display: "grid" }}>
+                          <span>{s.customerName ?? "—"}</span>
+                          {s.customerPhone && (
+                            <span style={{ color: "var(--ink-soft)", fontSize: 12 }}>
+                              {s.customerPhone}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--ink-soft)" }}>—</span>
+                      )}
+                    </td>
                     <td>{formatDateTime(s.createdAtLocal)}</td>
                     <td>{branchName(s.branchId)}</td>
                     <td style={{ color: "var(--ink-soft)" }}>{s.channel}</td>

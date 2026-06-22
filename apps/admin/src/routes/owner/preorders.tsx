@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Shell } from "../../components/Shell.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -84,7 +84,7 @@ export function PreordersPage(): JSX.Element {
       const res = await api<{ data: Preorder[] }>("/preorders");
       setRows(res.data);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -108,7 +108,7 @@ export function PreordersPage(): JSX.Element {
       await load();
     } catch (err) {
       // The API returns 422 with a shortfall list when stock is still short.
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = humanizeError(err);
       toast.error(
         /unfulfillable|not enough stock/i.test(msg)
           ? `Not enough stock to fulfil ${o.order_number} yet — produce/transfer more first.`

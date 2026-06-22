@@ -4,7 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { Stat } from "../../components/Stat.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
 import { StatHero } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { useCan } from "../../lib/auth.js";
 import { ngn } from "../../lib/format.js";
 import { downloadCsv } from "../../lib/csv.js";
@@ -173,7 +173,7 @@ export function DashboardPage(): JSX.Element {
         const res = await api<{ data: DailyFinancials }>(`/reports/daily?${qs}`);
         if (!cancelled) setDaily(res.data);
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       }
     })();
     return () => { cancelled = true; };
@@ -234,7 +234,7 @@ export function DashboardPage(): JSX.Element {
         setOverview(ov.data);
       } catch (err) {
         if (!cancelled) {
-          toast.error(err instanceof Error ? err.message : String(err));
+          toast.error(humanizeError(err));
         }
       } finally {
         if (!cancelled) setLoading(false);

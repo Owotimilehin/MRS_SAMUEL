@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import type { StatChip } from "../../components/StatHero.js";
@@ -84,7 +84,7 @@ export function BranchTransfersPage({ branchId }: { branchId: string }): JSX.Ele
       setProducts(p.data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -102,7 +102,7 @@ export function BranchTransfersPage({ branchId }: { branchId: string }): JSX.Ele
       );
       setSelected({ transfer: res.data, items: res.data.items });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     }
   }
 
@@ -113,7 +113,7 @@ export function BranchTransfersPage({ branchId }: { branchId: string }): JSX.Ele
       setSelected(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setActing(false);
     }
@@ -301,7 +301,7 @@ function ReceiveModal({
       });
       await onReceived();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
       setSubmitting(false);
     }
   }

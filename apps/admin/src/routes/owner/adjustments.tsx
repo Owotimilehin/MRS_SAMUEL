@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -59,7 +59,7 @@ export function AdjustmentsPage(): JSX.Element {
         setFactories(f.data);
         setBranches(b.data);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : String(err));
+        toast.error(humanizeError(err));
       }
     })();
   }, []);
@@ -72,7 +72,7 @@ export function AdjustmentsPage(): JSX.Element {
       const res = await api<{ data: Adjustment[] }>(`/inventory/adjustments?${qs}`);
       setRows(res.data);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setLoading(false);
     }

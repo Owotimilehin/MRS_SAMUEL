@@ -1,8 +1,12 @@
+import pino from "pino";
 import { sql } from "drizzle-orm";
 import { cronRun, type DbClient } from "@ms/db";
 import { fireMonthlyPnlDigest, shouldFirePnlDigestNow } from "./pnl-digest.js";
 import { sweepRecurringExpenses } from "./recurring-expense-sweeper.js";
 import { sweepSubscriptionBilling, sweepPastDueCancellations } from "./subscription-billing.js";
+import { runJob } from "./run-job.js";
+
+const cronLogger = pino({ base: { service: "ms-worker", scope: "cron" } });
 
 /** Take the current moment in Africa/Lagos as { year, month, day, hour }. */
 export function nowLagos(d: Date = new Date()): {
@@ -74,9 +78,10 @@ export async function runDueCronJobs(db: DbClient): Promise<void> {
       const m = lagos.month === 1 ? 12 : lagos.month - 1;
       return `${y}-${String(m).padStart(2, "0")}`;
     })();
-    const claimed = await claimCronRun(db, "pnl_monthly_digest", prevMonthIso);
-    if (claimed) {
-      await fireMonthlyPnlDigest(db, prevMonthIso);
+    // claimCronRun stays OUTSIDE runJob: a DB error here should propagate so
+    // the caller knows the claim itself failed (not just the digest run).
+    if (await claimCronRun(db, "pnl_monthly_digest", prevMonthIso)) {
+      await runJob(cronLogger, "pnl_digest", () => fireMonthlyPnlDigest(db, prevMonthIso));
     }
   }
 
@@ -84,9 +89,9 @@ export async function runDueCronJobs(db: DbClient): Promise<void> {
   // the owner the books in their morning view.
   if (lagos.hour >= 6) {
     const todayIso = `${lagos.year}-${String(lagos.month).padStart(2, "0")}-${String(lagos.day).padStart(2, "0")}`;
-    const claimed = await claimCronRun(db, "recurring_expenses", todayIso);
-    if (claimed) {
-      await sweepRecurringExpenses(db, todayIso, lagos);
+    // claimCronRun stays OUTSIDE runJob for the same reason as above.
+    if (await claimCronRun(db, "recurring_expenses", todayIso)) {
+      await runJob(cronLogger, "recurring_expenses", () => sweepRecurringExpenses(db, todayIso, lagos));
     }
   }
 
@@ -94,6 +99,6 @@ export async function runDueCronJobs(db: DbClient): Promise<void> {
   // expiries. Runs every tick (charges are due at specific timestamps, not a
   // daily window); the sweep is self-claiming per row via FOR UPDATE, and
   // cancellation is an idempotent guarded UPDATE — so no cron_run claim needed.
-  await sweepSubscriptionBilling(db);
-  await sweepPastDueCancellations(db);
+  await runJob(cronLogger, "subscription_billing", () => sweepSubscriptionBilling(db));
+  await runJob(cronLogger, "past_due_cancellations", () => sweepPastDueCancellations(db));
 }
