@@ -8,6 +8,7 @@ import {
   shiftOpenStockCount,
   adminUser,
   product,
+  productVariant,
   type DbClient,
 } from "@ms/db";
 import {
@@ -277,8 +278,19 @@ export function dailyCloseRoutes(db: DbClient) {
     const [close] = await db.select().from(dailyClose).where(eq(dailyClose.id, id));
     if (!close) throw new BusinessError("not_found", "daily close not found", 404);
     const counts = await db
-      .select()
+      .select({
+        id: dailyCloseStockCount.id,
+        dailyCloseId: dailyCloseStockCount.dailyCloseId,
+        productId: dailyCloseStockCount.productId,
+        variantId: dailyCloseStockCount.variantId,
+        systemQuantity: dailyCloseStockCount.systemQuantity,
+        countedQuantity: dailyCloseStockCount.countedQuantity,
+        variance: dailyCloseStockCount.variance,
+        varianceReason: dailyCloseStockCount.varianceReason,
+        sizeMl: productVariant.sizeMl,
+      })
       .from(dailyCloseStockCount)
+      .leftJoin(productVariant, eq(productVariant.id, dailyCloseStockCount.variantId))
       .where(eq(dailyCloseStockCount.dailyCloseId, id));
     // Show itemised cash sales for this shift window (or fall back to day-window if no shift).
     let cashSales;
@@ -305,7 +317,21 @@ export function dailyCloseRoutes(db: DbClient) {
     if (close.shiftId) {
       const [open] = await db.select().from(shiftOpen).where(eq(shiftOpen.id, close.shiftId));
       if (open) {
-        const openCounts = await db.select().from(shiftOpenStockCount).where(eq(shiftOpenStockCount.shiftOpenId, open.id));
+        const openCounts = await db
+          .select({
+            id: shiftOpenStockCount.id,
+            shiftOpenId: shiftOpenStockCount.shiftOpenId,
+            productId: shiftOpenStockCount.productId,
+            variantId: shiftOpenStockCount.variantId,
+            systemQuantity: shiftOpenStockCount.systemQuantity,
+            countedQuantity: shiftOpenStockCount.countedQuantity,
+            variance: shiftOpenStockCount.variance,
+            varianceReason: shiftOpenStockCount.varianceReason,
+            sizeMl: productVariant.sizeMl,
+          })
+          .from(shiftOpenStockCount)
+          .leftJoin(productVariant, eq(productVariant.id, shiftOpenStockCount.variantId))
+          .where(eq(shiftOpenStockCount.shiftOpenId, open.id));
         const openedBy = open.openedByUserId
           ? (await db.select({ email: adminUser.email }).from(adminUser).where(eq(adminUser.id, open.openedByUserId)))[0]?.email ?? null
           : null;

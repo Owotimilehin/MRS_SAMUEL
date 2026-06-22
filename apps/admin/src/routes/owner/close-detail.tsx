@@ -10,6 +10,8 @@ import { toast } from "../../lib/toast.js";
 interface StockCount {
   id: string;
   productId: string;
+  variantId: string | null;
+  sizeMl: number | null;
   systemQuantity: number;
   countedQuantity: number;
   variance: number;
@@ -17,6 +19,7 @@ interface StockCount {
 }
 interface OpeningCount {
   productId: string;
+  variantId: string | null;
   countedQuantity: number;
   variance: number;
 }
@@ -320,17 +323,18 @@ export function CloseDetailPage({
                   </thead>
                   <tbody>
                     {(() => {
+                      const vkey = (pid: string, vid: string | null): string => `${pid}::${vid ?? ""}`;
                       const openingByProduct = new Map<string, { countedQuantity: number; variance: number }>(
-                        (data.shift_open?.stock_counts ?? []).map((s) => [s.productId, { countedQuantity: s.countedQuantity, variance: s.variance }]),
+                        (data.shift_open?.stock_counts ?? []).map((s) => [vkey(s.productId, s.variantId), { countedQuantity: s.countedQuantity, variance: s.variance }]),
                       );
                       return data.stock_counts.map((sc) => {
-                        const opening = openingByProduct.get(sc.productId);
+                        const opening = openingByProduct.get(vkey(sc.productId, sc.variantId));
                         // Shift-attributable shrinkage = closing variance − opening variance
                         // Uses stored variances so sales are netted out correctly.
                         const shiftDelta = opening !== undefined ? sc.variance - opening.variance : null;
                         return (
                           <tr key={sc.id}>
-                            <td>{productName(sc.productId)}</td>
+                            <td>{productName(sc.productId)}{sc.sizeMl ? ` · ${sc.sizeMl}ml` : ""}</td>
                             <td className="table__num">{sc.systemQuantity}</td>
                             <td className="table__num" style={{ color: "var(--ink-soft)" }}>
                               {opening !== undefined ? opening.countedQuantity : "—"}

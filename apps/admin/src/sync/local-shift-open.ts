@@ -4,7 +4,7 @@ import { lagosToday } from "../lib/biz-date.js";
 interface FileShiftOpenInput {
   branchId: string;
   businessDate: string;
-  stockCounts: Array<{ product_id: string; counted_quantity: number; variance_reason?: string }>;
+  stockCounts: Array<{ product_id: string; variant_id?: string | null; counted_quantity: number; variance_reason?: string }>;
   notes?: string;
 }
 

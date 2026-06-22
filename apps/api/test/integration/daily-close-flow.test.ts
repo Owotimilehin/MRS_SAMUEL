@@ -73,6 +73,7 @@ describe("Phase 5 daily close flow", () => {
   ): Promise<ShiftOpenRow> {
     const stockCount: Record<string, unknown> = {
       product_id: product.id,
+      variant_id: variantId,
       counted_quantity: countedQty,
     };
     if (varianceReason) stockCount.variance_reason = varianceReason;
@@ -265,7 +266,7 @@ describe("Phase 5 daily close flow", () => {
       location_type: "branch",
       location_id: winBranch.id,
       reason_code: "opening_balance",
-      items: [{ product_id: product.id, new_quantity: 10 }],
+      items: [{ product_id: product.id, variant_id: variantId, new_quantity: 10 }],
     });
 
     // The sale-creation gate requires an OPEN shift. Open a temporary shift so
@@ -335,7 +336,7 @@ describe("Phase 5 daily close flow", () => {
         business_date: today,
         cash_counted_ngn: 0,
         transfers_counted_ngn: 2500,
-        stock_counts: [{ product_id: product.id, counted_quantity: 8 }],
+        stock_counts: [{ product_id: product.id, variant_id: variantId, counted_quantity: 8 }],
       },
     );
     expect(closeRes.status).toBe(201);

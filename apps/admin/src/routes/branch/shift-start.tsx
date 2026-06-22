@@ -9,12 +9,25 @@ import { toast } from "../../lib/toast.js";
 import { fileLocalShiftOpen } from "../../sync/local-shift-open.js";
 import { lagosToday } from "../../lib/biz-date.js";
 
-interface PreviewBody { data: { expected_stock: Record<string, number> }; }
+/** One expected-stock line per (flavour, size); mirrors the API's ExpectedStockLine. */
+interface ExpectedStockLine {
+  product_id: string;
+  variant_id: string | null;
+  size_ml: number | null;
+  balance: number;
+}
+
+interface PreviewBody { data: { expected_stock: ExpectedStockLine[] }; }
+
+/** Stable per-(product, variant) key; untyped variant → trailing "". */
+function stockKey(productId: string, variantId: string | null): string {
+  return `${productId}::${variantId ?? ""}`;
+}
 
 export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.Element {
   const products = useLiveQuery(() => local.products.toArray(), [], []);
   const businessDate = lagosToday();
-  const [expected, setExpected] = useState<Record<string, number> | null>(null);
+  const [expected, setExpected] = useState<ExpectedStockLine[] | null>(null);
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
@@ -43,12 +56,14 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
         if (!cancelled) {
           setExpected(res.data.expected_stock);
           const init: Record<string, string> = {};
-          for (const [pid, qty] of Object.entries(res.data.expected_stock)) init[pid] = String(qty);
+          for (const line of res.data.expected_stock) {
+            init[stockKey(line.product_id, line.variant_id)] = String(line.balance);
+          }
           setCounts(init);
         }
       } catch (err) {
         // Offline: fall back to an empty grid so she can still count + unlock.
-        if (!cancelled) setExpected({});
+        if (!cancelled) setExpected([]);
         if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
@@ -62,10 +77,21 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
 
   const rows = useMemo(() => {
     if (!expected) return [];
-    return Object.keys(expected).map((pid) => {
-      const exp = expected[pid] ?? 0;
-      const got = Number(counts[pid] ?? "0");
-      return { product_id: pid, name: productName(pid), expected: exp, counted: got, variance: got - exp, reason: reasons[pid] ?? "" };
+    return expected.map((line) => {
+      const key = stockKey(line.product_id, line.variant_id);
+      const exp = line.balance;
+      const got = Number(counts[key] ?? "0");
+      const sizeLabel = line.size_ml ? `${line.size_ml}ml` : "untyped";
+      return {
+        key,
+        product_id: line.product_id,
+        variant_id: line.variant_id,
+        name: `${productName(line.product_id)} · ${sizeLabel}`,
+        expected: exp,
+        counted: got,
+        variance: got - exp,
+        reason: reasons[key] ?? "",
+      };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expected, counts, reasons, products]);
@@ -82,6 +108,7 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
         ...(notes ? { notes } : {}),
         stockCounts: rows.map((r) => ({
           product_id: r.product_id,
+          variant_id: r.variant_id,
           counted_quantity: r.counted,
           ...(r.variance !== 0 && r.reason ? { variance_reason: r.reason } : {}),
         })),
@@ -124,15 +151,15 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.product_id}>
+                  <tr key={r.key}>
                     <td>{r.name}</td>
                     <td className="table__num">{r.expected}</td>
                     <td>
                       <input
                         className="input" type="number" min={0}
                         style={{ width: 80, textAlign: "right" }}
-                        value={counts[r.product_id] ?? ""}
-                        onChange={(e) => setCounts((s) => ({ ...s, [r.product_id]: e.target.value }))}
+                        value={counts[r.key] ?? ""}
+                        onChange={(e) => setCounts((s) => ({ ...s, [r.key]: e.target.value }))}
                       />
                     </td>
                     <td className="table__num" style={{ fontWeight: 700, color: r.variance < 0 ? "var(--danger)" : r.variance > 0 ? "var(--warning)" : "var(--ink-soft)" }}>
@@ -143,7 +170,7 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
                         <input
                           className="input" placeholder="Required"
                           value={r.reason}
-                          onChange={(e) => setReasons((s) => ({ ...s, [r.product_id]: e.target.value }))}
+                          onChange={(e) => setReasons((s) => ({ ...s, [r.key]: e.target.value }))}
                         />
                       ) : (<span style={{ color: "var(--ink-soft)", fontSize: 13 }}>—</span>)}
                     </td>

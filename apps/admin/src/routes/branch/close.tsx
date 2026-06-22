@@ -18,18 +18,32 @@ interface TransferSale {
   created_at_local: string;
 }
 
+/** One expected-stock line per (flavour, size). `variant_id`/`size_ml` are null
+ *  for any legacy untyped pool. Mirrors the API's ExpectedStockLine. */
+interface ExpectedStockLine {
+  product_id: string;
+  variant_id: string | null;
+  size_ml: number | null;
+  balance: number;
+}
+
 interface PreviewBody {
   data: {
     // `expected_cash_ngn` / `cash_sales` keep their historical names on the wire,
     // but now hold the transfer figures (the till books every sale as transfer).
     expected_cash_ngn: number;
-    expected_stock: Record<string, number>;
+    expected_stock: ExpectedStockLine[];
     cash_sales: TransferSale[];
   };
 }
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Stable per-(product, variant) key; untyped variant → trailing "". */
+function stockKey(productId: string, variantId: string | null): string {
+  return `${productId}::${variantId ?? ""}`;
 }
 
 export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element {
@@ -68,8 +82,8 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
         if (!cancelled) {
           setPreview(res.data);
           const init: Record<string, string> = {};
-          for (const [pid, qty] of Object.entries(res.data.expected_stock)) {
-            init[pid] = String(qty);
+          for (const line of res.data.expected_stock) {
+            init[stockKey(line.product_id, line.variant_id)] = String(line.balance);
           }
           setCounts(init);
         }
@@ -96,16 +110,20 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
 
   const stockRows = useMemo(() => {
     if (!preview) return [];
-    return Object.keys(preview.expected_stock).map((pid) => {
-      const expected = preview.expected_stock[pid] ?? 0;
-      const got = Number(counts[pid] ?? "0");
+    return preview.expected_stock.map((line) => {
+      const key = stockKey(line.product_id, line.variant_id);
+      const expected = line.balance;
+      const got = Number(counts[key] ?? "0");
+      const sizeLabel = line.size_ml ? `${line.size_ml}ml` : "untyped";
       return {
-        product_id: pid,
-        name: productName(pid),
+        key,
+        product_id: line.product_id,
+        variant_id: line.variant_id,
+        name: `${productName(line.product_id)} · ${sizeLabel}`,
         expected,
         counted: got,
         variance: got - expected,
-        reason: reasons[pid] ?? "",
+        reason: reasons[key] ?? "",
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,6 +151,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
           notes: notes || undefined,
           stock_counts: stockRows.map((r) => ({
             product_id: r.product_id,
+            variant_id: r.variant_id,
             counted_quantity: r.counted,
             variance_reason: r.variance !== 0 ? r.reason : undefined,
           })),
@@ -238,7 +257,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
                 </thead>
                 <tbody>
                   {stockRows.map((r) => (
-                    <tr key={r.product_id}>
+                    <tr key={r.key}>
                       <td>{r.name}</td>
                       <td className="table__num">{r.expected}</td>
                       <td>
@@ -247,9 +266,9 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
                           type="number"
                           min={0}
                           style={{ width: 80, textAlign: "right" }}
-                          value={counts[r.product_id] ?? ""}
+                          value={counts[r.key] ?? ""}
                           onChange={(e) =>
-                            setCounts((s) => ({ ...s, [r.product_id]: e.target.value }))
+                            setCounts((s) => ({ ...s, [r.key]: e.target.value }))
                           }
                         />
                       </td>
@@ -275,7 +294,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
                             placeholder="Required"
                             value={r.reason}
                             onChange={(e) =>
-                              setReasons((s) => ({ ...s, [r.product_id]: e.target.value }))
+                              setReasons((s) => ({ ...s, [r.key]: e.target.value }))
                             }
                           />
                         ) : (
