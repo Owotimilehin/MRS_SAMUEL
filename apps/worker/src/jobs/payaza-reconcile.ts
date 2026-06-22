@@ -1,4 +1,4 @@
-import { eq, and, lt, gt, sql } from "drizzle-orm";
+import { eq, and, lt, gt, exists } from "drizzle-orm";
 import { saleOrder, stockReservation, type DbClient } from "@ms/db";
 import pino from "pino";
 
@@ -24,6 +24,11 @@ const STUCK_AFTER_SECONDS = 90;
 export async function sweepStuckPayazaOrders(db: DbClient, now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - STUCK_AFTER_SECONDS * 1000);
 
+  // Live reservation check is folded into the candidate query as an EXISTS
+  // subquery (not a per-row query in the loop): only recover orders we'd
+  // otherwise still be holding stock for — an order whose reservation already
+  // expired has been swept back to available stock and isn't "stuck", it's
+  // abandoned.
   const candidates = await db
     .select({
       id: saleOrder.id,
@@ -35,6 +40,17 @@ export async function sweepStuckPayazaOrders(db: DbClient, now: Date = new Date(
         eq(saleOrder.channel, "online"),
         eq(saleOrder.status, "confirmed"),
         lt(saleOrder.createdAt, cutoff),
+        exists(
+          db
+            .select({ one: stockReservation.id })
+            .from(stockReservation)
+            .where(
+              and(
+                eq(stockReservation.saleOrderId, saleOrder.id),
+                gt(stockReservation.expiresAt, now),
+              ),
+            ),
+        ),
       ),
     )
     .limit(100);
@@ -46,16 +62,6 @@ export async function sweepStuckPayazaOrders(db: DbClient, now: Date = new Date(
 
   let posted = 0;
   for (const o of candidates) {
-    // Live reservation check — only recover orders we'd otherwise still be
-    // holding stock for; an order whose reservation already expired has
-    // already been swept back to available stock and isn't "stuck", it's just
-    // abandoned.
-    const liveResv = await db
-      .select({ n: sql<number>`COUNT(*)::int` })
-      .from(stockReservation)
-      .where(and(eq(stockReservation.saleOrderId, o.id), gt(stockReservation.expiresAt, now)));
-    if (Number(liveResv[0]?.n ?? 0) === 0) continue;
-
     try {
       const res = await fetch(webhookUrl, {
         method: "POST",

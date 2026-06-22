@@ -3,7 +3,7 @@
    re-deriving Drizzle's generic query-builder types for no test value. */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { applyPayazaConfirmation } from "../../src/payments/reconcile.js";
-import { saleOrder, saleOrderItem } from "@ms/db";
+import { saleOrder, saleOrderItem, stockLedger, stockReservation, payment } from "@ms/db";
 
 // Minimal fake tx: records inserts/updates and returns a seeded order. select()
 // is table-aware so the item-loop in applyPayazaConfirmation gets one fake item
@@ -84,15 +84,44 @@ describe("applyPayazaConfirmation", () => {
     expect(calls.inserts.some((i: any) => i.v.eventType === "sale.amount_mismatch")).toBe(true);
   });
 
-  it("marks an in-stock order paid and ledgers stock", async () => {
+  it("marks an in-stock order paid, ledgers stock, and clears the reservation", async () => {
     const { tx, calls } = fakeTx(null);
-    // one item returned by the item select — extend fakeTx select to vary by table if needed
     const r = await applyPayazaConfirmation(
       tx as any, { ...baseOrder } as any,
       { status: "Completed", amountNgn: 3500, processorReference: "P-1", authorization: null },
     );
     expect(r.kind).toBe("paid");
-    expect(calls.inserts.some((i: any) => i.v.status === "paid" && i.v.processor === "payaza")).toBe(true);
+    // Payment row recorded for the order total via Payaza.
+    expect(
+      calls.inserts.some(
+        (i: any) =>
+          i.t === payment && i.v.status === "paid" && i.v.processor === "payaza" && i.v.amountNgn === 3500,
+      ),
+    ).toBe(true);
+    // Stock actually ledgered OUT for the one fake item (qty 1 -> delta -1).
+    expect(
+      calls.inserts.some(
+        (i: any) => i.t === stockLedger && i.v.delta === -1 && i.v.productId === "p1",
+      ),
+    ).toBe(true);
+    // The held reservation is released.
+    expect(calls.deletes.some((d: any) => d.t === stockReservation)).toBe(true);
+  });
+
+  it("does NOT ledger stock or delete the reservation for a preorder (prepaid, not yet made)", async () => {
+    const { tx, calls } = fakeTx(null);
+    const r = await applyPayazaConfirmation(
+      tx as any, { ...baseOrder, isPreorder: true } as any,
+      { status: "Completed", amountNgn: 3500, processorReference: "P-1", authorization: null },
+    );
+    expect(r.kind).toBe("paid");
+    // Payment is still captured...
+    expect(calls.inserts.some((i: any) => i.t === payment && i.v.status === "paid")).toBe(true);
+    // ...but stock is untouched until staff fulfil it from the Preorders queue.
+    expect(calls.inserts.some((i: any) => i.t === stockLedger)).toBe(false);
+    expect(calls.deletes.some((d: any) => d.t === stockReservation)).toBe(false);
+    // And it emits the preorder-specific paid event.
+    expect(calls.inserts.some((i: any) => i.v.eventType === "sale.preorder_paid")).toBe(true);
   });
 
   it("accepts the reported amount when acceptReportedAmount=true (override mismatch)", async () => {
