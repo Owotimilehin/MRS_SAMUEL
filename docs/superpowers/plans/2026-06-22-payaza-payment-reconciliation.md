@@ -248,9 +248,11 @@ git commit -m "refactor(payaza): webhook uses shared reconcile core"
 - Test: `apps/worker/test/payaza-reconcile.test.ts`
 
 **Interfaces:**
-- Consumes: `verifyAndReconcile` from the api package? No — the worker cannot import from `apps/api`. Instead the sweep re-implements the *selection* and calls a worker-local copy of the reconcile path. To keep ONE money path, move `reconcile.ts` to a shared spot OR have the worker call the same logic. **Decision:** place `reconcile.ts` in `apps/api/src/payments/` and have the worker import it via the workspace path the worker already uses for shared api code IF one exists; if not, the sweep imports `verifyPayazaTransaction` (already worker-accessible via `apps/worker/src/payments/`) and a worker copy is NOT allowed — instead promote `applyPayazaConfirmation`/`verifyAndReconcile` into `@ms/db`-adjacent shared domain. **Confirm at implementation:** check whether `apps/worker` already imports from `apps/api` (grep `from "../../api`); if it does, import directly; if not, move `reconcile.ts` into a package both can import (e.g. `packages/domain` if present, else create `apps/api/src/payments/reconcile.ts` and add a worker tsconfig path). Document the chosen location in the commit.
-- Produces: `export async function sweepStuckPayazaOrders(db: DbClient, now?: Date): Promise<number>;`
-- Selection: `saleOrder` where `channel = "online"`, `status = "confirmed"`, `createdAt < now - 90s`, AND an un-expired `stockReservation` exists (`expiresAt > now`). For each, `verifyAndReconcile(db, order.orderNumber)`; count `paid` outcomes; for a recovered paid order, insert a `sale.reconciled_paid` outbox event.
+- **LOCKED DECISION (do not re-derive):** the worker is deliberately free of any `@ms/api` dependency (it depends only on `@ms/db`/`@ms/domain`/`@ms/shared` and mirrors api helpers locally). It therefore CANNOT import `apps/api/src/payments/reconcile.ts`. To keep the SINGLE money path, the sweep does NOT re-implement the ledger/payment logic. Instead it **selects** stuck orders via `@ms/db` and **re-fires the api webhook over HTTP** for each — `POST {INTERNAL_API_URL}/v1/webhooks/payaza` with JSON body `{ "transaction_reference": "<orderNumber>" }`. The webhook then runs the one shared reconcile core (verify + `applyPayazaConfirmation`). This reuses the money path with zero duplication and respects the worker's no-api-import architecture.
+- New env var `INTERNAL_API_URL` (default `http://api:3001` — the compose-network api address). Add it to `apps/worker` compose `environment` block (Task 4 Step 4) and to `packages/shared/src/env-keys.ts`.
+- The worker-emitted `sale.reconciled_paid` event from the original spec is DROPPED: a recovered order flips to paid inside the webhook, which already emits the normal `sale.paid_online`/`sale.preorder_paid` notification, so the owner is still alerted. (Task 8 therefore adds only `sale.refund_owed`.)
+- Produces: `export async function sweepStuckPayazaOrders(db: DbClient, now?: Date): Promise<number>;` — returns the count of orders it re-fired the webhook for.
+- Selection: `saleOrder` where `channel = "online"`, `status = "confirmed"`, `createdAt < now - 90s`, AND an un-expired `stockReservation` exists (`expiresAt > now`). For each eligible order, `await fetch(...)` the webhook (best-effort: log + continue on a non-2xx or thrown error; one failed POST must not abort the sweep). Return the number of orders POSTed.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -258,17 +260,20 @@ git commit -m "refactor(payaza): webhook uses shared reconcile core"
 // apps/worker/test/payaza-reconcile.test.ts
 import { describe, it, expect, vi } from "vitest";
 import { sweepStuckPayazaOrders } from "../src/jobs/payaza-reconcile.js";
-// Mock verifyAndReconcile + a db that returns one eligible order; assert it is
-// called with that order number and the function returns the reconciled count.
+// Stub global fetch (vi.stubGlobal("fetch", vi.fn())) + a fake db whose query
+// returns one eligible order ("SO-1") and excludes ineligible ones (expired
+// reservation / too-recent / not online / not confirmed). Assert: fetch was
+// called once, to a URL ending "/v1/webhooks/payaza", with a body containing
+// transaction_reference "SO-1"; and the function returns 1.
 ```
-(Mirror the mocking style of `apps/worker/test/subscription-billing.test.ts`. Seed one eligible order and one ineligible (expired reservation); assert only the eligible one is re-verified.)
+(Mirror the mocking style of `apps/worker/test/subscription-billing.test.ts` for the db fake. The selection logic — eligibility filtering — is what this test must exercise, so build the fake db to return a representative row set and assert only eligible orders are POSTed.)
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd apps/worker && npx vitest run test/payaza-reconcile.test.ts`
 Expected: FAIL — function not found.
 
-- [ ] **Step 3: Implement the sweep** (selection query + loop + `sale.reconciled_paid` emit).
+- [ ] **Step 3: Implement the sweep** — selection query (the eligibility filter above) + per-order `await fetch(\`${process.env.INTERNAL_API_URL || "http://api:3001"}/v1/webhooks/payaza\`, { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ transaction_reference: o.orderNumber }) })` wrapped in try/catch (log warn + continue on failure). Return the count POSTed.
 
 - [ ] **Step 4: Wire into the worker loop**
 
@@ -420,9 +425,9 @@ git commit -m "feat(payaza): surface reconcile_needed + refund-owed in Needs-rev
 - Modify: `apps/worker/src/outbox.ts` (add two `format` cases)
 
 **Interfaces:**
-- Consumes event types `sale.refund_owed` and `sale.reconciled_paid` (emitted in Tasks 6 + 4).
+- Consumes event type `sale.refund_owed` (emitted in Task 6). (`sale.reconciled_paid` was dropped in Task 4 — recovered orders fire the normal `sale.paid_online`.)
 
-- [ ] **Step 1: Add the two cases** in the `format` switch (mirror `sale.amount_mismatch` at `outbox.ts:339`):
+- [ ] **Step 1: Add the case** in the `format` switch (mirror `sale.amount_mismatch` at `outbox.ts:339`):
 ```ts
 case "sale.refund_owed":
   return {
@@ -431,14 +436,6 @@ case "sale.refund_owed":
       `💸 *Refund owed*\n` +
       `${p["order_number"]} — ₦${p["refund_owed_ngn"]} to refund in the Payaza dashboard.\n` +
       `Mark it refunded once done.\n` +
-      `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
-  };
-case "sale.reconciled_paid":
-  return {
-    chatIds: [owner],
-    text:
-      `✅ *Recovered payment*\n` +
-      `${p["order_number"]} marked paid by the reconcile sweep (webhook had not fired).\n` +
       `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
   };
 ```
