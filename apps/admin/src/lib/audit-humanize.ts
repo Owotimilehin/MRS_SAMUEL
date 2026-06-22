@@ -341,8 +341,14 @@ export function humanizeEntity(row: AuditRow): string {
     case "business_expense":
     case "recurring_expense":
       return str("category_code") ? tidy(str("category_code")) : id8;
-    default:
-      return id8;
+    default: {
+      const after = j(row.afterJson);
+      const before = j(row.beforeJson);
+      const named = pick(after, "name", "title", "label", "email", "code", "number", "orderNumber") ??
+        pick(before, "name", "title", "label", "email", "code", "number", "orderNumber");
+      if (typeof named === "string" && named.trim()) return named;
+      return `${entityTypeLabel(row.entityType)} #${id8}`;
+    }
   }
 }
 
@@ -369,7 +375,9 @@ export function entityTypeLabel(entityType: string): string {
     bundle: "Bundle",
     media_asset: "Image",
   };
-  return map[entityType] ?? entityType;
+  if (map[entityType]) return map[entityType];
+  const words = entityType.replace(/_/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : entityType;
 }
 
 /**
@@ -454,6 +462,34 @@ export interface DiffLine {
   after: string;
 }
 
+/** Fields that carry no human meaning: UUIDs, foreign-key ids, timestamps, secrets. */
+const NOISE_FIELD = /(^id$|Id$|_id$|At$|_at$|^createdAt|^updatedAt|json$|Json$|hash|token|secret)/;
+
+/** "weirdInternalId" / "reject_reason" → "Weird internal id" / "Reject reason". */
+function tidyLabel(field: string): string {
+  const words = field.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : field;
+}
+
+/**
+ * Generic diff for entity types that don't have a curated FIELD_LABELS entry.
+ * Skips noise (ids, timestamps, secrets) and nested objects/arrays.
+ */
+function genericDiff(b: Record<string, unknown>, a: Record<string, unknown>): DiffLine[] {
+  const fields = new Set([...Object.keys(b), ...Object.keys(a)]);
+  const out: DiffLine[] = [];
+  for (const field of fields) {
+    if (NOISE_FIELD.test(field)) continue;
+    const bv = b[field];
+    const av = a[field];
+    if (typeof bv === "object" && bv !== null) continue; // skip nested objects/arrays in the generic view
+    if (typeof av === "object" && av !== null) continue;
+    if (JSON.stringify(bv) === JSON.stringify(av)) continue;
+    out.push({ field, label: tidyLabel(field), before: fmtValue(field, bv), after: fmtValue(field, av) });
+  }
+  return out;
+}
+
 /**
  * Plain-language change list. Returns an empty array when there's nothing
  * worth showing (creates/deletes use the entity dump instead).
@@ -466,7 +502,7 @@ export function humanizeDiff(
   const b = j(before) ?? {};
   const a = j(after) ?? {};
   const labels = FIELD_LABELS[entityType];
-  if (!labels) return [];
+  if (!labels) return genericDiff(b as Record<string, unknown>, a as Record<string, unknown>);
 
   const out: DiffLine[] = [];
   for (const [field, label] of Object.entries(labels)) {
