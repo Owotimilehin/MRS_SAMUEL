@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, boolean, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
 import { branch } from "./branch.js";
 import { customer } from "./customer.js";
 import { product } from "./product.js";
@@ -91,7 +91,19 @@ export const saleOrder = pgTable("sale_order", {
   // money back (e.g. a confirmed Payaza charge with no matching paid order,
   // or a duplicate charge). Null = no refund owed.
   refundOwedNgn: integer("refund_owed_ngn"),
-});
+}, (t) => ({
+  // Reports/dashboards filter status IN (...) over a created_at_local range; the
+  // status column leads so the range scan on created_at_local stays sargable.
+  idxStatusCreated: index("idx_sale_order_status_created").on(t.status, t.createdAtLocal),
+  // /reports/overview splits today's counts by channel.
+  idxChannelCreated: index("idx_sale_order_channel_created").on(t.channel, t.createdAtLocal),
+  // POS sync pull: rows for a branch touched since the cursor.
+  idxBranchUpdated: index("idx_sale_order_branch_updated").on(t.branchId, t.updatedAt),
+  // Preorder/overview counts: is_preorder = true AND status IN (...).
+  idxPreorderStatus: index("idx_sale_order_preorder_status").on(t.isPreorder, t.status),
+  // Customer order history / FK lookups.
+  idxCustomer: index("idx_sale_order_customer").on(t.customerId),
+}));
 
 export const saleOrderItem = pgTable("sale_order_item", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -105,4 +117,9 @@ export const saleOrderItem = pgTable("sale_order_item", {
   unitPriceNgn: integer("unit_price_ngn").notNull(),
   lineTotalNgn: integer("line_total_ngn").notNull(),
   notes: text("notes"),
-});
+}, (t) => ({
+  // The critical FK index: every report joins items → orders on this column and
+  // the POS sync loads items by inArray(sale_order_id). Was previously unindexed
+  // → sequential scan on every join.
+  idxOrder: index("idx_sale_order_item_order").on(t.saleOrderId),
+}));

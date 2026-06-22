@@ -1,4 +1,4 @@
-import { pgTable, uuid, integer, text, timestamp, pgEnum, date } from "drizzle-orm/pg-core";
+import { pgTable, uuid, integer, text, timestamp, pgEnum, date, index } from "drizzle-orm/pg-core";
 import { factory } from "./factory.js";
 import { product } from "./product.js";
 import { adminUser } from "./admin-user.js";
@@ -33,4 +33,8 @@ export const productionRunItem = pgTable("production_run_item", {
   batchCode: text("batch_code"),
   // Insertion order — the draft lists flavours in the sequence they were added.
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => ({
+  // GET /production-runs batches items via inArray(production_run_id); without
+  // this the batched item load (and the old per-run N+1) seq-scanned the table.
+  idxRun: index("idx_production_run_item_run").on(t.productionRunId),
+}));

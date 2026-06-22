@@ -61,6 +61,36 @@ function loadRunItems(db: DbClient, runId: string) {
     .orderBy(asc(productionRunItem.createdAt), asc(productionRunItem.id));
 }
 
+/** Batched variant of loadRunItems for the history list: one query for every
+ *  run's items (via inArray) instead of one query per run (the old N+1).
+ *  Returns a Map keyed by productionRunId, each list already in insertion
+ *  order. Runs with no items are simply absent from the map. */
+async function loadRunItemsForRuns(db: DbClient, runIds: string[]) {
+  const byRun = new Map<string, Array<{ id: string; productionRunId: string; productId: string; variantId: string | null; quantityProduced: number; batchCode: string | null; sizeMl: number | null; sku: string | null }>>();
+  if (runIds.length === 0) return byRun;
+  const rows = await db
+    .select({
+      id: productionRunItem.id,
+      productionRunId: productionRunItem.productionRunId,
+      productId: productionRunItem.productId,
+      variantId: productionRunItem.variantId,
+      quantityProduced: productionRunItem.quantityProduced,
+      batchCode: productionRunItem.batchCode,
+      sizeMl: productVariant.sizeMl,
+      sku: productVariant.sku,
+    })
+    .from(productionRunItem)
+    .leftJoin(productVariant, eq(productVariant.id, productionRunItem.variantId))
+    .where(inArray(productionRunItem.productionRunId, runIds))
+    .orderBy(asc(productionRunItem.createdAt), asc(productionRunItem.id));
+  for (const row of rows) {
+    const list = byRun.get(row.productionRunId) ?? [];
+    list.push(row);
+    byRun.set(row.productionRunId, list);
+  }
+  return byRun;
+}
+
 export function productionRunRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth(), requireCapability("production.manage"));
@@ -311,12 +341,8 @@ export function productionRunRoutes(db: DbClient) {
       .where(factoryId ? eq(productionRun.factoryId, factoryId) : undefined)
       .orderBy(desc(productionRun.runDate), desc(productionRun.createdAt))
       .limit(limit);
-    const withItems = await Promise.all(
-      runs.map(async (run) => {
-        const items = await loadRunItems(db, run.id);
-        return { ...run, items };
-      }),
-    );
+    const itemsByRun = await loadRunItemsForRuns(db, runs.map((run) => run.id));
+    const withItems = runs.map((run) => ({ ...run, items: itemsByRun.get(run.id) ?? [] }));
     return c.json({ data: withItems });
   });
 

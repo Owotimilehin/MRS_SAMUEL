@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, timestamp, pgEnum, jsonb, index } from "drizzle-orm/pg-core";
 import { saleOrder, saleOrderItem } from "./sale-order.js";
 import { branch } from "./branch.js";
 import { product } from "./product.js";
@@ -57,7 +57,13 @@ export const saleReturn = pgTable("sale_return", {
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => ({
+  // Every revenue/refund report subquery filters status='completed' over a
+  // created_at range; status leads so the date range stays sargable.
+  idxStatusCreated: index("idx_sale_return_status_created").on(t.status, t.createdAt),
+  // Refund queries look up the original order's channel via this FK.
+  idxOriginal: index("idx_sale_return_original").on(t.originalSaleOrderId),
+}));
 
 export const saleReturnItem = pgTable("sale_return_item", {
   id: uuid("id").primaryKey().defaultRandom(),

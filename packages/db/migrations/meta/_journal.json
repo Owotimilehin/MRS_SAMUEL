@@ -370,5 +370,6 @@
     ,{ "idx": 53, "version": "7", "when": 1782980000000, "tag": "0054_branch_online_default", "breakpoints": true }
     ,{ "idx": 54, "version": "7", "when": 1783010000000, "tag": "0055_straw_packaging_kind", "breakpoints": true }
     ,{ "idx": 55, "version": "7", "when": 1783040000000, "tag": "0056_refund_owed", "breakpoints": true }
+    ,{ "idx": 56, "version": "7", "when": 1783070000000, "tag": "0057_hot_path_indexes", "breakpoints": true }
   ]
 }
