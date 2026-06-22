@@ -37,6 +37,15 @@ Observability for the webhook itself was already fixed separately (commit
 
 - Automatic Payaza refunds (the API is unconfirmed) — we record "refund owed"
   and the owner refunds manually in the Payaza dashboard.
+- **Customer-initiated refund requests and fulfilled-order refunds (Phase 2).**
+  `cancel-refund` / `refund_owed_ngn` here covers ONLY paid-but-**unfulfilled**
+  orders (cancel + restore stock). A refund for an already-**delivered** order is
+  a *return*, which the existing `sale_return` / `returns.ts` system already
+  handles (disposition restock/waste, shelf-life return window, over-return
+  guard, store-credit/refund method, status → `refunded`). The `cancel-refund`
+  endpoint therefore rejects terminal/fulfilled statuses (409) by design — it
+  must never become a parallel returns path. A customer-facing "request a refund"
+  affordance that feeds these owner-approved flows is a separate Phase 2.
 - Recurring-subscription reconciliation (separate, still mock-only).
 - A full payments dashboard / transaction explorer (deferred).
 
