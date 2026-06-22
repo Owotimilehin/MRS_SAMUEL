@@ -43,6 +43,7 @@ import { publicContactRoutes } from "./routes/public-contact.js";
 import { publicSubscriptionRoutes } from "./routes/public-subscriptions.js";
 import { boltWebhookRoutes, shipbubbleWebhookRoutes } from "./routes/webhooks-bolt.js";
 import { deliveryAdminRoutes } from "./routes/delivery-admin.js";
+import { paymentsAdminRoutes } from "./routes/payments-admin.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -113,6 +114,7 @@ export function buildApp(): Hono {
   app.route("/v1/customers", customerRoutes(db));
   app.route("/v1/blog", blogRoutes(db));
   app.route("/v1/marketing", marketingRoutes(db));
+  app.route("/v1/online-orders", paymentsAdminRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));

@@ -43,6 +43,10 @@ export const CAPABILITIES = [
   // Deliberately NOT in ADMIN_CAPS/MANAGER_CAPS — admins keep packaging.write
   // (purchases + materials) but cannot adjust counts unless granted per-user.
   "packaging.adjust",
+  // Owner-only: accept a mismatched/partial payment as-is and mark an order
+  // paid, or mark a previously-owed refund as settled. Gated owner-only because
+  // these override our normal amount-equality guard.
+  "orders.accept_payment",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
