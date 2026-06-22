@@ -29,3 +29,6 @@ apps/customer/.output/
 
 # Vite/vitest temp config artifacts
 *.timestamp-*.mjs
+
+# Subagent-driven-development scratch (ledger, briefs, reports, diffs)
+.superpowers/
