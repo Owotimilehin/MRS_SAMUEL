@@ -345,6 +345,15 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Order parked for reconciliation.\n` +
           `👉 ${ADMIN_URL}/branch/sales/${p["sale_order_id"]}`,
       };
+    case "sale.refund_owed":
+      return {
+        chatIds: [owner],
+        text:
+          `💸 *Refund owed*\n` +
+          `${p["order_number"]} — ₦${p["refund_owed_ngn"]} to refund in the Payaza dashboard.\n` +
+          `Mark it refunded once done.\n` +
+          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
+      };
     case "production_run.completed":
       return {
         chatIds: [owner, channels.factory()],
