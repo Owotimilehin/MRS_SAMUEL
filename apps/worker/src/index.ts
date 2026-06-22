@@ -7,6 +7,7 @@ import { exportAuditLog, isAuditExportWindow } from "./jobs/audit-export.js";
 import { queuePaymentReminders } from "./jobs/unpaid-reminder.js";
 import { runDeliveryWatchdog } from "./jobs/delivery-watchdog.js";
 import { runDueCronJobs } from "./jobs/cron.js";
+import { sweepStuckPayazaOrders } from "./jobs/payaza-reconcile.js";
 
 const logger = pino({ base: { service: "ms-worker" } });
 
@@ -20,6 +21,7 @@ const LATE_CLOSE_INTERVAL_MS = 60 * 60 * 1000; // check hourly
 const REMINDER_INTERVAL_MS = 5 * 60_000; // check for unpaid orders every 5 minutes
 const DELIVERY_WATCHDOG_MS = 60_000; // delivery retry/escalation every minute
 const CRON_CHECK_INTERVAL_MS = 15 * 60_000; // cron poll every 15 minutes
+const PAYAZA_RECONCILE_INTERVAL_MS = 120_000; // re-fire stuck Payaza webhooks every 2 minutes
 
 let stopping = false;
 function shutdown(reason: string): void {
@@ -35,6 +37,7 @@ let lastLateCheckAt = 0;
 let lastReminderAt = 0;
 let lastDeliveryWatchdogAt = 0;
 let lastCronCheckAt = 0;
+let lastPayazaReconcileAt = 0;
 let lastAuditExportDate: string | null = null;
 
 async function loop(): Promise<void> {
@@ -72,6 +75,19 @@ async function loop(): Promise<void> {
         const actions = await runDeliveryWatchdog(db);
         if (actions > 0) logger.info({ actions }, "delivery watchdog took action");
         lastDeliveryWatchdogAt = now;
+      }
+
+      // Payaza reconcile sweep: re-fire the api webhook for online orders
+      // stuck in confirmed with a live reservation, every 2 minutes, so a
+      // completed payment is never lost if the webhook didn't fire.
+      if (now - lastPayazaReconcileAt > PAYAZA_RECONCILE_INTERVAL_MS) {
+        try {
+          const n = await sweepStuckPayazaOrders(db);
+          if (n > 0) logger.info({ reconciled: n }, "payaza reconcile sweep recovered orders");
+        } catch (err) {
+          logger.error({ err }, "payaza reconcile sweep error");
+        }
+        lastPayazaReconcileAt = now;
       }
 
       // Cron jobs: monthly P&L digest + recurring expense sweep. Idempotent

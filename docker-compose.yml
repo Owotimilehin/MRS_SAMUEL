@@ -146,6 +146,9 @@ services:
       PAYAZA_PUBLIC_KEY: ${PAYAZA_PUBLIC_KEY:-}
       PAYAZA_API_BASE: ${PAYAZA_API_BASE:-}
       PAYAZA_AUTH_SCHEME: ${PAYAZA_AUTH_SCHEME:-}
+      # Payaza reconcile sweep: where the worker re-fires the api webhook
+      # for online orders stuck in confirmed (compose-network api address).
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://api:3001}
       # Image processing (Cloudflare R2).
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
