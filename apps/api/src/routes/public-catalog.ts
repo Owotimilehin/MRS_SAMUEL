@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { sql, eq, and, asc, isNull } from "drizzle-orm";
 import { branch, bundle, subscriptionPlan, type DbClient } from "@ms/db";
+import { BusinessError } from "../lib/errors.js";
 
 type CatalogVariantRow = {
   product_id: string;
@@ -164,11 +165,11 @@ export function publicCatalogRoutes(db: DbClient) {
       LIMIT 1
     `);
     const p = rows[0];
-    if (!p) return c.json({ error: { code: "not_found", message: "product not found" } }, 404);
+    if (!p) throw new BusinessError("not_found", "product not found", 404);
     const byProduct = await variantsByProduct([p.id]);
     const variants = byProduct.get(p.id) ?? [];
     if (variants.length === 0) {
-      return c.json({ error: { code: "not_found", message: "product not available" } }, 404);
+      throw new BusinessError("not_found", "product not available", 404);
     }
     return c.json({ data: toOut(p, variants) });
   });
