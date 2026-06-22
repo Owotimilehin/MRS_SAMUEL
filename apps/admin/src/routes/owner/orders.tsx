@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { Shell } from "../../components/Shell.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { downloadCsv } from "../../lib/csv.js";
@@ -81,7 +81,7 @@ export function OrdersPage(): JSX.Element {
         );
         setSales(flat);
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }

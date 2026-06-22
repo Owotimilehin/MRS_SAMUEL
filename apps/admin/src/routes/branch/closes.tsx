@@ -2,7 +2,7 @@
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -59,7 +59,7 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
           setRows(sorted);
         }
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }

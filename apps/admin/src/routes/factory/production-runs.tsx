@@ -4,7 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
 import { Stat } from "../../components/Stat.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
 import { formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -99,7 +99,7 @@ export function ProductionRunsPage(): JSX.Element {
           void ensureVariants(firstProduct.id);
         }
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -118,7 +118,7 @@ export function ProductionRunsPage(): JSX.Element {
         );
         if (!cancelled) setRun(res.data);
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       }
     })();
     return () => { cancelled = true; };
@@ -133,7 +133,7 @@ export function ProductionRunsPage(): JSX.Element {
       );
       setHistory(res.data);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     }
   }
 

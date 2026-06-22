@@ -43,32 +43,59 @@ export function asApiError(err: unknown): ApiError | null {
   return null;
 }
 
+// Gateway/transient statuses worth retrying — these appear while the API is
+// restarting (nginx can't reach the upstream yet) or briefly overloaded.
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+const MAX_ATTEMPTS = 4;
+
+function backoff(attempt: number): Promise<void> {
+  const base = 300 * 2 ** (attempt - 1); // 300ms, 600ms, 1200ms
+  return new Promise((r) => setTimeout(r, base + Math.random() * 200));
+}
+
 /**
  * Fetch an API endpoint and return the unwrapped `data` payload. Throws an
  * ApiError for the `{ error }` envelope or any non-2xx / non-JSON response.
  * Called from server functions only.
+ *
+ * Transient gateway errors (429/502/503/504) and network failures are
+ * retried with backoff so a brief API restart self-heals instead of
+ * failing the customer instantly. A real 4xx (e.g. 404) is not retried.
  */
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers: { accept: "application/json", ...(init?.headers ?? {}) },
-    });
-  } catch (err) {
-    throw new ApiError("network_error", err instanceof Error ? err.message : "network error", 0);
-  }
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const last = attempt === MAX_ATTEMPTS;
 
-  const contentType = res.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
-    if (res.ok) return undefined as T;
-    throw new ApiError("upstream_error", `API ${res.status}`, res.status);
-  }
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        headers: { accept: "application/json", ...(init?.headers ?? {}) },
+      });
+    } catch (err) {
+      if (last) throw new ApiError("network_error", err instanceof Error ? err.message : "network error", 0);
+      await backoff(attempt);
+      continue;
+    }
 
-  const json = (await res.json()) as { data?: T; error?: { code: string; message: string } };
-  if (!res.ok || json.error) {
-    const e = json.error ?? { code: "upstream_error", message: `API ${res.status}` };
-    throw new ApiError(e.code, e.message, res.status);
+    if (RETRYABLE_STATUS.has(res.status) && !last) {
+      await backoff(attempt);
+      continue;
+    }
+
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      if (res.ok) return undefined as T;
+      throw new ApiError("upstream_error", `API ${res.status}`, res.status);
+    }
+
+    const json = (await res.json()) as { data?: T; error?: { code: string; message: string } };
+    if (!res.ok || json.error) {
+      const e = json.error ?? { code: "upstream_error", message: `API ${res.status}` };
+      throw new ApiError(e.code, e.message, res.status);
+    }
+    return json.data as T;
   }
-  return json.data as T;
+  // Unreachable — the loop returns or throws.
+  throw new ApiError("network_error", "network error", 0);
 }

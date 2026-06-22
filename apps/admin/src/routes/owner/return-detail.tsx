@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
-import { api, ApiError } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 
@@ -69,7 +69,7 @@ export function OwnerReturnDetailPage({
       setBranchName(br.data.find((b) => b.id === branchId)?.name ?? "");
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -88,7 +88,7 @@ export function OwnerReturnDetailPage({
       });
       await load();
     } catch (err) {
-      window.alert(err instanceof ApiError ? err.message : String(err));
+      window.alert(humanizeError(err));
     } finally {
       setActing(false);
     }

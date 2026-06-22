@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useSyncState } from "../../sync/state.js";
@@ -45,7 +45,7 @@ export function BranchHomePage({ branchId }: { branchId: string }): JSX.Element 
         setSales(res.data);
         setError(null);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }

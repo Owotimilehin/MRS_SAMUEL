@@ -4,7 +4,7 @@ import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
 import { local, type ProductRow, type VariantRow } from "../../db/local.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import { useAuthUser } from "../../lib/auth.js";
@@ -43,7 +43,7 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
       const res = await api<{ data: ServerBalance[] }>(`/stock/branch/${branchId}`);
       setBalances(res.data);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -150,7 +150,7 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
       setDrafts({});
       await load();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = humanizeError(err);
       toast.error(
         /would_go_negative|negative/i.test(msg) ? "A count would go below 0 — re-check and try again." : msg,
       );

@@ -2,7 +2,7 @@
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { Modal } from "../../components/Modal.js";
-import { api, ApiError } from "../../lib/api.js";
+import { api, ApiError, humanizeError } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 
@@ -46,7 +46,7 @@ export function BlogPage(): JSX.Element {
       setRows(res.data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -65,7 +65,7 @@ export function BlogPage(): JSX.Element {
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setBusyId(null);
     }
@@ -78,7 +78,7 @@ export function BlogPage(): JSX.Element {
       await api(`/blog/${p.id}`, { method: "DELETE" });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setBusyId(null);
     }
@@ -279,7 +279,7 @@ function PostForm({
       onSaved();
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
-      else setError(err instanceof Error ? err.message : String(err));
+      else setError(humanizeError(err));
       setSubmitting(false);
     }
   }

@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState, type FormEvent } from "react";
 import { Shell } from "../../components/Shell.js";
 import { Modal } from "../../components/Modal.js";
-import { api, ApiError } from "../../lib/api.js";
+import { api, ApiError, humanizeError } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { GateEditor, type GateValue } from "../../components/GateEditor.js";
@@ -58,7 +58,7 @@ export function UsersPage(): JSX.Element {
       setBranches(b.data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -77,7 +77,7 @@ export function UsersPage(): JSX.Element {
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setActing(null);
     }
@@ -294,7 +294,7 @@ function InviteModal({
       onSaved();
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
-      else setError(err instanceof Error ? err.message : String(err));
+      else setError(humanizeError(err));
       setSubmitting(false);
     }
   }
@@ -420,7 +420,7 @@ function EditUserModal({
       onSaved();
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
-      else setError(err instanceof Error ? err.message : String(err));
+      else setError(humanizeError(err));
       setSubmitting(false);
     }
   }
@@ -514,7 +514,7 @@ function DeleteUserModal({
       setTimeout(onSaved, 1800);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
-      else setError(err instanceof Error ? err.message : String(err));
+      else setError(humanizeError(err));
       setSubmitting(false);
     }
   }
@@ -589,7 +589,7 @@ function ResetPasswordModal({
       setDone(true);
       setTimeout(onSaved, 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
       setSubmitting(false);
     }
   }

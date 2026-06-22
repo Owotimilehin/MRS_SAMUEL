@@ -2,7 +2,7 @@
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import type { StatChip } from "../../components/StatHero.js";
@@ -81,7 +81,7 @@ export function BranchReturnsPage({ branchId }: { branchId: string }): JSX.Eleme
       setProducts(p.data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -251,7 +251,7 @@ function CreateReturn({
       }
       setLines(init);
     } catch (err) {
-      setSearchErr(err instanceof Error ? err.message : String(err));
+      setSearchErr(humanizeError(err));
     } finally {
       setSearching(false);
     }
@@ -295,7 +295,7 @@ function CreateReturn({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
       setSubmitting(false);
     }
   }

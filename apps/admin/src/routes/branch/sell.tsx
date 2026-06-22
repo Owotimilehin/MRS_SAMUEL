@@ -10,7 +10,7 @@ import {
   type PriceRow,
 } from "../../db/local.js";
 import { createLocalSale } from "../../sync/local-sale.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { Modal } from "../../components/Modal.js";
 import { SaleSuccessModal } from "../../components/SaleSuccessModal.js";
@@ -384,7 +384,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       }
       setTimeout(() => setFlash(null), 4000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setSubmitting(false);
     }

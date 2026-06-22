@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { local } from "../../db/local.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import { fileLocalShiftOpen } from "../../sync/local-shift-open.js";
@@ -49,7 +49,7 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
       } catch (err) {
         // Offline: fall back to an empty grid so she can still count + unlock.
         if (!cancelled) setExpected({});
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -89,7 +89,7 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
       toast.success("Opening stock confirmed. Your till is unlocked.");
       window.location.href = `/branch/sell`;
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setSubmitting(false);
     }

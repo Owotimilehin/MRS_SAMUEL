@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Shell } from "../../components/Shell.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useAuthUser } from "../../lib/auth.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
@@ -128,7 +128,7 @@ export function InventoryPage(): JSX.Element {
         setFactoryStock(next);
         setError(null);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -653,7 +653,7 @@ function BulkAdjustModal({
       });
       await onSaved(locType, locId, items);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = humanizeError(err);
       setError(msg);
       setSubmitting(false);
     }
@@ -829,7 +829,7 @@ function AdjustModal({
     try {
       await onSubmit({ newQuantity: Number(newQty), reasonCode, reasonNote });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = humanizeError(err);
       if (/would_go_negative|stock would go negative/i.test(msg)) {
         setError(`Can't go below 0 — ${target.locationName} currently shows ${target.currentQty}.`);
       } else {

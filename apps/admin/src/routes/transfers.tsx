@@ -2,7 +2,7 @@
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../components/Shell.js";
 import { StatHero } from "../components/StatHero.js";
-import { api } from "../lib/api.js";
+import { api, humanizeError } from "../lib/api.js";
 import { formatDateTime } from "../lib/format.js";
 import { InlineLoader } from "../components/Spinner.js";
 import { ConfirmModal } from "../components/ConfirmModal.js";
@@ -113,7 +113,7 @@ export function TransfersPage(): JSX.Element {
       setBags(bag.data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -294,7 +294,7 @@ function CreateTransferModal({
         const res = await api<{ data: FactoryStockRow[] }>(`/stock/factory/${factoryId}`);
         if (!cancelled) setStock(res.data.filter((s) => s.balance > 0));
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(humanizeError(err));
       } finally {
         if (!cancelled) setStockLoading(false);
       }
@@ -390,7 +390,7 @@ function CreateTransferModal({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
       setSubmitting(false);
       setShowConfirm(false);
     }
