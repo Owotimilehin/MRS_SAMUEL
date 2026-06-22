@@ -4,7 +4,7 @@ import { BranchShell } from "../../components/BranchShell.js";
 import { Stat } from "../../components/Stat.js";
 import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -68,7 +68,7 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
           setSales(res.data);
         }
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }

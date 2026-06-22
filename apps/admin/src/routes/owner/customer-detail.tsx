@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -52,7 +52,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }): JSX.
         if (cancelled) return;
         setData(res.data);
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }

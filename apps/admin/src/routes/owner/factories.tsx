@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import { StatHero } from "../../components/StatHero.js";
@@ -59,7 +59,7 @@ export function FactoriesPage(): JSX.Element {
         for (const s of stocks) next[s.id] = s.data;
         setBalances(next);
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : String(err));
+        if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }

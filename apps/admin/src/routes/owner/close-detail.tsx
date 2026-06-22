@@ -2,7 +2,7 @@
 import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { StatHero, type StatChip } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -91,7 +91,7 @@ export function CloseDetailPage({
       setProducts(p.data);
       setBranches(b.data);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -109,7 +109,7 @@ export function CloseDetailPage({
       toast.success("Shift-end report approved");
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setActing(false);
     }
@@ -126,7 +126,7 @@ export function CloseDetailPage({
       toast.success("Shift-end report disputed");
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setActing(false);
     }

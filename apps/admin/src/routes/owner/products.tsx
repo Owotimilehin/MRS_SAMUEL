@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { Modal } from "../../components/Modal.js";
 import { StatHero } from "../../components/StatHero.js";
-import { api, ApiError } from "../../lib/api.js";
+import { api, ApiError, humanizeError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
@@ -73,7 +73,7 @@ export function ProductsPage(): JSX.Element {
       setRows(detailed);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -309,7 +309,7 @@ function CreateForm({ onSaved }: { onSaved: () => void }): JSX.Element {
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
       setSubmitting(false);
     }
   }
@@ -579,7 +579,7 @@ function PricesForm({
       await onSaved();
     } catch (err) {
       if (err instanceof ApiError) onError(err.message);
-      else onError(err instanceof Error ? err.message : String(err));
+      else onError(humanizeError(err));
       setSubmitting(false);
     }
   }

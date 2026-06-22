@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Shell } from "../../components/Shell.js";
 import { Modal } from "../../components/Modal.js";
-import { api, ApiError } from "../../lib/api.js";
+import { api, ApiError, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { StatHero } from "../../components/StatHero.js";
 
@@ -41,7 +41,7 @@ export function BundlesPage(): JSX.Element {
       setRows(res.data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -57,7 +57,7 @@ export function BundlesPage(): JSX.Element {
       await api(`/marketing/bundles/${b.id}`, { method: "PATCH", body: JSON.stringify({ is_active: !b.isActive }) });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setBusyId(null);
     }
@@ -70,7 +70,7 @@ export function BundlesPage(): JSX.Element {
       await api(`/marketing/bundles/${b.id}`, { method: "DELETE" });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err));
     } finally {
       setBusyId(null);
     }
@@ -215,7 +215,7 @@ function BundleForm({ mode, bundle, onClose, onSaved }: { mode: "create" | "edit
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err));
+      setError(err instanceof ApiError ? err.message : humanizeError(err));
       setSubmitting(false);
     }
   }

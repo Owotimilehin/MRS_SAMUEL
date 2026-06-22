@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -41,7 +41,7 @@ export function LeadsPage(): JSX.Element {
       setSubs(s.data);
       setContacts(c.data);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setLoading(false);
     }

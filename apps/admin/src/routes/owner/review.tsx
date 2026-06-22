@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
-import { api } from "../../lib/api.js";
+import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -41,7 +41,7 @@ export function ReviewPage(): JSX.Element {
       const res = await api<ReviewResp>(`/review`);
       setData(res.data);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setLoading(false);
     }
@@ -57,7 +57,7 @@ export function ReviewPage(): JSX.Element {
       await api(`/transfers/${id}/approve`, { method: "PATCH" });
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setActing(null);
     }
@@ -69,7 +69,7 @@ export function ReviewPage(): JSX.Element {
       await api(`/returns/${id}/approve`, { method: "PATCH" });
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setActing(null);
     }
@@ -86,7 +86,7 @@ export function ReviewPage(): JSX.Element {
       });
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(humanizeError(err));
     } finally {
       setActing(null);
     }
