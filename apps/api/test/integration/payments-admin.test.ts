@@ -549,6 +549,31 @@ describe("admin payment reconciliation endpoints", () => {
     expect(res.status).toBe(404);
   });
 
+  // ─── GET /branches/:branchId/sales/:saleId — reportedNgn ───────────────────
+
+  it("GET sale detail returns reportedNgn=null before any payment exists", async () => {
+    const { id } = await placeOrder("+2348091111040");
+
+    const res = await fetch(`${baseUrl}/v1/branches/${branchId}/sales/${id}`, {
+      headers: { cookie: ownerCookies },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { reportedNgn: number | null } };
+    expect(body.data.reportedNgn).toBeNull();
+  });
+
+  it("GET sale detail returns reportedNgn = latest payment amount once paid", async () => {
+    const { id, orderNumber, totalNgn } = await placeOrder("+2348091111041");
+    await sendWebhook(orderNumber);
+
+    const res = await fetch(`${baseUrl}/v1/branches/${branchId}/sales/${id}`, {
+      headers: { cookie: ownerCookies },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { reportedNgn: number | null } };
+    expect(body.data.reportedNgn).toBe(totalNgn);
+  });
+
   it("POST /mark-refunded returns 409 when order channel is walkup", async () => {
     // Seed a walkup order by inserting directly via DB then patching channel
     const { id } = await placeOrder("+2348091111030");

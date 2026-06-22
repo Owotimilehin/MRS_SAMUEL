@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   saleOrder,
   saleOrderItem,
@@ -47,10 +47,15 @@ export async function applyPayazaConfirmation(
     confirmed.amountNgn != null &&
     confirmed.amountNgn !== o.totalNgn
   ) {
-    await tx
+    // CAS: only the racer that actually flips confirmed→reconcile_needed may
+    // emit the mismatch alert. A concurrent caller that loses this race must
+    // not double-insert the outbox event for the same mismatch.
+    const won = await tx
       .update(saleOrder)
       .set({ status: "reconcile_needed", updatedAt: new Date() })
-      .where(eq(saleOrder.id, o.id));
+      .where(and(eq(saleOrder.id, o.id), eq(saleOrder.status, "confirmed")))
+      .returning({ id: saleOrder.id });
+    if (won.length === 0) return { kind: "already_processed", status: o.status };
     await tx.insert(outboxEvent).values({
       eventType: "sale.amount_mismatch",
       payload: {
@@ -67,6 +72,19 @@ export async function applyPayazaConfirmation(
       reportedNgn: confirmed.amountNgn,
     };
   }
+
+  // CAS: flip confirmed→paid FIRST, guarded by the current status. Two
+  // concurrent callers (webhook + cron sweep + on-view re-verify + admin
+  // recheck can all race the same stuck order) may both pass the cheap
+  // early-return above under READ COMMITTED, but only one UPDATE can match
+  // `status = 'confirmed'` and return a row — the loser must do nothing
+  // further (no second payment row, no second stock deduction).
+  const won = await tx
+    .update(saleOrder)
+    .set({ status: "paid", paymentStatus: "paid", updatedAt: new Date() })
+    .where(and(eq(saleOrder.id, o.id), eq(saleOrder.status, "confirmed")))
+    .returning({ id: saleOrder.id });
+  if (won.length === 0) return { kind: "already_processed", status: o.status };
 
   // A preorder is prepaid but not yet made — capture payment WITHOUT moving
   // stock. The deduction happens later when staff fulfil it (preorders.ts).
@@ -96,10 +114,6 @@ export async function applyPayazaConfirmation(
     processorReference: confirmed.processorReference ?? null,
     paidAt: new Date(),
   });
-  await tx
-    .update(saleOrder)
-    .set({ status: "paid", paymentStatus: "paid", updatedAt: new Date() })
-    .where(eq(saleOrder.id, o.id));
   await tx.insert(outboxEvent).values({
     // A paid preorder awaits fulfilment (not delivery yet) — distinct event
     // so the owner is alerted it has joined the Preorders queue.

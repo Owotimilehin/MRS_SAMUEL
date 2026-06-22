@@ -9,7 +9,13 @@ import { saleOrder, saleOrderItem } from "@ms/db";
 // is table-aware so the item-loop in applyPayazaConfirmation gets one fake item
 // when querying saleOrderItem, the seeded order when querying saleOrder, and an
 // empty array for anything else.
-function fakeTx(order: any) {
+//
+// `casWins` controls what the status-flip UPDATE's `.returning()` resolves to:
+// defaulting to a winning CAS (`[{ id: "o1" }]`) so existing happy-path tests
+// don't need to change. Pass `casWins: false` to simulate a concurrent caller
+// having already won the race (`.returning()` -> `[]`).
+function fakeTx(order: any, opts?: { casWins?: boolean }) {
+  const casWins = opts?.casWins ?? true;
   const calls: any = { inserts: [], updates: [], deletes: [] };
   const tx = {
     select: () => ({
@@ -33,7 +39,10 @@ function fakeTx(order: any) {
       set: (v: any) => ({
         where: () => {
           calls.updates.push({ t, v });
-          return Promise.resolve();
+          return {
+            returning: (_sel?: any) =>
+              Promise.resolve(casWins ? [{ id: "o1" }] : []),
+          };
         },
       }),
     }),
@@ -94,5 +103,18 @@ describe("applyPayazaConfirmation", () => {
       { acceptReportedAmount: true },
     );
     expect(r.kind).toBe("paid");
+  });
+
+  it("loses the CAS to a concurrent winner: returns already_processed and inserts nothing", async () => {
+    // Simulates two concurrent reconcile calls (e.g. webhook + cron sweep)
+    // racing the same stuck order: this caller's status-flip UPDATE matches
+    // zero rows because a concurrent caller already flipped confirmed->paid.
+    const { tx, calls } = fakeTx(null, { casWins: false });
+    const r = await applyPayazaConfirmation(
+      tx as any, { ...baseOrder } as any,
+      { status: "Completed", amountNgn: 3500, processorReference: "P-1", authorization: null },
+    );
+    expect(r).toEqual({ kind: "already_processed", status: "confirmed" });
+    expect(calls.inserts).toHaveLength(0);
   });
 });

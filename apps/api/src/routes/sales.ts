@@ -641,8 +641,24 @@ export function saleRoutes(db: DbClient) {
       .where(eq(deliveryOrder.saleOrderId, id))
       .orderBy(descFn(deliveryOrder.requestedAt))
       .limit(1);
+    // Latest payment row's amount as `reportedNgn` — the amount Payaza
+    // actually reported, which may differ from totalNgn on a mismatch. Same
+    // pattern as review.ts's payment_attention inbox. Null if no payment yet.
+    const [latestPayment] = await db
+      .select({ amountNgn: payment.amountNgn })
+      .from(payment)
+      .where(eq(payment.saleOrderId, id))
+      .orderBy(descFn(payment.createdAt))
+      .limit(1);
     return c.json({
-      data: { ...o, items, customerName, customerPhone, delivery: delivery ?? null },
+      data: {
+        ...o,
+        items,
+        customerName,
+        customerPhone,
+        delivery: delivery ?? null,
+        reportedNgn: latestPayment?.amountNgn ?? null,
+      },
     });
   });
 
