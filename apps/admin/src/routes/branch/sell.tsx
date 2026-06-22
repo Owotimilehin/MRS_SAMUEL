@@ -116,10 +116,6 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   }, [branchId]);
   // Defensive: a user with neither selling capability can't check out at all.
   const checkoutDisabled = !canSellStock && !canPreorder;
-  // The cashier must deliberately set a bag count and a straw count (0 allowed)
-  // before a sale can complete. When a group has no materials loaded (offline
-  // or no access), there's nothing to set, so that group is auto-satisfied.
-  const consumablesReady = (bagMaterials.length === 0 || bagsSet) && (strawMaterials.length === 0 || strawsSet);
   // Branch header for the receipt, fetched best-effort (works online; offline we
   // still print with just the branch id-derived fallbacks).
   const [branchInfo, setBranchInfo] = useState<{ name: string; address: string | null; phone: string | null }>({
@@ -148,6 +144,10 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const [strawCart, setStrawCart] = useState<Record<string, number>>({});
   const [bagsSet, setBagsSet] = useState(false);
   const [strawsSet, setStrawsSet] = useState(false);
+  // The cashier must deliberately set a bag count and a straw count (0 allowed)
+  // before a sale can complete. When a group has no materials loaded (offline
+  // or no access), there's nothing to set, so that group is auto-satisfied.
+  const consumablesReady = (bagMaterials.length === 0 || bagsSet) && (strawMaterials.length === 0 || strawsSet);
   async function loadBags(): Promise<void> {
     try {
       const res = await api<{ data: BagStockRow[] }>(`/branches/${branchId}/sales/bags`);
