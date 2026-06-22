@@ -478,8 +478,8 @@ export function reportRoutes(db: DbClient) {
       FROM packaging_purchase
       ORDER BY packaging_material_id, purchase_date DESC, id DESC
     `);
-    const nameRows = await db.execute<{ id: string; name: string }>(sql`
-      SELECT id, name FROM packaging_material
+    const nameRows = await db.execute<{ id: string; name: string; kind: string }>(sql`
+      SELECT id, name, kind FROM packaging_material
     `);
 
     const layersByMat = new Map<string, CostLayer[]>();
@@ -490,6 +490,7 @@ export function reportRoutes(db: DbClient) {
     }
     const fallbackByMat = new Map(latestRows.map((r) => [r.material_id, Number(r.unit_cost_ngn)]));
     const nameById = new Map(nameRows.map((r) => [r.id, r.name]));
+    const kindById = new Map(nameRows.map((r) => [r.id, r.kind]));
     const priorBottle = new Map(bottlePrior.map((r) => [r.material_id, Number(r.units)]));
     const priorBag = new Map(bagPrior.map((r) => [r.material_id, Number(r.units)]));
     const caveats: string[] = [];
@@ -527,7 +528,7 @@ export function reportRoutes(db: DbClient) {
       ...bagDetail.map((r) => ({
         material_id: r.material_id,
         name: nameById.get(r.material_id) ?? "—",
-        kind: "bag" as const,
+        kind: (kindById.get(r.material_id) ?? "bag") as "bag" | "straw",
         units: r.units,
         unit_cost_ngn: r.units > 0 ? Math.round(r.cost_ngn / r.units) : 0,
         cost_ngn: r.cost_ngn,

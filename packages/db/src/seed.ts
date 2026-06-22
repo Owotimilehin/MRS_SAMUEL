@@ -95,6 +95,19 @@ async function seedBagMaterials(): Promise<void> {
   console.warn("bag materials seeded");
 }
 
+async function seedStrawMaterials(): Promise<void> {
+  const existing = await db
+    .select()
+    .from(packagingMaterial)
+    .where(and(eq(packagingMaterial.kind, "straw"), eq(packagingMaterial.name, "Straw")));
+  if (existing.length === 0) {
+    await db.insert(packagingMaterial).values({
+      name: "Straw", unitLabel: "straw", sizeMl: null, kind: "straw", isActive: true,
+    });
+  }
+  console.warn("straw materials seeded");
+}
+
 interface CatalogProduct {
   slug: string;
   name: string;
@@ -646,6 +659,7 @@ async function main(): Promise<void> {
   await seedBranch();
   await seedBottleMaterials();
   await seedBagMaterials();
+  await seedStrawMaterials();
   await seedProducts();
   await linkVariantBottles();
   await flagPreorderVariants();

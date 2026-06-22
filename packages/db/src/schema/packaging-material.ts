@@ -3,13 +3,15 @@ import { pgTable, uuid, text, integer, boolean, timestamp, index, pgEnum } from 
 export const packagingMaterialKind = pgEnum("packaging_material_kind", [
   "bottle",
   "bag",
+  "straw",
   "other",
 ]);
 
 /**
  * Catalog of packaging materials. `kind` classifies each row: 'bottle' (sized,
- * consumed by production), 'bag' (unsized, consumed at the POS), or 'other'.
- * Seeded: 330ml/650ml glass bottles + Small/Medium/Large bags (0043/0044).
+ * consumed by production), 'bag' and 'straw' (unsized, consumed at the POS,
+ * tracked-only), or 'other'. Seeded: 330ml/650ml glass bottles + Small/Medium/
+ * Large bags (0043/0044) + Straw (seed.ts).
  *
  * `size_ml` is nullable so non-sized materials (caps, labels) coexist.
  */

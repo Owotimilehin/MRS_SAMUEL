@@ -122,12 +122,17 @@ export function saleRoutes(db: DbClient) {
       GROUP BY packaging_material_id
     `);
     const byId = new Map(balances.map((b) => [b.packaging_material_id, Number(b.balance)]));
-    const bags = await db
+    const consumables = await db
       .select()
       .from(packagingMaterial)
-      .where(and(eq(packagingMaterial.kind, "bag"), eq(packagingMaterial.isActive, true)));
+      .where(and(inArray(packagingMaterial.kind, ["bag", "straw"]), eq(packagingMaterial.isActive, true)));
     return c.json({
-      data: bags.map((m) => ({ material_id: m.id, name: m.name, balance: byId.get(m.id) ?? 0 })),
+      data: consumables.map((m) => ({
+        material_id: m.id,
+        name: m.name,
+        kind: m.kind,
+        balance: byId.get(m.id) ?? 0,
+      })),
     });
   });
 

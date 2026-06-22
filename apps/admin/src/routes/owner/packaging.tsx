@@ -7,7 +7,7 @@ import { ngn, formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useAuthUser } from "../../lib/auth.js";
 
-type MaterialKind = "bottle" | "bag" | "other";
+type MaterialKind = "bottle" | "bag" | "straw" | "other";
 
 interface Material {
   id: string;
@@ -57,6 +57,7 @@ function kindBadge(kind: MaterialKind): JSX.Element {
   const styles: Record<MaterialKind, React.CSSProperties> = {
     bottle: { background: "rgba(59,130,246,0.12)", color: "var(--accent)", border: "1px solid rgba(59,130,246,0.25)" },
     bag:    { background: "rgba(16,185,129,0.12)", color: "var(--success)", border: "1px solid rgba(16,185,129,0.25)" },
+    straw:  { background: "rgba(245,158,11,0.12)", color: "#b45309", border: "1px solid rgba(245,158,11,0.25)" },
     other:  { background: "rgba(107,114,128,0.12)", color: "var(--ink-soft)", border: "1px solid rgba(107,114,128,0.2)" },
   };
   return (
@@ -167,6 +168,9 @@ export function PackagingPage(): JSX.Element {
   const bagsOnHand = stock
     .filter((s) => s.kind === "bag")
     .reduce((sum, s) => sum + s.balance, 0);
+  const strawsOnHand = stock
+    .filter((s) => s.kind === "straw")
+    .reduce((sum, s) => sum + s.balance, 0);
 
   return (
     <Shell
@@ -199,6 +203,7 @@ export function PackagingPage(): JSX.Element {
         chips={[
           { label: "Materials tracked", value: stock.length },
           { label: "Bags on hand", value: bagsOnHand.toLocaleString() },
+          { label: "Straws on hand", value: strawsOnHand.toLocaleString() },
           { label: "Low stock", value: lowStockCount, tone: lowStockCount > 0 ? "danger" : "good" },
         ]}
       />
@@ -756,6 +761,7 @@ function MaterialModal({
             <select id="m-kind" className="select" value={kind} onChange={(e) => setKind(e.target.value as MaterialKind)}>
               <option value="bottle">Bottle</option>
               <option value="bag">Bag</option>
+              <option value="straw">Straw</option>
               <option value="other">Other</option>
             </select>
           </div>
