@@ -25,6 +25,8 @@ import { storeOptionSet, loadOptionSet } from "../delivery/quote-store.js";
 import { takeCartAsOrderItems, clearCartForCookie } from "./public-cart.js";
 import { verifyTurnstileToken } from "../lib/turnstile.js";
 import { env } from "../env.js";
+import { verifyAndReconcile } from "../payments/reconcile.js";
+import { logger } from "../logger.js";
 
 const CreateOnlineOrder = z.object({
   branch_id: z.string().uuid(),
@@ -542,7 +544,7 @@ export function publicOrderRoutes(db: DbClient) {
     const url = new URL(c.req.url);
     const q = TrackQuery.parse(Object.fromEntries(url.searchParams));
 
-    const [o] = await db.select().from(saleOrder).where(eq(saleOrder.orderNumber, orderNumber));
+    let [o] = await db.select().from(saleOrder).where(eq(saleOrder.orderNumber, orderNumber));
     if (!o) throw new BusinessError("not_found", "order not found", 404);
     const [cust] = o.customerId
       ? await db.select().from(customer).where(eq(customer.id, o.customerId))
@@ -551,6 +553,36 @@ export function publicOrderRoutes(db: DbClient) {
       // Same response as not-found so an attacker can't enumerate orders by id.
       throw new BusinessError("not_found", "order not found", 404);
     }
+
+    // On-view re-verify: a returning customer looking at an unpaid order is a
+    // free chance to catch a webhook that never fired. Only worth asking
+    // Payaza while the order is still unpaid (`confirmed`) AND its stock hold
+    // is still live — once the reservation has expired the sweep/cron path
+    // owns reconciliation, and paid/terminal/walk-up orders never reach here
+    // with `confirmed`+a reservation anyway. Best-effort: a Payaza outage here
+    // must not break the tracking page.
+    if (o.channel === "online" && o.status === "confirmed" && !o.isPreorder) {
+      const [liveResv] = await db
+        .select({ expiresAt: stockReservation.expiresAt })
+        .from(stockReservation)
+        .where(eq(stockReservation.saleOrderId, o.id))
+        .orderBy(asc(stockReservation.expiresAt))
+        .limit(1);
+      const reservationLive = liveResv?.expiresAt != null && liveResv.expiresAt.getTime() > Date.now();
+      if (reservationLive) {
+        try {
+          await verifyAndReconcile(db, o.orderNumber);
+        } catch (err) {
+          logger.warn({ err, orderNumber: o.orderNumber }, "tracking on-view re-verify failed (non-fatal)");
+        }
+        // Re-read so the response reflects any flip the reconcile just made.
+        // The row can't have disappeared between the two reads (no delete
+        // path for sale orders) — re-assert non-null for TS.
+        [o] = await db.select().from(saleOrder).where(eq(saleOrder.orderNumber, orderNumber));
+        if (!o) throw new BusinessError("not_found", "order not found", 404);
+      }
+    }
+
     const { deliveryOrder } = await import("@ms/db");
     const { desc: descFn } = await import("drizzle-orm");
     const [delivery] = await db

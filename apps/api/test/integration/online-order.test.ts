@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
@@ -135,6 +135,11 @@ describe("Phase 3 customer-site online order flow", () => {
   afterAll(async () => {
     server.close();
     await container.stop();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it("public catalog returns seeded products and zones", async () => {
@@ -351,6 +356,30 @@ describe("Phase 3 customer-site online order flow", () => {
   });
 
   it("tracking returns items, is_preorder, reservation_expires_at and resume_payment while unpaid", async () => {
+    // Without a public key the test container's Payaza shim always reports
+    // "Completed", which would make the route's on-view re-verify (Task 5)
+    // immediately pay this order on the GET below. Stub a real public key +
+    // intercept only the Payaza transaction-query call (delegating every
+    // other URL, e.g. this test's own calls to baseUrl, to the real fetch) so
+    // this test stays isolated to the "still unpaid" tracking fields.
+    const realFetch = globalThis.fetch;
+    vi.stubEnv("PAYAZA_PUBLIC_KEY", "pub_test_unpaid");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("transaction-query")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ success: false, data: null, message: "Transaction not found" }),
+              { status: 400 },
+            ),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
     const phone = "+2348025550012";
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
@@ -387,6 +416,51 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(data["resume_payment"]).not.toBeNull(); // unpaid → resume config present
     const resumePayment = data["resume_payment"] as { payaza: { reference: string } };
     expect(resumePayment.payaza.reference).toBe(orderBody.data.order_number);
+  });
+
+  it("tracking re-verifies an unpaid order against Payaza on view and flips it to paid", async () => {
+    // No webhook is fired here — the order is left `confirmed` with a live
+    // reservation. The test container runs with no PAYAZA_PUBLIC_KEY, so
+    // verifyPayazaTransaction's dev shim reports "Completed" for any
+    // reference; the tracking endpoint's on-view re-verify should pick that
+    // up and reconcile the order to paid, same as the webhook would.
+    const phone = "+2348025550013";
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Test zone",
+        delivery_fee_ngn: 1500,
+        customer: {
+          name: "OnView Reverify",
+          phone,
+          email: "onviewreverify@example.com",
+          address: "13 OnView Street",
+        },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const orderBody = (await orderRes.json()) as { data: { order_number: string } };
+
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const [before] = await db
+      .select()
+      .from(saleOrder)
+      .where(eq(saleOrder.orderNumber, orderBody.data.order_number));
+    expect(before!.status).toBe("confirmed"); // unpaid, no webhook fired yet
+
+    const track = await fetch(
+      `${baseUrl}/v1/public/orders/${orderBody.data.order_number}?phone=${encodeURIComponent(phone)}`,
+    );
+    expect(track.status).toBe(200);
+    const trackBody = (await track.json()) as {
+      data: { status: string; payment_status: string };
+    };
+    expect(trackBody.data.status).toBe("paid");
+    expect(trackBody.data.payment_status).toBe("paid");
   });
 
   it("tracking returns scheduled_delivery_at and delivery_state", async () => {
