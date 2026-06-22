@@ -37,6 +37,8 @@ interface Sale {
   createdAtLocal: string;
   customerName?: string | null;
   customerPhone?: string | null;
+  customerEmail?: string | null;
+  customerAddress?: string | null;
   items: SaleItem[];
   delivery?: {
     provider: "bolt" | "manual" | "shipbubble";
@@ -366,6 +368,49 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
           </section>
 
           <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {(data.customerName ||
+              data.customerPhone ||
+              data.customerEmail ||
+              data.customerAddress ||
+              data.deliveryAddressFormatted) && (
+              <section className="card">
+                <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Customer</h3>
+                <div style={{ fontSize: 14, display: "grid", gap: 4 }}>
+                  <div style={{ fontWeight: 600 }}>{data.customerName ?? "—"}</div>
+                  {data.customerPhone && (
+                    <div>
+                      <a href={`tel:${data.customerPhone}`} style={{ color: "var(--accent)" }}>
+                        {data.customerPhone}
+                      </a>
+                    </div>
+                  )}
+                  {data.customerEmail && (
+                    <div style={{ color: "var(--ink-soft)" }}>
+                      <a href={`mailto:${data.customerEmail}`} style={{ color: "var(--ink-soft)" }}>
+                        {data.customerEmail}
+                      </a>
+                    </div>
+                  )}
+                  {(data.deliveryAddressFormatted ?? data.customerAddress) && (
+                    <div style={{ color: "var(--ink-soft)" }}>
+                      {data.deliveryAddressFormatted ?? data.customerAddress}
+                    </div>
+                  )}
+                </div>
+                {data.customerPhone && (
+                  <a
+                    className="btn btn--primary btn--sm"
+                    style={{ marginTop: 10 }}
+                    href={waLink(data.customerPhone)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    WhatsApp customer
+                  </a>
+                )}
+              </section>
+            )}
+
             <section className="card">
               <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Payment</h3>
               <div style={{ fontSize: 14 }}>Method: {data.paymentMethod}</div>

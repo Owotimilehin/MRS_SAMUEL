@@ -21,6 +21,8 @@ interface Sale {
   isPreorder?: boolean;
   fulfilledAt?: string | null;
   scheduledDeliveryAt?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
 }
 
 // Order type: an immediate walk-up sale vs a made-to-order preorder (and whether
@@ -173,6 +175,7 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
             <thead>
               <tr>
                 <th>Order</th>
+                <th>Customer</th>
                 <th>Type</th>
                 <th>Channel</th>
                 <th>Payment</th>
@@ -192,6 +195,20 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
                     >
                       {s.orderNumber}
                     </Link>
+                  </td>
+                  <td>
+                    {s.customerName || s.customerPhone ? (
+                      <span style={{ display: "grid" }}>
+                        <span>{s.customerName ?? "—"}</span>
+                        {s.customerPhone && (
+                          <span style={{ color: "var(--ink-soft)", fontSize: 12 }}>
+                            {s.customerPhone}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span style={{ color: "var(--ink-soft)" }}>—</span>
+                    )}
                   </td>
                   <td>{typePill(s)}</td>
                   <td style={{ textTransform: "capitalize" }}>{s.channel.replace(/_/g, " ")}</td>

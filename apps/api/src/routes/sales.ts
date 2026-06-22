@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, desc, asc, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   saleOrder,
@@ -609,7 +609,27 @@ export function saleRoutes(db: DbClient) {
       .where(eq(saleOrder.branchId, branchId))
       .orderBy(desc(saleOrder.createdAtLocal))
       .limit(200);
-    return c.json({ data: rows });
+    // Attach customer name + phone so the Orders / Sales lists can show who
+    // placed each order (esp. online orders) without opening every row. Batch
+    // one lookup over the page's distinct customers rather than per-row.
+    const custIds = [
+      ...new Set(rows.map((r) => r.customerId).filter((x): x is string => x != null)),
+    ];
+    const custById = new Map<string, { name: string | null; phone: string | null }>();
+    if (custIds.length > 0) {
+      const custs = await db
+        .select({ id: customer.id, name: customer.name, phone: customer.phone })
+        .from(customer)
+        .where(inArray(customer.id, custIds));
+      for (const cu of custs) custById.set(cu.id, { name: cu.name, phone: cu.phone });
+    }
+    return c.json({
+      data: rows.map((r) => ({
+        ...r,
+        customerName: r.customerId ? (custById.get(r.customerId)?.name ?? null) : null,
+        customerPhone: r.customerId ? (custById.get(r.customerId)?.phone ?? null) : null,
+      })),
+    });
   });
 
   r.get("/:id", requireCapability("sales.view"), async (c) => {
@@ -621,16 +641,27 @@ export function saleRoutes(db: DbClient) {
       .select()
       .from(saleOrderItem)
       .where(eq(saleOrderItem.saleOrderId, id));
-    // Customer contact for the order page (WhatsApp link + rider relay).
+    // Customer contact for the order page (WhatsApp link + rider relay + the
+    // Customer card). Email and the on-file address let staff reach and locate
+    // an online customer even when no live courier address was captured.
     let customerName: string | null = null;
     let customerPhone: string | null = null;
+    let customerEmail: string | null = null;
+    let customerAddress: string | null = null;
     if (o.customerId) {
       const [cust] = await db
-        .select({ name: customer.name, phone: customer.phone })
+        .select({
+          name: customer.name,
+          phone: customer.phone,
+          email: customer.email,
+          defaultAddress: customer.defaultAddress,
+        })
         .from(customer)
         .where(eq(customer.id, o.customerId));
       customerName = cust?.name ?? null;
       customerPhone = cust?.phone ?? null;
+      customerEmail = cust?.email ?? null;
+      customerAddress = cust?.defaultAddress ?? null;
     }
     // Latest delivery_order if any (single source of truth for rider info).
     const { deliveryOrder } = await import("@ms/db");
@@ -642,7 +673,15 @@ export function saleRoutes(db: DbClient) {
       .orderBy(descFn(deliveryOrder.requestedAt))
       .limit(1);
     return c.json({
-      data: { ...o, items, customerName, customerPhone, delivery: delivery ?? null },
+      data: {
+        ...o,
+        items,
+        customerName,
+        customerPhone,
+        customerEmail,
+        customerAddress,
+        delivery: delivery ?? null,
+      },
     });
   });
 

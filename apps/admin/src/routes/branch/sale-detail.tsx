@@ -71,6 +71,11 @@ interface Sale {
   notes: string | null;
   cancelReason: string | null;
   createdAtLocal: string;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  customerAddress?: string | null;
+  deliveryAddressFormatted?: string | null;
   items: SaleItem[];
   delivery: DeliveryInfo | null;
 }
@@ -166,6 +171,14 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
   }
 
   const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
+
+  function waLink(phone: string, orderNumber: string): string {
+    const digits = phone.replace(/\D/g, "").replace(/^0/, "234");
+    const msg = encodeURIComponent(
+      `Hi${sale?.customerName ? " " + sale.customerName : ""}, this is Mrs. Samuel about your order ${orderNumber}.`,
+    );
+    return `https://wa.me/${digits}?text=${msg}`;
+  }
 
   const authUser = useAuthUser();
   const [printing, setPrinting] = useState(false);
@@ -412,6 +425,49 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
               </div>
             )}
           </section>
+
+          {(sale.customerName ||
+            sale.customerPhone ||
+            sale.customerEmail ||
+            sale.customerAddress ||
+            sale.deliveryAddressFormatted) && (
+            <section className="card" style={{ marginBottom: 18 }}>
+              <h2 className="t-h2" style={{ marginBottom: 12 }}>Customer</h2>
+              <div style={{ display: "grid", gap: 6, fontSize: 14 }}>
+                <div style={{ fontWeight: 600 }}>{sale.customerName ?? "—"}</div>
+                {sale.customerPhone && (
+                  <div>
+                    <a href={`tel:${sale.customerPhone}`} style={{ color: "var(--accent)" }}>
+                      {sale.customerPhone}
+                    </a>
+                  </div>
+                )}
+                {sale.customerEmail && (
+                  <div style={{ color: "var(--ink-soft)" }}>
+                    <a href={`mailto:${sale.customerEmail}`} style={{ color: "var(--ink-soft)" }}>
+                      {sale.customerEmail}
+                    </a>
+                  </div>
+                )}
+                {(sale.deliveryAddressFormatted ?? sale.customerAddress) && (
+                  <div style={{ color: "var(--ink-soft)" }}>
+                    {sale.deliveryAddressFormatted ?? sale.customerAddress}
+                  </div>
+                )}
+              </div>
+              {sale.customerPhone && (
+                <a
+                  className="btn btn--primary btn--sm"
+                  style={{ marginTop: 12, alignSelf: "flex-start" }}
+                  href={waLink(sale.customerPhone, sale.orderNumber)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  WhatsApp customer
+                </a>
+              )}
+            </section>
+          )}
 
           <section className="card">
             <h2 className="t-h2" style={{ marginBottom: 12 }}>Items</h2>
