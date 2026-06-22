@@ -136,18 +136,17 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     })();
   }, [branchId]);
 
-  // Bags + straws are tracked-only POS consumables. The cashier MUST set a
-  // count for each (0 allowed) before a sale can complete.
+  // Bags + straws are tracked-only POS consumables. Optional: the cashier adds a
+  // count only when handing them out; leaving them at zero is always fine.
   const [bagMaterials, setBagMaterials] = useState<BagMaterial[]>([]);
   const [strawMaterials, setStrawMaterials] = useState<BagMaterial[]>([]);
   const [bagCart, setBagCart] = useState<Record<string, number>>({});
   const [strawCart, setStrawCart] = useState<Record<string, number>>({});
   const [bagsSet, setBagsSet] = useState(false);
   const [strawsSet, setStrawsSet] = useState(false);
-  // The cashier must deliberately set a bag count and a straw count (0 allowed)
-  // before a sale can complete. When a group has no materials loaded (offline
-  // or no access), there's nothing to set, so that group is auto-satisfied.
-  const consumablesReady = (bagMaterials.length === 0 || bagsSet) && (strawMaterials.length === 0 || strawsSet);
+  // Bags + straws are optional. Many customers buy without either, so a sale can
+  // always complete with zero of each — the empty carts default to zero and
+  // produce no packaging lines. Counts are only added when handed out.
   async function loadBags(): Promise<void> {
     try {
       const res = await api<{ data: BagStockRow[] }>(`/branches/${branchId}/sales/bags`);
@@ -442,8 +441,8 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       <div className="card card--soft" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
           <strong style={{ fontSize: 13 }}>{title}</strong>
-          <span style={{ fontSize: 11, color: isSet ? "var(--success)" : "var(--danger)" }}>
-            {isSet ? "✓ set" : "required · set a count"}
+          <span style={{ fontSize: 11, color: isSet ? "var(--success)" : "var(--ink-soft)" }}>
+            {isSet ? "✓ set" : "optional · leave at 0 if none"}
           </span>
         </div>
         {materials.map((m) => {
@@ -720,7 +719,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
             <button
               type="button"
               className="btn btn--primary btn--block btn--cta"
-              disabled={submitting || cart.length === 0 || checkoutDisabled || !consumablesReady}
+              disabled={submitting || cart.length === 0 || checkoutDisabled}
               onClick={() => void checkout()}
             >
               {submitting
@@ -729,11 +728,6 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                   ? `Take preorder · ${ngn(total)}`
                   : `Charge ${ngn(total)}`}
             </button>
-            {!consumablesReady && cart.length > 0 && (
-              <p style={{ fontSize: 11, color: "var(--danger)", textAlign: "center", margin: 0 }}>
-                Set bag &amp; straw counts to continue.
-              </p>
-            )}
             <p style={{ fontSize: 11, color: "var(--ink-soft)", textAlign: "center", margin: 0 }}>
               Saved locally — syncs to the server when online.
             </p>
