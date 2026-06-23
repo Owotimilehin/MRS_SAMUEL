@@ -20,6 +20,7 @@ export interface RasterLogo {
 const QR_TARGET = "https://mrssamuel.com";
 const IG = "@Mrs_samuelfruitjuice";
 const WHATSAPP = "WhatsApp 0901 951 2246";
+const EMAIL = "info@mrssamuel.com";
 
 export function composeReceipt(
   data: ReceiptData,
@@ -98,6 +99,7 @@ export function composeReceipt(
   if (data.kind !== "return") p.line("Thank you! Keep chilled - drink fresh");
   p.line(IG);
   p.line(WHATSAPP);
+  p.line(EMAIL);
   p.line("mrssamuel.com");
 
   if (opts.openDrawer) p.kickDrawer();

@@ -3,7 +3,10 @@ import pino from "pino";
 const logger = pino({ base: { service: "ms-worker", part: "email" } });
 
 const API_KEY = process.env.RESEND_API_KEY;
-const FROM = process.env.RESEND_FROM ?? "Mrs. Samuel <orders@mrssamueljuice.com>";
+const FROM = process.env.RESEND_FROM ?? "Mrs. Samuel <orders@mrssamuel.com>";
+// Customer replies to our transactional mail land in the business inbox
+// (info@mrssamuel.com is the live Cloudflare Email Routing address).
+const REPLY_TO = process.env.RESEND_REPLY_TO ?? "info@mrssamuel.com";
 
 if (!API_KEY) {
   logger.warn("RESEND_API_KEY not set — emails will be skipped");
@@ -28,6 +31,7 @@ export async function sendEmail(opts: {
     body: JSON.stringify({
       from: FROM,
       to: opts.to,
+      reply_to: REPLY_TO,
       subject: opts.subject,
       text: opts.text,
     }),

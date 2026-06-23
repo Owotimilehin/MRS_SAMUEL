@@ -6,7 +6,7 @@ import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { sendContactMessage } from "@/lib/api/server-fns";
 import leafMint from "@/assets/decor/leaf-mint.png";
-import { seo, breadcrumbLd } from "@/lib/seo";
+import { seo, breadcrumbLd, EMAIL } from "@/lib/seo";
 
 export const Route = createFileRoute("/contact")({
   head: () =>
@@ -117,8 +117,8 @@ function Page() {
             <p className="mt-1 text-white/85 text-sm">0901 951 2246 — replies usually within the hour during business hours.</p>
           </a>
 
-          <Detail Icon={Phone} title="Phone" body="0901 951 2246" />
-          <Detail Icon={Mail} title="Email" body="hello@mrssamueljuice.ng" />
+          <Detail Icon={Phone} title="Phone" body="0901 951 2246" link="tel:+2349019512246" />
+          <Detail Icon={Mail} title="Email" body={EMAIL} link={`mailto:${EMAIL}`} />
           <Detail Icon={MapPin} title="Lagos kitchen" body="30 Asa-Afariogun St, opposite Access Bank, ajao estate" />
           <Detail Icon={Instagram} title="Instagram" body="@Mrs_samuelfruitjuice" link="https://instagram.com/Mrs_samuelfruitjuice" />
           <Detail Icon={Clock} title="Hours" body="Mon–Sat · 8am–8pm · Sun · 10am–8pm" />
@@ -162,5 +162,11 @@ function Detail({ Icon, title, body, link }: { Icon: typeof Phone; title: string
       </div>
     </div>
   );
-  return link ? <a href={link} target="_blank" rel="noreferrer">{inner}</a> : inner;
+  if (!link) return inner;
+  const external = /^https?:/i.test(link);
+  return (
+    <a href={link} {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>
+      {inner}
+    </a>
+  );
 }

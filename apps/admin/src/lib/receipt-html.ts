@@ -16,6 +16,7 @@ const LOGO_URL = "/receipt-logo.png";
 const QR_URL = "/qr.png";
 const IG = "@Mrs_samuelfruitjuice";
 const WHATSAPP = "WhatsApp 0901 951 2246";
+const EMAIL = "info@mrssamuel.com";
 
 /** Escape text so user-supplied values can't break the receipt markup. */
 function esc(s: string): string {
@@ -45,14 +46,24 @@ export function renderReceiptHtml(data: ReceiptData): string {
     })
     .join("");
 
+  // Branded style emphasises the total with a centered, larger line.
+  const totalRow =
+    data.style === "branded"
+      ? `<div class="c total total--branded">TOTAL ${esc(money(data.totalNgn, true))}</div>`
+      : `<div class="row total"><span>TOTAL</span><span>${esc(money(data.totalNgn, true))}</span></div>`;
+
   const totalsInner =
     data.kind === "return"
       ? row("REFUND", money(data.refundNgn ?? data.totalNgn, true)) +
         (data.refundReason ? `<div class="unit">Reason: ${esc(data.refundReason)}</div>` : "")
-      : `<div class="row total"><span>TOTAL</span><span>${esc(money(data.totalNgn, true))}</span></div>` +
+      : totalRow +
         (data.cashNgn != null
           ? row("Cash", money(data.cashNgn, true)) + row("Change", money(data.changeNgn ?? 0, true))
           : "");
+
+  // Marketing style swaps the QR caption for a discount hook.
+  const qrCaption =
+    data.style === "marketing" ? "Scan for 10% off your next order" : "Scan to order fresh again";
 
   const footer =
     data.kind !== "return"
@@ -84,6 +95,7 @@ export function renderReceiptHtml(data: ReceiptData): string {
   .item { font-weight: 600; }
   .unit { padding-left: 6px; color: #000; }
   .total { font-weight: 700; font-size: 15px; margin-top: 1mm; }
+  .total--branded { font-size: 19px; letter-spacing: 0.5px; margin: 2mm 0 1mm; }
   .qr { display: block; width: 28mm; height: 28mm; margin: 2mm auto 1mm; }
   .small { font-size: 11px; }
 </style></head>
@@ -106,11 +118,12 @@ export function renderReceiptHtml(data: ReceiptData): string {
   ${totalsInner}
   <div class="hr"></div>
   <img class="qr" src="${QR_URL}" alt="" onerror="this.style.display='none'" />
-  <div class="c small">Scan to order fresh again</div>
+  <div class="c small">${esc(qrCaption)}</div>
   <div class="c small">mrssamuel.com</div>
   <div class="hr"></div>
   ${footer}
   <div class="c small">${esc(IG)}</div>
   <div class="c small">${esc(WHATSAPP)}</div>
+  <div class="c small">${esc(EMAIL)}</div>
 </body></html>`;
 }

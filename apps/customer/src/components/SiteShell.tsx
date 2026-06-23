@@ -93,7 +93,8 @@ function Footer() {
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.18em] text-white/60">Customer Care</div>
             <ul className="mt-3 space-y-2 text-sm">
-              <li>WhatsApp · 0901 951 2246</li>
+              <li><a href="https://wa.me/2349019512246" target="_blank" rel="noreferrer" className="hover:text-white">WhatsApp · 0901 951 2246</a></li>
+              <li><a href="mailto:info@mrssamuel.com" className="hover:text-white">info@mrssamuel.com</a></li>
               <li>@Mrs_samuelfruitjuice</li>
               <li>30 Asa-Afariogun St, opposite Access Bank, ajao estate</li>
               <li className="text-white/60 text-xs pt-2">Mon–Sat · 8am–8pm<br />Sun · 10am–8pm</li>

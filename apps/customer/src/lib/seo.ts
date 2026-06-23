@@ -18,6 +18,8 @@ export const DEFAULT_DESCRIPTION =
 export const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`;
 export const TWITTER_HANDLE = "@Mrs_samuelfruitjuice";
 export const PHONE = "+2349019512246";
+/** Business contact inbox (Cloudflare Email Routing → owner's mailbox). */
+export const EMAIL = "info@mrssamuel.com";
 
 interface MetaTag {
   [k: string]: string;
@@ -95,6 +97,15 @@ export function organizationLd(): object {
     image: DEFAULT_OG_IMAGE,
     description: DEFAULT_DESCRIPTION,
     telephone: PHONE,
+    email: EMAIL,
+    contactPoint: {
+      "@type": "ContactPoint",
+      contactType: "customer service",
+      telephone: PHONE,
+      email: EMAIL,
+      areaServed: "NG",
+      availableLanguage: "en",
+    },
     priceRange: "₦₦",
     servesCuisine: "Cold-pressed fruit juice",
     address: {

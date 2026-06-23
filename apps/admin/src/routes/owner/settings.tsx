@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Shell } from "../../components/Shell.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -8,6 +8,30 @@ import {
   setReceiptStyle,
   RECEIPT_STYLES,
 } from "../../lib/receipt-settings.js";
+import { buildReceiptFromCart, type ReceiptData, type ReceiptStyle } from "../../lib/receipt-data.js";
+import { renderReceiptHtml } from "../../lib/receipt-html.js";
+import { printReceipt } from "../../lib/print-receipt.js";
+
+/** A representative sale used to preview/test the receipt without a real order. */
+function sampleReceipt(style: ReceiptStyle): ReceiptData {
+  return buildReceiptFromCart({
+    style,
+    receiptNo: "SAMPLE-0001",
+    whenIso: "2026-06-23T13:45:00.000Z",
+    branch: {
+      name: "Ajao Estate",
+      address: "30 Asa-Afariogun St, Ajao Estate, Lagos",
+      phone: "0901 951 2246",
+    },
+    servedBy: "Mrs. Samuel",
+    channel: "walkup",
+    payment: "transfer",
+    items: [
+      { name: "Zobo Blast", sizeMl: 500, qty: 2, unitNgn: 1500 },
+      { name: "Pineapple Ginger", sizeMl: 330, qty: 1, unitNgn: 1200 },
+    ],
+  });
+}
 
 interface Branch {
   id: string;
@@ -269,46 +293,116 @@ export function SettingsPage(): JSX.Element {
 }
 
 function ReceiptStyleCard(): JSX.Element {
-  const [style, setStyle] = useState(getReceiptStyle());
+  const [style, setStyle] = useState<ReceiptStyle>(getReceiptStyle());
+  const [printing, setPrinting] = useState(false);
+  const [printMsg, setPrintMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const previewHtml = useMemo(() => renderReceiptHtml(sampleReceipt(style)), [style]);
+
+  async function testPrint(): Promise<void> {
+    setPrinting(true);
+    setPrintMsg(null);
+    try {
+      const res = await printReceipt(sampleReceipt(style), { promptIfNeeded: true });
+      setPrintMsg({ ok: res.ok, text: res.message });
+    } catch (err) {
+      setPrintMsg({ ok: false, text: humanizeError(err) });
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   return (
     <section className="card">
       <h2 className="t-h2" style={{ marginBottom: 4 }}>
         Receipt style
       </h2>
       <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 12 }}>
-        Choose how printed receipts look. Applies to every till and reprint on this device.
+        Choose how printed receipts look. The preview shows a sample sale at 80mm — exactly
+        as it prints. Applies to every till and reprint on this device.
       </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {RECEIPT_STYLES.map((s) => (
-          <label
-            key={s.id}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 20,
+          alignItems: "flex-start",
+        }}
+      >
+        {/* Style picker */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 240px" }}>
+          {RECEIPT_STYLES.map((s) => (
+            <label
+              key={s.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 12px",
+                borderRadius: 12,
+                cursor: "pointer",
+                border: `1px solid ${style === s.id ? "var(--accent, #0b6b3a)" : "var(--line)"}`,
+                background: style === s.id ? "rgba(11,107,58,0.05)" : "transparent",
+              }}
+            >
+              <input
+                type="radio"
+                name="receipt-style"
+                checked={style === s.id}
+                onChange={() => {
+                  setReceiptStyle(s.id);
+                  setStyle(s.id);
+                }}
+                style={{ width: 18, height: 18, accentColor: "var(--accent, #0b6b3a)" }}
+              />
+              <span>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{s.label}</span>
+                <span style={{ display: "block", color: "var(--ink-soft)", fontSize: 12 }}>{s.hint}</span>
+              </span>
+            </label>
+          ))}
+          <button
+            type="button"
+            className="btn btn--subtle btn--sm"
+            disabled={printing}
+            onClick={() => void testPrint()}
+            style={{ marginTop: 4, alignSelf: "flex-start" }}
+          >
+            {printing ? "Printing…" : "Print test receipt"}
+          </button>
+          {printMsg && (
+            <div
+              role="status"
+              style={{
+                fontSize: 12,
+                color: printMsg.ok ? "var(--success)" : "var(--danger)",
+              }}
+            >
+              {printMsg.text}
+            </div>
+          )}
+        </div>
+
+        {/* Live preview */}
+        <div style={{ flex: "0 0 auto" }}>
+          <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 6 }}>Preview</div>
+          <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "10px 12px",
-              borderRadius: 12,
-              cursor: "pointer",
-              border: `1px solid ${style === s.id ? "var(--accent, #0b6b3a)" : "var(--line)"}`,
-              background: style === s.id ? "rgba(11,107,58,0.05)" : "transparent",
+              width: 302,
+              background: "#fff",
+              borderRadius: 6,
+              boxShadow: "0 6px 24px rgba(0,0,0,0.12)",
+              border: "1px solid var(--line)",
+              overflow: "hidden",
             }}
           >
-            <input
-              type="radio"
-              name="receipt-style"
-              checked={style === s.id}
-              onChange={() => {
-                setReceiptStyle(s.id);
-                setStyle(s.id);
-              }}
-              style={{ width: 18, height: 18, accentColor: "var(--accent, #0b6b3a)" }}
+            <iframe
+              title="Receipt preview"
+              srcDoc={previewHtml}
+              style={{ width: 302, height: 520, border: 0, display: "block" }}
             />
-            <span>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>{s.label}</span>
-              <span style={{ display: "block", color: "var(--ink-soft)", fontSize: 12 }}>{s.hint}</span>
-            </span>
-          </label>
-        ))}
+          </div>
+        </div>
       </div>
     </section>
   );
