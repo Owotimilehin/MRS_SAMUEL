@@ -1,4 +1,5 @@
 import { local, type OutboxRow } from "../db/local.js";
+import { refreshAccessToken } from "../lib/api.js";
 
 /**
  * Offline-first sync engine.
@@ -56,16 +57,32 @@ function backoffMs(attempts: number): number {
 }
 
 async function sendOne(row: OutboxRow): Promise<void> {
-  const init: RequestInit = {
-    method: row.method,
-    credentials: "include",
-    headers: {
-      "content-type": "application/json",
-      "idempotency-key": row.id,
-    },
+  const send = (): Promise<Response> => {
+    const init: RequestInit = {
+      method: row.method,
+      credentials: "include",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": row.id,
+      },
+    };
+    if (row.payload !== null) init.body = JSON.stringify(row.payload);
+    return fetch(row.endpoint, init);
   };
-  if (row.payload !== null) init.body = JSON.stringify(row.payload);
-  const res = await fetch(row.endpoint, init);
+
+  let res = await send();
+
+  // Session lapsed mid-shift. The access cookie lives 30 minutes; a till left
+  // idle or backgrounded past that (Chrome throttles the proactive refresh timer
+  // in background tabs) outlives it, so the request reaches the server with no
+  // cookie and comes back 401 "missing session". Renew the session with the
+  // long-lived refresh cookie — exactly what the app-level api() wrapper does —
+  // then retry once. Re-sends are safe: the row id is the Idempotency-Key, so a
+  // request that actually landed is deduped server-side.
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) res = await send();
+  }
 
   if (res.ok) {
     await local.outbox.update(row.id, {
@@ -75,8 +92,25 @@ async function sendOne(row: OutboxRow): Promise<void> {
     return;
   }
 
+  // Still unauthorized after a refresh attempt → the session is genuinely gone
+  // (refresh token expired/revoked, or offline mid-refresh). This is RECOVERABLE,
+  // not a rejected sale: keep the row pending with backoff and a plain-language
+  // note so it flushes automatically the moment the cashier signs back in. Never
+  // dead-letter a real sale over an auth lapse — that is how sales silently
+  // failed to lodge.
+  if (res.status === 401) {
+    const nextAttempts = row.attempt_count + 1;
+    await local.outbox.update(row.id, {
+      status: "pending",
+      attempt_count: nextAttempts,
+      next_attempt_at: Date.now() + backoffMs(nextAttempts),
+      last_error: "Signed out — sign in again and this will send automatically.",
+    });
+    return;
+  }
+
   // Business rule rejection — don't keep retrying.
-  if ([400, 401, 403, 404, 409, 422].includes(res.status)) {
+  if ([400, 403, 404, 409, 422].includes(res.status)) {
     const body = (await res.json().catch(() => ({}))) as {
       error?: { message?: string };
     };
@@ -256,7 +290,13 @@ export async function pullDeltas(branchId: string): Promise<void> {
   const meta = await local.meta.get("default");
   const since = meta?.last_pull_at ?? new Date(Date.now() - 7 * 86_400_000).toISOString();
   const url = `/v1/sync/pull?branch_id=${branchId}&since=${encodeURIComponent(since)}`;
-  const res = await fetch(url, { credentials: "include" });
+  let res = await fetch(url, { credentials: "include" });
+  // Session lapsed mid-shift (see sendOne). Renew once and retry so stock keeps
+  // syncing instead of silently freezing on a backgrounded till.
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) res = await fetch(url, { credentials: "include" });
+  }
   if (!res.ok) return;
   const body = (await res.json()) as PullResponse;
 

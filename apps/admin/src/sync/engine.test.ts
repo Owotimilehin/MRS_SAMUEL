@@ -153,6 +153,53 @@ describe("sync engine under bad networks", () => {
     expect(row?.last_error).toBe("insufficient stock");
   });
 
+  it("session lapsed (401): renews the login and retries so the sale lodges — never dead-lettered", async () => {
+    // The access cookie lives 30 minutes; a till left idle/backgrounded past that
+    // sends a sale with no cookie and the server answers 401 "missing session".
+    // The engine must renew via /auth/refresh (like the app-level api() wrapper)
+    // and retry — not mark a perfectly good sale as Failed.
+    let saleCalls = 0;
+    let refreshCalls = 0;
+    mockFetch((url) => {
+      if (url.includes("/auth/refresh")) {
+        refreshCalls++;
+        return jsonResponse(200, { data: { ok: true } });
+      }
+      saleCalls++;
+      return saleCalls === 1
+        ? jsonResponse(401, { error: { message: "missing session" } })
+        : jsonResponse(201, { data: { id: "ok" } });
+    });
+    await local.outbox.put(saleRow({ id: "s401" }));
+
+    await flushOutbox();
+
+    const row = await local.outbox.get("s401");
+    expect(row?.status).toBe("acknowledged"); // lodged, not Failed
+    expect(refreshCalls).toBe(1); // renewed exactly once
+    expect(saleCalls).toBe(2); // original 401 + retry after refresh
+  });
+
+  it("session truly gone (401 + refresh fails): keeps the sale recoverable (pending), never dead", async () => {
+    // Refresh token also expired/revoked. The sale is still valid — it must stay
+    // queued (recoverable) so it flushes the moment the cashier signs back in.
+    // Dead-lettering it here is exactly the bug that lost real sales.
+    mockFetch((url) =>
+      url.includes("/auth/refresh")
+        ? jsonResponse(401, { error: { message: "invalid refresh" } })
+        : jsonResponse(401, { error: { message: "missing session" } }),
+    );
+    await local.outbox.put(saleRow({ id: "s401b" }));
+
+    await flushOutbox();
+
+    const row = await local.outbox.get("s401b");
+    expect(row?.status).toBe("pending"); // recoverable — NOT dead
+    expect(row?.status).not.toBe("dead");
+    expect(row?.attempt_count).toBe(1);
+    expect(row?.next_attempt_at).toBeGreaterThan(Date.now()); // backed off
+  });
+
   it("dependency ordering: Pay is held back until its Confirm is acknowledged", async () => {
     const calls: string[] = [];
     mockFetch((url) => {
