@@ -523,6 +523,11 @@ export function publicOrderRoutes(db: DbClient) {
           id: created.order.id,
           order_number: created.order.orderNumber,
           total_ngn: created.order.totalNgn,
+          // True when any line is out of stock at the branch or is a
+          // preorder-only size. The customer checkout uses this to show a
+          // gracious "made to order — we'll WhatsApp you" confirmation before
+          // payment. Authoritative: same flag the order was created with.
+          is_preorder: created.order.isPreorder,
           payment: {
             provider: "payaza" as const,
             reference: payaza.reference,

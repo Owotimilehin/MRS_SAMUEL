@@ -177,11 +177,14 @@ describe("Phase 3 customer-site online order flow", () => {
       data: {
         order_number: string;
         total_ngn: number;
+        is_preorder: boolean;
         payment: { provider: string; reference: string; payaza: { connectionMode: string; reference: string } };
       };
     };
     // No live quote → delivery is not charged; total is the subtotal only.
     expect(orderBody.data.total_ngn).toBe(2500 * 3);
+    // In stock (20 on hand, ordered 3) → a normal order, not made-to-order.
+    expect(orderBody.data.is_preorder).toBe(false);
     expect(orderBody.data.payment.provider).toBe("payaza");
     expect(orderBody.data.payment.payaza.reference).toBe(orderBody.data.order_number);
     expect(orderBody.data.payment.payaza.connectionMode).toBe("Mock"); // no keys in test
@@ -218,6 +221,31 @@ describe("Phase 3 customer-site online order flow", () => {
       data: Array<{ product_id: string; variant_id: string | null; balance: number }>;
     };
     expect(stockBalance(stockBody.data, productId)).toBe(17); // 20 received - 3 sold
+  });
+
+  it("flags an out-of-stock order as made-to-order (is_preorder) so checkout can reassure the customer", async () => {
+    // Order far more than any branch on-hand → the line is out of stock, so the
+    // backend makes the whole order a preorder. The create response must surface
+    // that so the customer site can show the gracious "made to order" modal.
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Test zone",
+        delivery_fee_ngn: 0,
+        customer: {
+          name: "Out Of Stock",
+          phone: "+2348025550000",
+          email: "oos@example.com",
+          address: "1 Made To Order Lane",
+        },
+        items: [{ product_id: productId, quantity: 9999 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const body = (await orderRes.json()) as { data: { is_preorder: boolean } };
+    expect(body.data.is_preorder).toBe(true);
   });
 
   it("stores scheduled_delivery_at when the customer schedules for later", async () => {

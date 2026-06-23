@@ -124,6 +124,9 @@ export interface ApiPlacedOrder {
   id: string;
   order_number: string;
   total_ngn: number;
+  // True when the order is made-to-order (a line is out of stock at the branch
+  // or is a preorder-only size). Drives the gracious checkout confirmation.
+  is_preorder: boolean;
   payment: { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig };
 }
 

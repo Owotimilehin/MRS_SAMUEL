@@ -5,10 +5,11 @@ import {
   ArrowLeft, Check, Lock, Truck, ShoppingBag, AlertCircle, Loader2, CalendarClock,
 } from "lucide-react";
 import { SiteShell } from "@/components/SiteShell";
+import { GraciousContactModal } from "@/components/GraciousContactModal";
 import { useCart, formatNaira } from "@/lib/cart";
 import { fetchBranches, requestQuote, placeOrder as placeOrderFn } from "@/lib/api/server-fns";
 import { asApiError } from "@/lib/api/client";
-import type { ApiDeliveryOption } from "@/lib/api/types";
+import type { ApiDeliveryOption, ApiPlacedOrder } from "@/lib/api/types";
 import { launchPayazaCheckout } from "@/lib/payaza";
 import { NIGERIA_STATES } from "@/lib/nigeria-states";
 import { WINDOWS, scheduledIso, isWindowAvailable, type DeliveryWindow } from "@/lib/schedule";
@@ -107,6 +108,12 @@ function Page() {
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const idemRef = useRef<string>("");
+  // A made-to-order order (out of stock / preorder-only) pauses here so we can
+  // show a gracious "we'll WhatsApp you" confirmation before payment. Holds the
+  // already-created order; null = no pending confirmation.
+  const [graciousOrder, setGraciousOrder] = useState<ApiPlacedOrder | null>(null);
+  // Once the customer has acknowledged the modal, don't re-show it on a re-entry.
+  const confirmedPreorderRef = useRef(false);
 
   const scheduleValid = !scheduled || isWindowAvailable(form.date, form.window);
   const orderItems = useMemo(
@@ -122,6 +129,47 @@ function Page() {
     scheduleValid &&
     !placing &&
     !quoting;
+
+  // Hand the (already-created) order to Payaza and route to tracking on success.
+  // Shared by the normal path and the gracious-modal "Continue" path.
+  async function proceedToPayment(order: ApiPlacedOrder) {
+    const phone = form.phone.replace(/[\s-]/g, "");
+    // Stash phone so the tracking page can read the order back after Payaza.
+    try {
+      localStorage.setItem(`ms_track_${order.order_number}`, JSON.stringify({ phone }));
+    } catch {
+      /* ignore storage failures */
+    }
+    clear();
+    // Payaza checkout is a client-side popup (no redirect). On success the
+    // server webhook confirms payment; we just move to the tracking page.
+    const trackUrl = `/order/${order.order_number}?paid=1`;
+    await launchPayazaCheckout(order.payment.payaza, {
+      onPaid: () => {
+        window.location.href = trackUrl;
+      },
+      onClose: () => {
+        // Popup dismissed without paying — order stays 'confirmed'; let the
+        // customer retry or view the (unpaid) order.
+        setPlacing(false);
+      },
+    });
+  }
+
+  // Gracious modal: customer accepts the made-to-order order → on to payment.
+  function onGraciousContinue() {
+    const order = graciousOrder;
+    if (!order) return;
+    confirmedPreorderRef.current = true;
+    setGraciousOrder(null);
+    setPlacing(true);
+    void proceedToPayment(order);
+  }
+  // Gracious modal: customer backs out → keep the cart so they can adjust.
+  function onGraciousClose() {
+    setGraciousOrder(null);
+    setPlacing(false);
+  }
 
   async function submit(retry = false) {
     if (!branchId || items.length === 0) return;
@@ -149,26 +197,15 @@ function Page() {
           idempotency_key: idemRef.current,
         },
       });
-      // Stash phone so the tracking page can read the order back after Payaza.
-      try {
-        localStorage.setItem(`ms_track_${res.order_number}`, JSON.stringify({ phone }));
-      } catch {
-        /* ignore storage failures */
+      // Made-to-order (a line is out of stock or preorder-only): pause and
+      // reassure the customer before payment. The order is already created;
+      // "Go back" just leaves it unpaid, exactly like abandoning checkout.
+      if (res.is_preorder && !confirmedPreorderRef.current) {
+        setGraciousOrder(res);
+        setPlacing(false);
+        return;
       }
-      clear();
-      // Payaza checkout is a client-side popup (no redirect). On success the
-      // server webhook confirms payment; we just move to the tracking page.
-      const trackUrl = `/order/${res.order_number}?paid=1`;
-      await launchPayazaCheckout(res.payment.payaza, {
-        onPaid: () => {
-          window.location.href = trackUrl;
-        },
-        onClose: () => {
-          // Popup dismissed without paying — order stays 'confirmed'; let the
-          // customer retry or view the (unpaid) order.
-          setPlacing(false);
-        },
-      });
+      await proceedToPayment(res);
       return;
     } catch (e) {
       // placeOrder runs as a server function; the API's ApiError is serialized
@@ -212,6 +249,9 @@ function Page() {
 
   return (
     <SiteShell>
+      {graciousOrder && (
+        <GraciousContactModal onContinue={onGraciousContinue} onClose={onGraciousClose} />
+      )}
       <div className="px-5 sm:px-10 max-w-6xl mx-auto pt-32 sm:pt-36 pb-24">
         <Link to="/juices" className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--brand)]/70 hover:text-[color:var(--brand-orange)]">
           <ArrowLeft className="h-4 w-4" /> Continue shopping
