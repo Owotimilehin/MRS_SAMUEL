@@ -580,10 +580,25 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
               </section>
             )}
 
-            {data.deliveryAddressFormatted && (
+            {/* Delivery / Shipbubble booking — shown for any delivery order, not
+                just ones with a geocoder-validated address. Since the customer
+                live-courier quote was retired (LIVE_COURIER_QUOTES off),
+                deliveryAddressFormatted is null on real orders; fall back to the
+                customer's on-file address + state, which the options endpoint
+                also uses. Walk-up / pickup channels never deliver. */}
+            {data.channel !== "walkup" &&
+              data.channel !== "chowdeck_pickup" &&
+              (data.deliveryAddressFormatted || data.customerAddress || data.deliveryState) && (
               <section className="card">
                 <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Delivery</h3>
-                <div style={{ fontSize: 14 }}>{data.deliveryAddressFormatted}</div>
+                <div style={{ fontSize: 14 }}>
+                  {data.deliveryAddressFormatted ?? data.customerAddress ?? "Address on file"}
+                </div>
+                {data.deliveryState && (
+                  <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 2 }}>
+                    {data.deliveryState}
+                  </div>
+                )}
                 {data.customerPhone && (
                   <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
                     {data.customerName ?? "Customer"} · {data.customerPhone}
