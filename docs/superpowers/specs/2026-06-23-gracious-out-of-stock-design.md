@@ -57,11 +57,14 @@ Thread `is_preorder` through the `placeOrder` server-fn result and its type
 - Catalog `available_now` exposure, product-page badges
 
 ## Testing
-- **API:** online-order create returns `is_preorder: true` for an out-of-stock
-  line and for a `preorder_only` line; `false` for an in-stock line.
-- **Customer:** the `placeOrder` result carries `is_preorder` through (server-fn
-  /mapper level), and the checkout gates the Payaza launch on it (modal shown
-  when true; Payaza launched only on Continue).
+- **API:** online-order create returns `is_preorder: false` for an in-stock line
+  and `is_preorder: true` for an out-of-stock line (the preorder-only sub-case
+  shares the exact same code path — `if (preorderOnly || available < qty)`).
+- **Customer:** the customer app has no component-render harness (all existing
+  tests are pure-logic), so the checkout wiring is covered by `tsc` + the API
+  contract test rather than a render test. The `is_preorder` flag is typed
+  end-to-end via `ApiPlacedOrder`. Manual verification: place an out-of-stock
+  online order and confirm the modal appears before Payaza.
 
 ## Risk
 Low. One additive API field, one new self-contained component, and a gate in the
