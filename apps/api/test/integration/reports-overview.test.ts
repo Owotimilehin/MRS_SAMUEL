@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
+import { v4 as uuid } from "uuid";
 import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
@@ -100,5 +101,50 @@ describe("GET /v1/reports/overview", () => {
   it("returns 401 without auth cookie", async () => {
     const res = await fetch(`${baseUrl}/v1/reports/overview`);
     expect(res.status).toBe(401);
+  });
+
+  it("counts ONLY real online orders / genuine awaiting-fulfilment — not whatsapp counter sales or unpaid orders", async () => {
+    // Reproduces the prod dashboard lie: "Online orders today" and "awaiting
+    // fulfilment" were lumping whatsapp/phone counter sales (which sit at 'paid'
+    // forever like walk-ups) and unpaid 'confirmed' online orders into the
+    // counts. The honest definitions (matching the owner Orders worklist):
+    //   online_orders_today = channel='online' placed today
+    //   online_pending      = channel='online' AND not preorder AND status='paid'
+    const { createDbClient, saleOrder, branch } = await import("@ms/db");
+    const db = createDbClient(process.env.DATABASE_URL!);
+    const [b] = await db
+      .insert(branch)
+      .values({ name: "Test Branch", code: `B-${uuid().slice(0, 8)}` })
+      .returning({ id: branch.id });
+
+    const mk = (channel: string, status: string, paymentStatus: string) =>
+      db.insert(saleOrder).values({
+        orderNumber: `T-${uuid()}`,
+        branchId: b.id,
+        channel: channel as never,
+        status: status as never,
+        paymentStatus: paymentStatus as never,
+        paymentMethod: "card" as never,
+        subtotalNgn: 1000,
+        totalNgn: 1000,
+        isPreorder: false,
+        createdAtLocal: new Date(),
+        idempotencyKey: uuid(),
+      });
+
+    await mk("whatsapp", "paid", "paid"); // counter sale — must NOT count anywhere
+    await mk("online", "confirmed", "pending"); // unpaid — an online order today, NOT awaiting fulfilment
+    await mk("online", "paid", "paid"); // genuinely paid, not yet dispatched — IS awaiting fulfilment
+    await mk("online", "delivered", "paid"); // online order today, already done — NOT awaiting fulfilment
+
+    const res = await fetch(`${baseUrl}/v1/reports/overview`, { headers: { cookie: cookies } });
+    const { data } = (await res.json()) as {
+      data: { fulfilment: { online_orders_today: number; online_pending: number } };
+    };
+
+    // 3 online orders today (confirmed + paid + delivered); the whatsapp one excluded.
+    expect(data.fulfilment.online_orders_today).toBe(3);
+    // Only the single paid-not-yet-dispatched online order awaits fulfilment.
+    expect(data.fulfilment.online_pending).toBe(1);
   });
 });

@@ -339,14 +339,23 @@ export function reportRoutes(db: DbClient) {
                 AND created_at_local::date = CURRENT_DATE`),
             db.execute<{ cnt: number }>(sql`
               SELECT COUNT(*)::int AS cnt FROM sale_order
-              WHERE channel IN ('online','phone','whatsapp')
+              WHERE channel = 'online'
                 AND status NOT IN ('draft','cancelled','failed')
                 AND created_at_local::date = CURRENT_DATE`),
+            // "Awaiting fulfilment" = genuinely-paid STOREFRONT online orders not
+            // yet sent out. Must match the owner Orders worklist definition
+            // (channel='online' AND status='paid'); anything else inflated it:
+            //  - whatsapp/phone are manual counter sales that rest at 'paid'
+            //    forever (immediate handover, like walk-ups) and never advance;
+            //  - 'confirmed' online orders are UNPAID (payment hold/abandoned) —
+            //    awaiting payment, not fulfilment;
+            //  - handed_over / out_for_delivery / delivered are already done or
+            //    in flight, not waiting on staff to dispatch.
             db.execute<{ cnt: number }>(sql`
               SELECT COUNT(*)::int AS cnt FROM sale_order
-              WHERE channel IN ('online','phone','whatsapp')
+              WHERE channel = 'online'
                 AND is_preorder = false
-                AND status IN ('confirmed','paid','handed_over','out_for_delivery')`),
+                AND status = 'paid'`),
             db.execute<{ cnt: number }>(sql`
               SELECT COUNT(*)::int AS cnt FROM sale_order
               WHERE is_preorder = true
