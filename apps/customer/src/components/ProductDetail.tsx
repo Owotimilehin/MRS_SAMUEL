@@ -10,7 +10,7 @@ function StockLabel({ available, preorderOnly }: { available: number | undefined
   if (preorderOnly || (available ?? 0) <= 0) {
     return (
       <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-[color:var(--brand-orange)]">
-        Made to order
+        Made to order — we can prepare more for you
       </span>
     );
   }
