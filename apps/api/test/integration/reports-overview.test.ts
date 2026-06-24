@@ -1,18 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, loginAs, seedOnlineOrder } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import type { DbClient } from "@ms/db";
 
 describe("GET /v1/reports/overview", () => {
   let container: StartedPostgreSqlContainer;
   let baseUrl: string;
   let cookies: string;
   let server: ReturnType<typeof serve>;
+  let db: DbClient;
 
   beforeAll(async () => {
     const tdb = await setupTestDb();
     container = tdb.container;
+    db = tdb.db;
     await seedOwner(tdb.db);
     const { buildApp } = await import("../../src/test-app.js");
     server = serve({ fetch: buildApp().fetch, port: 0 });
@@ -100,5 +103,18 @@ describe("GET /v1/reports/overview", () => {
   it("returns 401 without auth cookie", async () => {
     const res = await fetch(`${baseUrl}/v1/reports/overview`);
     expect(res.status).toBe(401);
+  });
+
+  // TDD: online_pending must count only paid non-preorder online orders,
+  // NOT unpaid confirmed ones (those are abandoned / incomplete checkouts).
+  it("counts paid undelivered online orders but not unpaid confirmed ones", async () => {
+    await seedOnlineOrder(db, { status: "confirmed" }); // abandoned, unpaid — must NOT count
+    await seedOnlineOrder(db, { status: "paid" });       // real awaiting — must count
+    const res = await fetch(`${baseUrl}/v1/reports/overview`, {
+      headers: { cookie: cookies },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { fulfilment: { online_pending: number } } };
+    expect(body.data.fulfilment.online_pending).toBe(1);
   });
 });

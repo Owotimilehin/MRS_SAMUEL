@@ -5,7 +5,7 @@ import postgres from "postgres";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
-import { createDbClient, adminUser, assertNonProdDb, branch, product, productVariant, productPrice, stockLedger } from "@ms/db";
+import { createDbClient, adminUser, assertNonProdDb, branch, product, productVariant, productPrice, stockLedger, saleOrder } from "@ms/db";
 import { hashPassword } from "../../src/auth/argon.js";
 import type { AdminRole, Capability } from "@ms/shared";
 import type { Hono } from "hono";
@@ -180,4 +180,68 @@ export async function seedUser(
     .returning();
   if (!row) throw new Error("failed to seed user");
   return row;
+}
+
+/**
+ * Return a cookie header string for the seeded owner by calling /auth/login on
+ * the provided Hono app directly (no extra server needed).
+ * The owner must already be seeded (via seedOwner or makeTestApp).
+ */
+export async function authOwner(
+  app: Hono,
+): Promise<Record<string, string>> {
+  const res = await app.request("/v1/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "owner@example.com", password: "ownerpassword123" }),
+  });
+  if (!res.ok) throw new Error(`authOwner: login failed ${res.status}`);
+  const setCookie = res.headers.get("set-cookie") ?? "";
+  return { cookie: setCookie };
+}
+
+/**
+ * Insert a minimal sale_order row directly into the DB for report-count tests.
+ * Creates a dummy branch on demand; uses channel='online', is_preorder=false by default.
+ */
+export async function seedOnlineOrder(
+  db: ReturnType<typeof createDbClient>,
+  opts: { status: "confirmed" | "paid" | "handed_over" | "out_for_delivery" | "cancelled" | "failed" },
+): Promise<{ id: string }> {
+  const { v4: uuid } = await import("uuid");
+
+  // Ensure a branch exists (reuse if present).
+  const branches = await db.select().from(branch).limit(1);
+  let branchId: string;
+  if (branches[0]) {
+    branchId = branches[0].id;
+  } else {
+    const [br] = await db
+      .insert(branch)
+      .values({ name: "Seed Branch", code: `SB-${Date.now()}` })
+      .returning();
+    if (!br) throw new Error("seedOnlineOrder: branch insert failed");
+    branchId = br.id;
+  }
+
+  const [row] = await db
+    .insert(saleOrder)
+    .values({
+      id: uuid(),
+      orderNumber: `TEST-${uuid().slice(0, 8).toUpperCase()}`,
+      branchId,
+      channel: "online",
+      status: opts.status,
+      subtotalNgn: 2500,
+      deliveryFeeNgn: 0,
+      totalNgn: 2500,
+      paymentMethod: "transfer",
+      paymentStatus: opts.status === "paid" ? "paid" : "pending",
+      createdAtLocal: new Date(),
+      idempotencyKey: uuid(),
+      isPreorder: false,
+    })
+    .returning();
+  if (!row) throw new Error("seedOnlineOrder: insert failed");
+  return { id: row.id };
 }

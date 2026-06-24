@@ -29,7 +29,7 @@ const ConfirmSale = z.object({
   // Optional client-supplied UUID. The branch PWA generates this offline so the
   // local reference and the eventual server row stay linked across sync retries.
   id: z.string().uuid().optional(),
-  channel: z.enum(["walkup", "online", "phone", "whatsapp", "chowdeck_pickup"]),
+  channel: z.enum(["walkup", "online", "phone", "whatsapp"]),
   items: z
     .array(
       z
@@ -265,7 +265,7 @@ export function saleRoutes(db: DbClient) {
         // rule (see public-orders.ts) and is intentionally ignored here so an
         // in-stock 330ml sells instantly at the counter.
         const immediateHandover =
-          body.channel === "walkup" || body.channel === "chowdeck_pickup";
+          body.channel === "walkup";
         if (available < it.quantity) {
           // An immediate-handover channel (walk-up / chowdeck pickup) can't give
           // away absent stock unless the cashier deliberately took it as a
@@ -437,9 +437,13 @@ export function saleRoutes(db: DbClient) {
         collectedByUserId: auth.userId,
       });
 
+      // Counter channels (walk-up, whatsapp) hand over goods on the spot —
+      // there is no separate hand-over step. Advance straight to terminal.
+      const counterChannels = new Set(["walkup", "whatsapp"]);
+      const finalStatus = counterChannels.has(o.channel) ? ("handed_over" as const) : ("paid" as const);
       const [u] = await tx
         .update(saleOrder)
-        .set({ status: "paid", paymentStatus: "paid", updatedAt: new Date() })
+        .set({ status: finalStatus, paymentStatus: "paid", updatedAt: new Date() })
         .where(eq(saleOrder.id, id))
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);

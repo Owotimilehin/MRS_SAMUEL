@@ -346,7 +346,7 @@ export function reportRoutes(db: DbClient) {
               SELECT COUNT(*)::int AS cnt FROM sale_order
               WHERE channel IN ('online','phone','whatsapp')
                 AND is_preorder = false
-                AND status IN ('confirmed','paid','handed_over','out_for_delivery')`),
+                AND status IN ('paid','out_for_delivery')`),
             db.execute<{ cnt: number }>(sql`
               SELECT COUNT(*)::int AS cnt FROM sale_order
               WHERE is_preorder = true
