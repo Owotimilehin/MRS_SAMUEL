@@ -9,7 +9,7 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
  * Customer-site happy path:
  *   1. Public menu returns seeded products + a zone for our branch
  *   2. Anonymous customer creates an order (zone valid, stock available)
- *   3. Payaza callback (verify mock-confirms in test mode) marks paid
+ *   3. Payaza callback → webhook re-verifies against Payaza (stubbed) → paid
  *   4. Branch ledger decrements; tracking endpoint shows paid status
  */
 describe("Phase 3 customer-site online order flow", () => {
@@ -26,6 +26,12 @@ describe("Phase 3 customer-site online order flow", () => {
     container = tdb.container;
     db = tdb.db;
     await seedOwner(tdb.db);
+    // A PKTEST key so checkout-config builds in "Test" mode and the webhook's
+    // verify takes the real server-to-server path (stubbed per-test). There is
+    // no mock-confirm fallback anymore — without a key, order creation throws.
+    // Set on process.env directly (not vi.stubEnv) so it survives the
+    // afterEach unstubAllEnvs and stays in force for the whole suite.
+    process.env.PAYAZA_PUBLIC_KEY = "PZ78-PKTEST-itest";
     const { buildApp } = await import("../../src/test-app.js");
     server = serve({ fetch: buildApp().fetch, port: 0 });
     await new Promise<void>((resolve) => server.once("listening", () => resolve()));
@@ -133,6 +139,7 @@ describe("Phase 3 customer-site online order flow", () => {
   }, 90_000);
 
   afterAll(async () => {
+    delete process.env.PAYAZA_PUBLIC_KEY;
     server.close();
     await container.stop();
   });
@@ -187,15 +194,63 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(orderBody.data.is_preorder).toBe(false);
     expect(orderBody.data.payment.provider).toBe("payaza");
     expect(orderBody.data.payment.payaza.reference).toBe(orderBody.data.order_number);
-    expect(orderBody.data.payment.payaza.connectionMode).toBe("Mock"); // no keys in test
+    expect(orderBody.data.payment.payaza.connectionMode).toBe("Test"); // PKTEST key in test env
 
-    // Simulate the Payaza callback landing (mock verify confirms in dev)
+    // The callback is only a wake-up; the webhook re-verifies the txn against
+    // Payaza server-to-server. Stub THAT single query to report a completed
+    // payment (delegating every other URL — including this test's own calls to
+    // baseUrl — to the real fetch), so the order is confirmed via the real
+    // verify+reconcile path, never a mock shim.
+    const realFetch = globalThis.fetch;
+    const merchantRef = orderBody.data.order_number;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).includes("transaction-query")) {
+          // Payaza's verify endpoint searches by OUR merchant reference (the
+          // order number). A query by Payaza's own internal id answers "not
+          // found" — exactly like the live API. This is what catches the
+          // wrong-reference bug: the webhook must verify by the merchant ref.
+          const byMerchantRef = String(url).includes(
+            `merchant_reference=${encodeURIComponent(merchantRef)}`,
+          );
+          if (byMerchantRef) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  success: true,
+                  data: {
+                    transaction_status: "Completed",
+                    amount_received: 2500 * 3,
+                    transaction_reference: "PZ-INTERNAL-REF",
+                    merchant_transaction_reference: merchantRef,
+                  },
+                }),
+                { status: 200 },
+              ),
+            );
+          }
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ success: false, message: "Transaction not found", data: null }),
+              { status: 400 },
+            ),
+          );
+        }
+        return realFetch(url as Parameters<typeof realFetch>[0], init);
+      }),
+    );
+
+    // Simulate the REAL Payaza callback shape: `transaction_reference` is
+    // Payaza's own internal id, `merchant_transaction_reference` is our order
+    // number. The webhook must verify by the merchant reference, not Payaza's id.
     const webhook = await fetch(`${baseUrl}/v1/webhooks/payaza`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         data: {
-          transaction_reference: orderBody.data.order_number,
+          transaction_reference: "PZ-INTERNAL-REF",
+          merchant_transaction_reference: orderBody.data.order_number,
           status: "SUCCESSFUL",
         },
       }),
@@ -221,6 +276,88 @@ describe("Phase 3 customer-site online order flow", () => {
       data: Array<{ product_id: string; variant_id: string | null; balance: number }>;
     };
     expect(stockBalance(stockBody.data, productId)).toBe(17); // 20 received - 3 sold
+  });
+
+  it("webhook ALONE marks the order paid, verifying by the merchant reference not Payaza's internal id", async () => {
+    // Regression for the prod bug where the webhook read Payaza's own
+    // `transaction_reference` and verified by it — Payaza's verify endpoint
+    // searches by the MERCHANT reference, so it answered "not found" and the
+    // webhook never confirmed. We assert the DB state straight after the webhook
+    // (no tracking call, which would re-verify and mask the bug).
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Test zone",
+        delivery_fee_ngn: 1500,
+        customer: { name: "Bola Webhook", phone: "+2348025550000", address: "1 Test Rd" },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const { data: order } = (await orderRes.json()) as { data: { order_number: string } };
+    const merchantRef = order.order_number;
+
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).includes("transaction-query")) {
+          const byMerchantRef = String(url).includes(
+            `merchant_reference=${encodeURIComponent(merchantRef)}`,
+          );
+          if (byMerchantRef) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  success: true,
+                  data: {
+                    transaction_status: "Completed",
+                    amount_received: 2500,
+                    transaction_reference: "PZ-INTERNAL-REF",
+                    merchant_transaction_reference: merchantRef,
+                  },
+                }),
+                { status: 200 },
+              ),
+            );
+          }
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ success: false, message: "Transaction not found", data: null }),
+              { status: 400 },
+            ),
+          );
+        }
+        return realFetch(url as Parameters<typeof realFetch>[0], init);
+      }),
+    );
+
+    // Real Payaza callback shape: `transaction_reference` is Payaza's internal id.
+    const webhook = await fetch(`${baseUrl}/v1/webhooks/payaza`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: {
+          transaction_reference: "PZ-INTERNAL-REF",
+          merchant_transaction_reference: merchantRef,
+          status: "SUCCESSFUL",
+        },
+      }),
+    });
+    expect(webhook.status).toBe(200);
+
+    // Assert straight from the DB — the webhook itself must have marked it paid.
+    const { createDbClient, saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const db = createDbClient(process.env.DATABASE_URL!);
+    const [row] = await db
+      .select({ status: saleOrder.status, paymentStatus: saleOrder.paymentStatus })
+      .from(saleOrder)
+      .where(eq(saleOrder.orderNumber, merchantRef));
+    expect(row.status).toBe("paid");
+    expect(row.paymentStatus).toBe("paid");
   });
 
   it("flags an out-of-stock order as made-to-order (is_preorder) so checkout can reassure the customer", async () => {
@@ -424,12 +561,10 @@ describe("Phase 3 customer-site online order flow", () => {
   });
 
   it("tracking returns items, is_preorder, reservation_expires_at and resume_payment while unpaid", async () => {
-    // Without a public key the test container's Payaza shim always reports
-    // "Completed", which would make the route's on-view re-verify (Task 5)
-    // immediately pay this order on the GET below. Stub a real public key +
-    // intercept only the Payaza transaction-query call (delegating every
-    // other URL, e.g. this test's own calls to baseUrl, to the real fetch) so
-    // this test stays isolated to the "still unpaid" tracking fields.
+    // The route's on-view re-verify (Task 5) would query Payaza on the GET
+    // below. Stub that query to report "not found" (delegating every other URL,
+    // e.g. this test's own calls to baseUrl, to the real fetch) so the order
+    // stays unpaid and this test stays isolated to the tracking fields.
     const realFetch = globalThis.fetch;
     vi.stubEnv("PAYAZA_PUBLIC_KEY", "pub_test_unpaid");
     vi.stubGlobal(
@@ -488,10 +623,9 @@ describe("Phase 3 customer-site online order flow", () => {
 
   it("tracking re-verifies an unpaid order against Payaza on view and flips it to paid", async () => {
     // No webhook is fired here — the order is left `confirmed` with a live
-    // reservation. The test container runs with no PAYAZA_PUBLIC_KEY, so
-    // verifyPayazaTransaction's dev shim reports "Completed" for any
-    // reference; the tracking endpoint's on-view re-verify should pick that
-    // up and reconcile the order to paid, same as the webhook would.
+    // reservation. We stub the Payaza transaction-query to report "Completed"
+    // so the tracking endpoint's on-view re-verify reconciles the order to
+    // paid, same as the webhook would — exercising the real verify path.
     const phone = "+2348025550013";
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
@@ -519,6 +653,27 @@ describe("Phase 3 customer-site online order flow", () => {
       .from(saleOrder)
       .where(eq(saleOrder.orderNumber, orderBody.data.order_number));
     expect(before!.status).toBe("confirmed"); // unpaid, no webhook fired yet
+
+    // Stub the Payaza query the on-view re-verify will make; delegate the
+    // tracking request itself (to baseUrl) to the real fetch.
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).includes("transaction-query")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                success: true,
+                data: { transaction_status: "Completed", transaction_reference: "PZ-ONVIEW" },
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+        return realFetch(url as Parameters<typeof realFetch>[0], init);
+      }),
+    );
 
     const track = await fetch(
       `${baseUrl}/v1/public/orders/${orderBody.data.order_number}?phone=${encodeURIComponent(phone)}`,
@@ -570,6 +725,27 @@ describe("Phase 3 customer-site online order flow", () => {
   async function placeAndPay(extra: Record<string, unknown>, phone: string) {
     const { saleOrder } = await import("@ms/db");
     const { eq } = await import("drizzle-orm");
+    // The webhook below re-verifies against Payaza; stub that single query to
+    // report a completed payment (delegating all other URLs to real fetch) so
+    // the order reconciles to paid via the real path. afterEach unstubs.
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).includes("transaction-query")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                success: true,
+                data: { transaction_status: "Completed", transaction_reference: `PZ-${uuid()}` },
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+        return realFetch(url as Parameters<typeof realFetch>[0], init);
+      }),
+    );
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": uuid() },

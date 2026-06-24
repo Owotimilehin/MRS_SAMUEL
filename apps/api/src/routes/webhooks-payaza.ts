@@ -40,13 +40,37 @@ export function payazaWebhookRoutes(db: DbClient) {
     }
     // Payaza nests the transaction under a couple of shapes depending on the
     // event envelope; accept the common ones defensively.
+    //
+    // CRITICAL: Payaza's callback carries TWO references — its own internal
+    // `transaction_reference` (e.g. "P-C-20260624-…") and OUR
+    // `merchant_transaction_reference` (our order number, e.g. "SO-2026-00380").
+    // verifyPayazaTransaction queries Payaza's transaction-query endpoint by the
+    // MERCHANT reference, so we must extract that one. Reading Payaza's internal
+    // id instead makes the verify return "Transaction not found" and the webhook
+    // silently no-ops on every real payment (relying on the fallback paths). We
+    // therefore prefer the merchant reference and only fall back to Payaza's
+    // internal id for legacy/unknown envelope shapes.
     const p = parsed as {
-      data?: { transaction_reference?: string; reference?: string };
+      data?: {
+        merchant_transaction_reference?: string;
+        merchant_reference?: string;
+        transaction_reference?: string;
+        reference?: string;
+      };
+      merchant_transaction_reference?: string;
+      merchant_reference?: string;
       transaction_reference?: string;
       reference?: string;
     };
     const reference =
-      p.data?.transaction_reference ?? p.data?.reference ?? p.transaction_reference ?? p.reference;
+      p.data?.merchant_transaction_reference ??
+      p.data?.merchant_reference ??
+      p.merchant_transaction_reference ??
+      p.merchant_reference ??
+      p.data?.transaction_reference ??
+      p.data?.reference ??
+      p.transaction_reference ??
+      p.reference;
     if (!reference || typeof reference !== "string") {
       logger.warn({ requestId }, "payaza webhook: no transaction reference in body — ignored");
       return c.json({ ok: true });

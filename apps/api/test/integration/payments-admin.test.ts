@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
@@ -12,9 +12,11 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
  *   POST /v1/online-orders/:id/cancel-refund
  *   POST /v1/online-orders/:id/mark-refunded
  *
- * The test container has no PAYAZA_PUBLIC_KEY, so verifyPayazaTransaction's
- * dev shim returns status="Completed", amountNgn=null for any reference — the
- * null amount bypasses the amount-equality guard, letting reconcile proceed.
+ * There is no mock-confirm shim: a PKTEST key is set so checkout builds and the
+ * webhook/recheck take the real verify path, and global fetch is stubbed to
+ * report a completed Payaza transaction (amount omitted → amountNgn=null, which
+ * bypasses the amount-equality guard) for the transaction-query URL only — every
+ * other call (this suite's own requests to baseUrl) hits the real fetch.
  */
 describe("admin payment reconciliation endpoints", () => {
   let container: StartedPostgreSqlContainer;
@@ -32,6 +34,10 @@ describe("admin payment reconciliation endpoints", () => {
     container = tdb.container;
     db = tdb.db;
     await seedOwner(tdb.db);
+
+    // PKTEST key so checkout builds in Test mode and verify takes the real path
+    // (stubbed below). Direct process.env assignment, cleaned up in afterAll.
+    process.env.PAYAZA_PUBLIC_KEY = "PZ78-PKTEST-itest";
 
     // Seed a branch_staff user (no orders.accept_payment cap)
     await seedUser(tdb.db, {
@@ -170,9 +176,33 @@ describe("admin payment reconciliation endpoints", () => {
         items: [{ item_id: detailBody.data.items[0]!.id, quantity_received: 50 }],
       }),
     });
+
+    // All setup fetches above ran against the real fetch. Now intercept ONLY
+    // the Payaza transaction-query so recheck/webhook see a completed payment;
+    // everything else (this suite's calls to baseUrl) delegates to real fetch.
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).includes("transaction-query")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                success: true,
+                data: { transaction_status: "Completed", transaction_reference: `PZ-${uuid()}` },
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+        return realFetch(url as Parameters<typeof realFetch>[0], init);
+      }),
+    );
   }, 120_000);
 
   afterAll(async () => {
+    vi.unstubAllGlobals();
+    delete process.env.PAYAZA_PUBLIC_KEY;
     server.close();
     await container.stop();
   });
@@ -238,7 +268,7 @@ describe("admin payment reconciliation endpoints", () => {
     const [before] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
     expect(before!.status).toBe("confirmed");
 
-    // Dev shim returns Completed for any ref — recheck should pay it
+    // Stubbed Payaza query reports Completed — recheck re-verifies and pays it.
     const res = await fetch(`${baseUrl}/v1/online-orders/${id}/recheck`, {
       method: "POST",
       headers: { cookie: ownerCookies, "idempotency-key": uuid() },

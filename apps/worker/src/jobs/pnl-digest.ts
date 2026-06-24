@@ -15,7 +15,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   other_with_note: "Other",
 };
 
-const ADMIN_URL = process.env.PUBLIC_ADMIN_URL ?? "https://admin.mrssamueljuice.com";
+const ADMIN_URL = process.env.PUBLIC_ADMIN_URL ?? "https://admin.mrssamuel.com";
 
 /** Telegram digest fires on day 1 once the Lagos hour is >= 9. */
 export function shouldFirePnlDigestNow(

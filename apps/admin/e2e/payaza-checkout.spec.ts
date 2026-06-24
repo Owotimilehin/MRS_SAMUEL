@@ -4,16 +4,22 @@ import { test, expect } from "@playwright/test";
 /**
  * Level-2 local mock end-to-end for the Payaza migration.
  *
- * Drives the REAL customer checkout UI (catches render crashes), then
- * simulates the server-to-server callback that Payaza would send (there's no
- * real Payaza in mock mode), and verifies the order flips to paid + stock drops.
+ * OBSOLETE / SKIPPED: this drove checkout in "Mock" mode and then POSTed a
+ * synthetic callback that the webhook accepted without contacting Payaza. That
+ * mock-confirm path has been removed — an order is now only marked paid when
+ * Payaza itself verifies the transaction as "Completed" (see payaza.ts). A
+ * synthetic callback for an order that was never really paid would (correctly)
+ * be re-verified and rejected, so this flow can no longer pass locally.
  *
- * Prereqs: api :3001, customer :3002, DB seeded, PAYAZA_SECRET_KEY empty (mock mode).
+ * The real end-to-end is now a genuine test-mode payment: expose the api via a
+ * tunnel (ngrok/cloudflared), register the Collection webhook in the Payaza
+ * dashboard, pay with a PKTEST key, and confirm the order flips to paid. Kept
+ * here (skipped) as a record of the original UI-drive assertions.
  */
 const CUSTOMER = "http://localhost:3002";
 const API = "http://localhost:3001";
 
-test("Payaza mock checkout: order → callback → paid + stock decremented", async ({ page }) => {
+test.skip("Payaza mock checkout: order → callback → paid + stock decremented", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => {

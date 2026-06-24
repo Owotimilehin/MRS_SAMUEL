@@ -16,7 +16,7 @@ import { getWorkerDeliveryProvider } from "./delivery-provider.js";
 import pino from "pino";
 
 const logger = pino({ base: { service: "ms-worker", part: "outbox" } });
-const ADMIN_URL = process.env.PUBLIC_ADMIN_URL ?? "https://admin.mrssamueljuice.com";
+const ADMIN_URL = process.env.PUBLIC_ADMIN_URL ?? "https://admin.mrssamuel.com";
 
 /** Human-friendly delivery time in Lagos, e.g. "Tue 3 Jun, 2:00 PM". */
 function lagosTime(iso: unknown): string {
@@ -588,7 +588,7 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
           const name = typeof p["customer_name"] === "string" ? p["customer_name"] : "there";
           const total = typeof p["total_ngn"] === "number" ? p["total_ngn"] : 0;
           const orderNumber = p["order_number"];
-          const trackUrl = `${(process.env.PUBLIC_ADMIN_URL ?? "https://www.mrssamueljuice.com").replace("admin.", "www.")}/order/${orderNumber}`;
+          const trackUrl = `${(process.env.PUBLIC_ADMIN_URL ?? "https://www.mrssamuel.com").replace("admin.", "www.")}/order/${orderNumber}`;
           await sendEmail({
             to: email,
             subject: `Your Mrs. Samuel order ${orderNumber} is waiting on payment`,
@@ -610,7 +610,7 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
         if (customerId) {
           const [cust] = await db.select().from(customer).where(eq(customer.id, customerId));
           if (cust?.email) {
-            const trackUrl = `${(process.env.PUBLIC_ADMIN_URL ?? "https://www.mrssamueljuice.com").replace("admin.", "www.")}/order/${p["order_number"]}`;
+            const trackUrl = `${(process.env.PUBLIC_ADMIN_URL ?? "https://www.mrssamuel.com").replace("admin.", "www.")}/order/${p["order_number"]}`;
             const scheduled = p["scheduled_delivery_at"];
             const state = p["delivery_state"];
             const outsideLagos = isOutsideLagos(state);

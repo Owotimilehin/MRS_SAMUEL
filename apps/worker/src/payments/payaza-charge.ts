@@ -20,16 +20,16 @@ export interface ChargeResult {
  * Charge a saved Payaza card token for a recurring subscription cycle (no
  * customer present).
  *
- * Dev/test shim: no keys OR no token → mock success so the whole subscription
- * billing loop is exercisable end-to-end without a live merchant-initiated
- * charge.
+ * There is NO mock-success fallback: a charge is only ever reported successful
+ * when Payaza actually confirms it. A missing key or missing card token returns
+ * an HONEST failure (→ the billing sweep marks the subscription past_due and
+ * pings dunning), never a fabricated success.
  *
  * ⚠️ UNCONFIRMED LIVE ENDPOINT: Payaza's official integration (WooCommerce
  * plugin) only demonstrates the frontend SDK + the GET transaction-query — it
  * does NOT expose a server-side charge-with-token API. The path/body below is a
- * best guess and MUST be confirmed with Payaza (dashboard/support) before going
- * live. Until then this stays effectively mock-only and the subscription
- * subsystem is NOT production-ready for real recurring debits.
+ * best guess and MUST be confirmed with Payaza (dashboard/support) before
+ * recurring debits can work; until then real charges will fail, not fake-pass.
  */
 export async function chargePayazaToken(opts: {
   token: string | null;
@@ -37,9 +37,20 @@ export async function chargePayazaToken(opts: {
   reference: string;
   email: string;
 }): Promise<ChargeResult> {
-  if (!process.env.PAYAZA_PUBLIC_KEY || !opts.token) {
-    logger.warn({ ref: opts.reference }, "Payaza keys/token unset — mock charge success");
-    return { success: true, processorReference: `mock-charge-${opts.reference}`, failureReason: null };
+  if (!process.env.PAYAZA_PUBLIC_KEY) {
+    logger.warn({ ref: opts.reference }, "Payaza not configured — charge cannot be performed");
+    return {
+      success: false,
+      processorReference: null,
+      failureReason: "Payaza is not configured (PAYAZA_PUBLIC_KEY unset)",
+    };
+  }
+  if (!opts.token) {
+    return {
+      success: false,
+      processorReference: null,
+      failureReason: "no saved card authorization on file for this subscription",
+    };
   }
 
   try {

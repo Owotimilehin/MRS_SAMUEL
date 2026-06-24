@@ -28,6 +28,12 @@ export async function setupTestDb(): Promise<{
   process.env.PUBLIC_ADMIN_URL ??= "http://localhost";
   process.env.REDIS_URL ??= "redis://localhost:6379";
   process.env.RATE_LIMIT_DISABLED = "1";
+  // A PKTEST key so online-order/subscription checkout config builds in "Test"
+  // mode. There is no mock-confirm fallback anymore — without a key,
+  // buildPayazaCheckoutConfig throws — so every integration test that creates an
+  // online order needs one. Confirmation itself still requires a real Payaza
+  // "Completed" (tests that assert a flip-to-paid stub the transaction-query).
+  process.env.PAYAZA_PUBLIC_KEY ??= "PZ78-PKTEST-itest";
   return { container, url, db: createDbClient(url) };
 }
 

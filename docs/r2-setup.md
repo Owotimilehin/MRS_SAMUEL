@@ -10,7 +10,7 @@ The bookkeeping receipt uploads use a private R2 bucket with presigned PUT/GET.
 ```json
 [
   {
-    "AllowedOrigins": ["https://admin.mrssamueljuice.com", "http://localhost:5173"],
+    "AllowedOrigins": ["https://admin.mrssamuel.com", "http://localhost:5173"],
     "AllowedMethods": ["PUT", "GET"],
     "AllowedHeaders": ["content-type"],
     "MaxAgeSeconds": 3600

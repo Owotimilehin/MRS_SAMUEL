@@ -110,7 +110,7 @@ export interface ApiQuote {
 /** Init config for the Payaza checkout SDK, built server-side per order. */
 export interface PayazaCheckoutConfig {
   reference: string;
-  connectionMode: "Mock" | "Test" | "Live";
+  connectionMode: "Test" | "Live";
   merchantKey: string;
   amount: number; // kobo (naira × 100)
   currency: "NGN";

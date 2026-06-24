@@ -55,16 +55,11 @@ function loadSdk(): Promise<PayazaGlobal> {
  * Open the Payaza checkout popup for an order. Resolves once the popup is shown
  * (the actual payment outcome is confirmed server-side via webhook). `onPaid`
  * fires on the SDK success callback so the caller can navigate to tracking.
- * In Mock mode (no keys) there is no SDK to load, so `onPaid` fires immediately.
  */
 export async function launchPayazaCheckout(
   config: PayazaCheckoutConfig,
   handlers: { onPaid: () => void; onClose?: () => void },
 ): Promise<void> {
-  if (config.connectionMode === "Mock") {
-    handlers.onPaid();
-    return;
-  }
   const Payaza = await loadSdk();
   const instance = Payaza.setup({
     merchant_key: config.merchantKey,

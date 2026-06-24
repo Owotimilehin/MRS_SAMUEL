@@ -64,6 +64,7 @@ describe("payaza reconcile sweep", () => {
     channel: "online" | "walkup";
     ageSeconds: number;
     reservationExpiresInSeconds: number | null; // null = no reservation row
+    isPreorder?: boolean;
   }): Promise<string> {
     const createdAt = new Date(Date.now() - opts.ageSeconds * 1000);
     const [o] = await db
@@ -77,6 +78,7 @@ describe("payaza reconcile sweep", () => {
         totalNgn: 1000,
         paymentMethod: "card",
         paymentStatus: "pending",
+        isPreorder: opts.isPreorder ?? false,
         createdAtLocal: createdAt,
         createdAt,
         idempotencyKey: randomUUID(),
@@ -96,8 +98,8 @@ describe("payaza reconcile sweep", () => {
     return o.id;
   }
 
-  it("re-fires the webhook only for stuck-confirmed online orders with a live reservation", async () => {
-    // Eligible: online, confirmed, created 5min ago, reservation expires in 10min.
+  it("re-fires the webhook for every stuck-confirmed online order within the lookback window — including preorders and expired-reservation orders", async () => {
+    // Eligible: online, confirmed, created 5min ago, reservation still live.
     await makeOrder({
       orderNumber: "SO-1",
       status: "confirmed",
@@ -105,7 +107,8 @@ describe("payaza reconcile sweep", () => {
       ageSeconds: 300,
       reservationExpiresInSeconds: 600,
     });
-    // Ineligible: reservation already expired.
+    // Eligible (the expired-reservation gap): a real payment whose stock hold
+    // already lapsed must still be recovered — the money was taken.
     await makeOrder({
       orderNumber: "SO-2",
       status: "confirmed",
@@ -113,7 +116,7 @@ describe("payaza reconcile sweep", () => {
       ageSeconds: 300,
       reservationExpiresInSeconds: -600,
     });
-    // Ineligible: too recent (< 90s old).
+    // Ineligible: too recent (< 90s old) — give the webhook a chance first.
     await makeOrder({
       orderNumber: "SO-3",
       status: "confirmed",
@@ -137,24 +140,37 @@ describe("payaza reconcile sweep", () => {
       ageSeconds: 300,
       reservationExpiresInSeconds: 600,
     });
-    // Ineligible: confirmed+online+old enough but no reservation at all.
+    // Eligible (the preorder gap): preorders never hold a reservation, so the
+    // old EXISTS gate excluded them entirely — they had NO auto-confirm path.
     await makeOrder({
       orderNumber: "SO-6",
       status: "confirmed",
       channel: "online",
       ageSeconds: 300,
       reservationExpiresInSeconds: null,
+      isPreorder: true,
+    });
+    // Ineligible: beyond the lookback window (older than 48h) — presumed
+    // abandoned; the long tail falls to admin recheck, not an endless re-verify.
+    await makeOrder({
+      orderNumber: "SO-OLD",
+      status: "confirmed",
+      channel: "online",
+      ageSeconds: 49 * 3600,
+      reservationExpiresInSeconds: null,
     });
 
     const { sweepStuckPayazaOrders } = await import("../src/jobs/payaza-reconcile.js");
     const count = await sweepStuckPayazaOrders(db);
 
-    expect(count).toBe(1);
-    expect(fetch).toHaveBeenCalledTimes(1);
-    const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
-    expect(String(url)).toMatch(/\/v1\/webhooks\/payaza$/);
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.transaction_reference).toBe("SO-1");
+    expect(count).toBe(3);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    const refs = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((call) => {
+      const [url, init] = call;
+      expect(String(url)).toMatch(/\/v1\/webhooks\/payaza$/);
+      return JSON.parse((init as RequestInit).body as string).transaction_reference;
+    });
+    expect(refs.sort()).toEqual(["SO-1", "SO-2", "SO-6"]);
   });
 
   it("a failed POST is logged and does not abort the sweep (best-effort)", async () => {

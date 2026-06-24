@@ -54,13 +54,13 @@ In Cloudflare → **Zero Trust** → **Networks** → **Tunnels** → **Create a
 
    | Hostname | Service |
    |---|---|
-   | `www.mrssamueljuice.com` | `http://localhost:3002` |
-   | `admin.mrssamueljuice.com` | `http://localhost:3010` |
-   | `api.mrssamueljuice.com` | `http://localhost:3001` |
+   | `www.mrssamuel.com` | `http://localhost:3002` |
+   | `admin.mrssamuel.com` | `http://localhost:3010` |
+   | `api.mrssamuel.com` | `http://localhost:3001` |
 
-   Also add a root domain rule: `mrssamueljuice.com` → `http://localhost:3002`.
+   Also add a root domain rule: `mrssamuel.com` → `http://localhost:3002`.
 
-Cloudflare issues SSL certs automatically. Visit `https://www.mrssamueljuice.com`
+Cloudflare issues SSL certs automatically. Visit `https://www.mrssamuel.com`
 in 30 seconds.
 
 ## 4. Register webhooks

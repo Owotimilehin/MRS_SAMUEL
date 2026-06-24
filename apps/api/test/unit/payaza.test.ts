@@ -20,20 +20,20 @@ const baseConfig = {
 describe("buildPayazaCheckoutConfig", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("returns Mock mode with no public key (dev shim)", () => {
+  it("throws (no fake checkout) when the public key is missing", () => {
     vi.stubEnv("PAYAZA_PUBLIC_KEY", "");
+    expect(() => buildPayazaCheckoutConfig(baseConfig)).toThrow(/PAYAZA_PUBLIC_KEY/);
+  });
+
+  it("detects Test mode from a PKTEST public key", () => {
+    vi.stubEnv("PAYAZA_PUBLIC_KEY", "PZ78-PKTEST-ABC");
     const cfg = buildPayazaCheckoutConfig(baseConfig);
-    expect(cfg.connectionMode).toBe("Mock");
+    expect(cfg.connectionMode).toBe("Test");
     expect(cfg.amount).toBe(2500 * 100); // kobo
     expect(cfg.firstName).toBe("Ada");
     expect(cfg.lastName).toBe("Obi");
     expect(cfg.phone).toBe("+2348025551234");
     expect(cfg.reference).toBe("ORD-1");
-  });
-
-  it("detects Test mode from a PKTEST public key", () => {
-    vi.stubEnv("PAYAZA_PUBLIC_KEY", "PZ78-PKTEST-ABC");
-    expect(buildPayazaCheckoutConfig(baseConfig).connectionMode).toBe("Test");
   });
 
   it("detects Live mode from a PKLIVE public key", () => {
@@ -50,12 +50,9 @@ describe("verifyPayazaTransaction", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns a mock Completed status with no public key", async () => {
+  it("throws (refuses to confirm) when the public key is missing", async () => {
     vi.stubEnv("PAYAZA_PUBLIC_KEY", "");
-    const r = await verifyPayazaTransaction("ORD-1");
-    expect(isPayazaSuccess(r.status)).toBe(true);
-    expect(r.amountNgn).toBeNull();
-    expect(r.processorReference).toBe("mock-ORD-1");
+    await expect(verifyPayazaTransaction("ORD-1")).rejects.toThrow(/PAYAZA_PUBLIC_KEY/);
   });
 
   it("sends the base64 public-key auth header and queries by merchant_reference", async () => {

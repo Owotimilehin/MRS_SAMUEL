@@ -8,8 +8,10 @@
  */
 export interface PayazaCheckoutConfig {
   reference: string;
-  /** "Mock" locally (no public key) → frontend simulates success; "Test"/"Live" by key. */
-  connectionMode: "Mock" | "Test" | "Live";
+  /** Selected from the public key prefix: "Test" (PKTEST) or "Live" (PKLIVE).
+   *  There is no "Mock": without a key we cannot take — or confirm — a payment,
+   *  so config-building throws rather than producing a fake checkout. */
+  connectionMode: "Test" | "Live";
   merchantKey: string;
   amount: number;
   currency: "NGN";
@@ -48,9 +50,10 @@ function payazaReadAuthHeader(): string {
  * Build the config the customer page passes to the Payaza checkout SDK. Pure +
  * synchronous — there is no server call here (Payaza's checkout is client-side).
  *
- * Dev/test shim: when PAYAZA_PUBLIC_KEY is absent we return connectionMode
- * "Mock" so the frontend can simulate success and the webhook (also in mock
- * mode) auto-completes the order without real keys.
+ * Requires PAYAZA_PUBLIC_KEY: without it we cannot open a real Payaza checkout,
+ * and there is deliberately no mock fallback (a missing key must surface as a
+ * hard error, never a fake "paid" path). Order creation that reaches here
+ * without a key fails loudly instead of taking an unpayable order.
  */
 export function buildPayazaCheckoutConfig(opts: {
   amountNgn: number;
@@ -60,14 +63,13 @@ export function buildPayazaCheckoutConfig(opts: {
   customerPhone?: string;
 }): PayazaCheckoutConfig {
   const publicKey = process.env.PAYAZA_PUBLIC_KEY ?? "";
+  if (!publicKey) {
+    throw new Error("PAYAZA_PUBLIC_KEY is not configured — cannot build a Payaza checkout");
+  }
   const [firstName, ...rest] = (opts.customerName ?? "").trim().split(/\s+/);
   const lastName = rest.join(" ");
   // Live keys are prefixed PZ..-PKLIVE-, test keys PZ..-PKTEST-.
-  const mode: PayazaCheckoutConfig["connectionMode"] = !publicKey
-    ? "Mock"
-    : /PKLIVE/i.test(publicKey)
-      ? "Live"
-      : "Test";
+  const mode: PayazaCheckoutConfig["connectionMode"] = /PKLIVE/i.test(publicKey) ? "Live" : "Test";
   return {
     reference: opts.reference,
     connectionMode: mode,
@@ -83,25 +85,23 @@ export function buildPayazaCheckoutConfig(opts: {
 
 /**
  * Authoritatively confirm a payment by asking Payaza directly. The webhook uses
- * this rather than trusting the callback body — the signed callback is treated
- * as a wake-up only, and the money decision is gated on this signed
- * server-to-server status read.
+ * this rather than trusting the callback body — the callback is treated as a
+ * wake-up only, and the money decision is gated on this authed server-to-server
+ * status read. EVERY confirm path (webhook, cron sweep, on-view re-verify,
+ * admin recheck) runs through here, so an order can only be marked paid when
+ * Payaza itself reports the transaction "Completed".
  *
- * Dev/test shim: no creds → report SUCCESSFUL with an unknown amount so the
- * mock checkout flow completes (mirrors the create shim). The unknown amount
- * makes the webhook's amount-equality guard skip, exactly like the dev path.
+ * There is NO mock/dev shim: without PAYAZA_PUBLIC_KEY this throws. A missing
+ * key is a misconfiguration that must fail loudly (webhook → 500 so Payaza
+ * retries; sweep → logged failure), never silently fabricate a confirmation.
  */
 export async function verifyPayazaTransaction(
   reference: string,
 ): Promise<PayazaTransactionStatus> {
   if (!process.env.PAYAZA_PUBLIC_KEY) {
-    return {
-      status: "Completed",
-      amountNgn: null,
-      processorReference: `mock-${reference}`,
-      // Mock a reusable token so the subscription activation path is exercisable.
-      authorization: { token: `mock-token-${reference}`, reusable: true },
-    };
+    throw new Error(
+      "PAYAZA_PUBLIC_KEY is not configured — refusing to confirm a payment without verifying it against Payaza",
+    );
   }
   const url =
     `${BASE}/merchant-collection/transfer_notification_controller/merchant/transaction-query` +
