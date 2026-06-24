@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { sql, eq, and, asc, isNull } from "drizzle-orm";
 import { branch, bundle, subscriptionPlan, type DbClient } from "@ms/db";
+import { availableAtBranch } from "@ms/domain";
 import { BusinessError } from "../lib/errors.js";
 
 type CatalogVariantRow = {
@@ -55,6 +56,9 @@ interface CatalogProductOut {
   cluster_url: string | null;
   fruit_url: string | null;
   price_ngn: number;
+  /** Per-flavour available pool at the online-default branch. 0 when no
+   *  online-default branch exists or when there is no stock. */
+  available: number;
   variants: Array<{ id: string; size_ml: number; sku: string; price_ngn: number; preorder_only: boolean }>;
 }
 
@@ -113,7 +117,7 @@ export function publicCatalogRoutes(db: DbClient) {
     return byProduct;
   }
 
-  function toOut(p: ProductContentRow, variants: CatalogProductOut["variants"]): CatalogProductOut {
+  function toOut(p: ProductContentRow, variants: CatalogProductOut["variants"], available = 0): CatalogProductOut {
     return {
       id: p.id,
       name: p.name,
@@ -133,8 +137,19 @@ export function publicCatalogRoutes(db: DbClient) {
       cluster_url: p.cluster_url,
       fruit_url: p.fruit_url,
       price_ngn: variants[0]!.price_ngn, // smallest size (ORDER BY size_ml ASC)
+      available,
       variants,
     };
+  }
+
+  /** Resolve the single online-default branch id once per request. Returns null when none is set. */
+  async function onlineDefaultBranchId(): Promise<string | null> {
+    const [row] = await db
+      .select({ id: branch.id })
+      .from(branch)
+      .where(eq(branch.isOnlineDefault, true))
+      .limit(1);
+    return row?.id ?? null;
   }
 
   r.get("/products", async (c) => {
@@ -147,11 +162,17 @@ export function publicCatalogRoutes(db: DbClient) {
 
     const byProduct = await variantsByProduct(productRows.map((p) => p.id));
 
+    // Resolve the online-default branch once for the whole list.
+    const branchId = await onlineDefaultBranchId();
+
     const out: CatalogProductOut[] = [];
     for (const p of productRows) {
       const variants = byProduct.get(p.id) ?? [];
       if (variants.length === 0) continue; // a product with no priced variants is not sellable
-      out.push(toOut(p, variants));
+      const available = branchId
+        ? await availableAtBranch(db, { branchId, productId: p.id })
+        : 0;
+      out.push(toOut(p, variants, available));
     }
     return c.json({ data: out });
   });
@@ -171,7 +192,11 @@ export function publicCatalogRoutes(db: DbClient) {
     if (variants.length === 0) {
       throw new BusinessError("not_found", "product not available", 404);
     }
-    return c.json({ data: toOut(p, variants) });
+    const branchId = await onlineDefaultBranchId();
+    const available = branchId
+      ? await availableAtBranch(db, { branchId, productId: p.id })
+      : 0;
+    return c.json({ data: toOut(p, variants, available) });
   });
 
   r.get("/branches", async (c) => {

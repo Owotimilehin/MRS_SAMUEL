@@ -4,9 +4,13 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createDbClient, adminUser, assertNonProdDb } from "@ms/db";
+import { eq } from "drizzle-orm";
+import { createDbClient, adminUser, assertNonProdDb, branch, product, productVariant, productPrice, stockLedger } from "@ms/db";
 import { hashPassword } from "../../src/auth/argon.js";
 import type { AdminRole, Capability } from "@ms/shared";
+import type { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import type { AddressInfo } from "node:net";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, "../../../../packages/db/migrations");
@@ -78,6 +82,78 @@ export function stockBalance(
   return rows
     .filter((r) => r.product_id === productId)
     .reduce((sum, r) => sum + r.balance, 0);
+}
+
+/**
+ * Spin up a Hono app and return it alongside its db handle.
+ * The caller is responsible for calling server.close() + container.stop().
+ * Uses the already-running DATABASE_URL set by setupTestDb().
+ */
+export async function makeTestApp(): Promise<{
+  app: Hono;
+  db: ReturnType<typeof createDbClient>;
+  container: StartedPostgreSqlContainer;
+}> {
+  const tdb = await setupTestDb();
+  await seedOwner(tdb.db);
+  const { buildApp } = await import("../../src/test-app.js");
+  return { app: buildApp(), db: tdb.db, container: tdb.container };
+}
+
+/**
+ * Seed one active flavour (product) with a single 330ml variant priced at
+ * ₦2500. Returns ids needed to drive stock/availability helpers.
+ */
+export async function seedCatalog(
+  db: ReturnType<typeof createDbClient>,
+): Promise<{ productId: string; variantId: string; branchId: string }> {
+  const [prod] = await db
+    .insert(product)
+    .values({ name: "Test Juice", slug: `test-juice-${Date.now()}`, category: "regular" })
+    .returning();
+  if (!prod) throw new Error("seedCatalog: product insert failed");
+
+  const [variant] = await db
+    .insert(productVariant)
+    .values({ productId: prod.id, sizeMl: 330, sku: `TJ330-${Date.now()}` })
+    .returning();
+  if (!variant) throw new Error("seedCatalog: variant insert failed");
+
+  await db.insert(productPrice).values({ productId: prod.id, variantId: variant.id, priceNgn: 2500 });
+
+  const [br] = await db
+    .insert(branch)
+    .values({ name: "Test Branch", code: `TB-${Date.now()}` })
+    .returning();
+  if (!br) throw new Error("seedCatalog: branch insert failed");
+
+  return { productId: prod.id, variantId: variant.id, branchId: br.id };
+}
+
+/** Set a branch as the single online-default (clears all others first). */
+export async function setOnlineDefaultBranch(
+  db: ReturnType<typeof createDbClient>,
+  branchId: string,
+): Promise<void> {
+  // Clear all first (mirrors the app's own invariant enforcement).
+  await db.update(branch).set({ isOnlineDefault: false }).where(eq(branch.isOnlineDefault, true));
+  await db.update(branch).set({ isOnlineDefault: true }).where(eq(branch.id, branchId));
+}
+
+/** Insert a raw branch stock ledger row (opening_balance source). */
+export async function addBranchStock(
+  db: ReturnType<typeof createDbClient>,
+  opts: { branchId: string; productId: string; qty: number },
+): Promise<void> {
+  const { v4: uuid } = await import("uuid");
+  await db.insert(stockLedger).values({
+    locationType: "branch",
+    locationId: opts.branchId,
+    productId: opts.productId,
+    delta: opts.qty,
+    sourceType: "opening_balance",
+    sourceId: uuid(),
+  });
 }
 
 export async function seedUser(
