@@ -12,6 +12,7 @@ import { type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { CartProvider } from "../lib/cart";
 import { RouteError } from "../components/RouteError";
+import { OngoingOrders } from "../components/OngoingOrders";
 import {
   SITE_NAME,
   DEFAULT_DESCRIPTION,
@@ -106,6 +107,8 @@ function RootComponent() {
       <CartProvider>
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
+        {/* Site-wide recovery banner for orders placed from this browser. */}
+        <OngoingOrders />
       </CartProvider>
     </QueryClientProvider>
   );

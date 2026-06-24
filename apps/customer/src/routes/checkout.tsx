@@ -134,9 +134,14 @@ function Page() {
   // Shared by the normal path and the gracious-modal "Continue" path.
   async function proceedToPayment(order: ApiPlacedOrder) {
     const phone = form.phone.replace(/[\s-]/g, "");
-    // Stash phone so the tracking page can read the order back after Payaza.
+    // Stash phone + placedAt so the tracking page AND the site-wide ongoing-
+    // order banner can read the order back after Payaza (placedAt bounds the
+    // banner's 48h self-prune).
     try {
-      localStorage.setItem(`ms_track_${order.order_number}`, JSON.stringify({ phone }));
+      localStorage.setItem(
+        `ms_track_${order.order_number}`,
+        JSON.stringify({ phone, placedAt: new Date().toISOString() }),
+      );
     } catch {
       /* ignore storage failures */
     }
