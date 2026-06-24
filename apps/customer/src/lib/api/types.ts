@@ -39,6 +39,8 @@ export interface ApiProduct {
   cluster_url: string | null;
   fruit_url: string | null;
   price_ngn: number;
+  /** Per-flavour available pool at the online-default branch. 0 = out of stock. */
+  available?: number;
   variants: ApiVariant[];
 }
 

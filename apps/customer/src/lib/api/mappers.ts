@@ -29,6 +29,9 @@ export interface Product {
   prices: { "330ml": number; "650ml": number };
   variantIds: Partial<Record<Size, string>>;
   preorderBySize: Partial<Record<Size, boolean>>;
+  /** Per-flavour available pool at the online-default branch. Absence means API
+   *  did not return it (older bundle); treat as in-stock (no badge). */
+  available?: number;
   note?: string;
 }
 
@@ -65,6 +68,7 @@ export function toUiProduct(api: ApiProduct): Product {
     prices: { "330ml": prices["330ml"] ?? cheapest, "650ml": prices["650ml"] ?? cheapest },
     variantIds,
     preorderBySize,
+    available: api.available,
     ...(api.note ? { note: api.note } : {}),
   };
 }
