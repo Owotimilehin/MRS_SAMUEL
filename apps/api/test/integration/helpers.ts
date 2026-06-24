@@ -203,27 +203,38 @@ export async function authOwner(
 /**
  * Insert a minimal sale_order row directly into the DB for report-count tests.
  * Creates a dummy branch on demand; uses channel='online', is_preorder=false by default.
+ * Pass deliveryState / deliveryFeeNgn to mark the order as a delivery order.
  */
 export async function seedOnlineOrder(
   db: ReturnType<typeof createDbClient>,
-  opts: { status: "confirmed" | "paid" | "handed_over" | "out_for_delivery" | "cancelled" | "failed" },
-): Promise<{ id: string }> {
+  opts: {
+    status: "confirmed" | "paid" | "handed_over" | "out_for_delivery" | "delivered" | "cancelled" | "failed";
+    deliveryState?: string;
+    deliveryFeeNgn?: number;
+    branchId?: string;
+  },
+): Promise<{ id: string; saleId: string; branchId: string }> {
   const { v4: uuid } = await import("uuid");
 
-  // Ensure a branch exists (reuse if present).
-  const branches = await db.select().from(branch).limit(1);
+  // Honour a caller-supplied branchId; otherwise reuse/create one.
   let branchId: string;
-  if (branches[0]) {
-    branchId = branches[0].id;
+  if (opts.branchId) {
+    branchId = opts.branchId;
   } else {
-    const [br] = await db
-      .insert(branch)
-      .values({ name: "Seed Branch", code: `SB-${Date.now()}` })
-      .returning();
-    if (!br) throw new Error("seedOnlineOrder: branch insert failed");
-    branchId = br.id;
+    const branches = await db.select().from(branch).limit(1);
+    if (branches[0]) {
+      branchId = branches[0].id;
+    } else {
+      const [br] = await db
+        .insert(branch)
+        .values({ name: "Seed Branch", code: `SB-${Date.now()}` })
+        .returning();
+      if (!br) throw new Error("seedOnlineOrder: branch insert failed");
+      branchId = br.id;
+    }
   }
 
+  const feeNgn = opts.deliveryFeeNgn ?? 0;
   const [row] = await db
     .insert(saleOrder)
     .values({
@@ -233,15 +244,50 @@ export async function seedOnlineOrder(
       channel: "online",
       status: opts.status,
       subtotalNgn: 2500,
-      deliveryFeeNgn: 0,
-      totalNgn: 2500,
+      deliveryFeeNgn: feeNgn,
+      totalNgn: 2500 + feeNgn,
+      deliveryState: opts.deliveryState ?? null,
       paymentMethod: "transfer",
-      paymentStatus: opts.status === "paid" ? "paid" : "pending",
+      paymentStatus: opts.status === "paid" || opts.status === "out_for_delivery" || opts.status === "delivered" || opts.status === "handed_over" ? "paid" : "pending",
       createdAtLocal: new Date(),
       idempotencyKey: uuid(),
       isPreorder: false,
     })
     .returning();
   if (!row) throw new Error("seedOnlineOrder: insert failed");
-  return { id: row.id };
+  return { id: row.id, saleId: row.id, branchId };
+}
+
+/**
+ * Seed a branch_staff user bound to the given branch, log in via app.request,
+ * and return a cookie header map — mirrors authOwner but for branch_staff.
+ */
+export async function authBranchStaff(
+  app: Hono,
+  db: ReturnType<typeof createDbClient>,
+  opts: { branchId: string },
+): Promise<Record<string, string>> {
+  const email = `staff-${opts.branchId.slice(0, 8)}@example.com`;
+  // Upsert: try insert, skip if already exists (re-login is fine).
+  const existing = await db
+    .select({ id: adminUser.id })
+    .from(adminUser)
+    .where(eq(adminUser.email, email))
+    .limit(1);
+  if (!existing[0]) {
+    await seedUser(db, {
+      email,
+      role: "branch_staff",
+      password: "staffpassword123",
+      branchId: opts.branchId,
+    });
+  }
+  const res = await app.request("/v1/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password: "staffpassword123" }),
+  });
+  if (!res.ok) throw new Error(`authBranchStaff: login failed ${res.status}`);
+  const setCookie = res.headers.get("set-cookie") ?? "";
+  return { cookie: setCookie };
 }

@@ -545,6 +545,57 @@ export function saleRoutes(db: DbClient) {
     return c.json({ data: updated });
   });
 
+  // ============ Advance (channel-aware online-order fulfilment transition) ============
+  // delivery:  paid → out_for_delivery → delivered
+  // pickup:    paid → handed_over → delivered
+  // Gated on pos.sell so branch staff (who lack orders.manage) can use it.
+  r.patch("/:id/advance", requireCapability("pos.sell"), async (c) => {
+    const id = c.req.param("id");
+    if (!id) throw new BusinessError("validation_failed", "id required", 400);
+    const updated = await db.transaction(async (tx) => {
+      const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
+      if (!o) throw new BusinessError("not_found", "sale not found", 404);
+      if (!["online", "phone"].includes(o.channel)) {
+        throw new BusinessError("conflict", `not an online order: ${o.channel}`, 409);
+      }
+      // Determine fulfilment type.
+      const { deliveryOrder } = await import("@ms/db");
+      const [del] = await tx
+        .select({ id: deliveryOrder.id })
+        .from(deliveryOrder)
+        .where(eq(deliveryOrder.saleOrderId, id))
+        .limit(1);
+      const isDelivery =
+        !!o.deliveryAddressFormatted ||
+        !!o.deliveryState ||
+        o.deliveryFeeNgn > 0 ||
+        !!del;
+      const path = isDelivery
+        ? { paid: "out_for_delivery", out_for_delivery: "delivered" }
+        : { paid: "handed_over", handed_over: "delivered" };
+      const next = (path as Record<string, string>)[o.status];
+      if (!next) throw new BusinessError("conflict", `cannot advance from ${o.status}`, 409);
+      const now = new Date();
+      const patch: Record<string, unknown> = { status: next, updatedAt: now };
+      if (next === "out_for_delivery") patch["outForDeliveryAt"] = now;
+      if (next === "delivered") patch["fulfilledAt"] = now;
+      const [u] = await tx
+        .update(saleOrder)
+        .set(patch)
+        .where(eq(saleOrder.id, id))
+        .returning();
+      if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
+      return u;
+    });
+    await writeAudit(db, c, {
+      action: "sale.advance",
+      entityType: "sale_order",
+      entityId: id,
+      after: updated,
+    });
+    return c.json({ data: updated });
+  });
+
   // ============ Cancel (any non-terminal→CANCELLED) ============
   r.patch("/:id/cancel", requireCapability("pos.sell"), async (c) => {
     const id = c.req.param("id");
