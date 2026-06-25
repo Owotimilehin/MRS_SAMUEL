@@ -1,5 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useOnlineOrderSignal } from "../hooks/useOnlineOrderSignal.js";
 import {
   Menu,
   ChevronsLeft,
@@ -32,6 +33,8 @@ import {
   Gift,
   Inbox,
   Hourglass,
+  ShoppingBag,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useAuthUser } from "../lib/auth.js";
@@ -63,6 +66,7 @@ const NAV_OVERVIEW: NavLink[] = [
 ];
 const NAV_SALES: NavLink[] = [
   { to: "/owner/orders", label: "Orders", Icon: ReceiptText, cap: "sales.view" },
+  { to: "/owner/online-orders", label: "Online orders", Icon: ShoppingBag, cap: "sales.view" },
   { to: "/owner/preorders", label: "Preorders", Icon: Hourglass, cap: "orders.manage" },
   { to: "/owner/returns", label: "Returns", Icon: Undo2, cap: "returns.approve" },
   { to: "/owner/customers", label: "Customers", Icon: User, cap: "customers.view" },
@@ -111,6 +115,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
   // Overlay drawer state. Drives the off-canvas drawer on small screens and the
   // "drawn-out" text rail on md; inert on desktop where the rail is always full.
   const rail = useRailOpen();
+  const navigate = useNavigate();
 
   // Needs-review badge: total items awaiting owner attention (transfer variances +
   // return approvals + payment attention). Fetched once per Shell mount; best-effort
@@ -140,6 +145,9 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Live online-order signal — drives nav badge + new-order banner.
+  const signal = useOnlineOrderSignal({ enabled: can("sales.view") });
+
   const renderSection = (heading: string, items: NavLink[]): JSX.Element | null => {
     const visible = items.filter((i) => can(i.cap));
     if (visible.length === 0) return null;
@@ -147,9 +155,13 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
       <>
         <div className="app-nav__section">{heading}</div>
         {visible.map((item) => {
-          const badge = item.to === "/owner/review" && reviewCount != null && reviewCount > 0
+          const isReview = item.to === "/owner/review";
+          const isOnlineOrders = item.to === "/owner/online-orders";
+          const badge = (isReview && reviewCount != null && reviewCount > 0)
             ? reviewCount
-            : null;
+            : (isOnlineOrders && signal.count > 0)
+              ? signal.count
+              : null;
           return (
             <Link
               key={item.to}
@@ -303,6 +315,46 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
             </span>
           </div>
         </header>
+        {signal.newCount > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: "var(--primary, #1a5c3b)",
+              color: "#fff",
+              padding: "10px 16px",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            role="alert"
+            onClick={() => {
+              signal.acknowledge();
+              void navigate({ to: "/owner/online-orders" });
+            }}
+          >
+            <span style={{ flex: 1 }}>🔔 New online order — tap to view</span>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              style={{
+                background: "none",
+                border: "none",
+                color: "inherit",
+                cursor: "pointer",
+                display: "flex",
+                padding: 4,
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                signal.acknowledge();
+              }}
+            >
+              <X size={16} strokeWidth={2.5} />
+            </button>
+          </div>
+        )}
         <div className="app-body">{children}</div>
       </main>
     </div>

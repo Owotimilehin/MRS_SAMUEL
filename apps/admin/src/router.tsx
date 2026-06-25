@@ -95,6 +95,10 @@ const OwnerReturnDetailPage = lazyNamed<{ branchId: string; returnId: string }>(
 const DevicesPage = lazyNamed(() => import("./routes/owner/devices.js"), "DevicesPage");
 const SettingsPage = lazyNamed(() => import("./routes/owner/settings.js"), "SettingsPage");
 const OwnerClosesPage = lazyNamed(() => import("./routes/owner/closes.js"), "OwnerClosesPage");
+const OwnerOnlineOrdersPage = lazyNamed(
+  () => import("./routes/owner/online-orders.js"),
+  "OwnerOnlineOrdersPage",
+);
 const CloseDetailPage = lazyNamed<{ branchId: string; closeId: string }>(
   () => import("./routes/owner/close-detail.js"),
   "CloseDetailPage",
@@ -463,6 +467,11 @@ const ownerClosesRoute = createRoute({
   path: "/owner/closes",
   component: () => guarded(<L><OwnerClosesPage /></L>),
 });
+const ownerOnlineOrdersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/online-orders",
+  component: () => guarded(<L><OwnerOnlineOrdersPage /></L>),
+});
 const closeDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/closes/$branchId/$closeId",
@@ -662,6 +671,7 @@ const routeTree = rootRoute.addChildren([
   leadsRoute,
   ownerClosesRoute,
   closeDetailRoute,
+  ownerOnlineOrdersRoute,
   // factory
   productionRunsRoute,
   runDetailRoute,

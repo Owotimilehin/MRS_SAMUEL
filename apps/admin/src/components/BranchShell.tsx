@@ -1,7 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Menu, ArrowLeft, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { Link } from "@tanstack/react-router";
+import { Menu, ArrowLeft, ChevronsLeft, ChevronsRight, X } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useOnlineOrderSignal } from "../hooks/useOnlineOrderSignal.js";
 import { useSyncState } from "../sync/state.js";
 import { startSyncLoop } from "../sync/engine.js";
 import { useAuthUser } from "../lib/auth.js";
@@ -58,6 +59,13 @@ export function BranchShell({
   const [branchName, setBranchName] = useState<string | null>(null);
   const [preorderCount, setPreorderCount] = useState(0);
   const rail = useRailOpen();
+  const navigate = useNavigate();
+
+  // Live online-order signal with chime (till-only feature).
+  const signal = useOnlineOrderSignal({
+    chime: true,
+    enabled: !user.capabilities.length || user.capabilities.includes("sales.view"),
+  });
 
   useEffect(() => {
     return startSyncLoop(branchId);
@@ -155,28 +163,41 @@ export function BranchShell({
               <span>Back to admin</span>
             </Link>
           ) : null}
-          {NAV.filter((item) => !item.cap || user.capabilities.includes(item.cap)).map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              title={item.label}
-              onClick={rail.close}
-              className="app-nav__link"
-              activeProps={{ className: "app-nav__link is-active" }}
-            >
-              <span className="app-nav__icon">{item.icon}</span>
-              <span>{item.label}</span>
-              {item.to === "/branch/preorders" && preorderCount > 0 && (
-                <span
-                  className="pill pill--danger"
-                  style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, minWidth: 20, textAlign: "center" }}
-                  aria-label={`${preorderCount} preorders awaiting fulfilment`}
-                >
-                  {preorderCount}
-                </span>
-              )}
-            </Link>
-          ))}
+          {NAV.filter((item) => !item.cap || user.capabilities.includes(item.cap)).map((item) => {
+            const isOnlineOrders = item.to === "/branch/online-orders";
+            const isPreorders = item.to === "/branch/preorders";
+            const badge = isOnlineOrders && signal.count > 0
+              ? signal.count
+              : isPreorders && preorderCount > 0
+                ? preorderCount
+                : null;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                title={item.label}
+                onClick={rail.close}
+                className="app-nav__link"
+                activeProps={{ className: "app-nav__link is-active" }}
+              >
+                <span className="app-nav__icon">{item.icon}</span>
+                <span style={{ flex: 1 }}>{item.label}</span>
+                {badge != null && (
+                  <span
+                    className="pill pill--danger"
+                    style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, minWidth: 20, textAlign: "center" }}
+                    aria-label={
+                      isOnlineOrders
+                        ? `${badge} online orders awaiting fulfilment`
+                        : `${badge} preorders awaiting fulfilment`
+                    }
+                  >
+                    {badge}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="app-foot">
@@ -217,6 +238,46 @@ export function BranchShell({
           <RefreshAppButton />
           {actions}
         </header>
+        {signal.newCount > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: "var(--primary, #1a5c3b)",
+              color: "#fff",
+              padding: "10px 16px",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            role="alert"
+            onClick={() => {
+              signal.acknowledge();
+              void navigate({ to: "/branch/online-orders" });
+            }}
+          >
+            <span style={{ flex: 1 }}>🔔 New online order — tap to view</span>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              style={{
+                background: "none",
+                border: "none",
+                color: "inherit",
+                cursor: "pointer",
+                display: "flex",
+                padding: 4,
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                signal.acknowledge();
+              }}
+            >
+              <X size={16} strokeWidth={2.5} />
+            </button>
+          </div>
+        )}
         <div className="app-body">{children}</div>
       </main>
     </div>
