@@ -175,6 +175,14 @@ const BranchPreordersPage = lazyNamed<{ branchId: string }>(
   () => import("./routes/branch/preorders.js"),
   "BranchPreordersPage",
 );
+const BranchOnlineOrdersPage = lazyNamed<{ branchId: string }>(
+  () => import("./routes/branch/online-orders.js"),
+  "BranchOnlineOrdersPage",
+);
+const BranchOnlineOrderDetailPage = lazyNamed<{ branchId: string; orderId: string }>(
+  () => import("./routes/branch/online-order-detail.js"),
+  "BranchOnlineOrderDetailPage",
+);
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -602,6 +610,22 @@ const branchDeviceRoute = createRoute({
   component: () =>
     guarded(<L><WithBranchId render={(id) => <BranchDevicePage branchId={id} />} /></L>),
 });
+const branchOnlineOrdersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/branch/online-orders",
+  component: () =>
+    guarded(<L><WithBranchId render={(id) => <BranchOnlineOrdersPage branchId={id} />} /></L>),
+});
+const branchOnlineOrderDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/branch/online-orders/$orderId",
+  component: () => {
+    const params = useParams({ from: "/branch/online-orders/$orderId" });
+    return guarded(
+      <L><WithBranchId render={(id) => <BranchOnlineOrderDetailPage branchId={id} orderId={params.orderId} />} /></L>,
+    );
+  },
+});
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -662,6 +686,8 @@ const routeTree = rootRoute.addChildren([
   branchClosesRoute,
   branchQueueRoute,
   branchDeviceRoute,
+  branchOnlineOrdersRoute,
+  branchOnlineOrderDetailRoute,
 ]);
 
 export const router = createRouter({

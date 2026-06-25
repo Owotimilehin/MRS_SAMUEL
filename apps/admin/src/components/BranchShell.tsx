@@ -38,6 +38,7 @@ const NAV: BranchNavLink[] = [
   { to: "/branch/sales", label: "Today's sales", icon: "🧾", cap: "sales.view" },
   { to: "/branch/transfers", label: "Incoming", icon: "📦", cap: "transfers.receive" },
   { to: "/branch/stock", label: "Stock", icon: "📊" },
+  { to: "/branch/online-orders", label: "Online orders", icon: "🛒", cap: "sales.view" },
   { to: "/branch/preorders", label: "Preorders", icon: "📅", cap: "pos.preorder" },
   { to: "/branch/returns", label: "Returns", icon: "↩️", cap: "returns.create" },
   { to: "/branch/close", label: "Shift end", icon: "📋", cap: "daily_close.submit" },
