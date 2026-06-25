@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, desc, asc, isNull, inArray, sql } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, inArray, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   saleOrder,
@@ -440,8 +440,10 @@ export function saleRoutes(db: DbClient) {
 
       // Counter channels (walk-up, whatsapp) hand over goods on the spot —
       // there is no separate hand-over step. Advance straight to terminal.
+      // Preorders are prepaid but NOT yet fulfilled — they must stay at `paid`
+      // until the Preorders queue fulfilment step moves them to `handed_over`.
       const counterChannels = new Set(["walkup", "whatsapp"]);
-      const finalStatus = counterChannels.has(o.channel) ? ("handed_over" as const) : ("paid" as const);
+      const finalStatus = (counterChannels.has(o.channel) && !o.isPreorder) ? ("handed_over" as const) : ("paid" as const);
       const [u] = await tx
         .update(saleOrder)
         .set({ status: finalStatus, paymentStatus: "paid", updatedAt: new Date() })
@@ -549,8 +551,9 @@ export function saleRoutes(db: DbClient) {
   // ============ Advance (channel-aware online-order fulfilment transition) ============
   // delivery:  paid → out_for_delivery → delivered
   // pickup:    paid → handed_over → delivered
-  // Gated on pos.sell so branch staff (who lack orders.manage) can use it.
-  r.patch("/:id/advance", requireCapability("pos.sell"), async (c) => {
+  // Accepts pos.sell (branch staff) or orders.manage (owner/admin/manager) so
+  // both the branch page and the owner order-detail page agree with the server gate.
+  r.patch("/:id/advance", requireBranchScope(), requireAnyCapability("orders.manage", "pos.sell"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const updated = await db.transaction(async (tx) => {
@@ -585,6 +588,15 @@ export function saleRoutes(db: DbClient) {
         .where(eq(saleOrder.id, id))
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
+      if (next === "delivered") {
+        // If a live ride exists (force-delivered fallback), mark it delivered too so a
+        // later Shipbubble 'delivered' webhook is a terminal no-op (no duplicate
+        // delivery.completed event).
+        await tx.update(deliveryOrder)
+          .set({ status: "delivered", deliveredAt: now, updatedAt: now })
+          .where(and(eq(deliveryOrder.saleOrderId, id),
+                     notInArray(deliveryOrder.status, ["delivered", "failed", "cancelled"])));
+      }
       return u;
     });
     await writeAudit(db, c, {

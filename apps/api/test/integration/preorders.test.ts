@@ -58,6 +58,14 @@ describe("Preorder-aware order creation", () => {
     });
     branchId = ((await bRes.json()) as { data: { id: string } }).data.id;
 
+    // Open a shift so the till-path sale-creation gate (test (d)) is satisfied.
+    const today = new Date().toISOString().slice(0, 10);
+    await fetch(`${baseUrl}/v1/branches/${branchId}/shift-open`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookies, "idempotency-key": uuid() },
+      body: JSON.stringify({ business_date: today, stock_counts: [] }),
+    });
+
     const { productVariant, stockLedger } = await import("@ms/db");
     const { eq } = await import("drizzle-orm");
 
