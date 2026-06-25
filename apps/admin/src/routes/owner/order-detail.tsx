@@ -714,7 +714,6 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                 customer's on-file address + state, which the options endpoint
                 also uses. Walk-up / pickup channels never deliver. */}
             {data.channel !== "walkup" &&
-              data.channel !== "chowdeck_pickup" &&
               (data.deliveryAddressFormatted || data.customerAddress || data.deliveryState) && (
               <section className="card">
                 <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Delivery</h3>

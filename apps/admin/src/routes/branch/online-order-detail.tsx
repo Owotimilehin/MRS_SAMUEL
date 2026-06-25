@@ -539,7 +539,6 @@ export function BranchOnlineOrderDetailPage({
 
             {/* Delivery booking section — for delivery orders with no active ride */}
             {data.channel !== "walkup" &&
-              data.channel !== "chowdeck_pickup" &&
               (data.deliveryAddressFormatted || data.customerAddress || data.deliveryState) &&
               can("pos.sell") && (
                 <section className="card">

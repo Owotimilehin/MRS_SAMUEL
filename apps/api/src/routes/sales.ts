@@ -101,7 +101,7 @@ const CancelBody = z.object({
 const RESERVATION_TIMEOUT_MS: Record<string, number> = {
   walkup: 5 * 60_000,
   whatsapp: 30 * 60_000,
-  chowdeck_pickup: 30 * 60_000,
+
   phone: 30 * 60_000,
   online: 30 * 60_000,
 };
@@ -268,7 +268,7 @@ export function saleRoutes(db: DbClient) {
         const immediateHandover =
           body.channel === "walkup";
         if (available < it.quantity) {
-          // An immediate-handover channel (walk-up / chowdeck pickup) can't give
+          // An immediate-handover channel (walk-up) can't give
           // away absent stock unless the cashier deliberately took it as a
           // made-to-order preorder.
           if (immediateHandover && !forcePreorder) {
@@ -486,7 +486,7 @@ export function saleRoutes(db: DbClient) {
     return c.json({ data: updated });
   });
 
-  // ============ Hand over (PAID→HANDED_OVER for walkup/whatsapp/chowdeck) ============
+  // ============ Hand over (PAID→HANDED_OVER for walkup/whatsapp) ============
   r.patch("/:id/hand-over", requireCapability("pos.sell"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
@@ -496,7 +496,7 @@ export function saleRoutes(db: DbClient) {
       if (o.status !== "paid") {
         throw new BusinessError("conflict", `cannot hand over from ${o.status}`, 409);
       }
-      if (!["walkup", "whatsapp", "chowdeck_pickup"].includes(o.channel)) {
+      if (!["walkup", "whatsapp"].includes(o.channel)) {
         throw new BusinessError("conflict", `wrong channel: ${o.channel}`, 409);
       }
       const [u] = await tx

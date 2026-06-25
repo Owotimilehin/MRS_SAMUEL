@@ -12,7 +12,7 @@ interface CreateLocalSaleInput {
     unit_price_ngn: number;
   }>;
   payment_method: "cash" | "card" | "transfer";
-  channel: "walkup" | "whatsapp" | "chowdeck_pickup";
+  channel: "walkup" | "whatsapp";
   /**
    * Prepaid preorder: payment is taken now but the stock is NOT consumed — the
    * order waits in the Preorders queue for manual fulfilment. When true the
