@@ -86,7 +86,7 @@ export function onlineOrdersQueueRoutes(db: DbClient) {
       const isDelivery =
         !!o.deliveryAddressFormatted ||
         !!o.deliveryState ||
-        o.deliveryFeeNgn > 0 ||
+        (o.deliveryFeeNgn ?? 0) > 0 ||
         latestDeliveryStatus !== null;
 
       return {

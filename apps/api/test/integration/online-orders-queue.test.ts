@@ -88,4 +88,28 @@ describe("online orders queue", () => {
     // Staff should see 0 orders since the seeded order is on a different branch
     expect(body.data.length).toBe(0);
   });
+
+  it("active-count respects branch scope", async () => {
+    // Seed a branch the staff user will NOT belong to
+    const [otherBranch] = await db
+      .insert(branch)
+      .values({ name: "Other Branch Count", code: `OBC-${Date.now()}` })
+      .returning();
+    if (!otherBranch) throw new Error("branch insert failed");
+
+    // Seed an active (paid) online order on the default branch
+    await seedOnlineOrder(db, { status: "paid" });
+
+    // Staff bound to otherBranch (no orders there)
+    const staffHeaders = await authBranchStaff(app, db, { branchId: otherBranch.id });
+
+    const res = await app.request("/v1/online-orders/active-count", {
+      headers: staffHeaders,
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { count: number; new_since: number } };
+    // Staff's branch has no active orders → count 0, new_since 0
+    expect(body.data.count).toBe(0);
+    expect(body.data.new_since).toBe(0);
+  });
 });
