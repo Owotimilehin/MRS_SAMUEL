@@ -463,6 +463,19 @@ export function BranchOnlineOrderDetailPage({
                   </p>
                 )}
 
+                {/* Force-delivered fallback when webhook is live but stalled */}
+                {deliveryIsLive && can("pos.sell") && (
+                  <button
+                    type="button"
+                    className="btn btn--subtle btn--sm"
+                    disabled={advanceBusy}
+                    onClick={() => void advance()}
+                    style={{ fontSize: 12, color: "var(--ink-soft)" }}
+                  >
+                    {advanceBusy ? "Saving…" : "Force delivered (fallback)"}
+                  </button>
+                )}
+
                 {canAct && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {isDeliveryOrder ? (
