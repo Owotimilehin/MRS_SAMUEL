@@ -4,16 +4,19 @@ import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
 import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import type { DbClient } from "@ms/db";
 
 describe("GET /v1/reports/overview", () => {
   let container: StartedPostgreSqlContainer;
   let baseUrl: string;
   let cookies: string;
   let server: ReturnType<typeof serve>;
+  let db: DbClient;
 
   beforeAll(async () => {
     const tdb = await setupTestDb();
     container = tdb.container;
+    db = tdb.db;
     await seedOwner(tdb.db);
     const { buildApp } = await import("../../src/test-app.js");
     server = serve({ fetch: buildApp().fetch, port: 0 });

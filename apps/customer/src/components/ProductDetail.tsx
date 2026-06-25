@@ -6,6 +6,28 @@ import type { Size } from "@/lib/visuals";
 import { getFruitFor } from "@/lib/visuals";
 import { useCart, formatNaira, isPreorderSize, quickAddSize } from "@/lib/cart";
 
+function StockLabel({ available, preorderOnly }: { available: number | undefined; preorderOnly: boolean }) {
+  if (preorderOnly || (available ?? 0) <= 0) {
+    return (
+      <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-[color:var(--brand-orange)]">
+        Made to order — we can prepare more for you
+      </span>
+    );
+  }
+  if (available! <= 5) {
+    return (
+      <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-[color:var(--brand-orange)]">
+        {available} available — order now
+      </span>
+    );
+  }
+  return (
+    <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-[color:var(--brand)]/50">
+      {available} available
+    </span>
+  );
+}
+
 const ALL_SIZES: Size[] = ["330ml", "650ml"];
 
 interface Props {
@@ -149,6 +171,7 @@ export function ProductDetail({ product, onClose }: Props) {
                         <div className="font-display text-xl font-semibold">
                           {formatNaira(product.prices[s])}
                         </div>
+                        <StockLabel available={product.available} preorderOnly={isPreorderSize(product, s)} />
                       </button>
                     );
                   })}

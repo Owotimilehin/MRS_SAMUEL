@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { eq, desc } from "drizzle-orm";
 import { saleOrder, deliveryOrder, branch, customer, type DbClient } from "@ms/db";
-import { requireAuth, requireCapability } from "../middleware/auth.js";
+import { requireAuth, requireCapability, requireAnyCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { BusinessError } from "../lib/errors.js";
 import { getDeliveryProvider } from "../delivery/index.js";
@@ -76,7 +76,7 @@ export function deliveryAdminRoutes(db: DbClient) {
   });
 
   // POST book — create the label, persist the delivery_order.
-  r.post("/book", requireCapability("orders.manage"), async (c) => {
+  r.post("/book", requireAnyCapability("orders.manage", "pos.sell"), async (c) => {
     const saleId = c.req.param("saleId");
     if (!saleId) throw new BusinessError("validation_failed", "saleId required", 400);
     const body = (await c.req.json()) as {
@@ -143,7 +143,7 @@ export function deliveryAdminRoutes(db: DbClient) {
   });
 
   // POST cancel — cancel the latest live delivery.
-  r.post("/cancel", requireCapability("orders.manage"), async (c) => {
+  r.post("/cancel", requireAnyCapability("orders.manage", "pos.sell"), async (c) => {
     const saleId = c.req.param("saleId");
     if (!saleId) throw new BusinessError("validation_failed", "saleId required", 400);
     // Enforce the same guards as /options and /book: order must exist and must

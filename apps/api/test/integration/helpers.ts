@@ -4,9 +4,13 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createDbClient, adminUser, assertNonProdDb } from "@ms/db";
+import { eq } from "drizzle-orm";
+import { createDbClient, adminUser, assertNonProdDb, branch, product, productVariant, productPrice, stockLedger, saleOrder } from "@ms/db";
 import { hashPassword } from "../../src/auth/argon.js";
 import type { AdminRole, Capability } from "@ms/shared";
+import type { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import type { AddressInfo } from "node:net";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, "../../../../packages/db/migrations");
@@ -80,6 +84,78 @@ export function stockBalance(
     .reduce((sum, r) => sum + r.balance, 0);
 }
 
+/**
+ * Spin up a Hono app and return it alongside its db handle.
+ * The caller is responsible for calling server.close() + container.stop().
+ * Uses the already-running DATABASE_URL set by setupTestDb().
+ */
+export async function makeTestApp(): Promise<{
+  app: Hono;
+  db: ReturnType<typeof createDbClient>;
+  container: StartedPostgreSqlContainer;
+}> {
+  const tdb = await setupTestDb();
+  await seedOwner(tdb.db);
+  const { buildApp } = await import("../../src/test-app.js");
+  return { app: buildApp(), db: tdb.db, container: tdb.container };
+}
+
+/**
+ * Seed one active flavour (product) with a single 330ml variant priced at
+ * ₦2500. Returns ids needed to drive stock/availability helpers.
+ */
+export async function seedCatalog(
+  db: ReturnType<typeof createDbClient>,
+): Promise<{ productId: string; variantId: string; branchId: string }> {
+  const [prod] = await db
+    .insert(product)
+    .values({ name: "Test Juice", slug: `test-juice-${Date.now()}`, category: "regular" })
+    .returning();
+  if (!prod) throw new Error("seedCatalog: product insert failed");
+
+  const [variant] = await db
+    .insert(productVariant)
+    .values({ productId: prod.id, sizeMl: 330, sku: `TJ330-${Date.now()}` })
+    .returning();
+  if (!variant) throw new Error("seedCatalog: variant insert failed");
+
+  await db.insert(productPrice).values({ productId: prod.id, variantId: variant.id, priceNgn: 2500 });
+
+  const [br] = await db
+    .insert(branch)
+    .values({ name: "Test Branch", code: `TB-${Date.now()}` })
+    .returning();
+  if (!br) throw new Error("seedCatalog: branch insert failed");
+
+  return { productId: prod.id, variantId: variant.id, branchId: br.id };
+}
+
+/** Set a branch as the single online-default (clears all others first). */
+export async function setOnlineDefaultBranch(
+  db: ReturnType<typeof createDbClient>,
+  branchId: string,
+): Promise<void> {
+  // Clear all first (mirrors the app's own invariant enforcement).
+  await db.update(branch).set({ isOnlineDefault: false }).where(eq(branch.isOnlineDefault, true));
+  await db.update(branch).set({ isOnlineDefault: true }).where(eq(branch.id, branchId));
+}
+
+/** Insert a raw branch stock ledger row (opening_balance source). */
+export async function addBranchStock(
+  db: ReturnType<typeof createDbClient>,
+  opts: { branchId: string; productId: string; qty: number },
+): Promise<void> {
+  const { v4: uuid } = await import("uuid");
+  await db.insert(stockLedger).values({
+    locationType: "branch",
+    locationId: opts.branchId,
+    productId: opts.productId,
+    delta: opts.qty,
+    sourceType: "opening_balance",
+    sourceId: uuid(),
+  });
+}
+
 export async function seedUser(
   db: ReturnType<typeof createDbClient>,
   opts: {
@@ -104,4 +180,114 @@ export async function seedUser(
     .returning();
   if (!row) throw new Error("failed to seed user");
   return row;
+}
+
+/**
+ * Return a cookie header string for the seeded owner by calling /auth/login on
+ * the provided Hono app directly (no extra server needed).
+ * The owner must already be seeded (via seedOwner or makeTestApp).
+ */
+export async function authOwner(
+  app: Hono,
+): Promise<Record<string, string>> {
+  const res = await app.request("/v1/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "owner@example.com", password: "ownerpassword123" }),
+  });
+  if (!res.ok) throw new Error(`authOwner: login failed ${res.status}`);
+  const setCookie = res.headers.get("set-cookie") ?? "";
+  return { cookie: setCookie };
+}
+
+/**
+ * Insert a minimal sale_order row directly into the DB for report-count tests.
+ * Creates a dummy branch on demand; uses channel='online', is_preorder=false by default.
+ * Pass deliveryState / deliveryFeeNgn to mark the order as a delivery order.
+ */
+export async function seedOnlineOrder(
+  db: ReturnType<typeof createDbClient>,
+  opts: {
+    status: "confirmed" | "paid" | "handed_over" | "out_for_delivery" | "delivered" | "cancelled" | "failed";
+    deliveryState?: string;
+    deliveryFeeNgn?: number;
+    branchId?: string;
+  },
+): Promise<{ id: string; saleId: string; branchId: string }> {
+  const { v4: uuid } = await import("uuid");
+
+  // Honour a caller-supplied branchId; otherwise reuse/create one.
+  let branchId: string;
+  if (opts.branchId) {
+    branchId = opts.branchId;
+  } else {
+    const branches = await db.select().from(branch).limit(1);
+    if (branches[0]) {
+      branchId = branches[0].id;
+    } else {
+      const [br] = await db
+        .insert(branch)
+        .values({ name: "Seed Branch", code: `SB-${Date.now()}` })
+        .returning();
+      if (!br) throw new Error("seedOnlineOrder: branch insert failed");
+      branchId = br.id;
+    }
+  }
+
+  const feeNgn = opts.deliveryFeeNgn ?? 0;
+  const [row] = await db
+    .insert(saleOrder)
+    .values({
+      id: uuid(),
+      orderNumber: `TEST-${uuid().slice(0, 8).toUpperCase()}`,
+      branchId,
+      channel: "online",
+      status: opts.status,
+      subtotalNgn: 2500,
+      deliveryFeeNgn: feeNgn,
+      totalNgn: 2500 + feeNgn,
+      deliveryState: opts.deliveryState ?? null,
+      paymentMethod: "transfer",
+      paymentStatus: opts.status === "paid" || opts.status === "out_for_delivery" || opts.status === "delivered" || opts.status === "handed_over" ? "paid" : "pending",
+      createdAtLocal: new Date(),
+      idempotencyKey: uuid(),
+      isPreorder: false,
+    })
+    .returning();
+  if (!row) throw new Error("seedOnlineOrder: insert failed");
+  return { id: row.id, saleId: row.id, branchId };
+}
+
+/**
+ * Seed a branch_staff user bound to the given branch, log in via app.request,
+ * and return a cookie header map — mirrors authOwner but for branch_staff.
+ */
+export async function authBranchStaff(
+  app: Hono,
+  db: ReturnType<typeof createDbClient>,
+  opts: { branchId: string },
+): Promise<Record<string, string>> {
+  const email = `staff-${opts.branchId.slice(0, 8)}@example.com`;
+  // Upsert: try insert, skip if already exists (re-login is fine).
+  const existing = await db
+    .select({ id: adminUser.id })
+    .from(adminUser)
+    .where(eq(adminUser.email, email))
+    .limit(1);
+  if (!existing[0]) {
+    await seedUser(db, {
+      email,
+      role: "branch_staff",
+      password: "staffpassword123",
+      branchId: opts.branchId,
+    });
+  }
+  const res = await app.request("/v1/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password: "staffpassword123" }),
+  });
+  if (!res.ok) throw new Error(`authBranchStaff: login failed ${res.status}`);
+  const setCookie = res.headers.get("set-cookie") ?? "";
+  return { cookie: setCookie };
 }

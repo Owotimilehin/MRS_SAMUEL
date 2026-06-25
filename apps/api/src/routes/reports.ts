@@ -326,7 +326,7 @@ export function reportRoutes(db: DbClient) {
         // "Orders pending" used to count every non-preorder sale in
         // confirmed/paid/handed_over — but a walk-up till sale ends at 'paid'
         // the instant the cashier rings it up (the customer leaves with the
-        // juice; walkup/chowdeck are immediateHandover channels) and never
+        // juice; walkup is the immediateHandover channel) and never
         // advances, so completed counter sales piled up forever and inflated a
         // meaningless "pending" alarm. We now report two honest, channel-split
         // counts instead: POS (walk-up) sales taken today, and online orders.

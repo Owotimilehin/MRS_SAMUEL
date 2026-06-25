@@ -15,7 +15,7 @@ import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 import { autoDispatchEnabled } from "../lib/delivery-flags.js";
 
-const COUNTER_CHANNELS = new Set(["walkup", "whatsapp", "chowdeck_pickup"]);
+const COUNTER_CHANNELS = new Set(["walkup", "whatsapp"]);
 
 /** Open (paid, unfulfilled) preorders with line items, optionally branch-locked. */
 export async function listOpenPreorders(

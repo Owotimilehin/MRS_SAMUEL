@@ -175,14 +175,10 @@ describe("Phase 2 walk-up sale flow", () => {
       "PATCH",
       `/v1/branches/${branch.id}/sales/${confirm.body.data.id}/pay`,
     );
-    expect(pay.body.data.status).toBe("paid");
+    // Counter (walk-up) sales now terminate at handed_over directly on /pay —
+    // no separate /hand-over step is needed or allowed.
+    expect(pay.body.data.status).toBe("handed_over");
     expect(pay.body.data.paymentStatus).toBe("paid");
-
-    const handOver = await call<{ data: SaleOrder }>(
-      "PATCH",
-      `/v1/branches/${branch.id}/sales/${confirm.body.data.id}/hand-over`,
-    );
-    expect(handOver.body.data.status).toBe("handed_over");
 
     // After payment the ledger has decremented.
     const stockAfter = await call<{ data: Array<{ product_id: string; variant_id: string | null; balance: number }> }>(
@@ -227,11 +223,14 @@ describe("Phase 2 walk-up sale flow", () => {
   });
 
   it("cancel after pay reverses the ledger", async () => {
+    // Use `phone` channel (non-counter): /pay leaves it at status=paid so cancel
+    // is still valid and must write a compensating ledger row. Walk-up/whatsapp
+    // are now terminal at /pay (handed_over) and cannot be cancelled after pay.
     const confirm = await call<{ data: SaleOrder }>(
       "POST",
       `/v1/branches/${branch.id}/sales`,
       {
-        channel: "walkup",
+        channel: "phone",
         items: [{ product_id: product.id, quantity: 1 }],
         payment_method: "cash",
         created_at_local: new Date().toISOString(),
@@ -258,11 +257,13 @@ describe("Phase 2 walk-up sale flow", () => {
   });
 
   it("cancel after pay restores stock to the SAME size bucket it was sold from", async () => {
+    // Use `phone` channel (non-counter): /pay leaves it at status=paid so cancel
+    // is still valid. Walk-up/whatsapp are terminal at /pay and cannot be cancelled.
     const confirm = await call<{ data: SaleOrder }>(
       "POST",
       `/v1/branches/${branch.id}/sales`,
       {
-        channel: "walkup",
+        channel: "phone",
         items: [{ product_id: product.id, quantity: 1 }],
         payment_method: "cash",
         created_at_local: new Date().toISOString(),
@@ -287,6 +288,29 @@ describe("Phase 2 walk-up sale flow", () => {
       );
     expect(cancelLedger.length).toBe(1);
     expect(cancelLedger[0]!.variantId).toBe(variant330Id);
+  });
+
+  it("walk-up sale terminates at handed_over after pay (no extra hand-over step)", async () => {
+    const confirm = await call<{ data: SaleOrder }>(
+      "POST",
+      `/v1/branches/${branch.id}/sales`,
+      {
+        channel: "walkup",
+        items: [{ product_id: product.id, quantity: 1 }],
+        payment_method: "cash",
+        created_at_local: new Date().toISOString(),
+      },
+    );
+    expect(confirm.status).toBe(201);
+    expect(confirm.body.data.status).toBe("confirmed");
+
+    const pay = await call<{ data: SaleOrder }>(
+      "PATCH",
+      `/v1/branches/${branch.id}/sales/${confirm.body.data.id}/pay`,
+    );
+    expect(pay.status).toBe(200);
+    expect(pay.body.data.status).toBe("handed_over");
+    expect(pay.body.data.paymentStatus).toBe("paid");
   });
 
   it("idempotency: same key + same payload returns the same sale row", async () => {

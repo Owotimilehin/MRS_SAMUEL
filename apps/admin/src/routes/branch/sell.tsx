@@ -34,7 +34,7 @@ interface BagStockRow {
   balance: number;
 }
 
-type Channel = "walkup" | "whatsapp" | "chowdeck_pickup";
+type Channel = "walkup" | "whatsapp";
 type PaymentMethod = "cash" | "card" | "transfer";
 
 interface CartLine {
@@ -643,7 +643,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
               >
                 <option value="walkup">Walk-up</option>
                 <option value="whatsapp">WhatsApp</option>
-                <option value="chowdeck_pickup">Chowdeck pickup</option>
+
               </select>
             </div>
             {/* Order-level preorder. A 330ml in the cart forces it on. */}

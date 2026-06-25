@@ -9,6 +9,28 @@ import { SiteShell } from "@/components/SiteShell";
 import { useCart, formatNaira, isPreorderSize, quickAddSize } from "@/lib/cart";
 import { seo, productLd, breadcrumbLd } from "@/lib/seo";
 
+function StockLabel({ available, preorderOnly }: { available: number | undefined; preorderOnly: boolean }) {
+  if (preorderOnly || (available ?? 0) <= 0) {
+    return (
+      <span className="block text-[10px] font-semibold text-[color:var(--brand-orange)] mt-0.5">
+        Made to order — we can prepare more for you
+      </span>
+    );
+  }
+  if (available! <= 5) {
+    return (
+      <span className="block text-[10px] font-semibold text-[color:var(--brand-orange)] mt-0.5">
+        {available} available — order now
+      </span>
+    );
+  }
+  return (
+    <span className="block text-[10px] font-medium text-[color:var(--brand)]/55 mt-0.5">
+      {available} available
+    </span>
+  );
+}
+
 export const Route = createFileRoute("/juices/$id")({
   loader: async ({ params }) => {
     const [product, all] = await Promise.all([
@@ -163,12 +185,11 @@ function Page() {
                 <Zap className="h-4 w-4" /> Buy now
               </button>
             </div>
-            {preorder ? (
-              <p className="mt-3 text-xs font-medium text-[color:var(--brand-orange)]">
-                This size is made to order — you'll pick a delivery day at checkout.
-              </p>
-            ) : (
-              <p className="mt-3 text-xs text-[color:var(--brand)]/60">Free delivery on orders over ₦20,000 · Lagos same-day</p>
+            <div className="mt-3">
+              <StockLabel available={p.available} preorderOnly={preorder} />
+            </div>
+            {!preorder && (
+              <p className="mt-1 text-xs text-[color:var(--brand)]/60">Free delivery on orders over ₦20,000 · Lagos same-day</p>
             )}
           </div>
         </div>

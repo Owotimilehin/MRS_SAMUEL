@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, desc, asc, isNull, inArray, sql } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, inArray, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   saleOrder,
@@ -15,6 +15,7 @@ import {
   product,
   shiftOpen,
   customer,
+  deliveryOrder,
   type DbClient,
 } from "@ms/db";
 import { availableAtBranch, nextOrderNumber } from "@ms/domain";
@@ -29,7 +30,7 @@ const ConfirmSale = z.object({
   // Optional client-supplied UUID. The branch PWA generates this offline so the
   // local reference and the eventual server row stay linked across sync retries.
   id: z.string().uuid().optional(),
-  channel: z.enum(["walkup", "online", "phone", "whatsapp", "chowdeck_pickup"]),
+  channel: z.enum(["walkup", "online", "phone", "whatsapp"]),
   items: z
     .array(
       z
@@ -100,7 +101,7 @@ const CancelBody = z.object({
 const RESERVATION_TIMEOUT_MS: Record<string, number> = {
   walkup: 5 * 60_000,
   whatsapp: 30 * 60_000,
-  chowdeck_pickup: 30 * 60_000,
+
   phone: 30 * 60_000,
   online: 30 * 60_000,
 };
@@ -265,9 +266,9 @@ export function saleRoutes(db: DbClient) {
         // rule (see public-orders.ts) and is intentionally ignored here so an
         // in-stock 330ml sells instantly at the counter.
         const immediateHandover =
-          body.channel === "walkup" || body.channel === "chowdeck_pickup";
+          body.channel === "walkup";
         if (available < it.quantity) {
-          // An immediate-handover channel (walk-up / chowdeck pickup) can't give
+          // An immediate-handover channel (walk-up) can't give
           // away absent stock unless the cashier deliberately took it as a
           // made-to-order preorder.
           if (immediateHandover && !forcePreorder) {
@@ -437,9 +438,15 @@ export function saleRoutes(db: DbClient) {
         collectedByUserId: auth.userId,
       });
 
+      // Counter channels (walk-up, whatsapp) hand over goods on the spot —
+      // there is no separate hand-over step. Advance straight to terminal.
+      // Preorders are prepaid but NOT yet fulfilled — they must stay at `paid`
+      // until the Preorders queue fulfilment step moves them to `handed_over`.
+      const counterChannels = new Set(["walkup", "whatsapp"]);
+      const finalStatus = (counterChannels.has(o.channel) && !o.isPreorder) ? ("handed_over" as const) : ("paid" as const);
       const [u] = await tx
         .update(saleOrder)
-        .set({ status: "paid", paymentStatus: "paid", updatedAt: new Date() })
+        .set({ status: finalStatus, paymentStatus: "paid", updatedAt: new Date() })
         .where(eq(saleOrder.id, id))
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
@@ -481,7 +488,7 @@ export function saleRoutes(db: DbClient) {
     return c.json({ data: updated });
   });
 
-  // ============ Hand over (PAID→HANDED_OVER for walkup/whatsapp/chowdeck) ============
+  // ============ Hand over (PAID→HANDED_OVER for walkup/whatsapp) ============
   r.patch("/:id/hand-over", requireCapability("pos.sell"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
@@ -491,7 +498,7 @@ export function saleRoutes(db: DbClient) {
       if (o.status !== "paid") {
         throw new BusinessError("conflict", `cannot hand over from ${o.status}`, 409);
       }
-      if (!["walkup", "whatsapp", "chowdeck_pickup"].includes(o.channel)) {
+      if (!["walkup", "whatsapp"].includes(o.channel)) {
         throw new BusinessError("conflict", `wrong channel: ${o.channel}`, 409);
       }
       const [u] = await tx
@@ -534,6 +541,66 @@ export function saleRoutes(db: DbClient) {
     });
     await writeAudit(db, c, {
       action: "sale.mark_delivered",
+      entityType: "sale_order",
+      entityId: id,
+      after: updated,
+    });
+    return c.json({ data: updated });
+  });
+
+  // ============ Advance (channel-aware online-order fulfilment transition) ============
+  // delivery:  paid → out_for_delivery → delivered
+  // pickup:    paid → handed_over → delivered
+  // Accepts pos.sell (branch staff) or orders.manage (owner/admin/manager) so
+  // both the branch page and the owner order-detail page agree with the server gate.
+  r.patch("/:id/advance", requireBranchScope(), requireAnyCapability("orders.manage", "pos.sell"), async (c) => {
+    const id = c.req.param("id");
+    if (!id) throw new BusinessError("validation_failed", "id required", 400);
+    const updated = await db.transaction(async (tx) => {
+      const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
+      if (!o) throw new BusinessError("not_found", "sale not found", 404);
+      if (!["online", "phone"].includes(o.channel)) {
+        throw new BusinessError("conflict", `not an online order: ${o.channel}`, 409);
+      }
+      // Determine fulfilment type.
+      const [del] = await tx
+        .select({ id: deliveryOrder.id })
+        .from(deliveryOrder)
+        .where(eq(deliveryOrder.saleOrderId, id))
+        .limit(1);
+      const isDelivery =
+        !!o.deliveryAddressFormatted ||
+        !!o.deliveryState ||
+        o.deliveryFeeNgn > 0 ||
+        !!del;
+      const path = isDelivery
+        ? { paid: "out_for_delivery", out_for_delivery: "delivered" }
+        : { paid: "handed_over", handed_over: "delivered" };
+      const next = (path as Record<string, string>)[o.status];
+      if (!next) throw new BusinessError("conflict", `cannot advance from ${o.status}`, 409);
+      const now = new Date();
+      const patch: Record<string, unknown> = { status: next, updatedAt: now };
+      if (next === "out_for_delivery") patch["outForDeliveryAt"] = now;
+      if (next === "delivered") patch["fulfilledAt"] = now;
+      const [u] = await tx
+        .update(saleOrder)
+        .set(patch)
+        .where(eq(saleOrder.id, id))
+        .returning();
+      if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
+      if (next === "delivered") {
+        // If a live ride exists (force-delivered fallback), mark it delivered too so a
+        // later Shipbubble 'delivered' webhook is a terminal no-op (no duplicate
+        // delivery.completed event).
+        await tx.update(deliveryOrder)
+          .set({ status: "delivered", deliveredAt: now, updatedAt: now })
+          .where(and(eq(deliveryOrder.saleOrderId, id),
+                     notInArray(deliveryOrder.status, ["delivered", "failed", "cancelled"])));
+      }
+      return u;
+    });
+    await writeAudit(db, c, {
+      action: "sale.advance",
       entityType: "sale_order",
       entityId: id,
       after: updated,

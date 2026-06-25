@@ -51,7 +51,7 @@ interface Sale {
   id: string;
   orderNumber: string;
   branchId: string;
-  channel: "walkup" | "online" | "phone" | "whatsapp" | "chowdeck_pickup";
+  channel: "walkup" | "online" | "phone" | "whatsapp";
   customerId: string | null;
   status:
     | "draft"
@@ -212,7 +212,7 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
   }
 
   const canPay = sale?.status === "confirmed" && sale.channel !== "online";
-  const canHandOver = sale?.status === "paid" && ["walkup", "whatsapp", "chowdeck_pickup"].includes(sale.channel);
+  const canHandOver = sale?.status === "paid" && ["walkup", "whatsapp"].includes(sale.channel);
   const canDeliver = sale?.status === "paid" && ["online", "phone"].includes(sale.channel);
   const canCancel = sale && ["confirmed", "paid"].includes(sale.status);
 

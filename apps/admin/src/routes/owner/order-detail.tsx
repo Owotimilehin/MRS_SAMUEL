@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { ConfirmModal } from "../../components/ConfirmModal.js";
+import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -86,6 +87,8 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   const [showMarkRefundedModal, setShowMarkRefundedModal] = useState(false);
   const [markRefundedBusy, setMarkRefundedBusy] = useState(false);
 
+  const [advanceBusy, setAdvanceBusy] = useState(false);
+
   interface CourierOption { id: string; courier_name: string; fee_ngn: number; eta_minutes: number | null }
   const [options, setOptions] = useState<CourierOption[] | null>(null);
   const [receiverCode, setReceiverCode] = useState<number | null>(null);
@@ -104,6 +107,21 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
     }
   }
 
+  /** Advance the order one legal step (paid→out_for_delivery→delivered etc.) */
+  async function advance(): Promise<void> {
+    if (!data || !branchId) return;
+    setAdvanceBusy(true);
+    setDeliveryError(null);
+    try {
+      await api(`/branches/${branchId}/sales/${saleId}/advance`, { method: "PATCH", body: "{}" });
+      await reloadOrder();
+    } catch (err) {
+      setDeliveryError(humanizeError(err));
+    } finally {
+      setAdvanceBusy(false);
+    }
+  }
+
   async function getOptions(): Promise<void> {
     setLoadingOptions(true);
     setDeliveryError(null);
@@ -118,6 +136,13 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
     } finally {
       setLoadingOptions(false);
     }
+  }
+
+  /** Open the courier options flow — used directly and as "Re-book rider" callback. */
+  function bookRide(): void {
+    setOptions(null);
+    setPicked(null);
+    void getOptions();
   }
 
   async function confirmBook(): Promise<void> {
@@ -580,6 +605,108 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
               </section>
             )}
 
+            {/* Fulfilment advance buttons — channel and delivery-booking aware */}
+            {(() => {
+              // Determine if this is a delivery order or a pickup
+              const isDeliveryOrder =
+                !!(data.deliveryAddressFormatted || data.deliveryState || (data.deliveryFeeNgn ?? 0) > 0 || data.delivery);
+
+              // Live statuses where the webhook drives progress — hide manual steps
+              const liveDeliveryStatuses = new Set(["searching_rider", "assigned", "picked_up", "in_transit"]);
+              const deliveryIsLive = !!(data.delivery && liveDeliveryStatuses.has(data.delivery.status));
+
+              const showAdvanceButtons = can("orders.manage") && !deliveryIsLive;
+              const isPaid = data.status === "paid";
+              const isOutForDelivery = data.status === "out_for_delivery";
+              const isHandedOver = data.status === "handed_over";
+
+              if (!showAdvanceButtons && !deliveryIsLive) return null;
+
+              return (
+                <section className="card">
+                  <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Fulfilment</h3>
+
+                  {deliveryIsLive && (
+                    <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 10 }}>
+                      Rider is active — status updates via webhook.
+                    </p>
+                  )}
+
+                  {showAdvanceButtons && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {isDeliveryOrder ? (
+                        <>
+                          {isPaid && (
+                            <button
+                              type="button"
+                              className="btn btn--primary btn--sm"
+                              disabled={advanceBusy}
+                              onClick={() => void advance()}
+                            >
+                              {advanceBusy ? "Saving…" : "Mark out for delivery"}
+                            </button>
+                          )}
+                          {isOutForDelivery && (
+                            <button
+                              type="button"
+                              className="btn btn--primary btn--sm"
+                              disabled={advanceBusy}
+                              onClick={() => void advance()}
+                            >
+                              {advanceBusy ? "Saving…" : "Mark delivered"}
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {isPaid && (
+                            <button
+                              type="button"
+                              className="btn btn--primary btn--sm"
+                              disabled={advanceBusy}
+                              onClick={() => void advance()}
+                            >
+                              {advanceBusy ? "Saving…" : "Mark ready"}
+                            </button>
+                          )}
+                          {isHandedOver && (
+                            <button
+                              type="button"
+                              className="btn btn--primary btn--sm"
+                              disabled={advanceBusy}
+                              onClick={() => void advance()}
+                            >
+                              {advanceBusy ? "Saving…" : "Mark collected"}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Force-delivered fallback when webhook is live */}
+                  {deliveryIsLive && can("orders.manage") && (
+                    <button
+                      type="button"
+                      className="btn btn--subtle btn--sm"
+                      disabled={advanceBusy}
+                      onClick={() => void advance()}
+                      style={{ fontSize: 12, color: "var(--ink-soft)" }}
+                    >
+                      {advanceBusy ? "Saving…" : "Force delivered (fallback)"}
+                    </button>
+                  )}
+
+                  {deliveryError && (
+                    <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{deliveryError}</p>
+                  )}
+
+                  {/* Rider journey panel */}
+                  <DeliveryStatusPanel delivery={data.delivery ?? null} onRebook={bookRide} />
+                </section>
+              );
+            })()}
+
             {/* Delivery / Shipbubble booking — shown for any delivery order, not
                 just ones with a geocoder-validated address. Since the customer
                 live-courier quote was retired (LIVE_COURIER_QUOTES off),
@@ -587,7 +714,6 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                 customer's on-file address + state, which the options endpoint
                 also uses. Walk-up / pickup channels never deliver. */}
             {data.channel !== "walkup" &&
-              data.channel !== "chowdeck_pickup" &&
               (data.deliveryAddressFormatted || data.customerAddress || data.deliveryState) && (
               <section className="card">
                 <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Delivery</h3>
@@ -603,10 +729,6 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                   <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
                     {data.customerName ?? "Customer"} · {data.customerPhone}
                   </div>
-                )}
-
-                {deliveryError && (
-                  <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{deliveryError}</p>
                 )}
 
                 {/* Booked delivery */}
