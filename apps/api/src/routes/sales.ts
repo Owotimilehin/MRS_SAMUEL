@@ -15,6 +15,7 @@ import {
   product,
   shiftOpen,
   customer,
+  deliveryOrder,
   type DbClient,
 } from "@ms/db";
 import { availableAtBranch, nextOrderNumber } from "@ms/domain";
@@ -559,7 +560,6 @@ export function saleRoutes(db: DbClient) {
         throw new BusinessError("conflict", `not an online order: ${o.channel}`, 409);
       }
       // Determine fulfilment type.
-      const { deliveryOrder } = await import("@ms/db");
       const [del] = await tx
         .select({ id: deliveryOrder.id })
         .from(deliveryOrder)

@@ -271,7 +271,7 @@ export function humanizeAction(row: AuditRow, branches: BranchLookup[]): string 
     case "sale.mark_delivered":
       return `Marked sale ${orderNum()} as delivered`;
     case "sale.advance":
-      return `Order advanced`;
+      return `Advanced order ${orderNum()}`;
     case "sale.cancel":
       return `Cancelled sale ${orderNum()}`;
 
