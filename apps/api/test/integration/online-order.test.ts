@@ -859,4 +859,65 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(body.data.provider).not.toBe("fallback");
     expect(body.data.options.length).toBeGreaterThan(0);
   });
+
+  it("tracking response includes a delivery rider block when a delivery_order row exists", async () => {
+    // Task 10: seed a paid online order + delivery_order with status in_transit,
+    // then assert the public tracking endpoint returns the delivery block.
+    const phone = "+2348025557777";
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        zone_name: "Test zone",
+        delivery_fee_ngn: 1500,
+        customer: {
+          name: "Rider Test",
+          phone,
+          email: "ridertest@example.com",
+          address: "5 Rider Test Road",
+        },
+        items: [{ product_id: productId, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const orderBody = (await orderRes.json()) as { data: { id: string; order_number: string } };
+    const saleOrderId = orderBody.data.id;
+
+    // Insert a delivery_order row directly — simulates the admin booking a rider.
+    const { deliveryOrder } = await import("@ms/db");
+    await db.insert(deliveryOrder).values({
+      saleOrderId,
+      provider: "bolt",
+      status: "in_transit",
+      pickupBranchId: branchId,
+      pickupAddress: "1 Mrs Samuel Kitchen, Lagos",
+      dropoffAddress: "5 Rider Test Road, Lagos",
+      quotedFeeNgn: 1500,
+      riderName: "Emeka Obi",
+      riderPhone: "+2348033001234",
+      riderVehicle: "Motorcycle",
+      trackingUrl: "https://bolt.eu/track/test-123",
+    });
+
+    const track = await fetch(
+      `${baseUrl}/v1/public/orders/${orderBody.data.order_number}?phone=${encodeURIComponent(phone)}`,
+    );
+    expect(track.status).toBe(200);
+    const trackBody = (await track.json()) as {
+      data: {
+        delivery: {
+          status: string;
+          rider_name: string | null;
+          rider_phone: string | null;
+          rider_vehicle: string | null;
+          tracking_url: string | null;
+        } | null;
+      };
+    };
+    expect(trackBody.data.delivery).not.toBeNull();
+    expect(trackBody.data.delivery!.status).toBe("in_transit");
+    expect(trackBody.data.delivery!.rider_name).toBe("Emeka Obi");
+    expect(trackBody.data.delivery!.tracking_url).toBe("https://bolt.eu/track/test-123");
+  });
 });
