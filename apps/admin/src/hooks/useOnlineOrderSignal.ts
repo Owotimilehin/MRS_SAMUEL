@@ -113,6 +113,9 @@ export function useOnlineOrderSignal(opts: SignalOptions = {}): OnlineOrderSigna
 
     inFlightRef.current = true;
     try {
+      // A null cursor means a fresh device / cleared storage: this poll is a
+      // baseline, not a delta — we set the cursor but suppress the alert.
+      const isFirstPoll = lastSeenRef.current === null;
       const since = lastSeenRef.current ?? "";
       const url = `/v1/online-orders/active-count${since ? `?since=${encodeURIComponent(since)}` : ""}`;
       const res = await fetch(url, { credentials: "include" });
@@ -124,21 +127,28 @@ export function useOnlineOrderSignal(opts: SignalOptions = {}): OnlineOrderSigna
 
       if (new_since > 0 && !sideEffectFiredRef.current) {
         sideEffectFiredRef.current = true;
-        setNewCount((prev) => prev + new_since);
-        // Advance lastSeen so next poll doesn't re-count these.
-        if (newest) {
-          lastSeenRef.current = newest;
-          writeLastSeen(newest);
-        }
-        // Toast (fires in both shells)
-        toast.info(
-          new_since === 1
-            ? "🔔 New online order received — check the queue."
-            : `🔔 ${new_since} new online orders received — check the queue.`,
-        );
-        // Chime (only in BranchShell — caller passes chime:true)
-        if (chime && chimeEnabled()) {
-          playChime();
+        // Always advance the cursor — even when `newest` is null — so a future
+        // poll never re-counts this batch and re-fires the toast after an
+        // acknowledge(). Fall back to "now" when the API omits `newest`.
+        const cursor = newest ?? new Date().toISOString();
+        lastSeenRef.current = cursor;
+        writeLastSeen(cursor);
+        // On the very first poll (no prior cursor) treat the response as a
+        // baseline: record the cursor but suppress the toast/chime so a fresh
+        // device doesn't alert for orders that were already there. Only deltas
+        // after this baseline alert.
+        if (!isFirstPoll) {
+          setNewCount((prev) => prev + new_since);
+          // Toast (fires in both shells)
+          toast.info(
+            new_since === 1
+              ? "🔔 New online order received — check the queue."
+              : `🔔 ${new_since} new online orders received — check the queue.`,
+          );
+          // Chime (only in BranchShell — caller passes chime:true)
+          if (chime && chimeEnabled()) {
+            playChime();
+          }
         }
       } else if (newest && newest > (lastSeenRef.current ?? "")) {
         // No new_since but newest advanced — advance our cursor silently.
