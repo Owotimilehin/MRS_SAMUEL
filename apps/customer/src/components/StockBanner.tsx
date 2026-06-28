@@ -24,6 +24,19 @@ function buildBannerParts(summary: StockSummary): { inStock: Size[]; preorder: S
   return { inStock, preorder };
 }
 
+/** Pure message-assembly function: maps each size to its status text for testing. */
+export function buildBannerMessages(summary: StockSummary): Partial<Record<Size, string>> {
+  const messages: Partial<Record<Size, string>> = {};
+  for (const [size, status] of Object.entries(summary) as [Size, StockStatus][]) {
+    if (status === "in_stock") {
+      messages[size] = `${SIZE_LABELS[size]} ready for same-day delivery`;
+    } else {
+      messages[size] = `${SIZE_LABELS[size]} on preorder (arrives next delivery day)`;
+    }
+  }
+  return messages;
+}
+
 export function StockBanner({ summary }: StockBannerProps) {
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;

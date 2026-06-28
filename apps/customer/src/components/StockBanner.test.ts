@@ -2,6 +2,7 @@
 // Tests the pure deriveStockSummary helper exported from stock-summary.ts (node env, no DOM).
 import { describe, it, expect } from "vitest";
 import { deriveStockSummary } from "@/lib/stock-summary";
+import { buildBannerMessages } from "./StockBanner";
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
 
@@ -74,5 +75,37 @@ describe("deriveStockSummary", () => {
     const summary = deriveStockSummary([]);
     expect(summary["650ml"]).toBe("preorder");
     expect(summary["330ml"]).toBe("preorder");
+  });
+});
+
+describe("buildBannerMessages", () => {
+  it("assembles in_stock message with 'delivery' text and size for 650ml", () => {
+    const summary = { "650ml": "in_stock" as const, "330ml": "preorder" as const };
+    const messages = buildBannerMessages(summary);
+    expect(messages["650ml"]).toBeDefined();
+    expect(messages["650ml"]!.toLowerCase()).toContain("delivery");
+    expect(messages["650ml"]).toContain("650ml");
+  });
+
+  it("assembles preorder message with 'preorder' text and size for 330ml", () => {
+    const summary = { "650ml": "in_stock" as const, "330ml": "preorder" as const };
+    const messages = buildBannerMessages(summary);
+    expect(messages["330ml"]).toBeDefined();
+    expect(messages["330ml"]!.toLowerCase()).toContain("preorder");
+    expect(messages["330ml"]).toContain("330ml");
+  });
+
+  it("handles all in_stock sizes", () => {
+    const summary = { "650ml": "in_stock" as const, "330ml": "in_stock" as const };
+    const messages = buildBannerMessages(summary);
+    expect(messages["650ml"]!.toLowerCase()).toContain("delivery");
+    expect(messages["330ml"]!.toLowerCase()).toContain("delivery");
+  });
+
+  it("handles all preorder sizes", () => {
+    const summary = { "650ml": "preorder" as const, "330ml": "preorder" as const };
+    const messages = buildBannerMessages(summary);
+    expect(messages["650ml"]!.toLowerCase()).toContain("preorder");
+    expect(messages["330ml"]!.toLowerCase()).toContain("preorder");
   });
 });
