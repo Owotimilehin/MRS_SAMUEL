@@ -52,6 +52,33 @@ describe("toUiProduct", () => {
   });
 });
 
+/** Helper: build an ApiProduct with per-size overrides (available, preorder_only). */
+function fixtureWithVariants(sizes: Partial<Record<"650ml" | "330ml", { available?: number; preorder_only?: boolean }>>): ApiProduct {
+  const variants = (Object.entries(sizes) as [string, { available?: number; preorder_only?: boolean }][]).map(([label, opts]) => ({
+    id: `v-${label}`,
+    size_ml: parseInt(label),
+    sku: `S-${label}`,
+    price_ngn: label === "650ml" ? 4200 : 2500,
+    preorder_only: opts.preorder_only ?? false,
+    available: opts.available ?? 0,
+  }));
+  return { ...api, variants } as ApiProduct;
+}
+
+describe("availableBySize", () => {
+  it("maps per-size available counts", () => {
+    const p = toUiProduct(fixtureWithVariants({ "650ml": { available: 5 }, "330ml": { available: 0 } }));
+    expect(p.availableBySize["650ml"]).toBe(5);
+    expect(p.availableBySize["330ml"]).toBe(0);
+  });
+
+  it("defaults to 0 for a size with no available field on the variant", () => {
+    const p = toUiProduct(fixtureWithVariants({ "650ml": {}, "330ml": {} }));
+    expect(p.availableBySize["650ml"]).toBe(0);
+    expect(p.availableBySize["330ml"]).toBe(0);
+  });
+});
+
 describe("toUiPostSummary", () => {
   const base: ApiBlogSummary = {
     id: "b1", slug: "s", title: "T", excerpt: "e", cover_url: null,

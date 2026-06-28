@@ -7,6 +7,8 @@ export interface ApiVariant {
   sku: string;
   price_ngn: number;
   preorder_only: boolean;
+  /** Available stock at the online-default branch for this specific size. 0 = out of stock. */
+  available?: number;
 }
 
 export interface ApiPalette {

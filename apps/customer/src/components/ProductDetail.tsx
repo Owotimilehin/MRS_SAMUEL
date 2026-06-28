@@ -4,26 +4,27 @@ import { useState, useEffect } from "react";
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
 import { getFruitFor } from "@/lib/visuals";
-import { useCart, formatNaira, isPreorderSize, quickAddSize } from "@/lib/cart";
+import { useCart, formatNaira, isPreorderSize, isPreorderLine, quickAddSize } from "@/lib/cart";
 
-function StockLabel({ available, preorderOnly }: { available: number | undefined; preorderOnly: boolean }) {
-  if (preorderOnly || (available ?? 0) <= 0) {
+/** Per-size stock label driven by `availableBySize[size]`. */
+function StockLabel({ available }: { available: number }) {
+  if (available <= 0) {
     return (
       <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-[color:var(--brand-orange)]">
         Made to order — we can prepare more for you
       </span>
     );
   }
-  if (available! <= 5) {
+  if (available <= 5) {
     return (
       <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-[color:var(--brand-orange)]">
-        {available} available — order now
+        {available} in stock — order now
       </span>
     );
   }
   return (
     <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-[color:var(--brand)]/50">
-      {available} available
+      {available} in stock
     </span>
   );
 }
@@ -149,6 +150,8 @@ export function ProductDetail({ product, onClose }: Props) {
                 <div className="grid grid-cols-2 gap-3">
                   {sizes.map((s) => {
                     const active = size === s;
+                    const sizeAvailable = product.availableBySize[s] ?? 0;
+                    const isStockPreorder = isPreorderLine(product, s, 1);
                     return (
                       <button
                         key={s}
@@ -162,7 +165,7 @@ export function ProductDetail({ product, onClose }: Props) {
                       >
                         <div className="text-xs font-semibold opacity-60">
                           {s}
-                          {isPreorderSize(product, s) && (
+                          {(isStockPreorder || isPreorderSize(product, s)) && (
                             <span className="ml-1.5 rounded-full bg-[color:var(--brand-orange)]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[color:var(--brand-orange)]">
                               Preorder
                             </span>
@@ -171,12 +174,12 @@ export function ProductDetail({ product, onClose }: Props) {
                         <div className="font-display text-xl font-semibold">
                           {formatNaira(product.prices[s])}
                         </div>
-                        <StockLabel available={product.available} preorderOnly={isPreorderSize(product, s)} />
+                        <StockLabel available={sizeAvailable} />
                       </button>
                     );
                   })}
                 </div>
-                {isPreorderSize(product, size) && (
+                {(isPreorderLine(product, size, 1) || isPreorderSize(product, size)) && (
                   <p className="mt-2 text-xs font-medium text-[color:var(--brand-orange)]">
                     This size is made to order — pick a delivery day at checkout.
                   </p>
