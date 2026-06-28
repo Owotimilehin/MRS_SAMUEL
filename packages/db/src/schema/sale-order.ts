@@ -91,6 +91,8 @@ export const saleOrder = pgTable("sale_order", {
   // money back (e.g. a confirmed Payaza charge with no matching paid order,
   // or a duplicate charge). Null = no refund owed.
   refundOwedNgn: integer("refund_owed_ngn"),
+  // Secondary contact for delivery when the primary phone isn't reachable on WhatsApp.
+  altPhone: text("alt_phone"),
 }, (t) => ({
   // Reports/dashboards filter status IN (...) over a created_at_local range; the
   // status column leads so the range scan on created_at_local stays sargable.

@@ -65,7 +65,32 @@ export function CartDrawer() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-bold leading-tight truncate">{item.product.name}</div>
-                    <div className="text-xs opacity-70">{item.size}</div>
+                    <div className="flex items-center gap-1.5 text-xs opacity-70">
+                      <span>{item.size}</span>
+                      {item.preorder && (
+                        <span className="rounded-full bg-[color:var(--brand-orange)]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[color:var(--brand-orange)]">
+                          Preorder
+                        </span>
+                      )}
+                    </div>
+                    {(() => {
+                      const available = item.product.availableBySize[item.size] ?? 0;
+                      if (available > 0 && available <= 10) {
+                        return (
+                          <div className="text-[10px] text-[color:var(--brand-orange)] font-semibold mt-0.5">
+                            {available} left
+                          </div>
+                        );
+                      }
+                      if (available === 0) {
+                        return (
+                          <div className="text-[10px] text-[color:var(--brand-orange)] font-semibold mt-0.5">
+                            Made to order
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                     <div className="mt-2 flex items-center gap-2">
                       <button
                         onClick={() => setQty(item.id, item.qty - 1)}

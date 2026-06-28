@@ -2,20 +2,20 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
 
-// Some sizes are made to order — preorder only (driven by the variant's
-// `preorder_only` flag from the API). They can't ship same-day, so checkout
-// forces a scheduled delivery day when the basket holds one.
-export const isPreorderSize = (product: Product, size: Size): boolean =>
-  product.preorderBySize[size] ?? false;
+/** A line is a preorder when the wanted qty exceeds the online-default
+ *  branch's available stock for that size. Whole line flips (spec). */
+export const isPreorderLine = (product: Product, size: Size, qty: number): boolean =>
+  qty > (product.availableBySize[size] ?? 0);
 
-/** The size a one-tap "quick add" should use: the largest deliverable
- *  (non-preorder) size the product sells, otherwise whatever single size
- *  exists (e.g. a product sold only as a preorder-only size). */
+/** The size a one-tap "quick add" should use: the largest size with stock > 0,
+ *  otherwise the largest size the product sells (preorder path). */
 export function quickAddSize(product: Product): Size {
-  const deliverable = (["650ml", "330ml"] as const).find(
-    (s) => product.variantIds[s] && !isPreorderSize(product, s),
+  // Prefer the largest size that has live stock available.
+  const inStock = (["650ml", "330ml"] as const).find(
+    (s) => product.variantIds[s] && (product.availableBySize[s] ?? 0) > 0,
   );
-  if (deliverable) return deliverable;
+  if (inStock) return inStock;
+  // Fall back to largest available variant (will be a preorder).
   if (product.variantIds["650ml"]) return "650ml";
   if (product.variantIds["330ml"]) return "330ml";
   return "650ml";
@@ -57,8 +57,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as CartItem[];
-        // Backfill preorder for carts saved before the field existed.
-        setItems(saved.map((i) => ({ ...i, preorder: i.preorder ?? isPreorderSize(i.product, i.size) })));
+        // Backfill preorder using stock-driven logic; recompute on every hydration
+        // so stale carts pick up the latest stock figures.
+        setItems(saved.map((i) => ({ ...i, preorder: isPreorderLine(i.product, i.size, i.qty) })));
       }
     } catch {
       /* ignore corrupt cart */
@@ -80,15 +81,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const unitPrice = product.prices[size];
     setItems((prev) => {
       const exist = prev.find((i) => i.id === id);
-      if (exist) return prev.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i));
-      return [...prev, { id, product, size, variantId, unitPrice, qty: 1, preorder: isPreorderSize(product, size) }];
+      if (exist) {
+        const newQty = exist.qty + 1;
+        return prev.map((i) =>
+          i.id === id ? { ...i, qty: newQty, preorder: isPreorderLine(product, size, newQty) } : i,
+        );
+      }
+      return [...prev, { id, product, size, variantId, unitPrice, qty: 1, preorder: isPreorderLine(product, size, 1) }];
     });
     setOpen(true);
   };
 
   const remove = (id: string) => setItems((p) => p.filter((i) => i.id !== id));
   const setQty = (id: string, qty: number) =>
-    setItems((p) => (qty <= 0 ? p.filter((i) => i.id !== id) : p.map((i) => (i.id === id ? { ...i, qty } : i))));
+    setItems((p) =>
+      qty <= 0
+        ? p.filter((i) => i.id !== id)
+        : p.map((i) =>
+            i.id === id ? { ...i, qty, preorder: isPreorderLine(i.product, i.size, qty) } : i,
+          ),
+    );
   const clear = () => setItems([]);
 
   const subtotal = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);

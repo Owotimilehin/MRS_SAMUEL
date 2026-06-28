@@ -33,6 +33,30 @@ function lagosTime(iso: unknown): string {
   });
 }
 
+const LAGOS_OFFSET_MS = 3_600_000; // UTC+1, no DST
+const DOW_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MON_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * Format a stored scheduled_delivery_at ISO string as "Tue 7 Jul · Evening (4–8pm)".
+ * The window is derived from the Lagos hour of the instant:
+ *   < 12 → Morning (8am–12pm), < 16 → Afternoon (12–4pm), ≥ 16 → Evening (4–8pm).
+ * Returns null when the string is absent or invalid.
+ */
+function lagosDeliveryWindow(iso: unknown): string | null {
+  if (typeof iso !== "string" || !iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const l = new Date(d.getTime() + LAGOS_OFFSET_MS);
+  const dow = DOW_SHORT[l.getUTCDay()]!;
+  const day = l.getUTCDate();
+  const mon = MON_SHORT[l.getUTCMonth()]!;
+  const h = l.getUTCHours();
+  const windowLabel =
+    h < 12 ? "Morning (8am–12pm)" : h < 16 ? "Afternoon (12–4pm)" : "Evening (4–8pm)";
+  return `${dow} ${day} ${mon} · ${windowLabel}`;
+}
+
 function roleLabel(role: string): string {
   return role.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
@@ -258,7 +282,8 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           varianceLines(event.payload["variances"]) +
           `\n👉 ${ADMIN_URL}/branch/shift-start`,
       };
-    case "sale.online_placed":
+    case "sale.online_placed": {
+      const scheduledWindow = lagosDeliveryWindow(event.payload["scheduled_delivery_at"]);
       return {
         chatIds: [owner],
         text:
@@ -266,9 +291,11 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `${p["order_number"]} · ₦${p["total_ngn"]}\n` +
           `${p["customer_name"]} · ${p["customer_phone"]}` +
           itemLines(event.payload) +
+          (scheduledWindow ? `\n📅 Scheduled: *${scheduledWindow}*` : "") +
           `\nWaiting on payment.\n` +
           `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
       };
+    }
     case "sale.paid_online": {
       const scheduled = p["scheduled_delivery_at"];
       const state = p["delivery_state"];
@@ -433,15 +460,18 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `🚫 *Subscription cancelled*\n` +
           `Reason: ${p["reason"] ?? "manual"}.`,
       };
-    case "sale.preorder_fulfilled":
+    case "sale.preorder_fulfilled": {
+      const preorderWindow = lagosDeliveryWindow(event.payload["scheduled_delivery_at"]);
       return {
         chatIds: [owner],
         text:
           `🎁 *Preorder fulfilled*\n` +
           `${p["order_number"]} · ${p["channel"] ?? ""}` +
           itemLines(event.payload) +
+          (preorderWindow ? `\n📅 Scheduled: *${preorderWindow}*` : "") +
           `\n👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
       };
+    }
     case "sale.preorder_paid":
       return {
         chatIds: [owner],

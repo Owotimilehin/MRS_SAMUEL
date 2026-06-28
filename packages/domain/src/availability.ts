@@ -43,6 +43,43 @@ export async function availableAtBranch(
 }
 
 /**
+ * Stock available to a NEW sale at a branch right now, per variant (per-size).
+ *
+ *   available = SUM(ledger.delta for this branch+variant)
+ *             - SUM(active reservations for this branch+variant)
+ *
+ * "Active" = expires_at in the future. Expired reservations are swept by the
+ * worker, but we still subtract only the non-expired ones here so a race
+ * between sweep and check doesn't over-sell.
+ */
+export async function availableVariantAtBranch(
+  db: DbExecutor,
+  opts: { branchId: string; variantId: string },
+): Promise<number> {
+  const [bal] = await db
+    .select({ sum: sql<number>`COALESCE(SUM(${stockLedger.delta}), 0)::int` })
+    .from(stockLedger)
+    .where(
+      and(
+        eq(stockLedger.locationType, "branch"),
+        eq(stockLedger.locationId, opts.branchId),
+        eq(stockLedger.variantId, opts.variantId),
+      ),
+    );
+  const [resv] = await db
+    .select({ sum: sql<number>`COALESCE(SUM(${stockReservation.quantity}), 0)::int` })
+    .from(stockReservation)
+    .where(
+      and(
+        eq(stockReservation.branchId, opts.branchId),
+        eq(stockReservation.variantId, opts.variantId),
+        gt(stockReservation.expiresAt, new Date()),
+      ),
+    );
+  return Number(bal?.sum ?? 0) - Number(resv?.sum ?? 0);
+}
+
+/**
  * Delete every reservation whose expires_at is in the past. Returns the count
  * removed. Called on a 60-second cron from the worker.
  */

@@ -177,6 +177,9 @@ export async function fulfilPreorderTx(
         order_number: o.orderNumber,
         branch_id: o.branchId,
         channel: o.channel,
+        scheduled_delivery_at: o.scheduledDeliveryAt
+          ? o.scheduledDeliveryAt.toISOString()
+          : null,
         items: notifItems,
       },
     });

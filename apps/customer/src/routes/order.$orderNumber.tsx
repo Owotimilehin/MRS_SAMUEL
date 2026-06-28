@@ -196,6 +196,7 @@ function OrderPage() {
               subtotalNgn={order.subtotal_ngn}
               deliveryFeeNgn={order.delivery_fee_ngn}
               totalNgn={order.total_ngn}
+              scheduledDeliveryAt={order.scheduled_delivery_at}
             />
 
             {order.support_whatsapp && (

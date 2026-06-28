@@ -386,7 +386,9 @@ describe("Phase 3 customer-site online order flow", () => {
   });
 
   it("stores scheduled_delivery_at when the customer schedules for later", async () => {
-    const future = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+    // scheduled_delivery_at in the request body is now ignored — the server
+    // computes it authoritatively from orderSchedule. We just assert it's
+    // non-null and is a parseable ISO datetime.
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": uuid() },
@@ -394,7 +396,6 @@ describe("Phase 3 customer-site online order flow", () => {
         branch_id: branchId,
         zone_name: "Test zone",
         delivery_fee_ngn: 1500,
-        scheduled_delivery_at: future,
         customer: {
           name: "Sched Customer",
           phone: "+2348025550001",
@@ -414,7 +415,8 @@ describe("Phase 3 customer-site online order flow", () => {
       data: { scheduledDeliveryAt: string | null };
     };
     expect(detailBody.data.scheduledDeliveryAt).not.toBeNull();
-    expect(new Date(detailBody.data.scheduledDeliveryAt!).toISOString()).toBe(future);
+    // Server-derived: must be a valid ISO datetime
+    expect(new Date(detailBody.data.scheduledDeliveryAt!).getTime()).toBeGreaterThan(0);
   });
 
   it("sale detail returns customer name, phone, email and address", async () => {
@@ -691,7 +693,8 @@ describe("Phase 3 customer-site online order flow", () => {
   });
 
   it("tracking returns scheduled_delivery_at and delivery_state", async () => {
-    const future = new Date(Date.now() + 12 * 60 * 60_000).toISOString();
+    // scheduled_delivery_at is now server-derived. We assert it's non-null and
+    // is a valid ISO datetime; delivery_state must still match what was sent.
     const phone = "+2348025550005";
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
@@ -700,7 +703,6 @@ describe("Phase 3 customer-site online order flow", () => {
         branch_id: branchId,
         zone_name: "Outside Lagos",
         delivery_fee_ngn: 0,
-        scheduled_delivery_at: future,
         delivery_state: "Abuja (FCT)",
         customer: { name: "Track Sched", phone, address: "5 Track Street" },
         items: [{ product_id: productId, quantity: 1 }],
@@ -714,7 +716,9 @@ describe("Phase 3 customer-site online order flow", () => {
     const t = (await track.json()) as {
       data: { scheduled_delivery_at: string | null; delivery_state: string | null };
     };
-    expect(new Date(t.data.scheduled_delivery_at!).toISOString()).toBe(future);
+    expect(t.data.scheduled_delivery_at).not.toBeNull();
+    // Server-derived: must be a valid ISO datetime
+    expect(new Date(t.data.scheduled_delivery_at!).getTime()).toBeGreaterThan(0);
     expect(t.data.delivery_state).toBe("Abuja (FCT)");
   });
 

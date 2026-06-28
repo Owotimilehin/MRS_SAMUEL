@@ -40,6 +40,7 @@ interface Sale {
   createdAtLocal: string;
   customerName?: string | null;
   customerPhone?: string | null;
+  altPhone?: string | null;
   refundOwedNgn?: number | null;
   reportedNgn?: number | null;
   customerEmail?: string | null;
@@ -484,6 +485,11 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                       <a href={`tel:${data.customerPhone}`} style={{ color: "var(--accent)" }}>
                         {data.customerPhone}
                       </a>
+                    </div>
+                  )}
+                  {data.altPhone && (
+                    <div style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                      Alt phone: <a href={`tel:${data.altPhone}`} style={{ color: "var(--accent)" }}>{data.altPhone}</a>
                     </div>
                   )}
                   {data.customerEmail && (

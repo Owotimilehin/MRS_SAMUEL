@@ -1,22 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { WINDOWS, scheduledIso, isWindowAvailable } from "./schedule";
+import { WINDOWS, scheduledIso, availableWindows } from "./schedule";
 
-describe("schedule windows", () => {
-  it("exposes three windows mapped to fixed Lagos hours", () => {
-    expect(WINDOWS.map((w) => w.id)).toEqual(["morning", "afternoon", "evening"]);
-    expect(WINDOWS.map((w) => w.hour24)).toEqual([10, 14, 17]);
+describe("schedule re-exports from @ms/shared", () => {
+  it("WINDOWS covers all three windows", () => {
+    expect(Object.keys(WINDOWS)).toEqual(["morning", "afternoon", "evening"]);
   });
 
-  it("builds a Lagos (+01:00) ISO for a date + window", () => {
+  it("scheduledIso maps windows to Lagos anchor times (+01:00)", () => {
+    expect(scheduledIso("2026-06-13", "morning")).toBe("2026-06-13T09:00:00+01:00");
     expect(scheduledIso("2026-06-13", "afternoon")).toBe("2026-06-13T14:00:00+01:00");
-    expect(scheduledIso("2026-06-13", "morning")).toBe("2026-06-13T10:00:00+01:00");
+    expect(scheduledIso("2026-06-13", "evening")).toBe("2026-06-13T18:00:00+01:00");
   });
 
-  it("treats a window as available only when strictly in the future", () => {
-    // now = 2026-06-13 13:00 Lagos (12:00Z)
-    const now = new Date("2026-06-13T12:00:00Z");
-    expect(isWindowAvailable("2026-06-13", "morning", now)).toBe(false); // 10:00 passed
-    expect(isWindowAvailable("2026-06-13", "afternoon", now)).toBe(true); // 14:00 ahead
-    expect(isWindowAvailable("2026-06-14", "morning", now)).toBe(true); // future date
+  it("availableWindows excludes morning on Sunday (dow=0)", () => {
+    expect(availableWindows(0)).toEqual(["afternoon", "evening"]);
+  });
+
+  it("availableWindows returns all three on a weekday", () => {
+    expect(availableWindows(3)).toEqual(["morning", "afternoon", "evening"]); // Wednesday
   });
 });

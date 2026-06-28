@@ -1,19 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   ArrowLeft, Check, Lock, Truck, ShoppingBag, AlertCircle, Loader2, CalendarClock,
 } from "lucide-react";
 import { SiteShell } from "@/components/SiteShell";
-import { GraciousContactModal } from "@/components/GraciousContactModal";
 import { useCart, formatNaira } from "@/lib/cart";
 import { fetchBranches, requestQuote, placeOrder as placeOrderFn } from "@/lib/api/server-fns";
 import { asApiError } from "@/lib/api/client";
 import type { ApiDeliveryOption, ApiPlacedOrder } from "@/lib/api/types";
 import { launchPayazaCheckout } from "@/lib/payaza";
 import { NIGERIA_STATES } from "@/lib/nigeria-states";
-import { WINDOWS, scheduledIso, isWindowAvailable, type DeliveryWindow } from "@/lib/schedule";
+import { scheduledIso, orderSchedule, type DeliveryWindow } from "@/lib/schedule";
 import { LIVE_COURIER_QUOTES } from "@/lib/flags";
+import type { Size } from "@/lib/visuals";
 
 export const Route = createFileRoute("/checkout")({
   head: () => ({
@@ -37,32 +37,58 @@ function todayLagos(): string {
   return new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+/** Parse the numeric ml value from a Size string like "650ml" → 650. */
+function sizeToMl(size: Size): number {
+  return parseInt(size, 10);
+}
+
+/** Format a YYYY-MM-DD date string as "Monday, 30 June 2026" (Lagos locale). */
+function formatDeliveryDate(dateStr: string): string {
+  // dateStr is already Lagos date; parse at noon Lagos time to avoid TZ shifts.
+  const d = new Date(`${dateStr}T12:00:00+01:00`);
+  return d.toLocaleDateString("en-NG", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+    timeZone: "Africa/Lagos",
+  });
+}
+
 function Page() {
   const { branches } = Route.useLoaderData();
-  const { items, subtotal, clear, hasPreorder } = useCart();
+  const { items, subtotal, clear } = useCart();
   // Route to the owner-selected online-fulfilment branch; fall back to the first
   // active branch when none is flagged (preserves prior behaviour).
   const branchId = (branches.find((b) => b.is_online_default) ?? branches[0])?.id ?? null;
 
   // --- form ---
   const [form, setForm] = useState({
-    name: "", phone: "", email: "", address: "", notes: "",
+    name: "", phone: "", email: "", altPhone: "", address: "", notes: "",
     state: "Lagos" as string,
-    when: "now" as "now" | "schedule",
     date: todayLagos(),
-    window: "afternoon" as DeliveryWindow,
   });
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((p) => ({ ...p, [k]: v }));
 
   const outsideLagos = form.state !== "Lagos";
-  const scheduled = form.when === "schedule";
 
-  // Preorder items are made to order — they can't ship same-day, so a basket
-  // containing one is locked to the scheduled-delivery path.
+  // --- compute delivery schedule from cart lines ---
+  const lineKinds = useMemo(
+    () => items.map((i) => ({ sizeMl: sizeToMl(i.size), inStock: !i.preorder })),
+    [items],
+  );
+  const sched = useMemo(() => orderSchedule(new Date(), lineKinds), [lineKinds]);
+
+  // Chosen window: start from first selectable, or the fixed window.
+  const [selectedWindow, setSelectedWindow] = useState<DeliveryWindow>(
+    () => sched.fixedWindow ?? sched.selectableWindows[0] ?? "afternoon",
+  );
+  // Keep selection in sync if sched changes (e.g. items added/removed).
   useEffect(() => {
-    if (hasPreorder && form.when !== "schedule") set("when", "schedule");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasPreorder]);
+    const windows = sched.fixedWindow ? [] : sched.selectableWindows;
+    if (sched.fixedWindow) {
+      setSelectedWindow(sched.fixedWindow);
+    } else if (!windows.includes(selectedWindow)) {
+      setSelectedWindow(windows[0] ?? "afternoon");
+    }
+  }, [sched, selectedWindow]);
 
   // --- live delivery quote (Lagos + now only) ---
   const [quoting, setQuoting] = useState(false);
@@ -71,7 +97,7 @@ function Page() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const wantQuote =
-    LIVE_COURIER_QUOTES && !outsideLagos && !scheduled && form.address.trim().length >= 5 && !!branchId;
+    LIVE_COURIER_QUOTES && !outsideLagos && form.address.trim().length >= 5 && !!branchId;
 
   useEffect(() => {
     if (!wantQuote) {
@@ -101,21 +127,16 @@ function Page() {
 
   const selectedOption = options.find((o) => o.id === selectedId) ?? null;
   const deliveryFee =
-    !LIVE_COURIER_QUOTES || outsideLagos || scheduled ? 0 : (selectedOption?.fee_ngn ?? 0);
+    !LIVE_COURIER_QUOTES || outsideLagos ? 0 : (selectedOption?.fee_ngn ?? 0);
   const total = subtotal + deliveryFee;
 
   // --- placing the order ---
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const idemRef = useRef<string>("");
-  // A made-to-order order (out of stock / preorder-only) pauses here so we can
-  // show a gracious "we'll WhatsApp you" confirmation before payment. Holds the
-  // already-created order; null = no pending confirmation.
-  const [graciousOrder, setGraciousOrder] = useState<ApiPlacedOrder | null>(null);
-  // Once the customer has acknowledged the modal, don't re-show it on a re-entry.
-  const confirmedPreorderRef = useRef(false);
 
-  const scheduleValid = !scheduled || isWindowAvailable(form.date, form.window);
+  // Schedule is always valid — orderSchedule already rolls forward off-hours/past windows.
+  const scheduleValid = true;
   const orderItems = useMemo(
     () => items.map((i) => ({ variant_id: i.variantId, quantity: i.qty })),
     [items],
@@ -161,21 +182,6 @@ function Page() {
     });
   }
 
-  // Gracious modal: customer accepts the made-to-order order → on to payment.
-  function onGraciousContinue() {
-    const order = graciousOrder;
-    if (!order) return;
-    confirmedPreorderRef.current = true;
-    setGraciousOrder(null);
-    setPlacing(true);
-    void proceedToPayment(order);
-  }
-  // Gracious modal: customer backs out → keep the cart so they can adjust.
-  function onGraciousClose() {
-    setGraciousOrder(null);
-    setPlacing(false);
-  }
-
   async function submit(retry = false) {
     if (!branchId || items.length === 0) return;
     if (!retry) idemRef.current = crypto.randomUUID();
@@ -183,18 +189,23 @@ function Page() {
     setPlaceError(null);
 
     const phone = form.phone.replace(/[\s-]/g, "");
+    const altPhone = form.altPhone.trim();
+    // Chosen delivery window from the schedule-driven picker.
+    const chosenWindow = sched.fixedWindow ?? selectedWindow;
     try {
       const res = await placeOrderFn({
         data: {
           branch_id: branchId,
-          delivery_fee_ngn: deliveryFee,
+          delivery_fee_ngn: 0,
           delivery_state: form.state,
-          ...(selectedOption && !outsideLagos && !scheduled ? { delivery_quote_id: selectedOption.id } : {}),
-          ...(scheduled ? { scheduled_delivery_at: scheduledIso(form.date, form.window) } : {}),
+          ...(selectedOption && !outsideLagos ? { delivery_quote_id: selectedOption.id } : {}),
+          delivery_window: chosenWindow,
+          scheduled_delivery_at: scheduledIso(sched.date, chosenWindow),
           customer: {
             name: form.name.trim(),
             phone,
             ...(form.email.trim() ? { email: form.email.trim() } : {}),
+            ...(altPhone ? { alt_phone: altPhone } : {}),
             address: form.address.trim(),
           },
           items: orderItems,
@@ -202,14 +213,6 @@ function Page() {
           idempotency_key: idemRef.current,
         },
       });
-      // Made-to-order (a line is out of stock or preorder-only): pause and
-      // reassure the customer before payment. The order is already created;
-      // "Go back" just leaves it unpaid, exactly like abandoning checkout.
-      if (res.is_preorder && !confirmedPreorderRef.current) {
-        setGraciousOrder(res);
-        setPlacing(false);
-        return;
-      }
       await proceedToPayment(res);
       return;
     } catch (e) {
@@ -254,9 +257,6 @@ function Page() {
 
   return (
     <SiteShell>
-      {graciousOrder && (
-        <GraciousContactModal onContinue={onGraciousContinue} onClose={onGraciousClose} />
-      )}
       <div className="px-5 sm:px-10 max-w-6xl mx-auto pt-32 sm:pt-36 pb-24">
         <Link to="/juices" className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--brand)]/70 hover:text-[color:var(--brand-orange)]">
           <ArrowLeft className="h-4 w-4" /> Continue shopping
@@ -290,108 +290,120 @@ function Page() {
                       {NIGERIA_STATES.map((s) => (<option key={s} value={s}>{s}</option>))}
                     </select>
                   </label>
+                  <Field label="Alternate phone (optional)" value={form.altPhone} onChange={(v) => set("altPhone", v)} placeholder="Second number to reach you" className="sm:col-span-2" />
                   <Field label="Notes (optional)" value={form.notes} onChange={(v) => set("notes", v)} placeholder="Gate code, landmark…" className="sm:col-span-2" />
                 </div>
               </section>
 
-              {/* When */}
+              {/* When — schedule-driven delivery date & window picker */}
               <section>
-                <h2 className="font-display text-2xl text-[color:var(--brand)]">When?</h2>
-                {hasPreorder && (
-                  <p className="mt-2 rounded-xl bg-[color:var(--brand-orange)]/10 px-4 py-2.5 text-sm text-[color:var(--brand-orange)]">
-                    Your basket has a preorder item — these are pressed to order, so please pick a delivery day below.
-                  </p>
-                )}
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <Toggle active={form.when === "now"} disabled={hasPreorder} onClick={() => set("when", "now")} icon={<Truck className="h-4 w-4" />} title="Deliver now" desc={hasPreorder ? "Not available for preorder" : LIVE_COURIER_QUOTES && !outsideLagos ? "Live courier today" : "Arranged after checkout"} />
-                  <Toggle active={form.when === "schedule"} onClick={() => set("when", "schedule")} icon={<CalendarClock className="h-4 w-4" />} title="Schedule" desc="Pick a day & window" />
-                </div>
-                {scheduled && (
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label className="block">
-                      <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">Date</span>
-                      <input type="date" min={todayLagos()} value={form.date} onChange={(e) => set("date", e.target.value)} className="w-full rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm text-[color:var(--brand)] ring-1 ring-black/5 focus:ring-2 focus:ring-[color:var(--brand-orange)] focus:outline-none" />
-                    </label>
+                <h2 className="font-display text-2xl text-[color:var(--brand)]">Delivery window</h2>
+                <div className="mt-4 rounded-2xl bg-[color:var(--cream)]/60 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <CalendarClock className="h-4 w-4 text-[color:var(--brand-orange)] shrink-0" />
+                    <span className="font-semibold text-[color:var(--brand)]">{formatDeliveryDate(sched.date)}</span>
+                  </div>
+                  {sched.fixedWindow ? (
+                    <div className="flex items-center gap-2 text-sm text-[color:var(--brand)]/70">
+                      <Truck className="h-4 w-4 shrink-0" />
+                      <span>
+                        {sched.fixedWindow === "morning" && "Morning · 8am–12pm"}
+                        {sched.fixedWindow === "afternoon" && "Afternoon · 12–4pm"}
+                        {sched.fixedWindow === "evening" && "Evening · 4–8pm"}
+                      </span>
+                    </div>
+                  ) : (
                     <div>
-                      <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">Window</span>
+                      <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-2">Pick a window</span>
                       <div className="grid grid-cols-3 gap-2">
-                        {WINDOWS.map((w) => {
-                          const avail = isWindowAvailable(form.date, w.id);
-                          const active = form.window === w.id;
+                        {(["morning", "afternoon", "evening"] as DeliveryWindow[]).map((w) => {
+                          const isSelectable = sched.selectableWindows.includes(w);
+                          const active = selectedWindow === w;
+                          const label = w === "morning" ? "Morning" : w === "afternoon" ? "Afternoon" : "Evening";
                           return (
-                            <button key={w.id} disabled={!avail} onClick={() => set("window", w.id)} className={`rounded-xl px-2 py-2 text-xs font-semibold ring-1 transition ${active ? "bg-[color:var(--brand)] text-white ring-transparent" : "bg-white text-[color:var(--brand)] ring-black/10"} ${!avail ? "opacity-40 cursor-not-allowed" : ""}`}>
-                              {w.label.split(" · ")[0]}
+                            <button
+                              key={w}
+                              disabled={!isSelectable}
+                              onClick={() => setSelectedWindow(w)}
+                              className={`rounded-xl px-2 py-2 text-xs font-semibold ring-1 transition ${active && isSelectable ? "bg-[color:var(--brand)] text-white ring-transparent" : "bg-white text-[color:var(--brand)] ring-black/10"} ${!isSelectable ? "opacity-30 cursor-not-allowed" : ""}`}
+                            >
+                              {label}
                             </button>
                           );
                         })}
                       </div>
-                      {!scheduleValid && <p className="mt-1 text-xs text-[color:var(--brand-orange)]">That window has passed — pick a later one.</p>}
+                      <p className="mt-2 text-xs text-[color:var(--brand)]/55">
+                        {selectedWindow === "morning" && "8am–12pm"}
+                        {selectedWindow === "afternoon" && "12–4pm"}
+                        {selectedWindow === "evening" && "4–8pm"}
+                      </p>
                     </div>
-                  </div>
-                )}
+                  )}
+                  <p className="text-xs text-[color:var(--brand)]/60 pt-1 border-t border-black/5">
+                    Delivery cost will be confirmed and sent to you separately.
+                  </p>
+                </div>
               </section>
 
-              {/* Delivery cost */}
-              <section>
-                <h2 className="font-display text-2xl text-[color:var(--brand)]">Delivery</h2>
-                {outsideLagos ? (
-                  <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
-                    <span className="font-semibold text-[color:var(--brand)]">Outside Lagos.</span> We'll arrange delivery to {form.state} and confirm logistics with you separately. No delivery fee is charged now.
-                  </p>
-                ) : scheduled ? (
-                  <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
-                    <span className="font-semibold text-[color:var(--brand)]">Scheduled.</span> We'll deliver on {form.date}, {WINDOWS.find((w) => w.id === form.window)?.label}. No rider fee is charged now.
-                  </p>
-                ) : !LIVE_COURIER_QUOTES ? (
-                  <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
-                    <span className="font-semibold text-[color:var(--brand)]">We'll contact you on WhatsApp</span> to arrange delivery and confirm the cost once your order is in. No delivery fee is charged now.
-                  </p>
-                ) : quoting ? (
-                  <div className="mt-3 flex items-center gap-2 text-sm text-[color:var(--brand)]/60"><Loader2 className="h-4 w-4 animate-spin" /> Finding couriers…</div>
-                ) : options.length > 0 ? (
-                  <div className="mt-3 grid gap-2">
-                    {options.map((o) => {
-                      const active = o.id === selectedId;
-                      return (
-                        <button key={o.id} onClick={() => setSelectedId(o.id)} className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left ring-2 transition ${active ? "ring-[color:var(--brand-orange)] bg-[color:var(--brand-orange)]/5" : "ring-black/5 hover:ring-black/15"}`}>
-                          <div>
-                            <div className="font-semibold text-[color:var(--brand)]">{o.courier_name}</div>
-                            <div className="text-xs text-[color:var(--brand)]/60">{o.eta_minutes != null ? `~${o.eta_minutes} min` : "ETA on dispatch"}{o.on_demand ? " · on-demand" : ""}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-[color:var(--brand)]">{formatNaira(o.fee_ngn)}</span>
-                            {active && <Check className="h-4 w-4 text-[color:var(--brand-orange)]" />}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
-                    {form.address.trim().length >= 5 ? (quoteNotice ?? "No delivery fee is charged now.") : "Enter your address to see delivery options."}
-                  </p>
-                )}
-              </section>
+              {/* Delivery cost (kept for live-quotes path; hidden when LIVE_COURIER_QUOTES is off) */}
+              {LIVE_COURIER_QUOTES && !outsideLagos && (
+                <section>
+                  <h2 className="font-display text-2xl text-[color:var(--brand)]">Delivery fee</h2>
+                  {quoting ? (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-[color:var(--brand)]/60"><Loader2 className="h-4 w-4 animate-spin" /> Finding couriers…</div>
+                  ) : options.length > 0 ? (
+                    <div className="mt-3 grid gap-2">
+                      {options.map((o) => {
+                        const active = o.id === selectedId;
+                        return (
+                          <button key={o.id} onClick={() => setSelectedId(o.id)} className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left ring-2 transition ${active ? "ring-[color:var(--brand-orange)] bg-[color:var(--brand-orange)]/5" : "ring-black/5 hover:ring-black/15"}`}>
+                            <div>
+                              <div className="font-semibold text-[color:var(--brand)]">{o.courier_name}</div>
+                              <div className="text-xs text-[color:var(--brand)]/60">{o.eta_minutes != null ? `~${o.eta_minutes} min` : "ETA on dispatch"}{o.on_demand ? " · on-demand" : ""}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-[color:var(--brand)]">{formatNaira(o.fee_ngn)}</span>
+                              {active && <Check className="h-4 w-4 text-[color:var(--brand-orange)]" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
+                      {form.address.trim().length >= 5 ? (quoteNotice ?? "No delivery fee is charged now.") : "Enter your address to see delivery options."}
+                    </p>
+                  )}
+                </section>
+              )}
             </motion.div>
 
             {/* RIGHT: summary */}
             <aside className="rounded-[1.5rem] bg-[color:var(--brand)] text-white p-6 sm:p-7 h-fit lg:sticky lg:top-28">
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-white/60"><ShoppingBag className="h-3.5 w-3.5" /> Order summary</div>
               <div className="mt-5 space-y-3">
-                {items.map((it) => (
-                  <div key={it.id} className="flex items-center gap-3 text-sm">
-                    <div className="grid h-12 w-12 place-items-center rounded-lg shrink-0 bg-white/10"><img src={it.product.image} alt="" className="h-10 w-10 object-contain" /></div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold truncate">{it.product.name}</div>
-                      <div className="text-xs text-white/60">{it.size} · ×{it.qty}</div>
+                {items.map((it) => {
+                  const stock = it.product.availableBySize[it.size] ?? 0;
+                  return (
+                    <div key={it.id} className="flex items-start gap-3 text-sm">
+                      <div className="grid h-12 w-12 place-items-center rounded-lg shrink-0 bg-white/10"><img src={it.product.image} alt="" className="h-10 w-10 object-contain" /></div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold truncate">{it.product.name}</div>
+                        <div className="text-xs text-white/60">{it.size} · ×{it.qty}</div>
+                        {it.preorder ? (
+                          <div className="mt-0.5 text-[11px] text-[color:var(--brand-orange)] font-medium">Preorder — made to order</div>
+                        ) : (
+                          <div className="mt-0.5 text-[11px] text-white/50">In stock — {stock} left</div>
+                        )}
+                      </div>
+                      <div className="font-semibold shrink-0">{formatNaira(it.unitPrice * it.qty)}</div>
                     </div>
-                    <div className="font-semibold">{formatNaira(it.unitPrice * it.qty)}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="mt-5 pt-5 border-t border-white/10 space-y-2 text-sm">
                 <Row label="Subtotal" value={formatNaira(subtotal)} />
-                <Row label="Delivery" value={!LIVE_COURIER_QUOTES || outsideLagos || scheduled ? "₦0" : selectedOption ? formatNaira(deliveryFee) : "—"} />
+                <Row label="Delivery" value={!LIVE_COURIER_QUOTES || outsideLagos ? "₦0" : selectedOption ? formatNaira(deliveryFee) : "—"} />
                 <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
                   <span className="text-xs uppercase tracking-[0.2em] text-white/60">Total</span>
                   <span className="font-display text-2xl font-semibold">{formatNaira(total)}</span>
@@ -423,15 +435,6 @@ function Page() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (<div className="flex items-center justify-between text-white/80"><span>{label}</span><span className="font-semibold text-white">{value}</span></div>);
-}
-
-function Toggle({ active, onClick, icon, title, desc, disabled }: { active: boolean; onClick: () => void; icon: ReactNode; title: string; desc: string; disabled?: boolean }) {
-  return (
-    <button onClick={onClick} disabled={disabled} className={`flex items-start gap-3 rounded-2xl px-4 py-3 text-left ring-2 transition ${disabled ? "opacity-40 cursor-not-allowed ring-black/5" : active ? "ring-[color:var(--brand-orange)] bg-[color:var(--brand-orange)]/5" : "ring-black/5 hover:ring-black/15"}`}>
-      <span className={`grid h-9 w-9 place-items-center rounded-full ${active ? "bg-[color:var(--brand-orange)] text-white" : "bg-black/5 text-[color:var(--brand)]"}`}>{icon}</span>
-      <div><div className="font-semibold text-[color:var(--brand)]">{title}</div><div className="text-xs text-[color:var(--brand)]/60">{desc}</div></div>
-    </button>
-  );
 }
 
 function Field({ label, value, onChange, placeholder, className, invalid, hint }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; className?: string; invalid?: boolean; hint?: string }) {
