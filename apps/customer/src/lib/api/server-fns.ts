@@ -91,7 +91,8 @@ export interface PlaceOrderInput {
   delivery_quote_id?: string;
   delivery_state?: string;
   scheduled_delivery_at?: string;
-  customer: { name: string; phone: string; email?: string; address: string };
+  delivery_window?: "morning" | "afternoon" | "evening";
+  customer: { name: string; phone: string; email?: string; alt_phone?: string; address: string };
   items: Array<{ variant_id: string; quantity: number }>;
   notes?: string;
   turnstile_token?: string;
