@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { sql, eq, and, asc, isNull } from "drizzle-orm";
 import { branch, bundle, subscriptionPlan, type DbClient } from "@ms/db";
-import { availableAtBranch } from "@ms/domain";
+import { availableAtBranch, availableVariantAtBranch } from "@ms/domain";
 import { BusinessError } from "../lib/errors.js";
 
 type CatalogVariantRow = {
@@ -59,7 +59,7 @@ interface CatalogProductOut {
   /** Per-flavour available pool at the online-default branch. 0 when no
    *  online-default branch exists or when there is no stock. */
   available: number;
-  variants: Array<{ id: string; size_ml: number; sku: string; price_ngn: number; preorder_only: boolean }>;
+  variants: Array<{ id: string; size_ml: number; sku: string; price_ngn: number; preorder_only: boolean; available: number }>;
 }
 
 // Shared product SELECT: marketing content + colour palette + resolved media
@@ -91,7 +91,10 @@ export function publicCatalogRoutes(db: DbClient) {
 
   // Pull every active variant + its current price for the given product ids,
   // grouped by product. Unpriced variants are dropped (not sellable).
-  async function variantsByProduct(productIds: string[]) {
+  // When branchId is provided, each variant also carries its per-variant
+  // available count (stock balance minus active reservations). When branchId
+  // is null, available defaults to 0.
+  async function variantsByProduct(productIds: string[], branchId: string | null) {
     const byProduct = new Map<string, Array<CatalogProductOut["variants"][number]>>();
     if (productIds.length === 0) return byProduct;
     const variantRows = await db.execute<CatalogVariantRow>(sql`
@@ -110,8 +113,11 @@ export function publicCatalogRoutes(db: DbClient) {
     `);
     for (const v of variantRows) {
       if (v.price_ngn == null) continue; // unpriced variants are hidden from the public site
+      const available = branchId
+        ? await availableVariantAtBranch(db, { branchId, variantId: v.variant_id })
+        : 0;
       const list = byProduct.get(v.product_id) ?? [];
-      list.push({ id: v.variant_id, size_ml: v.size_ml, sku: v.sku, price_ngn: v.price_ngn, preorder_only: v.preorder_only });
+      list.push({ id: v.variant_id, size_ml: v.size_ml, sku: v.sku, price_ngn: v.price_ngn, preorder_only: v.preorder_only, available });
       byProduct.set(v.product_id, list);
     }
     return byProduct;
@@ -160,10 +166,10 @@ export function publicCatalogRoutes(db: DbClient) {
       ORDER BY p.display_order ASC
     `);
 
-    const byProduct = await variantsByProduct(productRows.map((p) => p.id));
-
     // Resolve the online-default branch once for the whole list.
     const branchId = await onlineDefaultBranchId();
+
+    const byProduct = await variantsByProduct(productRows.map((p) => p.id), branchId);
 
     const out: CatalogProductOut[] = [];
     for (const p of productRows) {
@@ -187,12 +193,12 @@ export function publicCatalogRoutes(db: DbClient) {
     `);
     const p = rows[0];
     if (!p) throw new BusinessError("not_found", "product not found", 404);
-    const byProduct = await variantsByProduct([p.id]);
+    const branchId = await onlineDefaultBranchId();
+    const byProduct = await variantsByProduct([p.id], branchId);
     const variants = byProduct.get(p.id) ?? [];
     if (variants.length === 0) {
       throw new BusinessError("not_found", "product not available", 404);
     }
-    const branchId = await onlineDefaultBranchId();
     const available = branchId
       ? await availableAtBranch(db, { branchId, productId: p.id })
       : 0;
