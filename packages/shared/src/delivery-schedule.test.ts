@@ -1,6 +1,6 @@
 // packages/shared/src/delivery-schedule.test.ts
 import { describe, it, expect } from "vitest";
-import { orderSchedule } from "./delivery-schedule.js";
+import { orderSchedule, lineTarget, scheduledIso } from "./delivery-schedule.js";
 
 // Helper: Lagos wall-clock -> Date. Lagos = UTC+1.
 const at = (iso: string) => new Date(`${iso}+01:00`);
@@ -51,5 +51,38 @@ describe("orderSchedule", () => {
     ]);
     expect(r.date).toBe("2026-07-02");
     expect(r.selectableWindows).toEqual(["morning", "afternoon", "evening"]);
+  });
+});
+
+describe("boundaries", () => {
+  it("650 OOS at exactly 16:00 Wed -> next day evening (evening already started)", () => {
+    const r = orderSchedule(at("2026-07-01T16:00:00"), [{ sizeMl: 650, inStock: false }]);
+    expect(r).toMatchObject({ date: "2026-07-02", fixedWindow: "evening", selectableWindows: [] });
+  });
+  it("in-stock at 20:00 Wed -> next day, all windows", () => {
+    const r = orderSchedule(at("2026-07-01T20:00:00"), [{ sizeMl: 650, inStock: true }]);
+    expect(r.date).toBe("2026-07-02");
+    expect(r.selectableWindows).toEqual(["morning", "afternoon", "evening"]);
+  });
+  it("in-stock Saturday 21:00 -> rolls to Sunday, morning excluded", () => {
+    const r = orderSchedule(at("2026-07-04T21:00:00"), [{ sizeMl: 650, inStock: true }]);
+    expect(r.date).toBe("2026-07-05");
+    expect(r.selectableWindows).toEqual(["afternoon", "evening"]);
+  });
+  it("empty cart -> today's remaining windows", () => {
+    const r = orderSchedule(at("2026-07-01T10:00:00"), []);
+    expect(r.date).toBe("2026-07-01");
+    expect(r.selectableWindows).toEqual(["afternoon", "evening"]);
+  });
+  it("scheduledIso maps windows to Lagos anchors", () => {
+    expect(scheduledIso("2026-07-01", "morning")).toBe("2026-07-01T09:00:00+01:00");
+    expect(scheduledIso("2026-07-01", "afternoon")).toBe("2026-07-01T14:00:00+01:00");
+    expect(scheduledIso("2026-07-01", "evening")).toBe("2026-07-01T18:00:00+01:00");
+  });
+  it("lineTarget: 330 OOS Wed -> next day, pickable", () => {
+    const t = lineTarget(at("2026-07-01T10:00:00"), { sizeMl: 330, inStock: false });
+    expect(t.date).toBe("2026-07-02");
+    expect(t.fixedWindow).toBeUndefined();
+    expect(t.selectableWindows).toEqual(["morning", "afternoon", "evening"]);
   });
 });
