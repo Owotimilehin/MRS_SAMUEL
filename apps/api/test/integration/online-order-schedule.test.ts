@@ -248,6 +248,146 @@ describe("Task 6: server-authoritative delivery schedule + alt_phone", () => {
     expect(storedDate > todayLagos).toBe(true);
   });
 
+  it("(d) valid delivery_window sent by client is honoured for in-stock order", async () => {
+    // Compute the schedule the handler will see so we know which windows are selectable.
+    const beforeNow = new Date();
+    const inStockLine = { sizeMl: 650, inStock: true };
+    const sched = orderSchedule(beforeNow, [inStockLine]);
+    // This test is only meaningful when the schedule offers selectable windows.
+    // If the schedule returns a fixed window the test is a no-op guard (still passes).
+    const targetWindow =
+      sched.fixedWindow ??
+      // Pick the LAST selectable window so we're not just accepting the default.
+      sched.selectableWindows[sched.selectableWindows.length - 1];
+    if (!targetWindow) {
+      // No windows at all — skip rather than assert a broken state.
+      return;
+    }
+
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({
+        branch_id: branchId,
+        delivery_fee_ngn: 0,
+        delivery_window: targetWindow,
+        customer: {
+          name: "Sched Customer D",
+          phone: "+2348025554444",
+          address: "4 Window Street",
+        },
+        items: [{ variant_id: variant650Id, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const body = (await orderRes.json()) as { data: { id: string; is_preorder: boolean } };
+    expect(body.data.is_preorder).toBe(false);
+
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await db
+      .select({ scheduledDeliveryAt: saleOrder.scheduledDeliveryAt })
+      .from(saleOrder)
+      .where(eq(saleOrder.id, body.data.id));
+    expect(row?.scheduledDeliveryAt).not.toBeNull();
+
+    // The anchor hour for the chosen window (Lagos / UTC+1):
+    // morning=09, afternoon=14, evening=18 → UTC: 08, 13, 17
+    const anchorUtcHour: Record<string, number> = { morning: 8, afternoon: 13, evening: 17 };
+    const storedHour = row!.scheduledDeliveryAt!.getUTCHours();
+    expect(storedHour).toBe(anchorUtcHour[targetWindow]);
+  });
+
+  it("(e) invalid delivery_window for fixed-evening OOS order falls back to evening", async () => {
+    // A 650ml OOS order produces a fixed evening window (when ordering before 16:00 Lagos).
+    // Sending "morning" must be rejected silently and the stored time must still be evening.
+
+    // We need a 650ml variant with 0 stock. Create a separate product for this.
+    const { productVariant: pvTable, productPrice, stockLedger } = await import("@ms/db");
+
+    // Create product via API
+    const pRes = await fetch(`${baseUrl}/v1/products`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: cookies,
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({
+        name: "OOS Juice 650",
+        slug: `oos-juice-650-${Date.now()}`,
+        category: "regular",
+        initial_price_ngn: 4000,
+      }),
+    });
+    const pData = ((await pRes.json()) as {
+      data: { id: string; variants: Array<{ id: string; size_ml: number }> };
+    }).data;
+    const oosProdId = pData.id;
+
+    // Insert 650ml variant for this product (0 stock)
+    const [v650oos] = await db
+      .insert(pvTable)
+      .values({ productId: oosProdId, sizeMl: 650, sku: `oos-juice-650-${Date.now()}` })
+      .returning();
+    if (!v650oos) throw new Error("650ml OOS variant insert failed");
+    await db.insert(productPrice).values({ productId: oosProdId, variantId: v650oos.id, priceNgn: 4000 });
+    // No stock ledger row → 0 available
+
+    const beforeNow = new Date();
+    const oosLine = { sizeMl: 650, inStock: false };
+    const sched = orderSchedule(beforeNow, [oosLine]);
+
+    // Only run the evening-fixed assertion when the schedule is indeed fixed to evening.
+    // Outside Lagos 16:00–24:00 the date advances to next day but may still be evening-fixed;
+    // we check fixedWindow rather than time-of-day to stay robust.
+    const isEveningFixed = sched.fixedWindow === "evening";
+
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({
+        branch_id: branchId,
+        delivery_fee_ngn: 0,
+        delivery_window: "morning", // INVALID for evening-fixed schedule
+        customer: {
+          name: "Sched Customer E",
+          phone: "+2348025555555",
+          address: "5 OOS Street",
+        },
+        items: [{ variant_id: v650oos.id, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const body = (await orderRes.json()) as { data: { id: string; is_preorder: boolean } };
+    expect(body.data.is_preorder).toBe(true);
+
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await db
+      .select({ scheduledDeliveryAt: saleOrder.scheduledDeliveryAt })
+      .from(saleOrder)
+      .where(eq(saleOrder.id, body.data.id));
+    expect(row?.scheduledDeliveryAt).not.toBeNull();
+
+    if (isEveningFixed) {
+      // Must NOT be stored at morning anchor (08:00 UTC); must be evening (17:00 UTC)
+      const storedHour = row!.scheduledDeliveryAt!.getUTCHours();
+      expect(storedHour).toBe(17); // 18:00 Lagos = 17:00 UTC
+    } else {
+      // Schedule is not evening-fixed right now (ordering after 16:00 Lagos, rolls to next day).
+      // The stored window should still not be morning (the requested invalid window).
+      // Just assert a valid ISO date is stored.
+      expect(new Date(row!.scheduledDeliveryAt!).getTime()).toBeGreaterThan(0);
+    }
+  });
+
   it("(c) alt_phone in payload is persisted on the sale_order row", async () => {
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",

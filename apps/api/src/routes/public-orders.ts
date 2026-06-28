@@ -79,6 +79,13 @@ const CreateOnlineOrder = z.object({
    */
   scheduled_delivery_at: z.string().optional(),
   /**
+   * Customer-selected delivery window. When supplied and valid for the computed
+   * schedule (i.e. it matches fixedWindow or is in selectableWindows), it is
+   * used instead of the server default. Invalid or missing windows fall back to
+   * fixedWindow ?? selectableWindows[0] ?? "morning".
+   */
+  delivery_window: z.enum(["morning", "afternoon", "evening"]).optional(),
+  /**
    * Nigerian state name for outside-Lagos deliveries. When supplied (and not
    * "Lagos") the delivery fee is forced to ₦0 and Bolt dispatch is bypassed.
    */
@@ -429,15 +436,19 @@ export function publicOrderRoutes(db: DbClient) {
       const lineKinds = lines.map((l) => ({ sizeMl: l.sizeMl, inStock: l.inStock }));
       const scheduleNow = new Date();
       const schedResult = orderSchedule(scheduleNow, lineKinds);
-      let chosenWindow: DeliveryWindow;
-      if (schedResult.fixedWindow) {
-        chosenWindow = schedResult.fixedWindow;
-      } else if (schedResult.selectableWindows.length > 0) {
-        chosenWindow = schedResult.selectableWindows[0]!;
-      } else {
-        // Fallback (should not happen for a non-empty line set)
-        chosenWindow = "morning";
-      }
+      // Honor the customer's preferred window ONLY when it is valid for the
+      // computed schedule: it must equal fixedWindow (for fixed schedules) or
+      // be present in selectableWindows (for selectable schedules). Any other
+      // value — including undefined — falls back to the server default.
+      const requested = body.delivery_window;
+      const isValidWindow =
+        requested != null &&
+        (schedResult.fixedWindow
+          ? requested === schedResult.fixedWindow
+          : schedResult.selectableWindows.includes(requested));
+      const chosenWindow: DeliveryWindow = isValidWindow
+        ? requested!
+        : (schedResult.fixedWindow ?? schedResult.selectableWindows[0] ?? "morning");
       const scheduledDeliveryAt = new Date(scheduledIso(schedResult.date, chosenWindow));
 
       const total = subtotal + deliveryFeeFinal;
