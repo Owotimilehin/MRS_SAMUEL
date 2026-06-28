@@ -111,13 +111,24 @@ export function publicCatalogRoutes(db: DbClient) {
         AND pv.product_id IN ${sql`(${sql.join(productIds.map((id) => sql`${id}`), sql`, `)})`}
       ORDER BY pv.product_id, pv.size_ml ASC
     `);
-    for (const v of variantRows) {
-      if (v.price_ngn == null) continue; // unpriced variants are hidden from the public site
-      const available = branchId
-        ? await availableVariantAtBranch(db, { branchId, variantId: v.variant_id })
-        : 0;
+    const variantsWithAvailable = await Promise.all(
+      variantRows
+        .filter((v) => v.price_ngn != null)
+        .map(async (v) => ({
+          id: v.variant_id,
+          size_ml: v.size_ml,
+          sku: v.sku,
+          price_ngn: v.price_ngn as number,
+          preorder_only: v.preorder_only,
+          available: branchId
+            ? await availableVariantAtBranch(db, { branchId, variantId: v.variant_id })
+            : 0,
+          product_id: v.product_id,
+        }))
+    );
+    for (const v of variantsWithAvailable) {
       const list = byProduct.get(v.product_id) ?? [];
-      list.push({ id: v.variant_id, size_ml: v.size_ml, sku: v.sku, price_ngn: v.price_ngn, preorder_only: v.preorder_only, available });
+      list.push({ id: v.id, size_ml: v.size_ml, sku: v.sku, price_ngn: v.price_ngn, preorder_only: v.preorder_only, available: v.available });
       byProduct.set(v.product_id, list);
     }
     return byProduct;
