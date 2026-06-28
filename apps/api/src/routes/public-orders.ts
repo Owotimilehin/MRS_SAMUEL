@@ -14,8 +14,15 @@ import {
   branch,
   type DbClient,
 } from "@ms/db";
-import { availableAtBranch, nextOrderNumber } from "@ms/domain";
-import { normalizeNigerianPhone, phonesMatch, isOutsideLagos } from "@ms/shared";
+import { availableVariantAtBranch, nextOrderNumber } from "@ms/domain";
+import {
+  normalizeNigerianPhone,
+  phonesMatch,
+  isOutsideLagos,
+  orderSchedule,
+  scheduledIso,
+  type DeliveryWindow,
+} from "@ms/shared";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { BusinessError } from "../lib/errors.js";
 import { buildPayazaCheckoutConfig } from "../payments/payaza.js";
@@ -39,6 +46,7 @@ const CreateOnlineOrder = z.object({
     address: z.string().min(3),
     lat: z.number().optional(),
     lng: z.number().optional(),
+    alt_phone: z.string().optional(),
   }),
   /**
    * Items are optional in the request body. When omitted, the server reads
@@ -327,8 +335,8 @@ export function publicOrderRoutes(db: DbClient) {
       if (!customerId) throw new BusinessError("internal_error", "customer resolve failed", 500);
 
       let subtotal = 0;
-      // A line is a preorder line when its variant is preorder_only OR the branch
-      // is currently out of stock for it. Any preorder line makes the whole order
+      // A line is a preorder line when the branch is currently out of stock for
+      // that specific variant (per-size). Any preorder line makes the whole order
       // a preorder: it skips reservations now and defers the stock deduction to
       // fulfilment (see preorders.ts), but still requires payment.
       let orderIsPreorder = false;
@@ -338,6 +346,8 @@ export function publicOrderRoutes(db: DbClient) {
         priceId: string;
         quantity: number;
         unit: number;
+        sizeMl: number;
+        inStock: boolean;
       }[] = [];
 
       for (const it of lineSource) {
@@ -348,7 +358,7 @@ export function publicOrderRoutes(db: DbClient) {
         const itAny = it as { variant_id?: string; product_id?: string; quantity: number };
         let variantId: string | undefined = itAny.variant_id;
         let productId: string;
-        let preorderOnly = false;
+        let sizeMl: number;
         if (variantId) {
           const [v] = await tx
             .select()
@@ -358,7 +368,7 @@ export function publicOrderRoutes(db: DbClient) {
             throw new BusinessError("not_found", `variant ${variantId} not found`, 404);
           }
           productId = v.productId;
-          preorderOnly = v.preorderOnly;
+          sizeMl = v.sizeMl;
           // If a caller sends both, the supplied product_id must match the variant's parent.
           if (itAny.product_id && itAny.product_id !== v.productId) {
             throw new BusinessError(
@@ -381,7 +391,7 @@ export function publicOrderRoutes(db: DbClient) {
             throw new BusinessError("not_found", `no variant for product ${productId}`, 404);
           }
           variantId = v.id;
-          preorderOnly = v.preorderOnly;
+          sizeMl = v.sizeMl;
         }
 
         const [p] = await tx
@@ -393,13 +403,14 @@ export function publicOrderRoutes(db: DbClient) {
         if (!p) {
           throw new BusinessError("not_found", `no price for variant ${variantId}`, 404);
         }
-        const available = await availableAtBranch(tx, {
+        // Per-variant (per-size) stock check: a line is a preorder when its
+        // specific size is out of stock at the branch.
+        const available = await availableVariantAtBranch(tx, {
           branchId: body.branch_id,
-          productId,
+          variantId,
         });
-        // Out of stock no longer blocks — it becomes a preorder line (made to
-        // order, fulfilled later). preorder_only variants are always preorders.
-        if (preorderOnly || available < it.quantity) {
+        const inStock = it.quantity <= available;
+        if (!inStock) {
           orderIsPreorder = true;
         }
         lines.push({
@@ -408,9 +419,27 @@ export function publicOrderRoutes(db: DbClient) {
           priceId: p.id,
           quantity: it.quantity,
           unit: p.priceNgn,
+          sizeMl,
+          inStock,
         });
         subtotal += p.priceNgn * it.quantity;
       }
+
+      // Compute server-authoritative delivery schedule from line kinds.
+      const lineKinds = lines.map((l) => ({ sizeMl: l.sizeMl, inStock: l.inStock }));
+      const scheduleNow = new Date();
+      const schedResult = orderSchedule(scheduleNow, lineKinds);
+      let chosenWindow: DeliveryWindow;
+      if (schedResult.fixedWindow) {
+        chosenWindow = schedResult.fixedWindow;
+      } else if (schedResult.selectableWindows.length > 0) {
+        chosenWindow = schedResult.selectableWindows[0]!;
+      } else {
+        // Fallback (should not happen for a non-empty line set)
+        chosenWindow = "morning";
+      }
+      const scheduledDeliveryAt = new Date(scheduledIso(schedResult.date, chosenWindow));
+
       const total = subtotal + deliveryFeeFinal;
       const orderNumber = await nextOrderNumber(tx);
       const [o] = await tx
@@ -429,14 +458,13 @@ export function publicOrderRoutes(db: DbClient) {
           paymentStatus: "pending",
           createdAtLocal: new Date(),
           idempotencyKey,
-          scheduledDeliveryAt: body.scheduled_delivery_at
-            ? new Date(body.scheduled_delivery_at)
-            : null,
+          scheduledDeliveryAt,
           deliveryState: body.delivery_state ?? null,
           deliveryQuoteRef,
           deliveryAddressCode,
           deliveryAddressFormatted,
           notes: body.notes ?? null,
+          altPhone: body.customer.alt_phone ?? null,
         })
         .returning();
       if (!o) throw new BusinessError("internal_error", "order insert failed", 500);
