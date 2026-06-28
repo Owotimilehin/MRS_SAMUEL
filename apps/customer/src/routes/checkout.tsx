@@ -437,7 +437,6 @@ function Row({ label, value }: { label: string; value: string }) {
   return (<div className="flex items-center justify-between text-white/80"><span>{label}</span><span className="font-semibold text-white">{value}</span></div>);
 }
 
-
 function Field({ label, value, onChange, placeholder, className, invalid, hint }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; className?: string; invalid?: boolean; hint?: string }) {
   return (
     <label className={`block ${className ?? ""}`}>

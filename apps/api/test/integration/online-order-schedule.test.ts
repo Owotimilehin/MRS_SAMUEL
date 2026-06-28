@@ -388,7 +388,7 @@ describe("Task 6: server-authoritative delivery schedule + alt_phone", () => {
     }
   });
 
-  it("(c) alt_phone in payload is persisted on the sale_order row", async () => {
+  it("(c) alt_phone in payload is persisted on the sale_order row and surfaced via admin detail API", async () => {
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
       headers: {
@@ -419,5 +419,16 @@ describe("Task 6: server-authoritative delivery schedule + alt_phone", () => {
       .where(eq(saleOrder.id, body.data.id));
     expect(row).toBeDefined();
     expect(row!.altPhone).toBe("+2348099990000");
+
+    // Verify alt_phone is also surfaced via the admin detail endpoint (owner auth)
+    const detailRes = await fetch(
+      `${baseUrl}/v1/branches/${branchId}/sales/${body.data.id}`,
+      { headers: { cookie: cookies } },
+    );
+    expect(detailRes.status).toBe(200);
+    const detailBody = (await detailRes.json()) as {
+      data: { altPhone: string | null };
+    };
+    expect(detailBody.data.altPhone).toBe("+2348099990000");
   });
 });

@@ -468,7 +468,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `🎁 *Preorder fulfilled*\n` +
           `${p["order_number"]} · ${p["channel"] ?? ""}` +
           itemLines(event.payload) +
-          (preorderWindow ? `\n📅 *${preorderWindow}*` : "") +
+          (preorderWindow ? `\n📅 Scheduled: *${preorderWindow}*` : "") +
           `\n👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
       };
     }
