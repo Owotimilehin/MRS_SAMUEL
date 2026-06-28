@@ -28,7 +28,6 @@ export interface Product {
   image: string;
   prices: { "330ml": number; "650ml": number };
   variantIds: Partial<Record<Size, string>>;
-  preorderBySize: Partial<Record<Size, boolean>>;
   /** Per-size available stock at the online-default branch (from Task 2 catalog API).
    *  0 = out of stock for that size. */
   availableBySize: Partial<Record<Size, number>>;
@@ -43,13 +42,11 @@ const FALLBACK_PALETTE = { surface: "#fdf3e7", accent: "#f6a623", text: "#3a2a18
 export function toUiProduct(api: ApiProduct): Product {
   const prices: Record<string, number> = {};
   const variantIds: Partial<Record<Size, string>> = {};
-  const preorderBySize: Partial<Record<Size, boolean>> = {};
   const availableBySize: Partial<Record<Size, number>> = {};
   for (const v of api.variants) {
     const label = `${v.size_ml}ml` as Size;
     prices[label] = v.price_ngn;
     variantIds[label] = v.id;
-    preorderBySize[label] = v.preorder_only;
     availableBySize[label] = v.available ?? 0;
   }
   // Guarantee both keys exist so existing UI that reads prices["330ml"]/["650ml"]
@@ -72,7 +69,6 @@ export function toUiProduct(api: ApiProduct): Product {
     image: api.image_url ?? api.bottle_url ?? DEFAULT_BOTTLE,
     prices: { "330ml": prices["330ml"] ?? cheapest, "650ml": prices["650ml"] ?? cheapest },
     variantIds,
-    preorderBySize,
     availableBySize,
     available: api.available,
     ...(api.note ? { note: api.note } : {}),

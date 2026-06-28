@@ -6,11 +6,11 @@ import type { Size } from "@/lib/visuals";
 import { CLUSTERS } from "@/lib/visuals";
 import { fetchProductBySlug, fetchProducts } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";
-import { useCart, formatNaira, isPreorderSize, quickAddSize } from "@/lib/cart";
+import { useCart, formatNaira, quickAddSize } from "@/lib/cart";
 import { seo, productLd, breadcrumbLd } from "@/lib/seo";
 
-function StockLabel({ available, preorderOnly }: { available: number | undefined; preorderOnly: boolean }) {
-  if (preorderOnly || (available ?? 0) <= 0) {
+function StockLabel({ available }: { available: number | undefined }) {
+  if ((available ?? 0) <= 0) {
     return (
       <span className="block text-[10px] font-semibold text-[color:var(--brand-orange)] mt-0.5">
         Made to order — we can prepare more for you
@@ -84,12 +84,13 @@ function Page() {
   const { product: p, related } = Route.useLoaderData();
   const { add, setOpen } = useCart();
   const navigate = useNavigate();
-  // Default to the deliverable big can; the small can is preorder-only.
+  // Default to the largest size with stock; fall back to any available variant.
   const [size, setSize] = useState<Size>(quickAddSize(p));
   const [qty, setQty] = useState(1);
 
   const clusterImg = CLUSTERS[p.cluster];
-  const preorder = isPreorderSize(p, size);
+  // A size is a preorder when the branch has 0 stock for it (stock-driven).
+  const preorder = (p.availableBySize[size] ?? 0) <= 0;
   // Only offer sizes the product actually sells.
   const sizes = (["330ml", "650ml"] as const).filter((s) => p.variantIds[s]);
 
@@ -149,7 +150,7 @@ function Page() {
                   }`}
                 >
                   {s} · {formatNaira(p.prices[s])}
-                  {isPreorderSize(p, s) && (
+                  {(p.availableBySize[s] ?? 0) <= 0 && (
                     <span className="ml-2 rounded-full bg-[color:var(--brand-orange)]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--brand-orange)]">
                       Preorder
                     </span>
@@ -186,7 +187,7 @@ function Page() {
               </button>
             </div>
             <div className="mt-3">
-              <StockLabel available={p.available} preorderOnly={preorder} />
+              <StockLabel available={p.availableBySize[size] ?? p.available} />
             </div>
             {!preorder && (
               <p className="mt-1 text-xs text-[color:var(--brand)]/60">Free delivery on orders over ₦20,000 · Lagos same-day</p>

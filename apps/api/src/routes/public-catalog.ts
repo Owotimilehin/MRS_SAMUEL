@@ -10,7 +10,6 @@ type CatalogVariantRow = {
   size_ml: number;
   sku: string;
   price_ngn: number | null;
-  preorder_only: boolean;
   [key: string]: unknown;
 };
 
@@ -59,7 +58,7 @@ interface CatalogProductOut {
   /** Per-flavour available pool at the online-default branch. 0 when no
    *  online-default branch exists or when there is no stock. */
   available: number;
-  variants: Array<{ id: string; size_ml: number; sku: string; price_ngn: number; preorder_only: boolean; available: number }>;
+  variants: Array<{ id: string; size_ml: number; sku: string; price_ngn: number; available: number }>;
 }
 
 // Shared product SELECT: marketing content + colour palette + resolved media
@@ -102,7 +101,6 @@ export function publicCatalogRoutes(db: DbClient) {
              pv.id   AS variant_id,
              pv.size_ml,
              pv.sku,
-             pv.preorder_only,
              pp.price_ngn
       FROM product_variant pv
       LEFT JOIN product_price pp
@@ -119,7 +117,6 @@ export function publicCatalogRoutes(db: DbClient) {
           size_ml: v.size_ml,
           sku: v.sku,
           price_ngn: v.price_ngn as number,
-          preorder_only: v.preorder_only,
           available: branchId
             ? await availableVariantAtBranch(db, { branchId, variantId: v.variant_id })
             : 0,
@@ -128,7 +125,7 @@ export function publicCatalogRoutes(db: DbClient) {
     );
     for (const v of variantsWithAvailable) {
       const list = byProduct.get(v.product_id) ?? [];
-      list.push({ id: v.id, size_ml: v.size_ml, sku: v.sku, price_ngn: v.price_ngn, preorder_only: v.preorder_only, available: v.available });
+      list.push({ id: v.id, size_ml: v.size_ml, sku: v.sku, price_ngn: v.price_ngn, available: v.available });
       byProduct.set(v.product_id, list);
     }
     return byProduct;

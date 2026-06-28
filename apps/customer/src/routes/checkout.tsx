@@ -5,7 +5,6 @@ import {
   ArrowLeft, Check, Lock, Truck, ShoppingBag, AlertCircle, Loader2, CalendarClock,
 } from "lucide-react";
 import { SiteShell } from "@/components/SiteShell";
-import { GraciousContactModal } from "@/components/GraciousContactModal";
 import { useCart, formatNaira } from "@/lib/cart";
 import { fetchBranches, requestQuote, placeOrder as placeOrderFn } from "@/lib/api/server-fns";
 import { asApiError } from "@/lib/api/client";
@@ -55,7 +54,7 @@ function formatDeliveryDate(dateStr: string): string {
 
 function Page() {
   const { branches } = Route.useLoaderData();
-  const { items, subtotal, clear, hasPreorder } = useCart();
+  const { items, subtotal, clear } = useCart();
   // Route to the owner-selected online-fulfilment branch; fall back to the first
   // active branch when none is flagged (preserves prior behaviour).
   const branchId = (branches.find((b) => b.is_online_default) ?? branches[0])?.id ?? null;
@@ -64,21 +63,11 @@ function Page() {
   const [form, setForm] = useState({
     name: "", phone: "", email: "", altPhone: "", address: "", notes: "",
     state: "Lagos" as string,
-    when: "now" as "now" | "schedule",
     date: todayLagos(),
-    window: "afternoon" as DeliveryWindow,
   });
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((p) => ({ ...p, [k]: v }));
 
   const outsideLagos = form.state !== "Lagos";
-  const scheduled = form.when === "schedule";
-
-  // Preorder items are made to order — they can't ship same-day, so a basket
-  // containing one is locked to the scheduled-delivery path.
-  useEffect(() => {
-    if (hasPreorder && form.when !== "schedule") set("when", "schedule");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasPreorder]);
 
   // --- compute delivery schedule from cart lines ---
   const lineKinds = useMemo(
@@ -108,7 +97,7 @@ function Page() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const wantQuote =
-    LIVE_COURIER_QUOTES && !outsideLagos && !scheduled && form.address.trim().length >= 5 && !!branchId;
+    LIVE_COURIER_QUOTES && !outsideLagos && form.address.trim().length >= 5 && !!branchId;
 
   useEffect(() => {
     if (!wantQuote) {
@@ -138,19 +127,13 @@ function Page() {
 
   const selectedOption = options.find((o) => o.id === selectedId) ?? null;
   const deliveryFee =
-    !LIVE_COURIER_QUOTES || outsideLagos || scheduled ? 0 : (selectedOption?.fee_ngn ?? 0);
+    !LIVE_COURIER_QUOTES || outsideLagos ? 0 : (selectedOption?.fee_ngn ?? 0);
   const total = subtotal + deliveryFee;
 
   // --- placing the order ---
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const idemRef = useRef<string>("");
-  // A made-to-order order (out of stock / preorder-only) pauses here so we can
-  // show a gracious "we'll WhatsApp you" confirmation before payment. Holds the
-  // already-created order; null = no pending confirmation.
-  const [graciousOrder, setGraciousOrder] = useState<ApiPlacedOrder | null>(null);
-  // Once the customer has acknowledged the modal, don't re-show it on a re-entry.
-  const confirmedPreorderRef = useRef(false);
 
   // Schedule is always valid — orderSchedule already rolls forward off-hours/past windows.
   const scheduleValid = true;
@@ -199,21 +182,6 @@ function Page() {
     });
   }
 
-  // Gracious modal: customer accepts the made-to-order order → on to payment.
-  function onGraciousContinue() {
-    const order = graciousOrder;
-    if (!order) return;
-    confirmedPreorderRef.current = true;
-    setGraciousOrder(null);
-    setPlacing(true);
-    void proceedToPayment(order);
-  }
-  // Gracious modal: customer backs out → keep the cart so they can adjust.
-  function onGraciousClose() {
-    setGraciousOrder(null);
-    setPlacing(false);
-  }
-
   async function submit(retry = false) {
     if (!branchId || items.length === 0) return;
     if (!retry) idemRef.current = crypto.randomUUID();
@@ -230,7 +198,7 @@ function Page() {
           branch_id: branchId,
           delivery_fee_ngn: 0,
           delivery_state: form.state,
-          ...(selectedOption && !outsideLagos && !scheduled ? { delivery_quote_id: selectedOption.id } : {}),
+          ...(selectedOption && !outsideLagos ? { delivery_quote_id: selectedOption.id } : {}),
           delivery_window: chosenWindow,
           scheduled_delivery_at: scheduledIso(sched.date, chosenWindow),
           customer: {
@@ -245,14 +213,6 @@ function Page() {
           idempotency_key: idemRef.current,
         },
       });
-      // Made-to-order (a line is out of stock or preorder-only): pause and
-      // reassure the customer before payment. The order is already created;
-      // "Go back" just leaves it unpaid, exactly like abandoning checkout.
-      if (res.is_preorder && !confirmedPreorderRef.current) {
-        setGraciousOrder(res);
-        setPlacing(false);
-        return;
-      }
       await proceedToPayment(res);
       return;
     } catch (e) {
@@ -297,9 +257,6 @@ function Page() {
 
   return (
     <SiteShell>
-      {graciousOrder && (
-        <GraciousContactModal onContinue={onGraciousContinue} onClose={onGraciousClose} />
-      )}
       <div className="px-5 sm:px-10 max-w-6xl mx-auto pt-32 sm:pt-36 pb-24">
         <Link to="/juices" className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--brand)]/70 hover:text-[color:var(--brand-orange)]">
           <ArrowLeft className="h-4 w-4" /> Continue shopping
@@ -446,7 +403,7 @@ function Page() {
               </div>
               <div className="mt-5 pt-5 border-t border-white/10 space-y-2 text-sm">
                 <Row label="Subtotal" value={formatNaira(subtotal)} />
-                <Row label="Delivery" value={!LIVE_COURIER_QUOTES || outsideLagos || scheduled ? "₦0" : selectedOption ? formatNaira(deliveryFee) : "—"} />
+                <Row label="Delivery" value={!LIVE_COURIER_QUOTES || outsideLagos ? "₦0" : selectedOption ? formatNaira(deliveryFee) : "—"} />
                 <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
                   <span className="text-xs uppercase tracking-[0.2em] text-white/60">Total</span>
                   <span className="font-display text-2xl font-semibold">{formatNaira(total)}</span>

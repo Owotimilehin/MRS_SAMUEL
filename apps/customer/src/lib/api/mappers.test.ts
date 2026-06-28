@@ -13,8 +13,8 @@ const api: ApiProduct = {
   bottle_url: "https://cdn/bottle.png", cluster_url: null, fruit_url: null,
   price_ngn: 2500,
   variants: [
-    { id: "v330", size_ml: 330, sku: "S-330", price_ngn: 2500, preorder_only: true },
-    { id: "v650", size_ml: 650, sku: "S-650", price_ngn: 4200, preorder_only: false },
+    { id: "v330", size_ml: 330, sku: "S-330", price_ngn: 2500 },
+    { id: "v650", size_ml: 650, sku: "S-650", price_ngn: 4200 },
   ],
 };
 
@@ -23,11 +23,6 @@ describe("toUiProduct", () => {
     const p = toUiProduct(api);
     expect(p.prices).toEqual({ "330ml": 2500, "650ml": 4200 });
     expect(p.variantIds).toEqual({ "330ml": "v330", "650ml": "v650" });
-  });
-
-  it("carries preorder_only per size into preorderBySize", () => {
-    const p = toUiProduct(api);
-    expect(p.preorderBySize).toEqual({ "330ml": true, "650ml": false });
   });
 
   it("maps regular→Classic and image_url/bottle_url→image", () => {
@@ -52,14 +47,13 @@ describe("toUiProduct", () => {
   });
 });
 
-/** Helper: build an ApiProduct with per-size overrides (available, preorder_only). */
-function fixtureWithVariants(sizes: Partial<Record<"650ml" | "330ml", { available?: number; preorder_only?: boolean }>>): ApiProduct {
-  const variants = (Object.entries(sizes) as [string, { available?: number; preorder_only?: boolean }][]).map(([label, opts]) => ({
+/** Helper: build an ApiProduct with per-size overrides (available). */
+function fixtureWithVariants(sizes: Partial<Record<"650ml" | "330ml", { available?: number }>>): ApiProduct {
+  const variants = (Object.entries(sizes) as [string, { available?: number }][]).map(([label, opts]) => ({
     id: `v-${label}`,
     size_ml: parseInt(label),
     sku: `S-${label}`,
     price_ngn: label === "650ml" ? 4200 : 2500,
-    preorder_only: opts.preorder_only ?? false,
     available: opts.available ?? 0,
   }));
   return { ...api, variants } as ApiProduct;

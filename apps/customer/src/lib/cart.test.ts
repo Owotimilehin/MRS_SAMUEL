@@ -23,7 +23,6 @@ function makeProduct(overrides: { availableBySize?: Partial<Record<Size, number>
     image: "bottle.png",
     prices: { "330ml": 2500, "650ml": 4200 },
     variantIds: { "330ml": "v330", "650ml": "v650" },
-    preorderBySize: { "330ml": false, "650ml": false },
     availableBySize: overrides.availableBySize ?? { "330ml": 0, "650ml": 0 },
   };
 }

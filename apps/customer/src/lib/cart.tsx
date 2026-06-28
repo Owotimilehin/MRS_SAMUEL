@@ -2,12 +2,6 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
 
-// Some sizes are made to order — preorder only (driven by the variant's
-// `preorder_only` flag from the API). They can't ship same-day, so checkout
-// forces a scheduled delivery day when the basket holds one.
-export const isPreorderSize = (product: Product, size: Size): boolean =>
-  product.preorderBySize[size] ?? false;
-
 /** A line is a preorder when the wanted qty exceeds the online-default
  *  branch's available stock for that size. Whole line flips (spec). */
 export const isPreorderLine = (product: Product, size: Size, qty: number): boolean =>

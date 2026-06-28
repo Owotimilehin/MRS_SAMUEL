@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
 import { getFruitFor } from "@/lib/visuals";
-import { useCart, formatNaira, isPreorderSize, isPreorderLine, quickAddSize } from "@/lib/cart";
+import { useCart, formatNaira, isPreorderLine, quickAddSize } from "@/lib/cart";
 
 /** Per-size stock label driven by `availableBySize[size]`. */
 function StockLabel({ available }: { available: number }) {
@@ -165,7 +165,7 @@ export function ProductDetail({ product, onClose }: Props) {
                       >
                         <div className="text-xs font-semibold opacity-60">
                           {s}
-                          {(isStockPreorder || isPreorderSize(product, s)) && (
+                          {isStockPreorder && (
                             <span className="ml-1.5 rounded-full bg-[color:var(--brand-orange)]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[color:var(--brand-orange)]">
                               Preorder
                             </span>
@@ -179,7 +179,7 @@ export function ProductDetail({ product, onClose }: Props) {
                     );
                   })}
                 </div>
-                {(isPreorderLine(product, size, 1) || isPreorderSize(product, size)) && (
+                {isPreorderLine(product, size, 1) && (
                   <p className="mt-2 text-xs font-medium text-[color:var(--brand-orange)]">
                     This size is made to order — pick a delivery day at checkout.
                   </p>

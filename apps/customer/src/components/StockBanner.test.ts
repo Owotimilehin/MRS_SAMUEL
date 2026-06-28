@@ -25,7 +25,6 @@ function makeProduct(availableBySize: Partial<Record<Size, number>>): Product {
     image: "bottle.png",
     prices: { "330ml": 2500, "650ml": 4200 },
     variantIds: {},
-    preorderBySize: {},
     availableBySize,
   };
 }
