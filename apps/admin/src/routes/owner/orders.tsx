@@ -23,6 +23,7 @@ interface Sale {
   status: string;
   scheduledDeliveryAt?: string | null;
   deliveryState?: string | null;
+  isPreorder?: boolean;
   paymentMethod: string;
   totalNgn: number;
   createdAtLocal: string;
@@ -299,6 +300,11 @@ export function OrdersPage(): JSX.Element {
                     </td>
                     <td>
                       {statusPill(s.status)}
+                      {s.isPreorder && (
+                        <span className="pill pill--warning" style={{ marginLeft: 6 }}>
+                          Preorder
+                        </span>
+                      )}
                       {s.scheduledDeliveryAt && (
                         <span className="pill pill--warning" style={{ marginLeft: 6 }}>
                           Scheduled

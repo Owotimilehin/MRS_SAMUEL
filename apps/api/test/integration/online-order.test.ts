@@ -447,8 +447,12 @@ describe("Phase 3 customer-site online order flow", () => {
         customerPhone: string | null;
         customerEmail: string | null;
         customerAddress: string | null;
+        items: Array<{ sizeMl: number | null }>;
       };
     };
+    // Items carry the variant bottle size so staff/receipts can show it.
+    expect(detailBody.data.items[0]).toHaveProperty("sizeMl");
+    expect(typeof detailBody.data.items[0]!.sizeMl).toBe("number");
     expect(detailBody.data.customerName).toBe("Ada Test");
     // The public-orders flow normalizes phones to international form at customer
     // creation, so the stored/returned value is +234… not the raw 0… input.

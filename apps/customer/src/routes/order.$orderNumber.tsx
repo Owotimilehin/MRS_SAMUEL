@@ -27,6 +27,17 @@ function storedPhone(orderNumber: string): string | null {
 
 const TERMINAL = new Set(["delivered", "cancelled"]);
 
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-NG", {
+    timeZone: "Africa/Lagos",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
 function OrderPage() {
   const { orderNumber } = useParams({ from: "/order/$orderNumber" });
   const [phone, setPhone] = useState<string | null>(null);
@@ -136,6 +147,28 @@ function OrderPage() {
                         : journey.currentStep.label}
               </h1>
               <p className="mt-1 text-sm text-[color:var(--brand)]/70">{journey.methodLabel}</p>
+              <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-[color:var(--brand)]/70">
+                <div>
+                  Ordered <span className="font-semibold">{fmtDate(order.created_at)}</span>
+                </div>
+                {order.delivery_state && (
+                  <div>
+                    Delivery to <span className="font-semibold">{order.delivery_state}</span>
+                  </div>
+                )}
+                {order.scheduled_delivery_at && (
+                  <div>
+                    {order.is_preorder ? "Ready" : "Arriving"}{" "}
+                    <span className="font-semibold">{fmtDate(order.scheduled_delivery_at)}</span>
+                  </div>
+                )}
+              </dl>
+              {order.is_preorder && !order.scheduled_delivery_at && journey.special === "none" && (
+                <p className="mt-2 text-xs text-[color:var(--brand)]/60">
+                  This is a preorder — we're making your bottles fresh and will message you on
+                  WhatsApp as soon as they're ready.
+                </p>
+              )}
             </div>
 
             {journey.special === "payment_hold" && (

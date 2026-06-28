@@ -18,6 +18,7 @@ export interface TrackingOrderLike {
   status: string;
   payment_status: string;
   is_preorder: boolean;
+  created_at: string;
   scheduled_delivery_at: string | null;
   delivery_state: string | null;
   paid_at: string | null;
@@ -68,7 +69,7 @@ export function deriveJourney(o: TrackingOrderLike): Journey {
   const midLabel = o.is_preorder && mid.key !== "scheduled" ? "In production 🥤" : mid.label;
 
   const raw: Array<{ key: string; label: string; done: boolean; at?: string }> = [
-    { key: "placed", label: "Placed", done: true, at: undefined },
+    { key: "placed", label: "Placed", done: true, at: o.created_at },
     {
       key: "paid",
       label: "Paid",

@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { eq, and, desc, isNull } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray } from "drizzle-orm";
 import {
   saleOrder,
   saleOrderItem,
@@ -48,24 +48,34 @@ export async function listOpenPreorders(
     .orderBy(desc(saleOrder.createdAtLocal))
     .limit(200);
 
-  const out: unknown[] = [];
-  for (const o of orders) {
-    const items = await db
-      .select({
-        product_id: saleOrderItem.productId,
-        variant_id: saleOrderItem.variantId,
-        name: product.name,
-        size_ml: productVariant.sizeMl,
-        quantity: saleOrderItem.quantity,
-        unit_price_ngn: saleOrderItem.unitPriceNgn,
-      })
-      .from(saleOrderItem)
-      .leftJoin(product, eq(product.id, saleOrderItem.productId))
-      .leftJoin(productVariant, eq(productVariant.id, saleOrderItem.variantId))
-      .where(eq(saleOrderItem.saleOrderId, o.id));
-    out.push({ ...o, items });
+  if (orders.length === 0) return [];
+
+  // Batch-load every order's items in ONE query, then group in memory — avoids
+  // the per-order N+1 (was up to 200 round-trips for a full queue).
+  const orderIds = orders.map((o) => o.id);
+  const allItems = await db
+    .select({
+      sale_order_id: saleOrderItem.saleOrderId,
+      product_id: saleOrderItem.productId,
+      variant_id: saleOrderItem.variantId,
+      name: product.name,
+      size_ml: productVariant.sizeMl,
+      quantity: saleOrderItem.quantity,
+      unit_price_ngn: saleOrderItem.unitPriceNgn,
+    })
+    .from(saleOrderItem)
+    .leftJoin(product, eq(product.id, saleOrderItem.productId))
+    .leftJoin(productVariant, eq(productVariant.id, saleOrderItem.variantId))
+    .where(inArray(saleOrderItem.saleOrderId, orderIds));
+
+  const itemsByOrder = new Map<string, unknown[]>();
+  for (const { sale_order_id, ...item } of allItems) {
+    const list = itemsByOrder.get(sale_order_id);
+    if (list) list.push(item);
+    else itemsByOrder.set(sale_order_id, [item]);
   }
-  return out;
+
+  return orders.map((o) => ({ ...o, items: itemsByOrder.get(o.id) ?? [] }));
 }
 
 /**

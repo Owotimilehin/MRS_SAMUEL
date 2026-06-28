@@ -19,6 +19,7 @@ interface SaleItem {
   quantity: number;
   unitPriceNgn: number;
   lineTotalNgn: number;
+  sizeMl?: number | null;
 }
 interface Sale {
   id: string;
@@ -28,6 +29,7 @@ interface Sale {
   status: string;
   scheduledDeliveryAt?: string | null;
   deliveryState?: string | null;
+  isPreorder?: boolean;
   paymentMethod: string;
   subtotalNgn: number;
   deliveryFeeNgn: number;
@@ -253,7 +255,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
         payment: data.paymentMethod,
         items: data.items.map((it) => ({
           name: products[it.productId]?.name ?? "Item",
-          sizeMl: null,
+          sizeMl: it.sizeMl ?? null,
           quantity: it.quantity,
           unitPriceNgn: it.unitPriceNgn,
           lineTotalNgn: it.lineTotalNgn,
@@ -382,9 +384,15 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                 <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
                   Placed {formatDateTime(data.createdAtLocal)}
                 </div>
+                {data.scheduledDeliveryAt && (
+                  <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 2 }}>
+                    Scheduled for {formatDateTime(data.scheduledDeliveryAt)}
+                  </div>
+                )}
               </div>
-              <div style={{ textAlign: "right" }}>
+              <div style={{ textAlign: "right", display: "grid", gap: 6, justifyItems: "end" }}>
                 {statusPill(data.status)}
+                {data.isPreorder && <span className="pill pill--warning">Preorder</span>}
               </div>
             </header>
 
@@ -394,6 +402,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                 <thead>
                   <tr>
                     <th>Product</th>
+                    <th>Size</th>
                     <th className="table__num">Qty</th>
                     <th className="table__num">Unit</th>
                     <th className="table__num">Line</th>
@@ -412,6 +421,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                           </span>
                         </span>
                       </td>
+                      <td>{it.sizeMl ? `${it.sizeMl}ml` : "—"}</td>
                       <td className="table__num">{it.quantity}</td>
                       <td className="table__num">{ngn(it.unitPriceNgn)}</td>
                       <td className="table__num" style={{ fontWeight: 700 }}>

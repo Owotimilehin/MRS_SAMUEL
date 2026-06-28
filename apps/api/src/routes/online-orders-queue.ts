@@ -51,6 +51,8 @@ export function onlineOrdersQueueRoutes(db: DbClient) {
         deliveryFeeNgn: saleOrder.deliveryFeeNgn,
         deliveryAddressFormatted: saleOrder.deliveryAddressFormatted,
         deliveryState: saleOrder.deliveryState,
+        scheduledDeliveryAt: saleOrder.scheduledDeliveryAt,
+        isPreorder: saleOrder.isPreorder,
         customerId: saleOrder.customerId,
         customerName: customer.name,
         customerPhone: customer.phone,
@@ -99,6 +101,9 @@ export function onlineOrdersQueueRoutes(db: DbClient) {
         created_at_local: o.createdAtLocal,
         customer_name: o.customerName ?? null,
         customer_phone: o.customerPhone ?? null,
+        delivery_state: o.deliveryState ?? null,
+        scheduled_delivery_at: o.scheduledDeliveryAt ?? null,
+        is_preorder: o.isPreorder,
         is_delivery: isDelivery,
         delivery_status: latestDeliveryStatus,
       };

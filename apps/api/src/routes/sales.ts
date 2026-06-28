@@ -709,10 +709,14 @@ export function saleRoutes(db: DbClient) {
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const [o] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
     if (!o) throw new BusinessError("not_found", "sale not found", 404);
-    const items = await db
-      .select()
+    // Join the variant so each item carries its bottle size (sizeMl). Staff
+    // packing an online order need the size, and the printed receipt uses it.
+    const itemRows = await db
+      .select({ item: saleOrderItem, sizeMl: productVariant.sizeMl })
       .from(saleOrderItem)
+      .leftJoin(productVariant, eq(productVariant.id, saleOrderItem.variantId))
       .where(eq(saleOrderItem.saleOrderId, id));
+    const items = itemRows.map((r) => ({ ...r.item, sizeMl: r.sizeMl ?? null }));
     // Customer contact for the order page (WhatsApp link + rider relay + the
     // Customer card). Email and the on-file address let staff reach and locate
     // an online customer even when no live courier address was captured.

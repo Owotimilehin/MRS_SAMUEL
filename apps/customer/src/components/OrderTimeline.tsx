@@ -4,13 +4,25 @@ import type { JourneyStep } from "@/lib/order-journey";
 function ts(at?: string): string {
   if (!at) return "";
   const d = new Date(at);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : d.toLocaleTimeString("en-NG", {
-        timeZone: "Africa/Lagos",
-        hour: "numeric",
-        minute: "2-digit",
-      });
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const sameDay =
+    d.toLocaleDateString("en-NG", { timeZone: "Africa/Lagos" }) ===
+    now.toLocaleDateString("en-NG", { timeZone: "Africa/Lagos" });
+  const time = d.toLocaleTimeString("en-NG", {
+    timeZone: "Africa/Lagos",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  // Same-day events read fine as a bare time; older ones (preorders,
+  // scheduled deliveries) need the date for context.
+  if (sameDay) return time;
+  const day = d.toLocaleDateString("en-NG", {
+    timeZone: "Africa/Lagos",
+    day: "numeric",
+    month: "short",
+  });
+  return `${day}, ${time}`;
 }
 
 export function OrderTimeline({ steps }: { steps: JourneyStep[] }) {

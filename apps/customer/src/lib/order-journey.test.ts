@@ -5,6 +5,7 @@ const base: TrackingOrderLike = {
   status: "paid",
   payment_status: "paid",
   is_preorder: false,
+  created_at: "2026-06-21T12:55:00Z",
   scheduled_delivery_at: null,
   delivery_state: "Lagos",
   paid_at: "2026-06-21T13:00:00Z",
@@ -96,6 +97,11 @@ describe("deriveJourney", () => {
     });
     expect(j.steps.every((s) => s.state === "done")).toBe(true);
     expect(j.currentStep.key).toBe("delivered");
+  });
+
+  it("stamps the Placed step with the order's created_at", () => {
+    const j = deriveJourney(base);
+    expect(j.steps.find((s) => s.key === "placed")?.at).toBe(base.created_at);
   });
 
   it("preorder relabels the prep step", () => {
