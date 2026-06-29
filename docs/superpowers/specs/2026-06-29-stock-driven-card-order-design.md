@@ -14,11 +14,12 @@ get immediately at the top of every grid.
 
 - **Behaviour:** Reorder only. Nothing is hidden, dimmed, or badged. All cards
   still render.
-- **Sort key:** 650ml stock only. `availableBySize["650ml"] > 0` decides the
-  bucket. 330ml stock is irrelevant to ordering.
-- **Tiebreak:** Keep original order within each bucket (stable two-bucket split).
-- **No-650ml-variant products:** treated as out-of-stock for ordering (sink to
-  the bottom bucket), consistent with "650ml stock only".
+- **Sort key:** three tiers by best available stock —
+  (2) 650ml in stock, (1) 650ml out but 330ml in stock, (0) nothing in stock.
+- **Tiebreak:** Keep original order within each tier (stable).
+- **No-650ml-variant products:** ranked by their 330ml stock — a 330ml-in-stock
+  bottle (even with no 650ml variant) outranks a zero-stock 650ml bottle, but
+  still sits below any 650ml-in-stock bottle.
 - **Scope:** Home best-sellers + specials grids, `/juices` full listing, and the
   "You might also like" related strip on the juice detail page.
 
@@ -30,21 +31,26 @@ Add to `apps/customer/src/lib/stock-summary.ts` (existing home of stock-derivati
 logic):
 
 ```ts
-/** Stable two-bucket sort: products with 650ml in stock first (original order
- *  preserved), then the rest (original order preserved). Returns a new array. */
+/** Stable three-tier sort, original order preserved within each tier:
+ *   2 — 650ml in stock; 1 — 650ml out but 330ml in stock; 0 — nothing in stock.
+ *  Returns a new array; the input is not mutated. */
 export function sortByStock650(products: Product[]): Product[] {
-  const inStock: Product[] = [];
-  const rest: Product[] = [];
-  for (const p of products) {
-    ((p.availableBySize["650ml"] ?? 0) > 0 ? inStock : rest).push(p);
-  }
-  return [...inStock, ...rest];
+  const rank = (p: Product): number => {
+    if ((p.availableBySize["650ml"] ?? 0) > 0) return 2;
+    if ((p.availableBySize["330ml"] ?? 0) > 0) return 1;
+    return 0;
+  };
+  return [
+    ...products.filter((p) => rank(p) === 2),
+    ...products.filter((p) => rank(p) === 1),
+    ...products.filter((p) => rank(p) === 0),
+  ];
 }
 ```
 
 - Pure; does not mutate the input (safe with loader data and React state).
-- Missing 650ml variant → `availableBySize["650ml"]` is `undefined` → `?? 0` →
-  bottom bucket.
+- Missing size key → `availableBySize[size]` is `undefined` → `?? 0`, so a
+  product with no 650ml variant is ranked purely on its 330ml stock.
 
 ### 2. Call sites — sort BEFORE any slice
 
@@ -62,9 +68,10 @@ first N never surfaces.
 Unit test for `sortByStock650` alongside the existing node-runner tests
 (e.g. `StockBanner.test.ts` style):
 
-- in-stock-650 products surface above out-of-stock ones
-- original order preserved within each bucket
-- product with no 650ml variant sinks to the bottom
+- 650ml-in-stock products surface above everything
+- a 330ml-in-stock product (incl. no-650ml-variant) ranks above a zero-stock 650ml
+- a fully out-of-stock product sinks to the bottom
+- original order preserved within each tier
 - empty input and single-element input handled
 
 ## Out of scope / unchanged

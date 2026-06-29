@@ -50,10 +50,22 @@ describe("sortByStock650", () => {
     expect(ids(sortByStock650([a, b]))).toEqual(["a", "b"]);
   });
 
-  it("sinks a product with no 650ml variant to the bottom bucket", () => {
+  it("ranks a 650ml-in-stock product above a no-650ml product with 330ml stock", () => {
     const only330 = makeProduct("only330", { "330ml": 20 }); // no 650ml key
     const has650 = makeProduct("has650", { "650ml": 1 });
     expect(ids(sortByStock650([only330, has650]))).toEqual(["has650", "only330"]);
+  });
+
+  it("ranks a no-650ml product with 330ml stock above a zero-stock 650ml product", () => {
+    const dead650 = makeProduct("dead650", { "650ml": 0 }); // has 650ml variant, no stock
+    const only330 = makeProduct("only330", { "330ml": 5 }); // no 650ml variant, 330ml in stock
+    expect(ids(sortByStock650([dead650, only330]))).toEqual(["only330", "dead650"]);
+  });
+
+  it("ranks any 330ml-in-stock product above a fully out-of-stock product", () => {
+    const dead = makeProduct("dead", { "650ml": 0, "330ml": 0 });
+    const has330 = makeProduct("has330", { "650ml": 0, "330ml": 4 });
+    expect(ids(sortByStock650([dead, has330]))).toEqual(["has330", "dead"]);
   });
 
   it("does not mutate the input array", () => {
