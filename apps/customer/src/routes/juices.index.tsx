@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { getFruitFor } from "@/lib/visuals";
 import { fetchProducts } from "@/lib/api/server-fns";
+import { sortByStock650 } from "@/lib/stock-summary";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { ShoppingCart } from "lucide-react";
@@ -35,11 +36,13 @@ function Page() {
     return Array.from(s).sort();
   }, [products]);
 
-  const list = products.filter((p) => {
-    if (filter !== "All" && p.category !== filter) return false;
-    if (ingFilter && !p.ingredients.includes(ingFilter)) return false;
-    return true;
-  });
+  const list = sortByStock650(
+    products.filter((p) => {
+      if (filter !== "All" && p.category !== filter) return false;
+      if (ingFilter && !p.ingredients.includes(ingFilter)) return false;
+      return true;
+    }),
+  );
 
   return (
     <SiteShell>

@@ -8,25 +8,18 @@ import { fetchProductBySlug, fetchProducts } from "@/lib/api/server-fns";
 import { SiteShell } from "@/components/SiteShell";
 import { useCart, formatNaira, quickAddSize } from "@/lib/cart";
 import { seo, productLd, breadcrumbLd } from "@/lib/seo";
+import { deliveryPromise } from "@/lib/availability-label";
+import { sortByStock650 } from "@/lib/stock-summary";
 
-function StockLabel({ available }: { available: number | undefined }) {
-  if ((available ?? 0) <= 0) {
-    return (
-      <span className="block text-[10px] font-semibold text-[color:var(--brand-orange)] mt-0.5">
-        Made to order — we can prepare more for you
-      </span>
-    );
-  }
-  if (available! <= 5) {
-    return (
-      <span className="block text-[10px] font-semibold text-[color:var(--brand-orange)] mt-0.5">
-        {available} available — order now
-      </span>
-    );
-  }
+function StockLabel({ size, available }: { size: Size; available: number | undefined }) {
+  const n = available ?? 0;
   return (
-    <span className="block text-[10px] font-medium text-[color:var(--brand)]/55 mt-0.5">
-      {available} available
+    <span
+      className={`block text-[11px] font-bold mt-0.5 ${
+        n > 0 ? "text-[color:var(--brand)]/70" : "text-[color:var(--brand-orange)]"
+      }`}
+    >
+      {n} in stock · {deliveryPromise(size, n)}
     </span>
   );
 }
@@ -37,7 +30,7 @@ export const Route = createFileRoute("/juices/$id")({
       fetchProductBySlug({ data: params.id }),
       fetchProducts(),
     ]);
-    return { product, related: all.filter((x) => x.id !== product.id && x.cluster === product.cluster).slice(0, 3) };
+    return { product, related: sortByStock650(all.filter((x) => x.id !== product.id && x.cluster === product.cluster)).slice(0, 3) };
   },
   head: ({ loaderData }) => {
     const p = loaderData?.product;
@@ -89,8 +82,6 @@ function Page() {
   const [qty, setQty] = useState(1);
 
   const clusterImg = CLUSTERS[p.cluster];
-  // A size is a preorder when the branch has 0 stock for it (stock-driven).
-  const preorder = (p.availableBySize[size] ?? 0) <= 0;
   // Only offer sizes the product actually sells.
   const sizes = (["330ml", "650ml"] as const).filter((s) => p.variantIds[s]);
 
@@ -150,11 +141,6 @@ function Page() {
                   }`}
                 >
                   {s} · {formatNaira(p.prices[s])}
-                  {(p.availableBySize[s] ?? 0) <= 0 && (
-                    <span className="ml-2 rounded-full bg-[color:var(--brand-orange)]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--brand-orange)]">
-                      Preorder
-                    </span>
-                  )}
                 </button>
               ))}
               <div className="ml-1 flex items-center gap-2 rounded-full bg-white ring-1 ring-black/10 px-2 py-1">
@@ -187,11 +173,8 @@ function Page() {
               </button>
             </div>
             <div className="mt-3">
-              <StockLabel available={p.availableBySize[size] ?? p.available} />
+              <StockLabel size={size} available={p.availableBySize[size] ?? p.available} />
             </div>
-            {!preorder && (
-              <p className="mt-1 text-xs text-[color:var(--brand)]/60">Free delivery on orders over ₦20,000 · Lagos same-day</p>
-            )}
           </div>
         </div>
       </section>

@@ -7,7 +7,7 @@ import { fetchProducts, fetchBlogPosts, fetchSubscriptionPlans } from "@/lib/api
 import { SiteShell } from "@/components/SiteShell";
 import { Hero } from "@/components/Hero";
 import { StockBanner } from "@/components/StockBanner";
-import { deriveStockSummary } from "@/lib/stock-summary";
+import { deriveStockSummary, sortByStock650 } from "@/lib/stock-summary";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDetail } from "@/components/ProductDetail";
 import { Benefits } from "@/components/Benefits";
@@ -54,14 +54,13 @@ export const Route = createFileRoute("/")({
 function Page() {
   const { products, posts, plans } = Route.useLoaderData();
   const [selected, setSelected] = useState<Product | null>(null);
-  const classics = products.filter((p) => p.category === "Classic").slice(0, 8);
-  const specials = products.filter((p) => p.category === "Special");
+  const classics = sortByStock650(products.filter((p) => p.category === "Classic")).slice(0, 8);
+  const specials = sortByStock650(products.filter((p) => p.category === "Special"));
 
   const stockSummary = deriveStockSummary(products);
 
   return (
-    <SiteShell>
-      <StockBanner summary={stockSummary} />
+    <SiteShell topBar={<StockBanner summary={stockSummary} />}>
       <Hero products={products} />
 
       <section id="products" className="px-5 sm:px-10 pt-6 pb-10 max-w-7xl mx-auto">

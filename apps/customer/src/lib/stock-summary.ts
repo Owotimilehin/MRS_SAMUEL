@@ -19,3 +19,17 @@ export function deriveStockSummary(products: Product[]): StockSummary {
   }
   return summary;
 }
+
+/**
+ * Stable two-bucket sort: products with 650ml in stock first (original order
+ * preserved), then the rest (original order preserved). Returns a new array.
+ * A product with no 650ml variant counts as out of stock and sinks to the bottom.
+ */
+export function sortByStock650(products: Product[]): Product[] {
+  const inStock: Product[] = [];
+  const rest: Product[] = [];
+  for (const p of products) {
+    ((p.availableBySize["650ml"] ?? 0) > 0 ? inStock : rest).push(p);
+  }
+  return [...inStock, ...rest];
+}
