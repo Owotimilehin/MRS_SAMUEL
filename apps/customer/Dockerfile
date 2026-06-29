@@ -15,7 +15,10 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages packages
 COPY apps/customer apps/customer
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @ms/customer build
+# Build the @ms/shared workspace dep first — the customer app now imports it
+# (delivery-schedule engine) and vite resolves it to its built dist output.
+RUN pnpm --filter @ms/shared build \
+ && pnpm --filter @ms/customer build
 
 FROM base AS runtime
 WORKDIR /repo/apps/customer
