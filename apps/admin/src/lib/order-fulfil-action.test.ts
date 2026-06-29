@@ -28,4 +28,8 @@ describe("nextFulfilAction", () => {
     expect(nextFulfilAction({ ...base, status: "delivered", isPreorder: false, producedAt: null }))
       .toEqual({ kind: "none", label: "" });
   });
+  it("handed_over → advance (mark collected)", () => {
+    expect(nextFulfilAction({ ...base, status: "handed_over", isPreorder: false, producedAt: null }))
+      .toEqual({ kind: "advance", label: "Mark collected" });
+  });
 });

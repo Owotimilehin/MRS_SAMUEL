@@ -304,22 +304,10 @@ export function BranchOnlineOrderDetailPage({
   ];
 
   // Delivery + fulfilment logic — mirrors owner detail, gated on pos.sell for branch staff
-  const isDeliveryOrder =
-    data != null &&
-    !!(
-      data.deliveryAddressFormatted ||
-      data.deliveryState ||
-      (data.deliveryFeeNgn ?? 0) > 0 ||
-      data.delivery
-    );
-
   const liveDeliveryStatuses = new Set(["searching_rider", "assigned", "picked_up", "in_transit"]);
   const deliveryIsLive = !!(data?.delivery && liveDeliveryStatuses.has(data.delivery.status));
 
   const canAct = can("pos.sell") && !deliveryIsLive;
-  const isPaid = data?.status === "paid";
-  const isOutForDelivery = data?.status === "out_for_delivery";
-  const isHandedOver = data?.status === "handed_over";
 
   return (
     <BranchShell

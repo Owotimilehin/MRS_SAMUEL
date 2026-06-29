@@ -5,7 +5,7 @@ import { StatHero } from "../../components/StatHero.js";
 import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
 import { OrderJourney } from "../../components/OrderJourney.js";
-import { deriveOrderJourney, isDeliveryOrder } from "../../lib/order-journey.js";
+import { deriveOrderJourney } from "../../lib/order-journey.js";
 import { nextFulfilAction } from "../../lib/order-fulfil-action.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
@@ -140,7 +140,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
     setAdvanceBusy(true);
     setDeliveryError(null);
     try {
-      await api(`/preorders/${saleId}/fulfil`, { method: "PATCH" });
+      await api(`/preorders/${saleId}/fulfil`, { method: "PATCH" }, { silentError: true });
       await reloadOrder();
     } catch (err) {
       const msg = humanizeError(err);
@@ -591,10 +591,6 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                   const liveDeliveryStatuses = new Set(["searching_rider", "assigned", "picked_up", "in_transit"]);
                   const deliveryIsLive = !!(data.delivery && liveDeliveryStatuses.has(data.delivery.status));
                   const showAdvanceButtons = can("orders.manage") && !deliveryIsLive;
-                  const isPaid = data.status === "paid";
-                  const isOutForDelivery = data.status === "out_for_delivery";
-                  const isHandedOver = data.status === "handed_over";
-                  const isDelivery = isDeliveryOrder(data);
 
                   return (
                     <div style={{ marginTop: 14 }}>
