@@ -6,18 +6,22 @@ import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 
+// Shape returned by GET /online-orders/active — snake_case, matching the API.
 interface ActiveOrder {
   id: string;
-  orderNumber: string;
-  branchId: string;
+  order_number: string;
+  branch_id: string;
   status: string;
   channel: string;
-  totalNgn: number;
-  createdAtLocal: string;
-  customerName: string | null;
-  customerPhone: string | null;
-  isDelivery: boolean;
-  deliveryStatus: string | null;
+  total_ngn: number;
+  created_at_local: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  delivery_state: string | null;
+  scheduled_delivery_at: string | null;
+  is_preorder: boolean;
+  is_delivery: boolean;
+  delivery_status: string | null;
 }
 
 function statusPill(status: string): JSX.Element {
@@ -103,15 +107,15 @@ export function OwnerOnlineOrdersPage(): JSX.Element {
                       params={{ saleId: o.id }}
                       style={{ fontWeight: 600, color: "var(--ink)" }}
                     >
-                      {o.orderNumber}
+                      {o.order_number}
                     </Link>
                   </td>
                   <td>
-                    {o.customerName || o.customerPhone ? (
+                    {o.customer_name || o.customer_phone ? (
                       <span style={{ display: "grid" }}>
-                        <span>{o.customerName ?? "—"}</span>
-                        {o.customerPhone && (
-                          <span style={{ color: "var(--ink-soft)", fontSize: 12 }}>{o.customerPhone}</span>
+                        <span>{o.customer_name ?? "—"}</span>
+                        {o.customer_phone && (
+                          <span style={{ color: "var(--ink-soft)", fontSize: 12 }}>{o.customer_phone}</span>
                         )}
                       </span>
                     ) : (
@@ -119,13 +123,25 @@ export function OwnerOnlineOrdersPage(): JSX.Element {
                     )}
                   </td>
                   <td style={{ textTransform: "capitalize" }}>{o.channel.replace(/_/g, " ")}</td>
-                  <td>{statusPill(o.status)}</td>
-                  <td>{deliveryChip(o.deliveryStatus, o.isDelivery)}</td>
+                  <td>
+                    {statusPill(o.status)}
+                    {o.is_preorder && (
+                      <span className="pill pill--warning" style={{ marginLeft: 6 }}>
+                        Preorder
+                      </span>
+                    )}
+                    {o.scheduled_delivery_at && (
+                      <span className="pill pill--warning" style={{ marginLeft: 6 }}>
+                        Scheduled
+                      </span>
+                    )}
+                  </td>
+                  <td>{deliveryChip(o.delivery_status, o.is_delivery)}</td>
                   <td className="table__num" style={{ fontWeight: 700 }}>
-                    {ngn(o.totalNgn)}
+                    {ngn(o.total_ngn)}
                   </td>
                   <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
-                    {formatDateTime(o.createdAtLocal)}
+                    {formatDateTime(o.created_at_local)}
                   </td>
                 </tr>
               ))}
