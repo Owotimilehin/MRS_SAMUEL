@@ -6,6 +6,7 @@ import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
 import { OrderJourney } from "../../components/OrderJourney.js";
 import { deriveOrderJourney, isDeliveryOrder } from "../../lib/order-journey.js";
+import { nextFulfilAction } from "../../lib/order-fulfil-action.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -32,6 +33,7 @@ interface Sale {
   scheduledDeliveryAt?: string | null;
   deliveryState?: string | null;
   isPreorder?: boolean;
+  producedAt?: string | null;
   paymentMethod: string;
   subtotalNgn: number;
   deliveryFeeNgn: number;
@@ -128,6 +130,23 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
       await reloadOrder();
     } catch (err) {
       setDeliveryError(humanizeError(err));
+    } finally {
+      setAdvanceBusy(false);
+    }
+  }
+
+  async function produce(): Promise<void> {
+    if (!data) return;
+    setAdvanceBusy(true);
+    setDeliveryError(null);
+    try {
+      await api(`/preorders/${saleId}/fulfil`, { method: "PATCH" });
+      await reloadOrder();
+    } catch (err) {
+      const msg = humanizeError(err);
+      setDeliveryError(/unfulfillable|not enough stock/i.test(msg)
+        ? "Not enough stock to produce this preorder yet — produce/transfer more first."
+        : msg);
     } finally {
       setAdvanceBusy(false);
     }
@@ -585,57 +604,23 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                         </p>
                       )}
 
-                      {showAdvanceButtons && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {isDelivery ? (
-                            <>
-                              {isPaid && (
-                                <button
-                                  type="button"
-                                  className="btn btn--primary btn--sm"
-                                  disabled={advanceBusy}
-                                  onClick={() => void advance()}
-                                >
-                                  {advanceBusy ? "Saving…" : "Mark out for delivery"}
-                                </button>
-                              )}
-                              {isOutForDelivery && (
-                                <button
-                                  type="button"
-                                  className="btn btn--primary btn--sm"
-                                  disabled={advanceBusy}
-                                  onClick={() => void advance()}
-                                >
-                                  {advanceBusy ? "Saving…" : "Mark delivered"}
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              {isPaid && (
-                                <button
-                                  type="button"
-                                  className="btn btn--primary btn--sm"
-                                  disabled={advanceBusy}
-                                  onClick={() => void advance()}
-                                >
-                                  {advanceBusy ? "Saving…" : "Mark ready for pickup"}
-                                </button>
-                              )}
-                              {isHandedOver && (
-                                <button
-                                  type="button"
-                                  className="btn btn--primary btn--sm"
-                                  disabled={advanceBusy}
-                                  onClick={() => void advance()}
-                                >
-                                  {advanceBusy ? "Saving…" : "Mark collected"}
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      )}
+                      {showAdvanceButtons && (() => {
+                        const action = nextFulfilAction(data);
+                        if (action.kind === "none") return null;
+                        const onClick = action.kind === "produce" ? produce : advance;
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <button
+                              type="button"
+                              className="btn btn--primary btn--sm"
+                              disabled={advanceBusy}
+                              onClick={() => void onClick()}
+                            >
+                              {advanceBusy ? "Saving…" : action.label}
+                            </button>
+                          </div>
+                        );
+                      })()}
 
                       {/* Force-delivered fallback when webhook is live */}
                       {deliveryIsLive && can("orders.manage") && (
