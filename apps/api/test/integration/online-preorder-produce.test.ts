@@ -68,4 +68,30 @@ describe("online preorder produce semantics", () => {
     expect(body.data.producedAt).not.toBeNull();
     expect(body.data.fulfilledAt).not.toBeNull();
   });
+
+  it("advance is blocked until a preorder is produced, then succeeds", async () => {
+    const seeded = await seedOnlineOrder(db, { status: "paid", isPreorder: true, deliveryState: "Lagos", deliveryFeeNgn: 1500 });
+
+    // Before produce: advance is rejected
+    const blocked = await app.request(`/v1/branches/${seeded.branchId}/sales/${seeded.id}/advance`, {
+      method: "PATCH",
+      headers: { ...headers, "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+      body: "{}",
+    });
+    expect(blocked.status).toBe(409);
+
+    // Produce, then advance succeeds → out_for_delivery
+    await app.request(`/v1/preorders/${seeded.id}/fulfil`, {
+      method: "PATCH",
+      headers: { ...headers, "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+    });
+    const ok = await app.request(`/v1/branches/${seeded.branchId}/sales/${seeded.id}/advance`, {
+      method: "PATCH",
+      headers: { ...headers, "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+      body: "{}",
+    });
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { data: { status: string } };
+    expect(body.data.status).toBe("out_for_delivery");
+  });
 });
