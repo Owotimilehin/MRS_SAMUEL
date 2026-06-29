@@ -12,6 +12,7 @@ import type { ApiDeliveryOption, ApiPlacedOrder } from "@/lib/api/types";
 import { launchPayazaCheckout } from "@/lib/payaza";
 import { NIGERIA_STATES } from "@/lib/nigeria-states";
 import { scheduledIso, orderSchedule, type DeliveryWindow } from "@/lib/schedule";
+import { deliveryPromise, isImmediateSchedule } from "@/lib/availability-label";
 import { LIVE_COURIER_QUOTES } from "@/lib/flags";
 import type { Size } from "@/lib/visuals";
 
@@ -75,6 +76,8 @@ function Page() {
     [items],
   );
   const sched = useMemo(() => orderSchedule(new Date(), lineKinds), [lineKinds]);
+  // Same-day in-stock orders go out today ASAP — no window to pick.
+  const immediate = useMemo(() => isImmediateSchedule(sched), [sched]);
 
   // Chosen window: start from first selectable, or the fixed window.
   const [selectedWindow, setSelectedWindow] = useState<DeliveryWindow>(
@@ -111,14 +114,14 @@ function Page() {
         .then((q) => {
           if (!alive) return;
           setOptions(q.options);
-          setQuoteNotice(q.options.length === 0 ? (q.notice ?? "No couriers available right now — no delivery charge applied.") : null);
+          setQuoteNotice(q.options.length === 0 ? (q.notice ?? "We'll confirm your delivery cost and send it to you separately.") : null);
           setSelectedId(q.options[0]?.id ?? null);
         })
         .catch((e: unknown) => {
           if (!alive) return;
           setOptions([]); setSelectedId(null);
           const qErr = asApiError(e);
-          setQuoteNotice(qErr ? qErr.message : "Live delivery is unavailable right now — no delivery charge applied.");
+          setQuoteNotice(qErr ? qErr.message : "We'll confirm your delivery cost and send it to you separately.");
         })
         .finally(() => { if (alive) setQuoting(false); });
     }, 600);
@@ -199,8 +202,14 @@ function Page() {
           delivery_fee_ngn: 0,
           delivery_state: form.state,
           ...(selectedOption && !outsideLagos ? { delivery_quote_id: selectedOption.id } : {}),
-          delivery_window: chosenWindow,
-          scheduled_delivery_at: scheduledIso(sched.date, chosenWindow),
+          // Immediate (same-day in-stock) orders omit the window/schedule so the
+          // API treats them as dispatch-now, not a scheduled slot.
+          ...(immediate
+            ? {}
+            : {
+                delivery_window: chosenWindow,
+                scheduled_delivery_at: scheduledIso(sched.date, chosenWindow),
+              }),
           customer: {
             name: form.name.trim(),
             phone,
@@ -297,13 +306,18 @@ function Page() {
 
               {/* When — schedule-driven delivery date & window picker */}
               <section>
-                <h2 className="font-display text-2xl text-[color:var(--brand)]">Delivery window</h2>
+                <h2 className="font-display text-2xl text-[color:var(--brand)]">{immediate ? "Delivery" : "Delivery window"}</h2>
                 <div className="mt-4 rounded-2xl bg-[color:var(--cream)]/60 p-4 space-y-3">
                   <div className="flex items-center gap-2 text-sm">
                     <CalendarClock className="h-4 w-4 text-[color:var(--brand-orange)] shrink-0" />
                     <span className="font-semibold text-[color:var(--brand)]">{formatDeliveryDate(sched.date)}</span>
                   </div>
-                  {sched.fixedWindow ? (
+                  {immediate ? (
+                    <div className="flex items-center gap-2 text-sm text-[color:var(--brand)]/70">
+                      <Truck className="h-4 w-4 shrink-0" />
+                      <span>Delivered today — as soon as possible. No window to pick.</span>
+                    </div>
+                  ) : sched.fixedWindow ? (
                     <div className="flex items-center gap-2 text-sm text-[color:var(--brand)]/70">
                       <Truck className="h-4 w-4 shrink-0" />
                       <span>
@@ -371,7 +385,7 @@ function Page() {
                     </div>
                   ) : (
                     <p className="mt-3 rounded-2xl bg-[color:var(--cream)]/60 p-4 text-sm text-[color:var(--brand)]/75">
-                      {form.address.trim().length >= 5 ? (quoteNotice ?? "No delivery fee is charged now.") : "Enter your address to see delivery options."}
+                      {form.address.trim().length >= 5 ? (quoteNotice ?? "Delivery cost will be confirmed and sent to you separately.") : "Enter your address to continue."}
                     </p>
                   )}
                 </section>
@@ -390,11 +404,9 @@ function Page() {
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold truncate">{it.product.name}</div>
                         <div className="text-xs text-white/60">{it.size} · ×{it.qty}</div>
-                        {it.preorder ? (
-                          <div className="mt-0.5 text-[11px] text-[color:var(--brand-orange)] font-medium">Preorder — made to order</div>
-                        ) : (
-                          <div className="mt-0.5 text-[11px] text-white/50">In stock — {stock} left</div>
-                        )}
+                        <div className={`mt-0.5 text-[11px] ${stock > 0 ? "text-white/50" : "text-[color:var(--brand-orange)] font-medium"}`}>
+                          {stock > 0 ? `${stock} in stock` : deliveryPromise(it.size, 0)}
+                        </div>
                       </div>
                       <div className="font-semibold shrink-0">{formatNaira(it.unitPrice * it.qty)}</div>
                     </div>
