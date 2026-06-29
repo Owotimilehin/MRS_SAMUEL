@@ -98,6 +98,15 @@ const CancelBody = z.object({
   ]),
 });
 
+const EditDeliveryAddressBody = z.object({
+  // Free-text delivery line the owner can clean up before booking a rider.
+  // Shipbubble's validator consumes this as-is (we don't geocode here).
+  address: z.string().trim().min(1).max(500),
+  // Optional Lagos-style state label; null leaves the existing state untouched
+  // only when omitted — an explicit null clears it.
+  state: z.string().trim().max(100).nullable().optional(),
+});
+
 const RESERVATION_TIMEOUT_MS: Record<string, number> = {
   walkup: 5 * 60_000,
   whatsapp: 30 * 60_000,
@@ -607,6 +616,62 @@ export function saleRoutes(db: DbClient) {
     });
     return c.json({ data: updated });
   });
+
+  // ============ Edit delivery address ============
+  // Lets the owner/branch clean up the drop-off address (and state) before
+  // booking a rider. The delivery-options/book flow already reads
+  // deliveryAddressFormatted + deliveryState first, so an edit here flows
+  // straight into Shipbubble. Same gate as /advance: orders.manage OR pos.sell.
+  r.patch(
+    "/:id/delivery-address",
+    requireBranchScope(),
+    requireAnyCapability("orders.manage", "pos.sell"),
+    async (c) => {
+      const id = c.req.param("id");
+      if (!id) throw new BusinessError("validation_failed", "id required", 400);
+      const body = EditDeliveryAddressBody.parse(await c.req.json());
+
+      const { before, after } = await db.transaction(async (tx) => {
+        const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
+        if (!o) throw new BusinessError("not_found", "sale not found", 404);
+        if (o.channel === "walkup") {
+          throw new BusinessError("conflict", "walk-up orders have no delivery address", 409);
+        }
+        if (["delivered", "cancelled"].includes(o.status)) {
+          throw new BusinessError("conflict", `cannot edit a ${o.status} order`, 409);
+        }
+        const beforeRow = {
+          deliveryAddressFormatted: o.deliveryAddressFormatted,
+          deliveryState: o.deliveryState,
+        };
+        const patch: Record<string, unknown> = {
+          deliveryAddressFormatted: body.address,
+          updatedAt: new Date(),
+        };
+        // Only touch state when the caller sent the key (null clears, string sets).
+        if (body.state !== undefined) patch["deliveryState"] = body.state;
+        const [u] = await tx
+          .update(saleOrder)
+          .set(patch)
+          .where(eq(saleOrder.id, id))
+          .returning();
+        if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
+        return {
+          before: beforeRow,
+          after: { deliveryAddressFormatted: u.deliveryAddressFormatted, deliveryState: u.deliveryState },
+        };
+      });
+
+      await writeAudit(db, c, {
+        action: "sale.edit_delivery_address",
+        entityType: "sale_order",
+        entityId: id,
+        before,
+        after,
+      });
+      return c.json({ data: after });
+    },
+  );
 
   // ============ Cancel (any non-terminal→CANCELLED) ============
   r.patch("/:id/cancel", requireCapability("pos.sell"), async (c) => {

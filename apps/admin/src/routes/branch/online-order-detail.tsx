@@ -5,6 +5,8 @@ import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
 import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
+import { OrderJourney } from "../../components/OrderJourney.js";
+import { deriveOrderJourney } from "../../lib/order-journey.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -69,16 +71,6 @@ interface Sale {
   delivery?: DeliveryRow | null;
 }
 
-function statusPill(status: string): JSX.Element {
-  if (status === "paid") return <span className="pill pill--success">Paid</span>;
-  if (status === "out_for_delivery") return <span className="pill pill--accent">Out for delivery</span>;
-  if (status === "delivered") return <span className="pill pill--success">Delivered</span>;
-  if (status === "handed_over") return <span className="pill pill--success">Handed over</span>;
-  if (status === "confirmed") return <span className="pill pill--warning">Pending pay</span>;
-  if (status === "cancelled") return <span className="pill pill--ink">Cancelled</span>;
-  return <span className="pill">{status.replace(/_/g, " ")}</span>;
-}
-
 export function BranchOnlineOrderDetailPage({
   branchId,
   orderId,
@@ -95,6 +87,12 @@ export function BranchOnlineOrderDetailPage({
   const [advanceBusy, setAdvanceBusy] = useState(false);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
+
+  // Inline delivery-address editor
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [addressDraft, setAddressDraft] = useState("");
+  const [stateDraft, setStateDraft] = useState("");
+  const [savingAddress, setSavingAddress] = useState(false);
 
   interface CourierOption {
     id: string;
@@ -210,6 +208,32 @@ export function BranchOnlineOrderDetailPage({
     }
   }
 
+  function startEditAddress(): void {
+    if (!data) return;
+    setAddressDraft(data.deliveryAddressFormatted ?? data.customerAddress ?? "");
+    setStateDraft(data.deliveryState ?? "");
+    setDeliveryError(null);
+    setEditingAddress(true);
+  }
+
+  async function saveAddress(): Promise<void> {
+    if (!data || !addressDraft.trim()) return;
+    setSavingAddress(true);
+    setDeliveryError(null);
+    try {
+      await api(`/branches/${branchId}/sales/${orderId}/delivery-address`, {
+        method: "PATCH",
+        body: JSON.stringify({ address: addressDraft.trim(), state: stateDraft.trim() || null }),
+      });
+      setEditingAddress(false);
+      await loadOrder();
+    } catch (err) {
+      setDeliveryError(humanizeError(err));
+    } finally {
+      setSavingAddress(false);
+    }
+  }
+
   async function printReceipt(): Promise<void> {
     if (!data) return;
     setPrinting(true);
@@ -251,10 +275,12 @@ export function BranchOnlineOrderDetailPage({
     return `https://wa.me/${digits}?text=${msg}`;
   }
 
+  const journey = data ? deriveOrderJourney(data) : null;
+
   const chips: StatChip[] = [
     { label: "Items", value: data ? data.items.length : "—" },
     { label: "Total", value: data ? ngn(data.totalNgn) : "—" },
-    { label: "Status", value: data?.status.replace(/_/g, " ") ?? "—" },
+    { label: "Status", value: journey?.currentLabel ?? "—" },
     { label: "Channel", value: data?.channel ?? "—" },
   ];
 
@@ -275,10 +301,6 @@ export function BranchOnlineOrderDetailPage({
   const isPaid = data?.status === "paid";
   const isOutForDelivery = data?.status === "out_for_delivery";
   const isHandedOver = data?.status === "handed_over";
-
-  const showFulfilmentSection =
-    data != null && (canAct || deliveryIsLive) &&
-    !["delivered", "cancelled", "failed"].includes(data.status);
 
   return (
     <BranchShell
@@ -334,10 +356,11 @@ export function BranchOnlineOrderDetailPage({
                   </div>
                 )}
               </div>
-              <div style={{ textAlign: "right", display: "grid", gap: 6, justifyItems: "end" }}>
-                {statusPill(data.status)}
-                {data.isPreorder && <span className="pill pill--warning">Preorder</span>}
-              </div>
+              {data.isPreorder && (
+                <div style={{ textAlign: "right" }}>
+                  <span className="pill pill--warning">Preorder</span>
+                </div>
+              )}
             </header>
 
             <h3 style={{ fontSize: 14, fontWeight: 700, margin: "16px 0 8px" }}>Items</h3>
@@ -415,7 +438,154 @@ export function BranchOnlineOrderDetailPage({
 
           {/* Right sidebar */}
           <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Customer card */}
+            {/* 1. Status & fulfilment */}
+            {journey && (
+              <section
+                className="card"
+                style={{
+                  border:
+                    journey.special === "reconcile"
+                      ? "1.5px solid var(--danger)"
+                      : journey.special === "payment_hold"
+                        ? "1.5px solid var(--warning)"
+                        : undefined,
+                }}
+              >
+                <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700 }}>Status</h3>
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: journey.special === "cancelled" ? "var(--ink-soft)" : "var(--accent)",
+                    }}
+                  >
+                    {journey.currentLabel}
+                  </span>
+                </header>
+
+                {journey.special === "payment_hold" && (
+                  <p style={{ fontSize: 13, color: "var(--warning)", marginBottom: 12 }}>
+                    Payment not confirmed yet — on hold until Payaza settles.
+                  </p>
+                )}
+                {journey.special === "reconcile" && (
+                  <p style={{ fontSize: 13, color: "var(--danger)", marginBottom: 12 }}>
+                    Payment needs review before fulfilling.
+                  </p>
+                )}
+                {journey.special === "cancelled" && (
+                  <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 12 }}>
+                    This order was cancelled.
+                  </p>
+                )}
+
+                <OrderJourney journey={journey} />
+
+                {data.scheduledDeliveryAt && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--ink-soft)",
+                      marginTop: 12,
+                      display: "flex",
+                      gap: 6,
+                      alignItems: "center",
+                    }}
+                  >
+                    <span>⏰</span> Scheduled for {formatDateTime(data.scheduledDeliveryAt)}
+                  </div>
+                )}
+
+                <div style={{ marginTop: 14 }}>
+                  {deliveryIsLive && (
+                    <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 10 }}>
+                      Rider is active — status updates via webhook.
+                    </p>
+                  )}
+
+                  {canAct && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {isDeliveryOrder ? (
+                        <>
+                          {isPaid && (
+                            <button
+                              type="button"
+                              className="btn btn--primary btn--sm"
+                              disabled={advanceBusy}
+                              onClick={() => void advance()}
+                            >
+                              {advanceBusy ? "Saving…" : "Mark out for delivery"}
+                            </button>
+                          )}
+                          {isOutForDelivery && (
+                            <button
+                              type="button"
+                              className="btn btn--primary btn--sm"
+                              disabled={advanceBusy}
+                              onClick={() => void advance()}
+                            >
+                              {advanceBusy ? "Saving…" : "Mark delivered"}
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {isPaid && (
+                            <button
+                              type="button"
+                              className="btn btn--primary btn--sm"
+                              disabled={advanceBusy}
+                              onClick={() => void advance()}
+                            >
+                              {advanceBusy ? "Saving…" : "Mark ready for pickup"}
+                            </button>
+                          )}
+                          {isHandedOver && (
+                            <button
+                              type="button"
+                              className="btn btn--primary btn--sm"
+                              disabled={advanceBusy}
+                              onClick={() => void advance()}
+                            >
+                              {advanceBusy ? "Saving…" : "Mark collected"}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Force-delivered fallback when webhook is live but stalled */}
+                  {deliveryIsLive && can("pos.sell") && (
+                    <button
+                      type="button"
+                      className="btn btn--subtle btn--sm"
+                      disabled={advanceBusy}
+                      onClick={() => void advance()}
+                      style={{ fontSize: 12, color: "var(--ink-soft)" }}
+                    >
+                      {advanceBusy ? "Saving…" : "Force delivered (fallback)"}
+                    </button>
+                  )}
+
+                  {deliveryError && !editingAddress && (
+                    <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{deliveryError}</p>
+                  )}
+
+                  {/* Rider journey panel */}
+                  <DeliveryStatusPanel delivery={data.delivery ?? null} onRebook={bookRide} />
+                </div>
+              </section>
+            )}
+
+            {/* 2. Payment (read-only — no payment actions for branch staff) */}
+            <section className="card">
+              <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Payment</h3>
+              <div style={{ fontSize: 14, textTransform: "capitalize" }}>{data.paymentMethod}</div>
+            </section>
+
+            {/* 3. Customer */}
             {(data.customerName ||
               data.customerPhone ||
               data.customerEmail ||
@@ -444,11 +614,6 @@ export function BranchOnlineOrderDetailPage({
                       </a>
                     </div>
                   )}
-                  {(data.deliveryAddressFormatted ?? data.customerAddress) && (
-                    <div style={{ color: "var(--ink-soft)" }}>
-                      {data.deliveryAddressFormatted ?? data.customerAddress}
-                    </div>
-                  )}
                 </div>
                 {data.customerPhone && (
                   <a
@@ -464,118 +629,82 @@ export function BranchOnlineOrderDetailPage({
               </section>
             )}
 
-            {/* Payment card (read-only — no payment actions for branch staff) */}
-            <section className="card">
-              <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Payment</h3>
-              <div style={{ fontSize: 14 }}>Method: {data.paymentMethod}</div>
-            </section>
-
-            {/* Fulfilment panel — advance + ride book/cancel */}
-            {showFulfilmentSection && (
-              <section className="card">
-                <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Fulfilment</h3>
-
-                {deliveryIsLive && (
-                  <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 10 }}>
-                    Rider is active — status updates via webhook.
-                  </p>
-                )}
-
-                {/* Force-delivered fallback when webhook is live but stalled */}
-                {deliveryIsLive && can("pos.sell") && (
-                  <button
-                    type="button"
-                    className="btn btn--subtle btn--sm"
-                    disabled={advanceBusy}
-                    onClick={() => void advance()}
-                    style={{ fontSize: 12, color: "var(--ink-soft)" }}
-                  >
-                    {advanceBusy ? "Saving…" : "Force delivered (fallback)"}
-                  </button>
-                )}
-
-                {canAct && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {isDeliveryOrder ? (
-                      <>
-                        {isPaid && (
-                          <button
-                            type="button"
-                            className="btn btn--primary btn--sm"
-                            disabled={advanceBusy}
-                            onClick={() => void advance()}
-                          >
-                            {advanceBusy ? "Saving…" : "Mark out for delivery"}
-                          </button>
-                        )}
-                        {isOutForDelivery && (
-                          <button
-                            type="button"
-                            className="btn btn--primary btn--sm"
-                            disabled={advanceBusy}
-                            onClick={() => void advance()}
-                          >
-                            {advanceBusy ? "Saving…" : "Mark delivered"}
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        {isPaid && (
-                          <button
-                            type="button"
-                            className="btn btn--primary btn--sm"
-                            disabled={advanceBusy}
-                            onClick={() => void advance()}
-                          >
-                            {advanceBusy ? "Saving…" : "Mark ready"}
-                          </button>
-                        )}
-                        {isHandedOver && (
-                          <button
-                            type="button"
-                            className="btn btn--primary btn--sm"
-                            disabled={advanceBusy}
-                            onClick={() => void advance()}
-                          >
-                            {advanceBusy ? "Saving…" : "Mark collected"}
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {deliveryError && (
-                  <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{deliveryError}</p>
-                )}
-
-                {/* Rider journey panel */}
-                <DeliveryStatusPanel delivery={data.delivery ?? null} onRebook={bookRide} />
-              </section>
-            )}
-
-            {/* Delivery booking section — for delivery orders with no active ride */}
+            {/* 4. Delivery — editable address + Shipbubble booking */}
             {data.channel !== "walkup" &&
-              (data.deliveryAddressFormatted || data.customerAddress || data.deliveryState) &&
-              can("pos.sell") && (
+              (data.deliveryAddressFormatted || data.customerAddress || data.deliveryState || can("pos.sell")) && (
                 <section className="card">
-                  <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Delivery</h3>
-                  <div style={{ fontSize: 14 }}>
-                    {data.deliveryAddressFormatted ?? data.customerAddress ?? "Address on file"}
-                  </div>
-                  {data.deliveryState && (
-                    <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 2 }}>
-                      {data.deliveryState}
+                  <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <h3 style={{ fontSize: 13, fontWeight: 700 }}>Delivery</h3>
+                    {can("pos.sell") && !editingAddress && data.status !== "delivered" && data.status !== "cancelled" && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={startEditAddress}
+                        style={{ fontSize: 12 }}
+                      >
+                        ✎ {data.deliveryAddressFormatted || data.customerAddress || data.deliveryState ? "Edit" : "Add address"}
+                      </button>
+                    )}
+                  </header>
+
+                  {editingAddress ? (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <textarea
+                        className="input"
+                        rows={3}
+                        placeholder="Full delivery address (street, area, landmark)"
+                        value={addressDraft}
+                        onChange={(e) => setAddressDraft(e.target.value)}
+                        style={{ width: "100%", resize: "vertical", fontSize: 14 }}
+                      />
+                      <input
+                        className="input"
+                        placeholder="State (e.g. Lagos)"
+                        value={stateDraft}
+                        onChange={(e) => setStateDraft(e.target.value)}
+                        style={{ width: "100%", fontSize: 14 }}
+                      />
+                      {deliveryError && (
+                        <p style={{ color: "var(--danger)", fontSize: 13 }}>{deliveryError}</p>
+                      )}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          type="button"
+                          className="btn btn--primary btn--sm"
+                          disabled={savingAddress || !addressDraft.trim()}
+                          onClick={() => void saveAddress()}
+                        >
+                          {savingAddress ? "Saving…" : "Save address"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          disabled={savingAddress}
+                          onClick={() => setEditingAddress(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                  )}
-                  {data.customerPhone && (
-                    <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
-                      {data.customerName ?? "Customer"} · {data.customerPhone}
-                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 14 }}>
+                        {data.deliveryAddressFormatted ?? data.customerAddress ?? "No delivery address yet"}
+                      </div>
+                      {data.deliveryState && (
+                        <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 2 }}>
+                          {data.deliveryState}
+                        </div>
+                      )}
+                      {data.customerPhone && (
+                        <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
+                          {data.customerName ?? "Customer"} · {data.customerPhone}
+                        </div>
+                      )}
+                    </>
                   )}
 
-                  {data.delivery && data.delivery.status !== "cancelled" ? (
+                  {!editingAddress && can("pos.sell") && (data.delivery && data.delivery.status !== "cancelled" ? (
                     <div style={{ marginTop: 10, fontSize: 13 }}>
                       <div style={{ color: "var(--ink-soft)" }}>
                         {data.delivery.provider} · {data.delivery.status}
@@ -654,7 +783,7 @@ export function BranchOnlineOrderDetailPage({
                     >
                       {loadingOptions ? "Getting options…" : "Get delivery options"}
                     </button>
-                  )}
+                  ))}
                 </section>
               )}
           </aside>

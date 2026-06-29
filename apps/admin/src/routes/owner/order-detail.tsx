@@ -4,6 +4,8 @@ import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
+import { OrderJourney } from "../../components/OrderJourney.js";
+import { deriveOrderJourney, isDeliveryOrder } from "../../lib/order-journey.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -92,6 +94,12 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
 
   const [advanceBusy, setAdvanceBusy] = useState(false);
 
+  // Inline delivery-address editor
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [addressDraft, setAddressDraft] = useState("");
+  const [stateDraft, setStateDraft] = useState("");
+  const [savingAddress, setSavingAddress] = useState(false);
+
   interface CourierOption { id: string; courier_name: string; fee_ngn: number; eta_minutes: number | null }
   const [options, setOptions] = useState<CourierOption[] | null>(null);
   const [receiverCode, setReceiverCode] = useState<number | null>(null);
@@ -178,6 +186,32 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
       await reloadOrder();
     } catch (err) {
       setDeliveryError(humanizeError(err));
+    }
+  }
+
+  function startEditAddress(): void {
+    if (!data) return;
+    setAddressDraft(data.deliveryAddressFormatted ?? data.customerAddress ?? "");
+    setStateDraft(data.deliveryState ?? "");
+    setDeliveryError(null);
+    setEditingAddress(true);
+  }
+
+  async function saveAddress(): Promise<void> {
+    if (!data || !branchId || !addressDraft.trim()) return;
+    setSavingAddress(true);
+    setDeliveryError(null);
+    try {
+      await api(`/branches/${branchId}/sales/${saleId}/delivery-address`, {
+        method: "PATCH",
+        body: JSON.stringify({ address: addressDraft.trim(), state: stateDraft.trim() || null }),
+      });
+      setEditingAddress(false);
+      await reloadOrder();
+    } catch (err) {
+      setDeliveryError(humanizeError(err));
+    } finally {
+      setSavingAddress(false);
     }
   }
 
@@ -326,6 +360,8 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
     };
   }, [saleId]);
 
+  const journey = data ? deriveOrderJourney(data) : null;
+
   return (
     <Shell
       title={data ? `Order ${data.orderNumber}` : "Order"}
@@ -356,7 +392,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
         chips={[
           { label: "Items", value: data ? data.items.length : "—" },
           { label: "Total", value: data ? ngn(data.totalNgn) : "—" },
-          { label: "Status", value: data?.status ?? "—" },
+          { label: "Status", value: journey?.currentLabel ?? "—" },
           { label: "Channel", value: data?.channel ?? "—" },
         ]}
       />
@@ -391,10 +427,11 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                   </div>
                 )}
               </div>
-              <div style={{ textAlign: "right", display: "grid", gap: 6, justifyItems: "end" }}>
-                {statusPill(data.status)}
-                {data.isPreorder && <span className="pill pill--warning">Preorder</span>}
-              </div>
+              {data.isPreorder && (
+                <div style={{ textAlign: "right" }}>
+                  <span className="pill pill--warning">Preorder</span>
+                </div>
+              )}
             </header>
 
             <h3 style={{ fontSize: 14, fontWeight: 700, margin: "16px 0 8px" }}>Items</h3>
@@ -471,6 +508,264 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
           </section>
 
           <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* 1. Status & fulfilment — single source of truth for where the order is */}
+            {journey && (
+              <section
+                className="card"
+                style={{
+                  border:
+                    journey.special === "reconcile"
+                      ? "1.5px solid var(--danger)"
+                      : journey.special === "payment_hold"
+                        ? "1.5px solid var(--warning)"
+                        : undefined,
+                }}
+              >
+                <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700 }}>Status</h3>
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: journey.special === "cancelled" ? "var(--ink-soft)" : "var(--accent)",
+                    }}
+                  >
+                    {journey.currentLabel}
+                  </span>
+                </header>
+
+                {journey.special === "payment_hold" && (
+                  <p style={{ fontSize: 13, color: "var(--warning)", marginBottom: 12 }}>
+                    Payment not confirmed yet — on hold until Payaza settles.
+                  </p>
+                )}
+                {journey.special === "reconcile" && (
+                  <p style={{ fontSize: 13, color: "var(--danger)", marginBottom: 12 }}>
+                    Payment needs review — reconcile before fulfilling.
+                  </p>
+                )}
+                {journey.special === "cancelled" && (
+                  <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 12 }}>
+                    This order was cancelled.
+                  </p>
+                )}
+
+                <OrderJourney journey={journey} />
+
+                {data.scheduledDeliveryAt && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--ink-soft)",
+                      marginTop: 12,
+                      display: "flex",
+                      gap: 6,
+                      alignItems: "center",
+                    }}
+                  >
+                    <span>⏰</span> Scheduled for {formatDateTime(data.scheduledDeliveryAt)}
+                  </div>
+                )}
+
+                {/* Fulfilment actions + rider panel */}
+                {(() => {
+                  const liveDeliveryStatuses = new Set(["searching_rider", "assigned", "picked_up", "in_transit"]);
+                  const deliveryIsLive = !!(data.delivery && liveDeliveryStatuses.has(data.delivery.status));
+                  const showAdvanceButtons = can("orders.manage") && !deliveryIsLive;
+                  const isPaid = data.status === "paid";
+                  const isOutForDelivery = data.status === "out_for_delivery";
+                  const isHandedOver = data.status === "handed_over";
+                  const isDelivery = isDeliveryOrder(data);
+
+                  return (
+                    <div style={{ marginTop: 14 }}>
+                      {deliveryIsLive && (
+                        <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 10 }}>
+                          Rider is active — status updates via webhook.
+                        </p>
+                      )}
+
+                      {showAdvanceButtons && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {isDelivery ? (
+                            <>
+                              {isPaid && (
+                                <button
+                                  type="button"
+                                  className="btn btn--primary btn--sm"
+                                  disabled={advanceBusy}
+                                  onClick={() => void advance()}
+                                >
+                                  {advanceBusy ? "Saving…" : "Mark out for delivery"}
+                                </button>
+                              )}
+                              {isOutForDelivery && (
+                                <button
+                                  type="button"
+                                  className="btn btn--primary btn--sm"
+                                  disabled={advanceBusy}
+                                  onClick={() => void advance()}
+                                >
+                                  {advanceBusy ? "Saving…" : "Mark delivered"}
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {isPaid && (
+                                <button
+                                  type="button"
+                                  className="btn btn--primary btn--sm"
+                                  disabled={advanceBusy}
+                                  onClick={() => void advance()}
+                                >
+                                  {advanceBusy ? "Saving…" : "Mark ready for pickup"}
+                                </button>
+                              )}
+                              {isHandedOver && (
+                                <button
+                                  type="button"
+                                  className="btn btn--primary btn--sm"
+                                  disabled={advanceBusy}
+                                  onClick={() => void advance()}
+                                >
+                                  {advanceBusy ? "Saving…" : "Mark collected"}
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Force-delivered fallback when webhook is live */}
+                      {deliveryIsLive && can("orders.manage") && (
+                        <button
+                          type="button"
+                          className="btn btn--subtle btn--sm"
+                          disabled={advanceBusy}
+                          onClick={() => void advance()}
+                          style={{ fontSize: 12, color: "var(--ink-soft)" }}
+                        >
+                          {advanceBusy ? "Saving…" : "Force delivered (fallback)"}
+                        </button>
+                      )}
+
+                      {deliveryError && !editingAddress && (
+                        <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{deliveryError}</p>
+                      )}
+
+                      {/* Rider journey panel */}
+                      <DeliveryStatusPanel delivery={data.delivery ?? null} onRebook={bookRide} />
+                    </div>
+                  );
+                })()}
+              </section>
+            )}
+
+            {/* 2. Payment — method + (online) status, mismatch, refund, actions */}
+            <section
+              className="card"
+              style={{ border: data.status === "reconcile_needed" ? "1.5px solid var(--danger)" : undefined }}
+            >
+              <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700 }}>Payment</h3>
+                {statusPill(data.status)}
+              </header>
+              <div style={{ fontSize: 14, textTransform: "capitalize" }}>{data.paymentMethod}</div>
+
+              {data.channel === "online" && (
+                <div style={{ marginTop: 12 }}>
+                  {/* Refund owed badge */}
+                  {data.refundOwedNgn != null && data.refundOwedNgn > 0 && (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        background: "var(--danger)",
+                        color: "#fff",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        borderRadius: 8,
+                        padding: "4px 10px",
+                        marginBottom: 10,
+                      }}
+                    >
+                      <span>⚠</span>
+                      Refund owed {ngn(data.refundOwedNgn)}
+                    </div>
+                  )}
+
+                  {/* Amount mismatch row */}
+                  {data.reportedNgn != null && data.reportedNgn !== data.totalNgn && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--ink-soft)",
+                        background: "var(--surface-raised, rgba(0,0,0,0.03))",
+                        borderRadius: 6,
+                        padding: "6px 10px",
+                        marginBottom: 12,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, color: "var(--ink)" }}>Expected</span>{" "}
+                      {ngn(data.totalNgn)}
+                      {" · "}
+                      <span style={{ fontWeight: 600, color: "var(--ink)" }}>Payaza reported</span>{" "}
+                      {ngn(data.reportedNgn)}
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {can("orders.manage") && (
+                      <button
+                        type="button"
+                        className="btn btn--subtle btn--sm"
+                        disabled={recheckBusy}
+                        onClick={() => void recheckPayment()}
+                        style={{ justifyContent: "center" }}
+                      >
+                        {recheckBusy ? "Checking…" : "↻ Re-check payment"}
+                      </button>
+                    )}
+                    {can("orders.accept_payment") && (
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        onClick={() => setShowAcceptModal(true)}
+                        style={{ justifyContent: "center" }}
+                      >
+                        ✓ Accept as paid
+                      </button>
+                    )}
+                    {can("orders.manage") && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => { setCancelReason(""); setShowCancelModal(true); }}
+                        style={{ justifyContent: "center", color: "var(--danger)" }}
+                      >
+                        ✕ Cancel &amp; mark refund owed
+                      </button>
+                    )}
+                    {can("orders.accept_payment") && data.refundOwedNgn != null && data.refundOwedNgn > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn--subtle btn--sm"
+                        onClick={() => setShowMarkRefundedModal(true)}
+                        style={{ justifyContent: "center" }}
+                      >
+                        ✓ Mark refunded
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* 3. Customer */}
             {(data.customerName ||
               data.customerPhone ||
               data.customerEmail ||
@@ -499,11 +794,6 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                       </a>
                     </div>
                   )}
-                  {(data.deliveryAddressFormatted ?? data.customerAddress) && (
-                    <div style={{ color: "var(--ink-soft)" }}>
-                      {data.deliveryAddressFormatted ?? data.customerAddress}
-                    </div>
-                  )}
                 </div>
                 {data.customerPhone && (
                   <a
@@ -519,236 +809,83 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
               </section>
             )}
 
-            <section className="card">
-              <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Payment</h3>
-              <div style={{ fontSize: 14 }}>Method: {data.paymentMethod}</div>
-            </section>
-
-            {/* Payment resolution panel — online orders only */}
-            {data.channel === "online" && (
-              <section className="card" style={{ border: data.status === "reconcile_needed" ? "1.5px solid var(--danger)" : undefined }}>
-                <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                  <h3 style={{ fontSize: 13, fontWeight: 700 }}>Payment status</h3>
-                  {statusPill(data.status)}
-                </header>
-
-                {/* Refund owed badge */}
-                {data.refundOwedNgn != null && data.refundOwedNgn > 0 && (
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      background: "var(--danger)",
-                      color: "#fff",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      borderRadius: 8,
-                      padding: "4px 10px",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <span>⚠</span>
-                    Refund owed {ngn(data.refundOwedNgn)}
-                  </div>
-                )}
-
-                {/* Amount mismatch row */}
-                {data.reportedNgn != null && data.reportedNgn !== data.totalNgn && (
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--ink-soft)",
-                      background: "var(--surface-raised, rgba(0,0,0,0.03))",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      marginBottom: 12,
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, color: "var(--ink)" }}>Expected</span>{" "}
-                    {ngn(data.totalNgn)}
-                    {" · "}
-                    <span style={{ fontWeight: 600, color: "var(--ink)" }}>Payaza reported</span>{" "}
-                    {ngn(data.reportedNgn)}
-                  </div>
-                )}
-
-                {/* Action buttons */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {can("orders.manage") && (
-                    <button
-                      type="button"
-                      className="btn btn--subtle btn--sm"
-                      disabled={recheckBusy}
-                      onClick={() => void recheckPayment()}
-                      style={{ justifyContent: "center" }}
-                    >
-                      {recheckBusy ? "Checking…" : "↻ Re-check payment"}
-                    </button>
-                  )}
-                  {can("orders.accept_payment") && (
-                    <button
-                      type="button"
-                      className="btn btn--primary btn--sm"
-                      onClick={() => setShowAcceptModal(true)}
-                      style={{ justifyContent: "center" }}
-                    >
-                      ✓ Accept as paid
-                    </button>
-                  )}
-                  {can("orders.manage") && (
+            {/* 4. Delivery — editable address + Shipbubble booking */}
+            {data.channel !== "walkup" &&
+              (data.deliveryAddressFormatted || data.customerAddress || data.deliveryState || can("orders.manage")) && (
+              <section className="card">
+                <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700 }}>Delivery</h3>
+                  {can("orders.manage") && !editingAddress && data.status !== "delivered" && data.status !== "cancelled" && (
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm"
-                      onClick={() => { setCancelReason(""); setShowCancelModal(true); }}
-                      style={{ justifyContent: "center", color: "var(--danger)" }}
+                      onClick={startEditAddress}
+                      style={{ fontSize: 12 }}
                     >
-                      ✕ Cancel &amp; mark refund owed
+                      ✎ {data.deliveryAddressFormatted || data.customerAddress || data.deliveryState ? "Edit" : "Add address"}
                     </button>
                   )}
-                  {can("orders.accept_payment") && data.refundOwedNgn != null && data.refundOwedNgn > 0 && (
-                    <button
-                      type="button"
-                      className="btn btn--subtle btn--sm"
-                      onClick={() => setShowMarkRefundedModal(true)}
-                      style={{ justifyContent: "center" }}
-                    >
-                      ✓ Mark refunded
-                    </button>
-                  )}
-                </div>
-              </section>
-            )}
+                </header>
 
-            {/* Fulfilment advance buttons — channel and delivery-booking aware */}
-            {(() => {
-              // Determine if this is a delivery order or a pickup
-              const isDeliveryOrder =
-                !!(data.deliveryAddressFormatted || data.deliveryState || (data.deliveryFeeNgn ?? 0) > 0 || data.delivery);
-
-              // Live statuses where the webhook drives progress — hide manual steps
-              const liveDeliveryStatuses = new Set(["searching_rider", "assigned", "picked_up", "in_transit"]);
-              const deliveryIsLive = !!(data.delivery && liveDeliveryStatuses.has(data.delivery.status));
-
-              const showAdvanceButtons = can("orders.manage") && !deliveryIsLive;
-              const isPaid = data.status === "paid";
-              const isOutForDelivery = data.status === "out_for_delivery";
-              const isHandedOver = data.status === "handed_over";
-
-              if (!showAdvanceButtons && !deliveryIsLive) return null;
-
-              return (
-                <section className="card">
-                  <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Fulfilment</h3>
-
-                  {deliveryIsLive && (
-                    <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 10 }}>
-                      Rider is active — status updates via webhook.
-                    </p>
-                  )}
-
-                  {showAdvanceButtons && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {isDeliveryOrder ? (
-                        <>
-                          {isPaid && (
-                            <button
-                              type="button"
-                              className="btn btn--primary btn--sm"
-                              disabled={advanceBusy}
-                              onClick={() => void advance()}
-                            >
-                              {advanceBusy ? "Saving…" : "Mark out for delivery"}
-                            </button>
-                          )}
-                          {isOutForDelivery && (
-                            <button
-                              type="button"
-                              className="btn btn--primary btn--sm"
-                              disabled={advanceBusy}
-                              onClick={() => void advance()}
-                            >
-                              {advanceBusy ? "Saving…" : "Mark delivered"}
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {isPaid && (
-                            <button
-                              type="button"
-                              className="btn btn--primary btn--sm"
-                              disabled={advanceBusy}
-                              onClick={() => void advance()}
-                            >
-                              {advanceBusy ? "Saving…" : "Mark ready"}
-                            </button>
-                          )}
-                          {isHandedOver && (
-                            <button
-                              type="button"
-                              className="btn btn--primary btn--sm"
-                              disabled={advanceBusy}
-                              onClick={() => void advance()}
-                            >
-                              {advanceBusy ? "Saving…" : "Mark collected"}
-                            </button>
-                          )}
-                        </>
-                      )}
+                {editingAddress ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <textarea
+                      className="input"
+                      rows={3}
+                      placeholder="Full delivery address (street, area, landmark)"
+                      value={addressDraft}
+                      onChange={(e) => setAddressDraft(e.target.value)}
+                      style={{ width: "100%", resize: "vertical", fontSize: 14 }}
+                    />
+                    <input
+                      className="input"
+                      placeholder="State (e.g. Lagos)"
+                      value={stateDraft}
+                      onChange={(e) => setStateDraft(e.target.value)}
+                      style={{ width: "100%", fontSize: 14 }}
+                    />
+                    {deliveryError && (
+                      <p style={{ color: "var(--danger)", fontSize: 13 }}>{deliveryError}</p>
+                    )}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        disabled={savingAddress || !addressDraft.trim()}
+                        onClick={() => void saveAddress()}
+                      >
+                        {savingAddress ? "Saving…" : "Save address"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={savingAddress}
+                        onClick={() => setEditingAddress(false)}
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  )}
-
-                  {/* Force-delivered fallback when webhook is live */}
-                  {deliveryIsLive && can("orders.manage") && (
-                    <button
-                      type="button"
-                      className="btn btn--subtle btn--sm"
-                      disabled={advanceBusy}
-                      onClick={() => void advance()}
-                      style={{ fontSize: 12, color: "var(--ink-soft)" }}
-                    >
-                      {advanceBusy ? "Saving…" : "Force delivered (fallback)"}
-                    </button>
-                  )}
-
-                  {deliveryError && (
-                    <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{deliveryError}</p>
-                  )}
-
-                  {/* Rider journey panel */}
-                  <DeliveryStatusPanel delivery={data.delivery ?? null} onRebook={bookRide} />
-                </section>
-              );
-            })()}
-
-            {/* Delivery / Shipbubble booking — shown for any delivery order, not
-                just ones with a geocoder-validated address. Since the customer
-                live-courier quote was retired (LIVE_COURIER_QUOTES off),
-                deliveryAddressFormatted is null on real orders; fall back to the
-                customer's on-file address + state, which the options endpoint
-                also uses. Walk-up / pickup channels never deliver. */}
-            {data.channel !== "walkup" &&
-              (data.deliveryAddressFormatted || data.customerAddress || data.deliveryState) && (
-              <section className="card">
-                <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Delivery</h3>
-                <div style={{ fontSize: 14 }}>
-                  {data.deliveryAddressFormatted ?? data.customerAddress ?? "Address on file"}
-                </div>
-                {data.deliveryState && (
-                  <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 2 }}>
-                    {data.deliveryState}
                   </div>
-                )}
-                {data.customerPhone && (
-                  <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
-                    {data.customerName ?? "Customer"} · {data.customerPhone}
-                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 14 }}>
+                      {data.deliveryAddressFormatted ?? data.customerAddress ?? "No delivery address yet"}
+                    </div>
+                    {data.deliveryState && (
+                      <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 2 }}>
+                        {data.deliveryState}
+                      </div>
+                    )}
+                    {data.customerPhone && (
+                      <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
+                        {data.customerName ?? "Customer"} · {data.customerPhone}
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* Booked delivery */}
-                {data.delivery && data.delivery.status !== "cancelled" ? (
+                {!editingAddress && (data.delivery && data.delivery.status !== "cancelled" ? (
                   <div style={{ marginTop: 10, fontSize: 13 }}>
                     <div style={{ color: "var(--ink-soft)" }}>
                       {data.delivery.provider} · {data.delivery.status}
@@ -803,7 +940,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                   >
                     {loadingOptions ? "Getting options…" : "Get delivery options"}
                   </button>
-                )}
+                ))}
               </section>
             )}
           </aside>
