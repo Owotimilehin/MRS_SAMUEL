@@ -45,14 +45,14 @@ describe("online preorder produce semantics", () => {
     );
     expect(after.data.some((r) => r.id === seeded.id)).toBe(false);
 
-    // TASK 3: re-enable once /online-orders/active exposes produced_at + stage
     // Still on the online queue (now produced / "Ready")
-    // const online = await json<{ data: Array<{ id: string; produced_at: string | null }> }>(
-    //   await app.request("/v1/online-orders/active", { headers }),
-    // );
-    // const row = online.data.find((r) => r.id === seeded.id);
-    // expect(row).toBeDefined();
-    // expect(row!.produced_at).not.toBeNull();
+    const online = await json<{ data: Array<{ id: string; produced_at: string | null; stage: string }> }>(
+      await app.request("/v1/online-orders/active", { headers }),
+    );
+    const row = online.data.find((r) => r.id === seeded.id);
+    expect(row).toBeDefined();
+    expect(row!.produced_at).not.toBeNull();
+    expect(row!.stage).toBe("ready");
   });
 
   it("producing a PICKUP preorder hands it over (done) and sets both produced_at and fulfilled_at", async () => {
