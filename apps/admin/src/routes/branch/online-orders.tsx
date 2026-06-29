@@ -22,6 +22,8 @@ interface ActiveOrder {
   is_preorder: boolean;
   is_delivery: boolean;
   delivery_status: string | null;
+  produced_at: string | null;
+  stage: "awaiting_production" | "ready" | "out_for_delivery";
 }
 
 function statusPill(status: string): JSX.Element {
@@ -124,16 +126,15 @@ export function BranchOnlineOrdersPage({ branchId }: { branchId: string }): JSX.
                   </td>
                   <td style={{ textTransform: "capitalize" }}>{o.channel.replace(/_/g, " ")}</td>
                   <td>
-                    {statusPill(o.status)}
-                    {o.is_preorder && (
-                      <span className="pill pill--warning" style={{ marginLeft: 6 }}>
-                        Preorder
-                      </span>
+                    {o.stage === "awaiting_production" ? (
+                      <span className="pill pill--warning">📅 Awaiting production</span>
+                    ) : o.stage === "ready" ? (
+                      <span className="pill pill--success">Ready · hand over / deliver</span>
+                    ) : (
+                      statusPill(o.status)
                     )}
                     {o.scheduled_delivery_at && (
-                      <span className="pill pill--warning" style={{ marginLeft: 6 }}>
-                        Scheduled
-                      </span>
+                      <span className="pill pill--warning" style={{ marginLeft: 6 }}>Scheduled</span>
                     )}
                   </td>
                   <td>{deliveryChip(o.delivery_status, o.is_delivery)}</td>
