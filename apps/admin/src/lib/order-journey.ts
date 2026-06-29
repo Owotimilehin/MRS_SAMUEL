@@ -33,6 +33,7 @@ export interface OrderJourneyInput {
   status: string;
   channel: string;
   isPreorder?: boolean | null;
+  producedAt?: string | null;
   scheduledDeliveryAt?: string | null;
   deliveryState?: string | null;
   deliveryAddressFormatted?: string | null;
@@ -64,10 +65,16 @@ export function deriveOrderJourney(o: OrderJourneyInput): OrderJourney {
   // Payment is settled once the order has reached paid or any later fulfilment
   // state. confirmed / reconcile_needed / failed mean it is NOT yet settled.
   const paidDone = ["paid", "out_for_delivery", "handed_over", "delivered"].includes(o.status);
-  const dispatchedDone =
+  const statusPastProduction =
     track === "delivery"
       ? ["out_for_delivery", "delivered"].includes(o.status)
       : ["handed_over", "delivered"].includes(o.status);
+  // For a preorder the middle "production" step is only done once produced_at is
+  // stamped (a paid-but-unproduced preorder is still being made). Non-preorders
+  // keep the status-only rule.
+  const dispatchedDone = o.isPreorder
+    ? !!o.producedAt || statusPastProduction
+    : statusPastProduction;
   const finishedDone = o.status === "delivered";
 
   // Middle step label depends on the path + scheduling/preorder context.
