@@ -86,11 +86,12 @@ describe("buildBannerMessages", () => {
     expect(messages["650ml"]).toContain("650ml");
   });
 
-  it("assembles preorder message with 'preorder' text and size for 330ml", () => {
+  it("assembles out-of-stock message with reassuring fast-delivery text (no 'preorder') for 330ml", () => {
     const summary = { "650ml": "in_stock" as const, "330ml": "preorder" as const };
     const messages = buildBannerMessages(summary);
     expect(messages["330ml"]).toBeDefined();
-    expect(messages["330ml"]!.toLowerCase()).toContain("preorder");
+    expect(messages["330ml"]!.toLowerCase()).toContain("fast delivery");
+    expect(messages["330ml"]!.toLowerCase()).not.toContain("preorder");
     expect(messages["330ml"]).toContain("330ml");
   });
 
@@ -101,10 +102,10 @@ describe("buildBannerMessages", () => {
     expect(messages["330ml"]!.toLowerCase()).toContain("delivery");
   });
 
-  it("handles all preorder sizes", () => {
+  it("handles all out-of-stock sizes with fast-delivery copy", () => {
     const summary = { "650ml": "preorder" as const, "330ml": "preorder" as const };
     const messages = buildBannerMessages(summary);
-    expect(messages["650ml"]!.toLowerCase()).toContain("preorder");
-    expect(messages["330ml"]!.toLowerCase()).toContain("preorder");
+    expect(messages["650ml"]!.toLowerCase()).toContain("fast delivery");
+    expect(messages["330ml"]!.toLowerCase()).toContain("fast delivery");
   });
 });

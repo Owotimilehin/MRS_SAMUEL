@@ -3,6 +3,7 @@ import { ShoppingCart } from "lucide-react";
 import type { Product } from "@/lib/api/mappers";
 import { getFruitFor } from "@/lib/visuals";
 import { quickAddSize } from "@/lib/cart";
+import { deliveryPromise } from "@/lib/availability-label";
 
 interface Props {
   product: Product;
@@ -13,6 +14,8 @@ interface Props {
 export function ProductCard({ product, onClick, index }: Props) {
   const { palette } = product;
   const fruit = getFruitFor(product.id, product.cluster);
+  const featuredSize = quickAddSize(product);
+  const featuredStock = product.availableBySize[featuredSize] ?? 0;
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
@@ -67,6 +70,14 @@ export function ProductCard({ product, onClick, index }: Props) {
           </h3>
           <p className="mt-1 text-[13px] leading-snug text-[color:var(--brand)]/65 line-clamp-2">
             {product.tagline}
+          </p>
+          <p
+            className="mt-1.5 text-[11px] font-semibold"
+            style={{ color: featuredStock > 0 ? "var(--brand)" : palette.accent }}
+          >
+            {featuredStock > 0
+              ? `${featuredSize}: ${featuredStock} in stock`
+              : `${featuredSize}: ${deliveryPromise(featuredSize, 0)}`}
           </p>
         </div>
         <div className="mt-1 flex items-center justify-between">

@@ -7,12 +7,18 @@ import { CartDrawer } from "@/components/CartDrawer";
 import { FloatingCart } from "@/components/FloatingCart";
 import logoWhite from "@/assets/logo-white.png";
 
-export function SiteShell({ children }: { children: ReactNode }) {
+export function SiteShell({ children, topBar }: { children: ReactNode; topBar?: ReactNode }) {
   return (
     <>
       <AnimatedBackground />
-      <Nav />
-      <main className="relative">{children}</main>
+      {/* Optional full-width strip (e.g. stock banner) ABOVE the floating nav.
+          The nav is absolute-positioned, so it anchors to this relative wrapper —
+          which begins after the strip — instead of overlapping it. */}
+      {topBar}
+      <div className="relative">
+        <Nav />
+        <main className="relative">{children}</main>
+      </div>
       <Newsletter />
       <Footer />
       <CartDrawer />

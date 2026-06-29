@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useCart, formatNaira } from "@/lib/cart";
+import { deliveryPromise } from "@/lib/availability-label";
 
 export function CartDrawer() {
   const { items, open, setOpen, setQty, remove, subtotal } = useCart();
@@ -67,29 +68,15 @@ export function CartDrawer() {
                     <div className="font-bold leading-tight truncate">{item.product.name}</div>
                     <div className="flex items-center gap-1.5 text-xs opacity-70">
                       <span>{item.size}</span>
-                      {item.preorder && (
-                        <span className="rounded-full bg-[color:var(--brand-orange)]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[color:var(--brand-orange)]">
-                          Preorder
-                        </span>
-                      )}
                     </div>
                     {(() => {
                       const available = item.product.availableBySize[item.size] ?? 0;
-                      if (available > 0 && available <= 10) {
-                        return (
-                          <div className="text-[10px] text-[color:var(--brand-orange)] font-semibold mt-0.5">
-                            {available} left
-                          </div>
-                        );
-                      }
-                      if (available === 0) {
-                        return (
-                          <div className="text-[10px] text-[color:var(--brand-orange)] font-semibold mt-0.5">
-                            Made to order
-                          </div>
-                        );
-                      }
-                      return null;
+                      const inStock = available > 0;
+                      return (
+                        <div className={`text-[10px] font-semibold mt-0.5 ${inStock ? "text-[color:var(--brand)]/70" : "text-[color:var(--brand-orange)]"}`}>
+                          {inStock ? `${available} in stock` : deliveryPromise(item.size, 0)}
+                        </div>
+                      );
                     })()}
                     <div className="mt-2 flex items-center gap-2">
                       <button

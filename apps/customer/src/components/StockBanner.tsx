@@ -31,7 +31,7 @@ export function buildBannerMessages(summary: StockSummary): Partial<Record<Size,
     if (status === "in_stock") {
       messages[size] = `${SIZE_LABELS[size]} ready for same-day delivery`;
     } else {
-      messages[size] = `${SIZE_LABELS[size]} on preorder (arrives next delivery day)`;
+      messages[size] = `${SIZE_LABELS[size]} freshly made — fast delivery`;
     }
   }
   return messages;
@@ -52,7 +52,7 @@ export function StockBanner({ summary }: StockBannerProps) {
   }
   if (preorder.length > 0) {
     parts.push(
-      `${preorder.map((s) => SIZE_LABELS[s]).join(" & ")} on preorder (arrives next delivery day)`
+      `${preorder.map((s) => SIZE_LABELS[s]).join(" & ")} freshly made — fast delivery`
     );
   }
   const message = parts.join(" · ");
