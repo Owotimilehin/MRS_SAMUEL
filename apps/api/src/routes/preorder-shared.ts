@@ -15,9 +15,7 @@ import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 import { autoDispatchEnabled } from "../lib/delivery-flags.js";
 
-const COUNTER_CHANNELS = new Set(["walkup", "whatsapp"]);
-
-/** Open (paid, unfulfilled) preorders with line items, optionally branch-locked. */
+/** Open (paid, not-yet-produced) preorders with line items, optionally branch-locked. */
 export async function listOpenPreorders(
   db: DbClient,
   opts: { branchId?: string } = {},
@@ -25,7 +23,7 @@ export async function listOpenPreorders(
   const conds = [
     eq(saleOrder.isPreorder, true),
     eq(saleOrder.status, "paid"),
-    isNull(saleOrder.fulfilledAt),
+    isNull(saleOrder.producedAt),
   ];
   if (opts.branchId) conds.push(eq(saleOrder.branchId, opts.branchId));
 
@@ -98,7 +96,7 @@ export async function fulfilPreorderTx(
       throw new BusinessError("not_found", "preorder not found", 404);
     }
     if (!o.isPreorder) throw new BusinessError("conflict", "order is not a preorder", 409);
-    if (o.fulfilledAt) throw new BusinessError("conflict", "preorder already fulfilled", 409);
+    if (o.producedAt) throw new BusinessError("conflict", "preorder already produced", 409);
     if (o.status !== "paid") throw new BusinessError("conflict", `cannot fulfil from ${o.status}`, 409);
 
     const items = await tx.select().from(saleOrderItem).where(eq(saleOrderItem.saleOrderId, id));
@@ -133,20 +131,31 @@ export async function fulfilPreorderTx(
       });
     }
 
-    const toCounter = COUNTER_CHANNELS.has(o.channel);
+    // Pickup orders (no delivery destination — includes counter walkup/whatsapp)
+    // complete on produce: customer collects now. Delivery orders are merely
+    // *produced* — they still need to go out, so status stays `paid` and
+    // fulfilledAt stays null (that now means delivered). produced_at marks the
+    // production step for every channel.
+    const isDelivery =
+      !!o.deliveryAddressFormatted ||
+      !!o.deliveryState ||
+      o.deliveryFeeNgn > 0;
+    const now = new Date();
     const [u] = await tx
       .update(saleOrder)
       .set({
-        status: toCounter ? "handed_over" : o.status,
-        fulfilledAt: new Date(),
-        fulfilledByUserId: auth.userId,
-        updatedAt: new Date(),
+        status: isDelivery ? o.status : ("handed_over" as const),
+        producedAt: now,
+        producedByUserId: auth.userId,
+        fulfilledAt: isDelivery ? o.fulfilledAt : now,
+        fulfilledByUserId: isDelivery ? o.fulfilledByUserId : auth.userId,
+        updatedAt: now,
       })
       .where(eq(saleOrder.id, id))
       .returning();
     if (!u) throw new BusinessError("internal_error", "fulfil update returned no rows", 500);
 
-    if (!toCounter && autoDispatchEnabled()) {
+    if (isDelivery && autoDispatchEnabled()) {
       await tx.insert(outboxEvent).values({
         eventType: "delivery.request",
         payload: { sale_order_id: id, order_number: o.orderNumber, branch_id: o.branchId },

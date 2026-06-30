@@ -53,6 +53,7 @@ export function onlineOrdersQueueRoutes(db: DbClient) {
         deliveryState: saleOrder.deliveryState,
         scheduledDeliveryAt: saleOrder.scheduledDeliveryAt,
         isPreorder: saleOrder.isPreorder,
+        producedAt: saleOrder.producedAt,
         customerId: saleOrder.customerId,
         customerName: customer.name,
         customerPhone: customer.phone,
@@ -91,6 +92,13 @@ export function onlineOrdersQueueRoutes(db: DbClient) {
         (o.deliveryFeeNgn ?? 0) > 0 ||
         latestDeliveryStatus !== null;
 
+      const stage: "awaiting_production" | "ready" | "out_for_delivery" =
+        o.status === "out_for_delivery"
+          ? "out_for_delivery"
+          : o.isPreorder && o.producedAt == null
+            ? "awaiting_production"
+            : "ready";
+
       return {
         id: o.id,
         order_number: o.orderNumber,
@@ -104,6 +112,8 @@ export function onlineOrdersQueueRoutes(db: DbClient) {
         delivery_state: o.deliveryState ?? null,
         scheduled_delivery_at: o.scheduledDeliveryAt ?? null,
         is_preorder: o.isPreorder,
+        produced_at: o.producedAt ? (o.producedAt as Date).toISOString() : null,
+        stage,
         is_delivery: isDelivery,
         delivery_status: latestDeliveryStatus,
       };

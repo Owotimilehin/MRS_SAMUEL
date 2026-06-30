@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 import { local } from "../../db/local.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -33,6 +34,8 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // null = loading; false = no open shift (this page); true = shift open (shouldn't stay here)
+  const [shiftOpen, setShiftOpen] = useState<boolean | null>(null);
 
   // If a shift is already open, redirect to Sell immediately — no double-open.
   useEffect(() => {
@@ -40,6 +43,7 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
     void (async () => {
       const { hasOpenShift } = await import("../../sync/local-shift-open.js");
       const already = await hasOpenShift(branchId);
+      if (!cancelled) setShiftOpen(already);
       if (!cancelled && already) {
         window.location.href = "/branch/sell";
       }
@@ -122,6 +126,16 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
     }
   }
 
+  const shiftTabs = shiftOpen
+    ? [
+        { to: "/branch/close" as const, label: "End", cap: "daily_close.submit" as const },
+        { to: "/branch/closes" as const, label: "History" },
+      ]
+    : [
+        { to: "/branch/shift-start" as const, label: "Start", cap: "shift_open.submit" as const },
+        { to: "/branch/closes" as const, label: "History" },
+      ];
+
   return (
     <BranchShell branchId={branchId} title="Shift start">
       <StatHero
@@ -131,6 +145,7 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
         loading={loading}
         chips={[{ label: "Date", value: businessDate }]}
       />
+      <BranchTabs items={shiftTabs} />
       <section className="card">
         <h2 className="t-h2" style={{ marginBottom: 12 }}>Opening stock count</h2>
         {loading ? (
