@@ -80,11 +80,11 @@ export const BRANCH_NAV: BranchNavItem[] = [
     group: ["/branch/returns"],
   },
   {
-    to: "/branch/shift-start",
+    to: "/branch/shift",
     label: "Shift",
     icon: "🗂️",
     caps: ["shift_open.submit", "daily_close.submit"],
-    group: ["/branch/shift-start", "/branch/close", "/branch/closes"],
+    group: ["/branch/shift", "/branch/shift-start", "/branch/close", "/branch/closes"],
   },
   {
     to: "/branch/device",
