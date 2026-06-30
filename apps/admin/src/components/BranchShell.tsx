@@ -1,14 +1,14 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Menu, ArrowLeft, ChevronsLeft, ChevronsRight, X } from "lucide-react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useOnlineOrderSignal } from "../hooks/useOnlineOrderSignal.js";
 import { useSyncState } from "../sync/state.js";
 import { startSyncLoop } from "../sync/engine.js";
 import { useAuthUser } from "../lib/auth.js";
 import { useRailOpen } from "../lib/rail.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
-import type { Capability } from "@ms/shared";
+import { BRANCH_NAV, parentVisible, activeParent } from "./branch-nav.js";
 
 function dropStyle(left: string, s: string, d: string, delay: string): CSSProperties {
   return { left, ["--s" as string]: s, ["--d" as string]: d, ["--delay" as string]: delay };
@@ -21,32 +21,6 @@ interface BranchShellProps {
   children: ReactNode;
 }
 
-// Each link's `cap` is the capability the page's API actually enforces, so the
-// nav never shows a till operator a page their token would 403 on. Links with
-// no `cap` hit auth-only endpoints (branch stock, close history) or are purely
-// local (sync queue, device) and are always shown.
-interface BranchNavLink {
-  to: string;
-  label: string;
-  icon: string;
-  cap?: Capability;
-}
-
-const NAV: BranchNavLink[] = [
-  { to: "/branch/shift-start", label: "Shift start", icon: "🌅", cap: "shift_open.submit" },
-  { to: "/branch", label: "Today", icon: "🏠", cap: "sales.view" },
-  { to: "/branch/sell", label: "Sell", icon: "🥤", cap: "pos.preorder" },
-  { to: "/branch/sales", label: "Today's sales", icon: "🧾", cap: "sales.view" },
-  { to: "/branch/transfers", label: "Incoming", icon: "📦", cap: "transfers.receive" },
-  { to: "/branch/stock", label: "Stock", icon: "📊" },
-  { to: "/branch/online-orders", label: "Online orders", icon: "🛒", cap: "sales.view" },
-  { to: "/branch/preorders", label: "Preorders", icon: "📅", cap: "pos.preorder" },
-  { to: "/branch/returns", label: "Returns", icon: "↩️", cap: "returns.create" },
-  { to: "/branch/close", label: "Shift end", icon: "📋", cap: "daily_close.submit" },
-  { to: "/branch/closes", label: "Shift history", icon: "📚" },
-  { to: "/branch/queue", label: "Sync queue", icon: "🔄" },
-  { to: "/branch/device", label: "Device", icon: "📱" },
-];
 
 export function BranchShell({
   branchId,
@@ -58,8 +32,11 @@ export function BranchShell({
   const user = useAuthUser();
   const [branchName, setBranchName] = useState<string | null>(null);
   const [preorderCount, setPreorderCount] = useState(0);
+  const [incomingCount, setIncomingCount] = useState(0);
   const rail = useRailOpen();
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const active = activeParent(BRANCH_NAV, pathname);
 
   // Live online-order signal with chime (till-only feature).
   const signal = useOnlineOrderSignal({
@@ -114,6 +91,26 @@ export function BranchShell({
     };
   }, [branchId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function refresh(): Promise<void> {
+      try {
+        const res = await fetch(`/v1/transfers?branch_id=${branchId}`, { credentials: "include" });
+        if (!res.ok) return;
+        const body = (await res.json()) as { data: Array<{ status: string }> };
+        const n = Array.isArray(body.data)
+          ? body.data.filter((t) => ["dispatched", "in_transit", "arrived"].includes(t.status)).length
+          : 0;
+        if (!cancelled) setIncomingCount(n);
+      } catch { /* offline — keep last known */ }
+    }
+    void refresh();
+    const id = window.setInterval(() => void refresh(), 60_000);
+    const onFocus = (): void => void refresh();
+    window.addEventListener("focus", onFocus);
+    return () => { cancelled = true; window.clearInterval(id); window.removeEventListener("focus", onFocus); };
+  }, [branchId]);
+
   return (
     <div className={`app-shell${rail.open ? " nav-open" : ""}`}>
       <div className="app-scrim" aria-hidden="true" onClick={rail.close} />
@@ -163,22 +160,26 @@ export function BranchShell({
               <span>Back to admin</span>
             </Link>
           ) : null}
-          {NAV.filter((item) => !item.cap || user.capabilities.includes(item.cap)).map((item) => {
-            const isOnlineOrders = item.to === "/branch/online-orders";
-            const isPreorders = item.to === "/branch/preorders";
-            const badge = isOnlineOrders && signal.count > 0
-              ? signal.count
-              : isPreorders && preorderCount > 0
-                ? preorderCount
-                : null;
+          {BRANCH_NAV.filter((item) => parentVisible(item, user.capabilities)).map((item) => {
+            // Orders parent: sum online signal + preorder count (Task 12).
+            // Stock parent: incoming transfers awaiting receipt (Task 12).
+            const badge =
+              item.to === "/branch/online-orders" ? (signal.count + preorderCount) || null :
+              item.to === "/branch/stock" ? (incomingCount || null) :
+              null;
+            const badgeLabel =
+              item.to === "/branch/online-orders" && badge != null
+                ? `${badge} orders awaiting attention`
+                : item.to === "/branch/stock" && badge != null
+                  ? `${badge} transfers to receive`
+                  : undefined;
             return (
               <Link
                 key={item.to}
                 to={item.to}
                 title={item.label}
                 onClick={rail.close}
-                className="app-nav__link"
-                activeProps={{ className: "app-nav__link is-active" }}
+                className={`app-nav__link${active?.to === item.to ? " is-active" : ""}`}
               >
                 <span className="app-nav__icon">{item.icon}</span>
                 <span style={{ flex: 1 }}>{item.label}</span>
@@ -186,11 +187,7 @@ export function BranchShell({
                   <span
                     className="pill pill--danger"
                     style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, minWidth: 20, textAlign: "center" }}
-                    aria-label={
-                      isOnlineOrders
-                        ? `${badge} online orders awaiting fulfilment`
-                        : `${badge} preorders awaiting fulfilment`
-                    }
+                    aria-label={badgeLabel}
                   >
                     {badge}
                   </span>

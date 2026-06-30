@@ -7,6 +7,7 @@ import { flushOutbox, resyncStock } from "../../sync/engine.js";
 import { local } from "../../db/local.js";
 import { formatDateTime } from "../../lib/format.js";
 import { toast } from "../../lib/toast.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 
 const APP_VERSION = import.meta.env?.VITE_APP_VERSION ?? "dev";
 
@@ -85,6 +86,10 @@ export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Elemen
         title="Device"
         sub="Monitor connection, sync status and device info for this POS terminal."
       />
+      <BranchTabs items={[
+        { to: "/branch/device", label: "Device" },
+        { to: "/branch/queue", label: "Sync queue" },
+      ]} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <section className="card">

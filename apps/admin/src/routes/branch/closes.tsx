@@ -2,6 +2,7 @@
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -34,6 +35,18 @@ function statusPill(s: CloseRow["status"]): JSX.Element {
 export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Element {
   const [rows, setRows] = useState<CloseRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // null = loading; boolean once resolved — drives contextual tab strip
+  const [shiftOpen, setShiftOpen] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelledShift = false;
+    void (async () => {
+      const { hasOpenShift } = await import("../../sync/local-shift-open.js");
+      const isOpen = await hasOpenShift(branchId);
+      if (!cancelledShift) setShiftOpen(isOpen);
+    })();
+    return () => { cancelledShift = true; };
+  }, [branchId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +101,16 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
     chips.push({ label: "Last variance ₦", value: ngn(lastRow.varianceNgn) });
   }
 
+  const shiftTabs = shiftOpen
+    ? [
+        { to: "/branch/close" as const, label: "End", cap: "daily_close.submit" as const },
+        { to: "/branch/closes" as const, label: "History" },
+      ]
+    : [
+        { to: "/branch/shift-start" as const, label: "Start", cap: "shift_open.submit" as const },
+        { to: "/branch/closes" as const, label: "History" },
+      ];
+
   return (
     <BranchShell
       branchId={branchId}
@@ -105,6 +128,7 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
         loading={loading}
         chips={chips}
       />
+      <BranchTabs items={shiftTabs} />
 
       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
         <span className="pill pill--success">Approved · {approved}</span>

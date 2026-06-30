@@ -94,6 +94,39 @@ describe("deriveOrderJourney — pickup path", () => {
   });
 });
 
+describe("deriveOrderJourney + produced_at", () => {
+  it("an unproduced delivery preorder sits on 'In production' (current, not done)", () => {
+    const j = deriveOrderJourney({
+      status: "paid", channel: "online", isPreorder: true,
+      deliveryState: "Lagos", deliveryFeeNgn: 1500, producedAt: null,
+    });
+    const mid = j.steps.find((s) => s.key === "mid")!;
+    expect(mid.label).toBe("In production");
+    expect(mid.state).toBe("current");
+    expect(j.currentLabel).toBe("In production");
+  });
+
+  it("a produced delivery preorder has 'In production' done and 'Out for delivery' current", () => {
+    const j = deriveOrderJourney({
+      status: "paid", channel: "online", isPreorder: true,
+      deliveryState: "Lagos", deliveryFeeNgn: 1500,
+      producedAt: "2026-06-29T10:00:00.000Z",
+    });
+    expect(j.steps.find((s) => s.key === "mid")!.state).toBe("done");
+    expect(j.currentLabel).toBe("Out for delivery");
+  });
+
+  it("a non-preorder paid delivery order does not require produced_at", () => {
+    const j = deriveOrderJourney({
+      status: "paid", channel: "online", isPreorder: false,
+      deliveryState: "Lagos", deliveryFeeNgn: 1500,
+    });
+    // Non-preorders advance the mid ("Preparing") step via status alone — no
+    // producedAt needed. At status=paid, mid is still current (not yet dispatched).
+    expect(j.steps.find((s) => s.key === "mid")!.state).toBe("current");
+  });
+});
+
 describe("deriveOrderJourney — special cases", () => {
   it("confirmed is a payment hold with paid not yet done", () => {
     const j = deriveOrderJourney(base({ status: "confirmed", deliveryState: "Lagos" }));

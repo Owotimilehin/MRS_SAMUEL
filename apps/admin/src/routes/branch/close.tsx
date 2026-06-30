@@ -2,6 +2,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 import { local } from "../../db/local.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
@@ -178,10 +179,21 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
     closeChips.push({ label: "Variance ₦", value: ngn(0), tone: "good" });
   }
 
+  const shiftTabs = hasShift
+    ? [
+        { to: "/branch/close" as const, label: "End", cap: "daily_close.submit" as const },
+        { to: "/branch/closes" as const, label: "History" },
+      ]
+    : [
+        { to: "/branch/shift-start" as const, label: "Start", cap: "shift_open.submit" as const },
+        { to: "/branch/closes" as const, label: "History" },
+      ];
+
   // "Shift closed" confirmation — shown after a successful close.
   if (closed) {
     return (
       <BranchShell branchId={branchId} title="Shift end">
+        <BranchTabs items={shiftTabs} />
         <section className="card" style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
           <h2 className="t-h2" style={{ marginBottom: 8 }}>Shift closed</h2>
@@ -200,6 +212,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
   if (hasShift === false) {
     return (
       <BranchShell branchId={branchId} title="Shift end">
+        <BranchTabs items={shiftTabs} />
         <section className="card" style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>🌅</div>
           <h2 className="t-h2" style={{ marginBottom: 8 }}>No open shift</h2>
@@ -223,6 +236,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
         loading={loading || hasShift === null}
         chips={closeChips}
       />
+      <BranchTabs items={shiftTabs} />
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
         <section className="card">

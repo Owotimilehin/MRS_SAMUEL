@@ -87,6 +87,11 @@ export const saleOrder = pgTable("sale_order", {
   isPreorder: boolean("is_preorder").notNull().default(false),
   fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
   fulfilledByUserId: uuid("fulfilled_by_user_id").references(() => adminUser.id),
+  // Set when a preorder is produced (made / stock deducted) — distinct from
+  // fulfilledAt, which means the order is complete (delivered/collected). A
+  // delivery preorder is "produced" but not yet "fulfilled".
+  producedAt: timestamp("produced_at", { withTimezone: true }),
+  producedByUserId: uuid("produced_by_user_id").references(() => adminUser.id),
   // Set when payment reconciliation finds the business owes the customer
   // money back (e.g. a confirmed Payaza charge with no matching paid order,
   // or a duplicate charge). Null = no refund owed.
@@ -103,6 +108,8 @@ export const saleOrder = pgTable("sale_order", {
   idxBranchUpdated: index("idx_sale_order_branch_updated").on(t.branchId, t.updatedAt),
   // Preorder/overview counts: is_preorder = true AND status IN (...).
   idxPreorderStatus: index("idx_sale_order_preorder_status").on(t.isPreorder, t.status),
+  // Production worklist: open preorders awaiting production.
+  idxPreorderProduced: index("idx_sale_order_preorder_produced").on(t.isPreorder, t.producedAt),
   // Customer order history / FK lookups.
   idxCustomer: index("idx_sale_order_customer").on(t.customerId),
 }));

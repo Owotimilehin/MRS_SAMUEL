@@ -9,6 +9,7 @@ import { useAuthUser } from "../../lib/auth.js";
 import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
 import { getReceiptStyle } from "../../lib/receipt-settings.js";
 import { fetchBranchInfo, printAndToast } from "../../lib/reprint.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 
 interface PreorderItem {
   product_id: string;
@@ -149,7 +150,7 @@ export function BranchPreordersPage({ branchId }: { branchId: string }): JSX.Ele
       <StatHero
         eyebrow="Branch"
         title="Preorders"
-        sub="Prepaid orders awaiting production at this branch. Stock is deducted when you fulfil."
+        sub="Prepaid orders awaiting production at this branch. Producing deducts stock; delivery orders then go out for delivery."
         loading={loading}
         chips={[
           { label: "Awaiting", value: rows.length, tone: rows.length > 0 ? "danger" : "good" },
@@ -157,6 +158,10 @@ export function BranchPreordersPage({ branchId }: { branchId: string }): JSX.Ele
           { label: "Prepaid", value: ngn(rows.reduce((s, r) => s + r.total_ngn, 0)) },
         ]}
       />
+      <BranchTabs items={[
+        { to: "/branch/online-orders", label: "Online", cap: "sales.view" },
+        { to: "/branch/preorders", label: "Preorders", cap: "pos.preorder" },
+      ]} />
 
       <input
         className="input"
@@ -172,7 +177,7 @@ export function BranchPreordersPage({ branchId }: { branchId: string }): JSX.Ele
         <div className="empty">
           <div className="empty__title">{rows.length === 0 ? "No preorders waiting" : "No matches"}</div>
           {rows.length === 0
-            ? "Paid preorders that haven't been fulfilled yet show up here."
+            ? "Paid preorders that haven't been produced yet show up here."
             : "Try a different order number, name, phone, or flavour."}
         </div>
       ) : (
