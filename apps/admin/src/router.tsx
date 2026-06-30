@@ -49,6 +49,7 @@ function L({ children }: { children: ReactNode }): JSX.Element {
 // ───── Lazy route components ─────
 const DashboardPage = lazyNamed(() => import("./routes/owner/dashboard.js"), "DashboardPage");
 const AnalyticsPage = lazyNamed(() => import("./routes/owner/analytics.js"), "AnalyticsPage");
+const CheckoutLogPage = lazyNamed(() => import("./routes/owner/checkout-log.js"), "CheckoutLogPage");
 const ReviewPage = lazyNamed(() => import("./routes/owner/review.js"), "ReviewPage");
 const ProductsPage = lazyNamed(() => import("./routes/owner/products.js"), "ProductsPage");
 const ProductDetailPage = lazyNamed<{ productId: string }>(
@@ -467,6 +468,11 @@ const ownerClosesRoute = createRoute({
   path: "/owner/closes",
   component: () => guarded(<L><OwnerClosesPage /></L>),
 });
+const checkoutLogRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/checkout-log",
+  component: () => guarded(<L><CheckoutLogPage /></L>),
+});
 const ownerOnlineOrdersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/owner/online-orders",
@@ -670,6 +676,7 @@ const routeTree = rootRoute.addChildren([
   bundlesRoute,
   leadsRoute,
   ownerClosesRoute,
+  checkoutLogRoute,
   closeDetailRoute,
   ownerOnlineOrdersRoute,
   // factory
