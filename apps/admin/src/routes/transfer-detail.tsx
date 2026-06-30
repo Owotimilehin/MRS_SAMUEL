@@ -115,6 +115,9 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
       sent: number;
     }>
   >([]);
+  // Owner variance settlement: per-line where the gap (sent - received) lands.
+  const [settlements, setSettlements] = useState<Record<string, "factory" | "branch" | "loss">>({});
+  const [showPerLine, setShowPerLine] = useState(false);
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -138,6 +141,15 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
           sent: i.quantity_sent,
         })),
       );
+      // Default every varianced product line to settle on the factory.
+      const defaults: Record<string, "factory" | "branch" | "loss"> = {};
+      for (const i of t.data.items) {
+        if (i.packaging_material_id == null && i.quantity_received != null && i.quantity_received !== i.quantity_sent) {
+          defaults[i.id] = "factory";
+        }
+      }
+      setSettlements(defaults);
+      setShowPerLine(false);
     } catch (err) {
       toast.error(humanizeError(err));
     } finally {
@@ -162,6 +174,20 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
     } finally {
       setActing(false);
     }
+  }
+
+  /** Settle the variance per owner choice and approve the transfer. */
+  async function settleAndApprove(all?: "factory" | "loss"): Promise<void> {
+    const lines = (data?.items ?? []).filter(
+      (i) => i.packaging_material_id == null && i.quantity_received != null && i.quantity_received !== i.quantity_sent,
+    );
+    const body = {
+      settlements: lines.map((i) => ({
+        item_id: i.id,
+        settle: all ?? settlements[i.id] ?? "factory",
+      })),
+    };
+    await action(`/transfers/${transferId}/approve`, body);
   }
 
   async function submitReceipt(e: FormEvent): Promise<void> {
@@ -397,14 +423,97 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                 </button>
               )}
               {canApprove && (
-                <button
-                  type="button"
-                  className="btn btn--primary"
-                  disabled={acting}
-                  onClick={() => void action(`/transfers/${transferId}/approve`)}
-                >
-                  Approve variance
-                </button>
+                <div style={{ display: "grid", gap: 10, width: "100%" }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="btn btn--primary"
+                      disabled={acting}
+                      onClick={() => void settleAndApprove("factory")}
+                    >
+                      Adopt → return to factory
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={acting}
+                      onClick={() => void settleAndApprove("loss")}
+                    >
+                      Ignore (write off as loss)
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={acting}
+                      onClick={() => setShowPerLine((v) => !v)}
+                    >
+                      {showPerLine ? "Hide per-flavour" : "Check per flavour"}
+                    </button>
+                  </div>
+                  {showPerLine && (
+                    <div className="table-wrap" style={{ border: 0 }}>
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Flavour</th>
+                            <th>Sent</th>
+                            <th>Received</th>
+                            <th>Gap</th>
+                            <th>Settle</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(data?.items ?? [])
+                            .filter(
+                              (i) =>
+                                i.packaging_material_id == null &&
+                                i.quantity_received != null &&
+                                i.quantity_received !== i.quantity_sent,
+                            )
+                            .map((i) => {
+                              const gap = i.quantity_sent - (i.quantity_received ?? 0);
+                              return (
+                                <tr key={i.id}>
+                                  <td>
+                                    {productName(i.product_id)}
+                                    {i.size_ml ? ` ${i.size_ml}ml` : ""}
+                                  </td>
+                                  <td>{i.quantity_sent}</td>
+                                  <td>{i.quantity_received}</td>
+                                  <td>{gap > 0 ? `-${gap}` : `+${-gap}`}</td>
+                                  <td>
+                                    <select
+                                      className="input"
+                                      value={settlements[i.id] ?? "factory"}
+                                      onChange={(e) =>
+                                        setSettlements((prev) => ({
+                                          ...prev,
+                                          [i.id]: e.target.value as "factory" | "branch" | "loss",
+                                        }))
+                                      }
+                                    >
+                                      <option value="factory">Factory (still at factory)</option>
+                                      <option value="branch">Branch (miscounted)</option>
+                                      <option value="loss">Loss (write off)</option>
+                                    </select>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                      <button
+                        type="button"
+                        className="btn btn--primary"
+                        style={{ marginTop: 10 }}
+                        disabled={acting}
+                        onClick={() => void settleAndApprove()}
+                      >
+                        Settle &amp; approve
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </section>

@@ -2,7 +2,7 @@ import { CAPABILITIES, ROLE_DEFAULTS, type AdminRole, type Capability } from "@m
 
 const GROUPS: { heading: string; caps: Capability[] }[] = [
   { heading: "Users", caps: ["users.manage"] },
-  { heading: "Approvals", caps: ["close.approve", "returns.approve", "transfers.adjust", "shrinkage.view"] },
+  { heading: "Approvals", caps: ["close.approve", "returns.approve", "transfers.adjust", "variance.settle", "shrinkage.view"] },
   { heading: "Catalog", caps: ["products.manage", "prices.manage"] },
   { heading: "Business config", caps: ["branches.manage", "zones.manage", "settings.manage"] },
   { heading: "Content", caps: ["blog.manage", "marketing.manage"] },
@@ -49,6 +49,7 @@ const LABEL: Record<Capability, string> = {
   "packaging.view": "View packaging & materials",
   "packaging.write": "Manage packaging & materials",
   "packaging.adjust": "Adjust packaging stock (owner)",
+  "variance.settle": "Settle transfer variance (owner)",
 };
 
 // Silence unused import warning — CAPABILITIES is used at runtime via GROUPS validation.
