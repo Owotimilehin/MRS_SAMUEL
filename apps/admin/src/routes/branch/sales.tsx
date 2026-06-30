@@ -19,6 +19,7 @@ interface Sale {
   createdAtLocal: string;
   notes: string | null;
   isPreorder?: boolean;
+  producedAt?: string | null;
   fulfilledAt?: string | null;
   scheduledDeliveryAt?: string | null;
   customerName?: string | null;
@@ -26,13 +27,13 @@ interface Sale {
 }
 
 // Order type: an immediate walk-up sale vs a made-to-order preorder (and whether
-// that preorder is still awaiting fulfilment).
+// that preorder has been produced yet).
 function typePill(s: Sale): JSX.Element {
   if (!s.isPreorder) return <span className="pill pill--ink">Sale</span>;
-  return s.fulfilledAt ? (
-    <span className="pill pill--success">📅 Preorder · fulfilled</span>
+  return s.producedAt ? (
+    <span className="pill pill--success">📅 Preorder · produced</span>
   ) : (
-    <span className="pill pill--warning">📅 Preorder · pending</span>
+    <span className="pill pill--warning">📅 Preorder · awaiting production</span>
   );
 }
 

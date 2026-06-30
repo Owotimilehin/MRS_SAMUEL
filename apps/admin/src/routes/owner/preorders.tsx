@@ -126,7 +126,7 @@ export function PreordersPage(): JSX.Element {
       <StatHero
         eyebrow="Sales"
         title="Preorders"
-        sub="Prepaid orders awaiting production. Stock is deducted when you fulfil — not before."
+        sub="Prepaid orders awaiting production. Producing deducts stock; delivery orders then go out for delivery."
         loading={loading}
         chips={[
           {
@@ -154,7 +154,7 @@ export function PreordersPage(): JSX.Element {
       ) : rows.length === 0 ? (
         <div className="empty">
           <div className="empty__title">No preorders waiting</div>
-          Paid preorders that haven&apos;t been fulfilled yet show up here.
+          Paid preorders that haven&apos;t been produced yet show up here.
         </div>
       ) : (
         <div className="table-wrap">
