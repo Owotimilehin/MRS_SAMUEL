@@ -6,7 +6,8 @@ import {
 } from "lucide-react";
 import { SiteShell } from "@/components/SiteShell";
 import { useCart, formatNaira } from "@/lib/cart";
-import { fetchBranches, requestQuote, placeOrder as placeOrderFn } from "@/lib/api/server-fns";
+import { fetchBranches, requestQuote, placeOrder as placeOrderFn, logCheckoutAttempt } from "@/lib/api/server-fns";
+import { buildCheckoutLogPayload, type CheckoutStage } from "@/lib/checkout-log";
 import { asApiError } from "@/lib/api/client";
 import type { ApiDeliveryOption, ApiPlacedOrder } from "@/lib/api/types";
 import { launchPayazaCheckout } from "@/lib/payaza";
@@ -160,6 +161,39 @@ function Page() {
   const canPlace =
     items.length > 0 && !!branchId && scheduleValid && !placing && !quoting;
 
+  // Fire-and-forget diagnostic log of each checkout stage (delivery details,
+  // error, response). Wrapped so logging can never break the order.
+  function logStage(
+    stage: CheckoutStage,
+    extra?: { orderNumber?: string; errorMessage?: string; response?: Record<string, unknown> },
+  ) {
+    try {
+      const payload = buildCheckoutLogPayload({
+        attemptId: idemRef.current || "no-attempt",
+        stage,
+        form: {
+          name: form.name,
+          phone: form.phone,
+          email: form.email,
+          address: form.address,
+          state: form.state,
+        },
+        items: items.map((it) => ({
+          variantId: it.variantId,
+          name: it.product.name,
+          size: it.size,
+          qty: it.qty,
+        })),
+        total,
+        deliveryWindow: sched.fixedWindow ?? selectedWindow,
+        ...extra,
+      });
+      void logCheckoutAttempt({ data: payload });
+    } catch {
+      /* never break checkout on logging */
+    }
+  }
+
   // Hand the (already-created) order to Payaza and route to tracking on success.
   // Shared by the normal path and the gracious-modal "Continue" path.
   async function proceedToPayment(order: ApiPlacedOrder) {
@@ -180,6 +214,8 @@ function Page() {
     const trackUrl = `/order/${order.order_number}?paid=1`;
     await launchPayazaCheckout(order.payment.payaza, {
       onPaid: () => {
+        // Log before navigating away so the success is recorded.
+        logStage("payment_paid", { orderNumber: order.order_number });
         // Only empty the basket once payment actually succeeded. Clearing it
         // before the popup opened was what flipped the page to the empty-basket
         // screen and hid any error when the popup failed to open.
@@ -189,11 +225,13 @@ function Page() {
       onClose: () => {
         // Popup dismissed without paying — order stays 'confirmed'; let the
         // customer retry or view the (unpaid) order.
+        logStage("payment_closed", { orderNumber: order.order_number });
         setPlacing(false);
       },
       onError: (message) => {
         // The popup never opened (bad network, SDK blocked, or Payaza rejected
         // the order). Surface it instead of failing silently, and let them retry.
+        logStage("payment_failed", { orderNumber: order.order_number, errorMessage: message });
         setPlaceError(message);
         setPlacing(false);
       },
@@ -210,12 +248,17 @@ function Page() {
         missing.length === 1
           ? missing[0]
           : `${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}`;
-      setPlaceError(`Please add ${list} before placing your order.`);
+      const message = `Please add ${list} before placing your order.`;
+      // Generate an attempt id even for a rejected press so it's logged distinctly.
+      if (!idemRef.current) idemRef.current = crypto.randomUUID();
+      logStage("validation_failed", { errorMessage: message });
+      setPlaceError(message);
       return;
     }
     if (!retry) idemRef.current = crypto.randomUUID();
     setPlacing(true);
     setPlaceError(null);
+    logStage("pressed");
 
     const phone = form.phone.replace(/[\s-]/g, "");
     const altPhone = form.altPhone.trim();
@@ -248,6 +291,10 @@ function Page() {
           idempotency_key: idemRef.current,
         },
       });
+      logStage("order_created", {
+        orderNumber: res.order_number,
+        response: { id: res.id, total_ngn: res.total_ngn, is_preorder: res.is_preorder },
+      });
       await proceedToPayment(res);
       return;
     } catch (e) {
@@ -263,12 +310,15 @@ function Page() {
         await submit(false); // body changed under the same key — fresh attempt
         return;
       }
+      let message: string;
       if (err && (err.code === "conflict" || err.status === 422)) {
         // Stock/validation conflict — the API message explains (e.g. "only N left").
-        setPlaceError(`${err.message} Adjust your basket and try again.`);
+        message = `${err.message} Adjust your basket and try again.`;
       } else {
-        setPlaceError(err ? err.message : "Something went wrong placing your order. Please try again.");
+        message = err ? err.message : "Something went wrong placing your order. Please try again.";
       }
+      logStage("order_failed", { errorMessage: message, response: err ? { code: err.code, status: err.status } : undefined });
+      setPlaceError(message);
       setPlacing(false);
     }
   }

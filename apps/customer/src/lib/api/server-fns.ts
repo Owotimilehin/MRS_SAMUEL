@@ -10,6 +10,7 @@ import type {
   ApiProduct, ApiBranch, ApiBlogSummary, ApiBlogPost, ApiBundle, ApiSubscriptionPlan,
   ApiQuote, ApiPlacedOrder, ApiOrderTracking, ApiSubscribeResult,
 } from "./types";
+import type { CheckoutLogPayload } from "@/lib/checkout-log";
 
 // ---------- Catalog ----------
 export const fetchProducts = createServerFn({ method: "GET" }).handler(async (): Promise<Product[]> => {
@@ -141,6 +142,24 @@ export const sendContactMessage = createServerFn({ method: "POST" })
       body: JSON.stringify(data),
     });
     return { ok: true };
+  });
+
+// ---------- Diagnostic: checkout attempt log ----------
+// Fire-and-forget log of each checkout stage. Swallows all errors — diagnostic
+// logging must never affect the customer's ability to order.
+export const logCheckoutAttempt = createServerFn({ method: "POST" })
+  .validator((d: CheckoutLogPayload) => d)
+  .handler(async ({ data }): Promise<null> => {
+    try {
+      await apiFetch("/v1/public/telemetry/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    } catch {
+      /* never break checkout on logging */
+    }
+    return null;
   });
 
 export const subscribe = createServerFn({ method: "POST" })
