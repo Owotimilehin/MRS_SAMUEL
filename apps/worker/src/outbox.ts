@@ -404,6 +404,18 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `${p["run_date"]} · ${p["bottle_count"] ?? "?"} bottles\n` +
           `👉 ${ADMIN_URL}/factory/production-runs/${p["production_run_id"]}`,
       };
+    case "checkout.failed": {
+      const who = p["customer_name"] || p["customer_phone"] || "a customer";
+      return {
+        chatIds: [owner],
+        text:
+          `⚠️ *Checkout problem* — ${p["stage"] ?? "unknown"}\n` +
+          `${who}${p["customer_phone"] ? ` · ${p["customer_phone"]}` : ""}` +
+          (p["order_number"] ? `\nOrder: ${p["order_number"]}` : "") +
+          (p["error_message"] ? `\nError: ${p["error_message"]}` : "") +
+          `\n👉 ${ADMIN_URL}/owner/checkout-log`,
+      };
+    }
     case "contact.message_received":
       return {
         chatIds: [owner],
