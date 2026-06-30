@@ -9,6 +9,7 @@ import { useAuthUser } from "../../lib/auth.js";
 import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
 import { getReceiptStyle } from "../../lib/receipt-settings.js";
 import { fetchBranchInfo, printAndToast } from "../../lib/reprint.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 
 interface PreorderItem {
   product_id: string;
@@ -157,6 +158,10 @@ export function BranchPreordersPage({ branchId }: { branchId: string }): JSX.Ele
           { label: "Prepaid", value: ngn(rows.reduce((s, r) => s + r.total_ngn, 0)) },
         ]}
       />
+      <BranchTabs items={[
+        { to: "/branch/online-orders", label: "Online", cap: "sales.view" },
+        { to: "/branch/preorders", label: "Preorders", cap: "pos.preorder" },
+      ]} />
 
       <input
         className="input"

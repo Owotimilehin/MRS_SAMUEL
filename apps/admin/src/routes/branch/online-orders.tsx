@@ -5,6 +5,7 @@ import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 
 // Shape returned by GET /online-orders/active — snake_case, matching the API.
 interface ActiveOrder {
@@ -78,6 +79,10 @@ export function BranchOnlineOrdersPage({ branchId }: { branchId: string }): JSX.
           Paid online orders awaiting fulfilment at this branch — newest first.
         </p>
       </div>
+      <BranchTabs items={[
+        { to: "/branch/online-orders", label: "Online", cap: "sales.view" },
+        { to: "/branch/preorders", label: "Preorders", cap: "pos.preorder" },
+      ]} />
 
       {loading ? (
         <InlineLoader />

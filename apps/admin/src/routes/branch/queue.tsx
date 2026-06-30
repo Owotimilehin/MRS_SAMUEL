@@ -5,6 +5,7 @@ import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
 import { local, type OutboxRow } from "../../db/local.js";
 import { flushOutbox } from "../../sync/engine.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 
 function age(ms: number): string {
   const s = Math.floor((Date.now() - ms) / 1000);
@@ -141,6 +142,10 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
         sub="Offline operations waiting to sync with the server."
         chips={queueChips}
       />
+      <BranchTabs items={[
+        { to: "/branch/device", label: "Device" },
+        { to: "/branch/queue", label: "Sync queue" },
+      ]} />
       {pending.length === 0 && dead.length === 0 ? (
         <section className="card">
           <div className="empty">

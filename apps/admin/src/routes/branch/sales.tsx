@@ -8,6 +8,7 @@ import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 
 interface Sale {
   id: string;
@@ -122,6 +123,10 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
         loading={loading}
         chips={chips}
       />
+      <BranchTabs items={[
+        { to: "/branch", label: "Overview", cap: "sales.view" },
+        { to: "/branch/sales", label: "Today's sales", cap: "sales.view" },
+      ]} />
 
       <div
         style={{
