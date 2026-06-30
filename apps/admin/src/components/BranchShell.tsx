@@ -32,6 +32,7 @@ export function BranchShell({
   const user = useAuthUser();
   const [branchName, setBranchName] = useState<string | null>(null);
   const [preorderCount, setPreorderCount] = useState(0);
+  const [incomingCount, setIncomingCount] = useState(0);
   const rail = useRailOpen();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -90,6 +91,26 @@ export function BranchShell({
     };
   }, [branchId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function refresh(): Promise<void> {
+      try {
+        const res = await fetch(`/v1/transfers?branch_id=${branchId}`, { credentials: "include" });
+        if (!res.ok) return;
+        const body = (await res.json()) as { data: Array<{ status: string }> };
+        const n = Array.isArray(body.data)
+          ? body.data.filter((t) => ["dispatched", "in_transit", "arrived"].includes(t.status)).length
+          : 0;
+        if (!cancelled) setIncomingCount(n);
+      } catch { /* offline — keep last known */ }
+    }
+    void refresh();
+    const id = window.setInterval(() => void refresh(), 60_000);
+    const onFocus = (): void => void refresh();
+    window.addEventListener("focus", onFocus);
+    return () => { cancelled = true; window.clearInterval(id); window.removeEventListener("focus", onFocus); };
+  }, [branchId]);
+
   return (
     <div className={`app-shell${rail.open ? " nav-open" : ""}`}>
       <div className="app-scrim" aria-hidden="true" onClick={rail.close} />
@@ -140,22 +161,18 @@ export function BranchShell({
             </Link>
           ) : null}
           {BRANCH_NAV.filter((item) => parentVisible(item, user.capabilities)).map((item) => {
-            // Orders parent consolidates online-orders + preorders badges.
-            // Task 12 will finalize badge combining; for now: signal.count first,
-            // fall back to preorderCount so neither is silently dropped.
-            const isOrders = item.to === "/branch/online-orders";
-            const badge = isOrders
-              ? signal.count > 0
-                ? signal.count
-                : preorderCount > 0
-                  ? preorderCount
-                  : null
-              : null;
-            const badgeLabel = isOrders && badge != null
-              ? signal.count > 0
-                ? `${badge} online orders awaiting fulfilment`
-                : `${badge} preorders awaiting fulfilment`
-              : undefined;
+            // Orders parent: sum online signal + preorder count (Task 12).
+            // Stock parent: incoming transfers awaiting receipt (Task 12).
+            const badge =
+              item.to === "/branch/online-orders" ? (signal.count + preorderCount) || null :
+              item.to === "/branch/stock" ? (incomingCount || null) :
+              null;
+            const badgeLabel =
+              item.to === "/branch/online-orders" && badge != null
+                ? `${badge} orders awaiting attention`
+                : item.to === "/branch/stock" && badge != null
+                  ? `${badge} transfers to receive`
+                  : undefined;
             return (
               <Link
                 key={item.to}
