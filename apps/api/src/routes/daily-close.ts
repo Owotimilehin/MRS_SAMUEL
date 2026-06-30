@@ -6,6 +6,7 @@ import {
   dailyCloseStockCount,
   shiftOpen,
   shiftOpenStockCount,
+  stockLedger,
   adminUser,
   product,
   productVariant,
@@ -19,6 +20,7 @@ import {
   expectedStockForDay,
   expectedStockKey,
   expectedStockMap,
+  recordVarianceLoss,
 } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
@@ -117,6 +119,36 @@ export function dailyCloseRoutes(db: DbClient) {
           variance: lineVariance,
           varianceReason: sc.variance_reason ?? null,
         });
+
+        // Reconcile branch on-hand to the physical count: the count is the
+        // truth, so write a balancing ledger row. A shortfall (counted short)
+        // is a genuine loss recorded at retail value; an overage is found stock.
+        if (lineVariance !== 0) {
+          await tx.insert(stockLedger).values({
+            locationType: "branch",
+            locationId: branchId,
+            productId: sc.product_id,
+            variantId,
+            delta: lineVariance,
+            sourceType: "count_correction",
+            sourceId: close.id,
+            recordedByUserId: auth.userId,
+            note: sc.variance_reason ?? "shift close count",
+          });
+          if (lineVariance < 0) {
+            await recordVarianceLoss(tx, {
+              source: "shift_close",
+              sourceId: close.id,
+              branchId,
+              productId: sc.product_id,
+              variantId,
+              sizeMl: sizeByKey.get(expectedStockKey(sc.product_id, variantId)) ?? null,
+              quantity: -lineVariance,
+              reason: sc.variance_reason ?? null,
+              recordedByUserId: auth.userId,
+            });
+          }
+        }
       }
 
       // Close the shift in the same transaction.
