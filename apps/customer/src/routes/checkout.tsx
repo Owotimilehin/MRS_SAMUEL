@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft, Check, Lock, Truck, ShoppingBag, AlertCircle, Loader2, CalendarClock,
 } from "lucide-react";
@@ -144,15 +144,21 @@ function Page() {
     () => items.map((i) => ({ variant_id: i.variantId, quantity: i.qty })),
     [items],
   );
+  // Required fields the customer must supply before we can place the order.
+  // Returned as friendly labels so we can show exactly what's missing.
+  function missingFields(): string[] {
+    const missing: string[] = [];
+    if (form.name.trim() === "") missing.push("your full name");
+    if (!validNgPhone(form.phone)) missing.push("a valid phone number");
+    if (form.address.trim().length < 3) missing.push("your delivery address");
+    return missing;
+  }
+
+  // The button stays clickable whenever an order *could* be attempted, so a tap
+  // always responds — either it opens payment or it tells the customer what's
+  // missing. Only a busy/blocked state disables it.
   const canPlace =
-    items.length > 0 &&
-    !!branchId &&
-    form.name.trim() !== "" &&
-    validNgPhone(form.phone) &&
-    form.address.trim().length >= 3 &&
-    scheduleValid &&
-    !placing &&
-    !quoting;
+    items.length > 0 && !!branchId && scheduleValid && !placing && !quoting;
 
   // Hand the (already-created) order to Payaza and route to tracking on success.
   // Shared by the normal path and the gracious-modal "Continue" path.
@@ -169,12 +175,15 @@ function Page() {
     } catch {
       /* ignore storage failures */
     }
-    clear();
     // Payaza checkout is a client-side popup (no redirect). On success the
     // server webhook confirms payment; we just move to the tracking page.
     const trackUrl = `/order/${order.order_number}?paid=1`;
     await launchPayazaCheckout(order.payment.payaza, {
       onPaid: () => {
+        // Only empty the basket once payment actually succeeded. Clearing it
+        // before the popup opened was what flipped the page to the empty-basket
+        // screen and hid any error when the popup failed to open.
+        clear();
         window.location.href = trackUrl;
       },
       onClose: () => {
@@ -182,11 +191,28 @@ function Page() {
         // customer retry or view the (unpaid) order.
         setPlacing(false);
       },
+      onError: (message) => {
+        // The popup never opened (bad network, SDK blocked, or Payaza rejected
+        // the order). Surface it instead of failing silently, and let them retry.
+        setPlaceError(message);
+        setPlacing(false);
+      },
     });
   }
 
   async function submit(retry = false) {
     if (!branchId || items.length === 0) return;
+    // Validate required fields up front and tell the customer exactly what's
+    // missing, instead of leaving the button quietly disabled.
+    const missing = missingFields();
+    if (missing.length > 0) {
+      const list =
+        missing.length === 1
+          ? missing[0]
+          : `${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}`;
+      setPlaceError(`Please add ${list} before placing your order.`);
+      return;
+    }
     if (!retry) idemRef.current = crypto.randomUUID();
     setPlacing(true);
     setPlaceError(null);
@@ -266,6 +292,7 @@ function Page() {
 
   return (
     <SiteShell>
+      <CheckoutErrorModal message={placeError} onDismiss={() => setPlaceError(null)} />
       <div className="px-5 sm:px-10 max-w-6xl mx-auto pt-32 sm:pt-36 pb-24">
         <Link to="/juices" className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--brand)]/70 hover:text-[color:var(--brand-orange)]">
           <ArrowLeft className="h-4 w-4" /> Continue shopping
@@ -422,16 +449,10 @@ function Page() {
                 </div>
               </div>
 
-              {placeError && (
-                <div className="mt-4 rounded-xl bg-white/10 p-3 text-sm">
-                  <div className="flex items-center gap-2 font-semibold"><AlertCircle className="h-4 w-4" /> {placeError}</div>
-                  <button onClick={() => submit(false)} className="mt-2 text-xs font-semibold underline">Retry payment</button>
-                </div>
-              )}
-
               <button
                 disabled={!canPlace}
                 onClick={() => submit(false)}
+                aria-busy={placing}
                 className="mt-5 w-full rounded-full bg-[color:var(--brand-orange)] text-white px-6 py-4 text-sm font-bold disabled:opacity-40 hover:opacity-90 transition flex items-center justify-center gap-2"
               >
                 {placing ? (<><Loader2 className="h-4 w-4 animate-spin" /> Opening payment…</>) : (<>Place order — {formatNaira(total)}</>)}
@@ -442,6 +463,46 @@ function Page() {
         )}
       </div>
     </SiteShell>
+  );
+}
+
+/** A blocking error popup for checkout problems — empty required fields or a
+ *  payment window that failed to open. Replaces the old easy-to-miss inline note. */
+function CheckoutErrorModal({ message, onDismiss }: { message: string | null; onDismiss: () => void }) {
+  return (
+    <AnimatePresence>
+      {message && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          role="alertdialog"
+          aria-modal="true"
+        >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onDismiss} />
+          <motion.div
+            initial={{ scale: 0.94, opacity: 0, y: 8 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.94, opacity: 0, y: 8 }}
+            transition={{ type: "spring", damping: 24, stiffness: 280 }}
+            className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl text-center"
+          >
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[color:var(--brand-orange)]/10">
+              <AlertCircle className="h-6 w-6 text-[color:var(--brand-orange)]" />
+            </div>
+            <h3 className="mt-3 font-display text-xl text-[color:var(--brand)]">One more thing</h3>
+            <p className="mt-1.5 text-sm text-[color:var(--brand)]/75">{message}</p>
+            <button
+              onClick={onDismiss}
+              className="mt-5 w-full rounded-full bg-[color:var(--brand)] text-white px-6 py-3 text-sm font-bold hover:opacity-90 transition"
+            >
+              Got it
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
