@@ -121,7 +121,6 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
         </Link>
       }
     >
-      <BranchTabs items={shiftTabs} />
       <StatHero
         eyebrow="Branch"
         title="Shift-end reports"
@@ -129,6 +128,7 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
         loading={loading}
         chips={chips}
       />
+      <BranchTabs items={shiftTabs} />
 
       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
         <span className="pill pill--success">Approved · {approved}</span>

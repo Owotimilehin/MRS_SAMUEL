@@ -229,7 +229,6 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
 
   return (
     <BranchShell branchId={branchId} title="Shift end">
-      <BranchTabs items={shiftTabs} />
       <StatHero
         eyebrow="Branch"
         title="Shift end"
@@ -237,6 +236,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
         loading={loading || hasShift === null}
         chips={closeChips}
       />
+      <BranchTabs items={shiftTabs} />
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
         <section className="card">

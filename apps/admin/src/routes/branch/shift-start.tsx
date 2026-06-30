@@ -138,7 +138,6 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
 
   return (
     <BranchShell branchId={branchId} title="Shift start">
-      <BranchTabs items={shiftTabs} />
       <StatHero
         eyebrow="Branch"
         title="Shift start"
@@ -146,6 +145,7 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
         loading={loading}
         chips={[{ label: "Date", value: businessDate }]}
       />
+      <BranchTabs items={shiftTabs} />
       <section className="card">
         <h2 className="t-h2" style={{ marginBottom: 12 }}>Opening stock count</h2>
         {loading ? (
