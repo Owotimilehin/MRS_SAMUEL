@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and, desc, isNull } from "drizzle-orm";
 import { varianceLoss, productPrice, type DbExecutor } from "@ms/db";
 
 /** Pure: money value of a loss (bottles * retail price). */
@@ -26,15 +26,19 @@ export async function recordVarianceLoss(
   tx: DbExecutor,
   input: RecordVarianceLossInput,
 ): Promise<{ id: string; valueNgn: number }> {
-  let unitPriceNgn = 0;
-  if (input.variantId) {
-    const [p] = await tx
-      .select({ priceNgn: productPrice.priceNgn })
-      .from(productPrice)
-      .where(eq(productPrice.variantId, input.variantId))
-      .limit(1);
-    unitPriceNgn = p?.priceNgn ?? 0;
-  }
+  // Retail price for valuation: by variant when the loss is variant-specific,
+  // else the product's active price (product-level transfers carry no variant).
+  // Active = valid_to IS NULL, most recent valid_from.
+  const priceCond = input.variantId
+    ? eq(productPrice.variantId, input.variantId)
+    : eq(productPrice.productId, input.productId);
+  const [p] = await tx
+    .select({ priceNgn: productPrice.priceNgn })
+    .from(productPrice)
+    .where(and(priceCond, isNull(productPrice.validTo)))
+    .orderBy(desc(productPrice.validFrom))
+    .limit(1);
+  const unitPriceNgn = p?.priceNgn ?? 0;
   const valueNgn = computeLossValue(input.quantity, unitPriceNgn);
   const [row] = await tx
     .insert(varianceLoss)

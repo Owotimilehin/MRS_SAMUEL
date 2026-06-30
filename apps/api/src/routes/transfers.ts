@@ -12,7 +12,7 @@ import {
   productVariant,
   type DbClient,
 } from "@ms/db";
-import { checkFactoryStockAvailableByVariant, nextTransferNumber } from "@ms/domain";
+import { checkFactoryStockAvailableByVariant, nextTransferNumber, recordVarianceLoss } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -512,10 +512,28 @@ export function transferRoutes(db: DbClient) {
     return c.json({ data: final });
   });
 
-  // ============ Approve variance (owner) ============
-  r.patch("/:id/approve", requireCapability("transfers.adjust"), async (c) => {
+  // ============ Settle variance + approve (owner-only) ============
+  // For each varianced line the owner decides where the gap (sent - received)
+  // settles: "factory"/"branch" relocate the gap onto that location's stock
+  // (nothing lost); "loss" writes it off to variance_loss at retail value.
+  // A request with no settlements completes the transfer with the variance
+  // written off (today's "loss" behaviour) — keeps a stale UI working.
+  const SettleBody = z.object({
+    settlements: z
+      .array(
+        z.object({
+          item_id: z.string().uuid(),
+          settle: z.enum(["factory", "branch", "loss"]),
+        }),
+      )
+      .default([]),
+  });
+
+  r.patch("/:id/approve", requireCapability("variance.settle"), async (c) => {
     const id = c.req.param("id");
     const auth = c.get("auth");
+    const body = SettleBody.parse(await c.req.json().catch(() => ({})));
+    const settleByItem = new Map(body.settlements.map((s) => [s.item_id, s.settle]));
 
     const updated = await db.transaction(async (tx) => {
       const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id));
@@ -523,6 +541,45 @@ export function transferRoutes(db: DbClient) {
       if (t.status !== "received_with_variance") {
         throw new BusinessError("conflict", `cannot approve from ${t.status}`, 409);
       }
+      const items = await tx
+        .select()
+        .from(stockTransferItem)
+        .where(eq(stockTransferItem.stockTransferId, id));
+
+      for (const it of items) {
+        if (it.productId == null || it.quantityReceived == null) continue; // packaging / unreceived
+        const gap = it.quantitySent - it.quantityReceived;
+        if (gap === 0) continue;
+        const settle = settleByItem.get(it.id) ?? "loss";
+        if (settle === "loss") {
+          if (gap <= 0) continue; // can't write off an over-receive
+          await recordVarianceLoss(tx, {
+            source: "transfer",
+            sourceId: id,
+            branchId: t.branchId,
+            productId: it.productId,
+            variantId: it.variantId ?? null,
+            sizeMl: null,
+            quantity: gap,
+            reason: it.varianceReason ?? null,
+            recordedByUserId: auth.userId,
+          });
+        } else {
+          const locationId = settle === "factory" ? t.factoryId : t.branchId;
+          await tx.insert(stockLedger).values({
+            locationType: settle,
+            locationId,
+            productId: it.productId,
+            variantId: it.variantId ?? null,
+            delta: gap,
+            sourceType: "transfer_variance_settlement",
+            sourceId: id,
+            recordedByUserId: auth.userId,
+            note: `Variance settle ${t.transferNumber} (${settle})`,
+          });
+        }
+      }
+
       const [u] = await tx
         .update(stockTransfer)
         .set({
@@ -535,10 +592,17 @@ export function transferRoutes(db: DbClient) {
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
       return u;
+    }).catch((err: unknown) => {
+      // The append-only ledger trigger raises check_violation (23514) if a
+      // settlement would drive a location's balance negative.
+      if (err && typeof err === "object" && (err as { code?: string }).code === "23514") {
+        throw new BusinessError("conflict", "settlement would make stock negative", 409);
+      }
+      throw err;
     });
 
     await writeAudit(db, c, {
-      action: "stock_transfer.approve_variance",
+      action: "stock_transfer.settle_variance",
       entityType: "stock_transfer",
       entityId: id,
       after: updated,
