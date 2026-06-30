@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { sql } from "drizzle-orm";
-import type { DbClient } from "@ms/db";
+import { sql, desc, lt } from "drizzle-orm";
+import { checkoutAttemptLog, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { toCsv } from "../lib/csv.js";
 import { allocateFifo, type CostLayer } from "../lib/packaging-cost.js";
@@ -679,6 +679,64 @@ export function reportRoutes(db: DbClient) {
         caveats: Array.from(new Set(caveats)),
       },
     });
+  });
+
+  // Owner diagnostic: recent checkout attempts, grouped by attempt_id. Each
+  // attempt carries its delivery-details snapshot + an ordered stage timeline.
+  r.get("/checkout-log", async (c) => {
+    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50), 1), 200);
+    const before = c.req.query("before");
+    // Over-fetch rows newest-first then group in memory, so a multi-stage
+    // attempt isn't split across the page boundary.
+    const rows = await db
+      .select()
+      .from(checkoutAttemptLog)
+      .where(before ? lt(checkoutAttemptLog.createdAt, new Date(before)) : undefined)
+      .orderBy(desc(checkoutAttemptLog.createdAt))
+      .limit(limit * 8);
+
+    const byAttempt = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const list = byAttempt.get(row.attemptId) ?? [];
+      list.push(row);
+      byAttempt.set(row.attemptId, list);
+    }
+
+    const attempts = [...byAttempt.values()]
+      .map((stageRows) => {
+        const ordered = [...stageRows].sort(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+        );
+        const first = ordered[0]!;
+        const withDetails = ordered.find((s) => s.customerName || s.deliveryAddress) ?? first;
+        return {
+          attempt_id: first.attemptId,
+          started_at: first.createdAt.toISOString(),
+          customer: {
+            name: withDetails.customerName,
+            phone: withDetails.customerPhone,
+            email: withDetails.customerEmail,
+            address: withDetails.deliveryAddress,
+            state: withDetails.deliveryState,
+          },
+          items: withDetails.itemsJson ?? [],
+          total_ngn: withDetails.totalNgn,
+          stages: ordered.map((s) => ({
+            stage: s.stage,
+            status: s.status,
+            error_message: s.errorMessage,
+            order_number: s.orderNumber,
+            response: s.responseJson,
+            created_at: s.createdAt.toISOString(),
+          })),
+        };
+      })
+      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+      .slice(0, limit);
+
+    const nextBefore =
+      attempts.length === limit ? attempts[attempts.length - 1]!.started_at : null;
+    return c.json({ attempts, next_before: nextBefore });
   });
 
   return r;
