@@ -49,6 +49,7 @@ function L({ children }: { children: ReactNode }): JSX.Element {
 // ───── Lazy route components ─────
 const DashboardPage = lazyNamed(() => import("./routes/owner/dashboard.js"), "DashboardPage");
 const AnalyticsPage = lazyNamed(() => import("./routes/owner/analytics.js"), "AnalyticsPage");
+const VarianceReportPage = lazyNamed(() => import("./routes/owner/variance.js"), "VarianceReportPage");
 const ReviewPage = lazyNamed(() => import("./routes/owner/review.js"), "ReviewPage");
 const ProductsPage = lazyNamed(() => import("./routes/owner/products.js"), "ProductsPage");
 const ProductDetailPage = lazyNamed<{ productId: string }>(
@@ -309,6 +310,11 @@ const analyticsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/owner/analytics",
   component: () => guarded(<L><AnalyticsPage /></L>),
+});
+const varianceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/variance",
+  component: () => guarded(<L><VarianceReportPage /></L>),
 });
 const reviewRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -642,6 +648,7 @@ const routeTree = rootRoute.addChildren([
   // owner
   dashboardRoute,
   analyticsRoute,
+  varianceRoute,
   reviewRoute,
   ordersRoute,
   preordersRoute,
