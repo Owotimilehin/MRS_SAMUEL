@@ -8,6 +8,7 @@ import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 
 interface Sale {
   id: string;
@@ -19,6 +20,7 @@ interface Sale {
   createdAtLocal: string;
   notes: string | null;
   isPreorder?: boolean;
+  producedAt?: string | null;
   fulfilledAt?: string | null;
   scheduledDeliveryAt?: string | null;
   customerName?: string | null;
@@ -26,13 +28,13 @@ interface Sale {
 }
 
 // Order type: an immediate walk-up sale vs a made-to-order preorder (and whether
-// that preorder is still awaiting fulfilment).
+// that preorder has been produced yet).
 function typePill(s: Sale): JSX.Element {
   if (!s.isPreorder) return <span className="pill pill--ink">Sale</span>;
-  return s.fulfilledAt ? (
-    <span className="pill pill--success">📅 Preorder · fulfilled</span>
+  return s.producedAt ? (
+    <span className="pill pill--success">📅 Preorder · produced</span>
   ) : (
-    <span className="pill pill--warning">📅 Preorder · pending</span>
+    <span className="pill pill--warning">📅 Preorder · awaiting production</span>
   );
 }
 
@@ -121,6 +123,10 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
         loading={loading}
         chips={chips}
       />
+      <BranchTabs items={[
+        { to: "/branch", label: "Overview", cap: "sales.view" },
+        { to: "/branch/sales", label: "Today's sales", cap: "sales.view" },
+      ]} />
 
       <div
         style={{

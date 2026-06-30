@@ -5,6 +5,7 @@ import { api, humanizeError } from "../../lib/api.js";
 import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import type { StatChip } from "../../components/StatHero.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 
 type TransferStatus =
   | "dispatched"
@@ -148,6 +149,10 @@ export function BranchTransfersPage({ branchId }: { branchId: string }): JSX.Ele
         loading={loading}
         chips={transferChips}
       />
+      <BranchTabs items={[
+        { to: "/branch/stock", label: "On hand" },
+        { to: "/branch/transfers", label: "Incoming", cap: "transfers.receive" },
+      ]} />
 
       {error && (
         <div

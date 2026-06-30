@@ -50,6 +50,7 @@ function L({ children }: { children: ReactNode }): JSX.Element {
 const DashboardPage = lazyNamed(() => import("./routes/owner/dashboard.js"), "DashboardPage");
 const AnalyticsPage = lazyNamed(() => import("./routes/owner/analytics.js"), "AnalyticsPage");
 const CheckoutLogPage = lazyNamed(() => import("./routes/owner/checkout-log.js"), "CheckoutLogPage");
+const VarianceReportPage = lazyNamed(() => import("./routes/owner/variance.js"), "VarianceReportPage");
 const ReviewPage = lazyNamed(() => import("./routes/owner/review.js"), "ReviewPage");
 const ProductsPage = lazyNamed(() => import("./routes/owner/products.js"), "ProductsPage");
 const ProductDetailPage = lazyNamed<{ productId: string }>(
@@ -159,6 +160,10 @@ const BranchClosePage = lazyNamed<{ branchId: string }>(
 const BranchShiftStartPage = lazyNamed<{ branchId: string }>(
   () => import("./routes/branch/shift-start.js"),
   "BranchShiftStartPage",
+);
+const BranchShiftResolverPage = lazyNamed<{ branchId: string }>(
+  () => import("./routes/branch/shift.js"),
+  "BranchShiftResolverPage",
 );
 const BranchClosesPage = lazyNamed<{ branchId: string }>(
   () => import("./routes/branch/closes.js"),
@@ -310,6 +315,11 @@ const analyticsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/owner/analytics",
   component: () => guarded(<L><AnalyticsPage /></L>),
+});
+const varianceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/variance",
+  component: () => guarded(<L><VarianceReportPage /></L>),
 });
 const reviewRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -601,6 +611,12 @@ const branchShiftStartRoute = createRoute({
   component: () =>
     guarded(<L><WithBranchId render={(id) => <BranchShiftStartPage branchId={id} />} /></L>),
 });
+const branchShiftRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/branch/shift",
+  component: () =>
+    guarded(<L><WithBranchId render={(id) => <BranchShiftResolverPage branchId={id} />} /></L>),
+});
 const branchClosesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/branch/closes",
@@ -648,6 +664,7 @@ const routeTree = rootRoute.addChildren([
   // owner
   dashboardRoute,
   analyticsRoute,
+  varianceRoute,
   reviewRoute,
   ordersRoute,
   preordersRoute,
@@ -699,6 +716,7 @@ const routeTree = rootRoute.addChildren([
   branchReturnsRoute,
   branchReturnDetailRoute,
   branchShiftStartRoute,
+  branchShiftRoute,
   branchCloseRoute,
   branchClosesRoute,
   branchQueueRoute,

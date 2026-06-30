@@ -19,6 +19,7 @@ import {
   Milk,
   User,
   ClipboardList,
+  TrendingDown,
   Undo2,
   Truck,
   Users,
@@ -83,6 +84,7 @@ const NAV_PRODUCTS: NavLink[] = [
 ];
 const NAV_FINANCE: NavLink[] = [
   { to: "/owner/bookkeeping", label: "Bookkeeping", Icon: Wallet, cap: "expenses.view" },
+  { to: "/owner/variance", label: "Variance & losses", Icon: TrendingDown, cap: "finance.view" },
   { to: "/owner/vendors", label: "Vendors", Icon: Tags, cap: "expenses.view" },
   { to: "/owner/closes", label: "Shift-end reports", Icon: ClipboardList, cap: "close.approve" },
 ];

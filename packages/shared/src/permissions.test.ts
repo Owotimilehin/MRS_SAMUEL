@@ -12,6 +12,13 @@ describe("resolveCapabilities", () => {
     );
   });
 
+  it("variance.settle is owner-only", () => {
+    expect(resolveCapabilities("owner")).toContain("variance.settle");
+    expect(resolveCapabilities("admin")).not.toContain("variance.settle");
+    expect(resolveCapabilities("manager")).not.toContain("variance.settle");
+    expect(resolveCapabilities("branch_staff")).not.toContain("variance.settle");
+  });
+
   it("admin can oversee a till (preorders + branch flow, not stock-consuming sales)", () => {
     const caps = resolveCapabilities("admin");
     for (const cap of [

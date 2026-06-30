@@ -10,6 +10,7 @@ import { toast } from "../../lib/toast.js";
 import { useAuthUser } from "../../lib/auth.js";
 import { hasCapability } from "@ms/shared";
 import { adjustBranchStockBulk, REASONS, type BulkAdjustItem } from "../../lib/stock-adjust.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 
 interface ServerBalance {
   product_id: string;
@@ -168,6 +169,10 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
         loading={loading}
         chips={stockChips}
       />
+      <BranchTabs items={[
+        { to: "/branch/stock", label: "On hand" },
+        { to: "/branch/transfers", label: "Incoming", cap: "transfers.receive" },
+      ]} />
 
       {canAdjust && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "14px 0" }}>

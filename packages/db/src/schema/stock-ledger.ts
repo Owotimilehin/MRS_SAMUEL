@@ -17,6 +17,7 @@ export const ledgerSourceType = pgEnum("ledger_source_type", [
   "adjustment",
   "count_correction",
   "opening_balance",
+  "transfer_variance_settlement",
 ]);
 
 /**

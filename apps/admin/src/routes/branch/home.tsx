@@ -7,6 +7,7 @@ import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useSyncState } from "../../sync/state.js";
+import { BranchTabs } from "../../components/BranchTabs.js";
 
 interface Sale {
   id: string;
@@ -79,6 +80,10 @@ export function BranchHomePage({ branchId }: { branchId: string }): JSX.Element 
         loading={loading}
         chips={chips}
       />
+      <BranchTabs items={[
+        { to: "/branch", label: "Overview", cap: "sales.view" },
+        { to: "/branch/sales", label: "Today's sales", cap: "sales.view" },
+      ]} />
       <div className="branch-home">
 
         <section className="branch-home__tiles">

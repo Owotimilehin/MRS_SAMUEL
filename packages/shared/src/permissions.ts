@@ -47,6 +47,11 @@ export const CAPABILITIES = [
   // paid, or mark a previously-owed refund as settled. Gated owner-only because
   // these override our normal amount-equality guard.
   "orders.accept_payment",
+  // Owner-only: settle a transfer variance to factory/branch/loss (corrects
+  // stock across two locations and writes off genuine losses). Deliberately NOT
+  // in ADMIN_CAPS/MANAGER_CAPS — managers may hold transfers.adjust but cannot
+  // decide where variance lands.
+  "variance.settle",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 

@@ -212,6 +212,8 @@ export async function seedOnlineOrder(
     deliveryState?: string;
     deliveryFeeNgn?: number;
     branchId?: string;
+    isPreorder?: boolean;
+    producedAt?: Date | null;
   },
 ): Promise<{ id: string; saleId: string; branchId: string }> {
   const { v4: uuid } = await import("uuid");
@@ -251,7 +253,8 @@ export async function seedOnlineOrder(
       paymentStatus: opts.status === "paid" || opts.status === "out_for_delivery" || opts.status === "delivered" || opts.status === "handed_over" ? "paid" : "pending",
       createdAtLocal: new Date(),
       idempotencyKey: uuid(),
-      isPreorder: false,
+      isPreorder: opts.isPreorder ?? false,
+      producedAt: opts.producedAt ?? null,
     })
     .returning();
   if (!row) throw new Error("seedOnlineOrder: insert failed");

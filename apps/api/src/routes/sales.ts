@@ -571,6 +571,9 @@ export function saleRoutes(db: DbClient) {
       if (!["online", "phone"].includes(o.channel)) {
         throw new BusinessError("conflict", `not an online order: ${o.channel}`, 409);
       }
+      if (o.isPreorder && o.producedAt == null) {
+        throw new BusinessError("conflict", "Produce this preorder before handing it over.", 409);
+      }
       // Determine fulfilment type.
       const [del] = await tx
         .select({ id: deliveryOrder.id })
