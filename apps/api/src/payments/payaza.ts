@@ -67,7 +67,10 @@ export function buildPayazaCheckoutConfig(opts: {
     throw new Error("PAYAZA_PUBLIC_KEY is not configured — cannot build a Payaza checkout");
   }
   const [firstName, ...rest] = (opts.customerName ?? "").trim().split(/\s+/);
-  const lastName = rest.join(" ");
+  // The checkout SDK validates first_name AND last_name as required + non-blank;
+  // a single-word name would otherwise send a blank last_name and the popup
+  // would silently never open. Fall back to the first name.
+  const lastName = rest.join(" ") || firstName;
   // Live keys are prefixed PZ..-PKLIVE-, test keys PZ..-PKTEST-.
   const mode: PayazaCheckoutConfig["connectionMode"] = /PKLIVE/i.test(publicKey) ? "Live" : "Test";
   return {
