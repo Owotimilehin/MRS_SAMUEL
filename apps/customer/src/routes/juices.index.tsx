@@ -137,7 +137,7 @@ function Page() {
                   </div>
                   <div className="mt-1 flex items-center justify-between">
                     <div className="font-display text-xl font-semibold" style={{ color: p.palette.accent }}>
-                      From ₦{Math.min(...Object.values(p.prices)).toLocaleString("en-NG")}
+                      ₦{p.prices[quickAddSize(p)].toLocaleString("en-NG")}
                     </div>
                     <button
                       type="button"
