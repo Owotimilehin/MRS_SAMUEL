@@ -71,8 +71,8 @@ services:
       PAYAZA_API_BASE: ${PAYAZA_API_BASE:-}
       PAYAZA_AUTH_SCHEME: ${PAYAZA_AUTH_SCHEME:-}
       TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
-      # Delivery — Shipbubble (active) or Bolt (legacy mock fallback).
-      DELIVERY_PROVIDER: ${DELIVERY_PROVIDER:-bolt}
+      # Delivery — Shipbubble. SHIPBUBBLE_PROVIDER=live uses the real API;
+      # anything else falls back to the built-in mock (dev/CI).
       SHIPBUBBLE_PROVIDER: ${SHIPBUBBLE_PROVIDER:-mock}
       SHIPBUBBLE_API_KEY: ${SHIPBUBBLE_API_KEY:-}
       SHIPBUBBLE_API_BASE: ${SHIPBUBBLE_API_BASE:-}
@@ -87,9 +87,6 @@ services:
       SHIPBUBBLE_PKG_LENGTH_CM: ${SHIPBUBBLE_PKG_LENGTH_CM:-}
       SHIPBUBBLE_PKG_WIDTH_CM: ${SHIPBUBBLE_PKG_WIDTH_CM:-}
       SHIPBUBBLE_PKG_HEIGHT_CM: ${SHIPBUBBLE_PKG_HEIGHT_CM:-}
-      BOLT_PROVIDER: ${BOLT_PROVIDER:-mock}
-      BOLT_API_KEY: ${BOLT_API_KEY:-}
-      BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET:-}
       # Shared secret gating the internal delivery-reconcile endpoint. The worker
       # sends it as X-Internal-Token. Empty = open (Payaza-webhook parity).
       INTERNAL_RECONCILE_TOKEN: ${INTERNAL_RECONCILE_TOKEN:-}
@@ -132,17 +129,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PUBLIC_ADMIN_URL: ${PUBLIC_ADMIN_URL:-http://localhost:3010}
       PUBLIC_CUSTOMER_URL: ${PUBLIC_CUSTOMER_URL:-http://localhost:3002}
-      # Delivery dispatch + watchdog (worker drives Shipbubble/Bolt label + tracking).
-      DELIVERY_PROVIDER: ${DELIVERY_PROVIDER:-bolt}
+      # Delivery dispatch + watchdog (worker drives the Shipbubble label + tracking).
       DELIVERY_WATCHDOG_MS: ${DELIVERY_WATCHDOG_MS:-}
       SHIPBUBBLE_PROVIDER: ${SHIPBUBBLE_PROVIDER:-mock}
       SHIPBUBBLE_API_KEY: ${SHIPBUBBLE_API_KEY:-}
       SHIPBUBBLE_API_BASE: ${SHIPBUBBLE_API_BASE:-}
       SHIPBUBBLE_WEBHOOK_SECRET: ${SHIPBUBBLE_WEBHOOK_SECRET:-}
-      BOLT_PROVIDER: ${BOLT_PROVIDER:-mock}
-      BOLT_API_KEY: ${BOLT_API_KEY:-}
-      BOLT_WEBHOOK_SECRET: ${BOLT_WEBHOOK_SECRET:-}
-      BOLT_MOCK_WEBHOOK_URL: ${BOLT_MOCK_WEBHOOK_URL:-}
       # Refunds + recurring charges — Payaza. Empty = mock refund reference.
       # PAYAZA_PUBLIC_KEY is needed by the recurring charge-authorization call.
       PAYAZA_SECRET_KEY: ${PAYAZA_SECRET_KEY:-}

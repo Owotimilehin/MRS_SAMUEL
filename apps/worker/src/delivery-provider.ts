@@ -40,7 +40,7 @@ interface RequestDeliveryResult {
 }
 
 export interface DeliveryProvider {
-  readonly name: "bolt" | "manual" | "shipbubble";
+  readonly name: "manual" | "shipbubble";
   requestDelivery(input: RequestDeliveryInput): Promise<RequestDeliveryResult>;
 }
 
@@ -106,13 +106,13 @@ const RIDERS = [
   { name: "Kola Eze", phone: "+2348012345673", vehicle: "Yamaha YBR · LSR-908" },
 ];
 
-class BoltMockWorker implements DeliveryProvider {
-  readonly name = "bolt" as const;
+class ShipbubbleMockWorker implements DeliveryProvider {
+  readonly name = "shipbubble" as const;
   constructor(private readonly webhookUrl: string) {}
 
   async requestDelivery(_input: RequestDeliveryInput): Promise<RequestDeliveryResult> {
     const externalRef = `mock_d_${randomUUID().slice(0, 12)}`;
-    const trackingUrl = `https://mock-bolt.local/track/${externalRef}`;
+    const trackingUrl = `https://mock-shipbubble.local/track/${externalRef}`;
     const rider = RIDERS[Math.floor(Math.random() * RIDERS.length)]!;
     // Start the timeline asynchronously so this call returns fast.
     void this.runTimeline(externalRef, rider);
@@ -149,13 +149,13 @@ class BoltMockWorker implements DeliveryProvider {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-bolt-signature": "mock",
+          "x-ship-signature": "mock",
         },
         body: JSON.stringify({ external_ref: externalRef, ...body }),
       });
     } catch (err) {
       console.warn(
-        "[worker:bolt-mock] webhook delivery failed",
+        "[worker:shipbubble-mock] webhook delivery failed",
         externalRef,
         body.status,
         err,
@@ -173,23 +173,20 @@ let cached: DeliveryProvider | null = null;
 export function getWorkerDeliveryProvider(): DeliveryProvider {
   if (cached) return cached;
 
-  const active = (process.env["DELIVERY_PROVIDER"] ?? "bolt").toLowerCase();
-  if (active === "shipbubble") {
-    const mode = (process.env["SHIPBUBBLE_PROVIDER"] ?? "mock").toLowerCase();
-    const cfg = shipbubbleConfigFromEnv(process.env);
-    if (mode === "live" && cfg) {
-      cached = new ShipbubbleWorker(cfg);
-      return cached;
-    }
-    if (mode === "live") {
-      console.warn(
-        "[worker] DELIVERY_PROVIDER=shipbubble + live but SHIPBUBBLE_API_KEY missing — using mock",
-      );
-    }
+  const mode = (process.env["SHIPBUBBLE_PROVIDER"] ?? "mock").toLowerCase();
+  const cfg = shipbubbleConfigFromEnv(process.env);
+  if (mode === "live" && cfg) {
+    cached = new ShipbubbleWorker(cfg);
+    return cached;
+  }
+  if (mode === "live") {
+    console.warn(
+      "[worker] SHIPBUBBLE_PROVIDER=live but SHIPBUBBLE_API_KEY missing — using mock",
+    );
   }
 
   const webhookUrl =
-    process.env["BOLT_MOCK_WEBHOOK_URL"] ?? "http://127.0.0.1:3001/v1/webhooks/bolt";
-  cached = new BoltMockWorker(webhookUrl);
+    process.env["DELIVERY_MOCK_WEBHOOK_URL"] ?? "http://127.0.0.1:3001/v1/webhooks/shipbubble";
+  cached = new ShipbubbleMockWorker(webhookUrl);
   return cached;
 }

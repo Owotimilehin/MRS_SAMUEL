@@ -253,7 +253,7 @@ export function SettingsPage(): JSX.Element {
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14 }}>
               <ReadRow label="Card payments" value="Payaza · live" />
-              <ReadRow label="Delivery partner" value="Bolt · live" />
+              <ReadRow label="Delivery partner" value="Shipbubble · live" />
               <ReadRow
                 label="Bank transfer"
                 value="Account details shown to customers at checkout"

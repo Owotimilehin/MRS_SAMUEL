@@ -24,7 +24,7 @@ function getRedis(): Redis | null {
 }
 
 export interface QuoteEnvelope {
-  provider: "bolt" | "manual" | "shipbubble" | "fallback";
+  provider: "manual" | "shipbubble" | "fallback";
   branch_id: string;
   fee_ngn: number;
   dropoff_address: string;
@@ -40,7 +40,7 @@ export interface StoredOption {
 /** The full option set offered for a quote_token, so order creation can verify
  *  the chosen option id + fee is one we actually offered. */
 export interface OptionSetEnvelope {
-  provider: "bolt" | "manual" | "shipbubble";
+  provider: "manual" | "shipbubble";
   branch_id: string;
   dropoff_address: string;
   options: StoredOption[];

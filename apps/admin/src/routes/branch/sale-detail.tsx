@@ -21,7 +21,7 @@ interface SaleItem {
 }
 interface DeliveryInfo {
   id: string;
-  provider: "bolt" | "manual";
+  provider: "manual" | "shipbubble";
   externalRef: string | null;
   status:
     | "searching_rider"
@@ -306,7 +306,7 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <strong style={{ fontSize: 13, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                    {sale.delivery.provider === "bolt" ? "Bolt delivery" : "Delivery"}
+                    Delivery
                   </strong>
                   {deliveryStatusPill(sale.delivery.status)}
                 </div>
@@ -327,7 +327,7 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
                   </div>
                 ) : (
                   <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>
-                    Waiting for a rider — Bolt usually finds one in &lt; 5 min.
+                    Waiting for a rider — usually assigned within a few minutes.
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 14, fontSize: 12, color: "var(--ink-soft)", flexWrap: "wrap" }}>
@@ -360,7 +360,7 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
                     className="btn btn--subtle btn--sm"
                     style={{ alignSelf: "flex-start" }}
                   >
-                    Open in Bolt →
+                    Open tracking →
                   </a>
                 )}
               </div>

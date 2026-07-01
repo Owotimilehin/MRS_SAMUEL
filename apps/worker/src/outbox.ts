@@ -310,7 +310,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
             `💰 *Online order paid — MANUAL FULFILMENT*\n` +
             `${p["order_number"]} · ₦${p["total_ngn"] ?? "?"}\n` +
             `${reasons.join("\n")}\n` +
-            `Bolt NOT dispatched — arrange delivery yourself, then mark delivered.\n` +
+            `Rider NOT dispatched — arrange delivery yourself, then mark delivered.\n` +
             `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
         };
       }
@@ -350,7 +350,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Customer hasn't paid yet; reservation will sweep if they don't.`,
       };
     case "delivery.request":
-      // Handled inline below — calls Bolt + persists delivery_order.
+      // Handled inline below — dispatches the courier + persists delivery_order.
       return { chatIds: [], text: "" };
     case "delivery.completed":
       return {
@@ -373,7 +373,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
       return {
         chatIds: [channels.branchAjao(), owner],
         text:
-          `⏰ *No Bolt rider found*\n` +
+          `⏰ *No rider found*\n` +
           `${p["order_number"]} — customer is waiting.\n` +
           `Dispatch manually via WhatsApp.\n` +
           `👉 ${ADMIN_URL}/branch/sales/${p["sale_order_id"]}`,

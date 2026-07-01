@@ -190,7 +190,7 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
             </div>
 
             <h3 style={{ fontSize: 14, fontWeight: 700, margin: "18px 0 10px", letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--ink-soft)" }}>
-              Pickup coordinates · used by Bolt
+              Pickup coordinates · used for courier dispatch
             </h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "end" }}>
               <div className="field">

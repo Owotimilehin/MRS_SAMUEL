@@ -6,8 +6,9 @@ import { BusinessError } from "../lib/errors.js";
 import { logger } from "../logger.js";
 
 /**
- * Bolt webhook receiver. Signed-payload verified, idempotent: replaying the
- * same event is a no-op once the row is at or beyond that status.
+ * Shipbubble webhook receiver (signs with `x-ship-signature`, HMAC-SHA512).
+ * Signed-payload verified, idempotent: replaying the same event is a no-op once
+ * the row is at or beyond that status.
  *
  * Status flow on sale_order, driven by delivery_order webhooks:
  *   paid → out_for_delivery (when delivery goes picked_up or in_transit)
@@ -16,11 +17,6 @@ import { logger } from "../logger.js";
  * Failed / cancelled deliveries leave sale_order at `paid` so a human can
  * decide whether to retry, refund, or escalate.
  */
-export function boltWebhookRoutes(db: DbClient) {
-  return deliveryWebhookRoutes(db, "x-bolt-signature");
-}
-
-/** Shipbubble signs with `x-ship-signature` (HMAC-SHA512). */
 export function shipbubbleWebhookRoutes(db: DbClient) {
   return deliveryWebhookRoutes(db, "x-ship-signature");
 }
@@ -44,7 +40,7 @@ export function deliveryWebhookRoutes(db: DbClient, signatureHeader: string) {
     } catch (err) {
       logger.warn(
         { err: err instanceof Error ? err.message : String(err) },
-        "bolt webhook signature failure",
+        "delivery webhook signature failure",
       );
       throw new BusinessError("unauthorized", "invalid signature", 401);
     }

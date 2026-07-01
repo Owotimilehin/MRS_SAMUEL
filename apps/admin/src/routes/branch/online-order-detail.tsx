@@ -28,7 +28,7 @@ interface SaleItem {
 }
 
 interface DeliveryRow {
-  provider: "bolt" | "manual" | "shipbubble";
+  provider: "manual" | "shipbubble";
   status: string;
   externalRef?: string | null;
   riderName: string | null;

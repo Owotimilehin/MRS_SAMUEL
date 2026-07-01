@@ -8,7 +8,7 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 /**
  * Admin delivery endpoints — GET options / POST book / POST cancel.
  *
- * Uses the mock Bolt provider (DELIVERY_PROVIDER unset → BoltMockProvider).
+ * Uses the mock Shipbubble provider (SHIPBUBBLE_PROVIDER unset → ShipbubbleMockProvider).
  * The branch is created with an address so the pickup-branch check passes.
  * The order is placed with a customer who has phone + address so the
  * delivery-address check in load() passes.

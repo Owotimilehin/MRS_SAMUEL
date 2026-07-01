@@ -13,8 +13,9 @@ import { saleOrder } from "./sale-order.js";
 import { branch } from "./branch.js";
 
 /**
- * Third-party delivery provider (today only Bolt; left as enum so adding
- * Glovo / Chowdeck Send / in-house dispatch is a one-line migration).
+ * Third-party delivery provider (today only Shipbubble; `bolt` remains a dormant
+ * enum label from the retired Bolt integration — kept because Postgres cannot
+ * drop an enum value in place, and no rows reference it).
  */
 export const deliveryProvider = pgEnum("delivery_provider", ["bolt", "manual", "shipbubble"]);
 
@@ -40,8 +41,8 @@ export const deliveryOrder = pgTable(
     saleOrderId: uuid("sale_order_id")
       .notNull()
       .references(() => saleOrder.id, { onDelete: "cascade" }),
-    provider: deliveryProvider("provider").notNull().default("bolt"),
-    /** Provider's own id, e.g. "bolt_2026_xyz". Null until the request returns. */
+    provider: deliveryProvider("provider").notNull().default("manual"),
+    /** Provider's own id, e.g. a Shipbubble order id. Null until the request returns. */
     externalRef: text("external_ref"),
     status: deliveryStatus("status").notNull().default("searching_rider"),
     pickupBranchId: uuid("pickup_branch_id")

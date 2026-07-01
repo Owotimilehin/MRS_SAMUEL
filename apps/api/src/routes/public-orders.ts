@@ -75,7 +75,7 @@ const CreateOnlineOrder = z.object({
   delivery_quote_id: z.string().optional(),
   /**
    * ISO-8601 datetime string. When supplied the order is scheduled for later
-   * and Bolt dispatch is bypassed — the owner fulfils manually.
+   * and courier dispatch is bypassed — the owner fulfils manually.
    */
   scheduled_delivery_at: z.string().optional(),
   /**
@@ -87,7 +87,7 @@ const CreateOnlineOrder = z.object({
   delivery_window: z.enum(["morning", "afternoon", "evening"]).optional(),
   /**
    * Nigerian state name for outside-Lagos deliveries. When supplied (and not
-   * "Lagos") the delivery fee is forced to ₦0 and Bolt dispatch is bypassed.
+   * "Lagos") the delivery fee is forced to ₦0 and courier dispatch is bypassed.
    */
   delivery_state: z.string().min(1).optional(),
   /** Cloudflare Turnstile token from the checkout widget (bot protection). */
@@ -177,7 +177,7 @@ export function publicOrderRoutes(db: DbClient) {
       // No pickup address on file — cannot get live options. Delivery ₦0.
       // Coordinates are optional: the active provider (Shipbubble) geocodes the
       // address and uses an env-configured sender, so a branch with only an
-      // address still gets live courier rates. (Older Bolt code required coords;
+      // address still gets live courier rates. (Older code required coords;
       // that gate wrongly suppressed all quotes for coord-less branches.)
       return empty("Live delivery pricing is unavailable — no delivery charge applied.");
     }
@@ -305,7 +305,7 @@ export function publicOrderRoutes(db: DbClient) {
     const outsideLagos = isOutsideLagos(body.delivery_state);
     const scheduled = body.scheduled_delivery_at != null;
     // Delivery is only charged for an immediate, in-Lagos order — the only case
-    // we dispatch a rider now (mirrors the Bolt-dispatch bypass below). Even
+    // we dispatch a rider now (mirrors the courier-dispatch bypass below). Even
     // then it must come from a live, server-locked quote; we never fall back to
     // a manual zone fee. Scheduled / outside-Lagos orders are ₦0.
     let deliveryFeeFinal = 0;
@@ -790,7 +790,7 @@ export function publicOrderRoutes(db: DbClient) {
               rider_vehicle: delivery.riderVehicle,
               tracking_url: delivery.trackingUrl,
               eta_minutes: delivery.etaMinutes,
-              provider: "bolt" as const,
+              provider: "shipbubble" as const,
             }
           : null,
         items,

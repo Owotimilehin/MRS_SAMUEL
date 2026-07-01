@@ -10,13 +10,14 @@ import type {
 } from "./provider.js";
 
 /**
- * Mock Bolt implementation. Returns deterministic quotes and emits webhook
- * events on a schedule so we can exercise the full end-to-end flow without
- * real Bolt credentials.
+ * Mock Shipbubble implementation. Returns deterministic quotes and emits webhook
+ * events on a schedule so we can exercise the full end-to-end delivery flow
+ * without real Shipbubble credentials (dev, CI, and integration tests).
  *
  * The schedule is driven by setTimeout against a configurable webhook URL —
- * normally http://localhost:3001/v1/webhooks/bolt — so the worker can pick
- * up status changes exactly as it would in prod.
+ * normally http://localhost:3001/v1/webhooks/shipbubble — so the worker picks up
+ * status changes exactly as it would in prod. Selected when SHIPBUBBLE_PROVIDER
+ * is not "live" (or the live credentials are missing).
  */
 
 const BASE_FEE_NGN = 600;
@@ -37,12 +38,16 @@ const RIDERS = [
   { name: "Kola Eze", phone: "+2348012345673", vehicle: "Yamaha YBR · LSR-908" },
 ];
 
-export class BoltMockProvider implements DeliveryProvider {
-  readonly name = "bolt" as const;
+export class ShipbubbleMockProvider implements DeliveryProvider {
+  readonly name = "shipbubble" as const;
   private readonly webhookUrl: string;
   private readonly fastMode: boolean;
 
-  constructor(opts: { webhookUrl: string; fastMode?: boolean } = { webhookUrl: "http://127.0.0.1:3001/v1/webhooks/bolt" }) {
+  constructor(
+    opts: { webhookUrl: string; fastMode?: boolean } = {
+      webhookUrl: "http://127.0.0.1:3001/v1/webhooks/shipbubble",
+    },
+  ) {
     this.webhookUrl = opts.webhookUrl;
     this.fastMode = opts.fastMode ?? true;
   }
@@ -97,7 +102,7 @@ export class BoltMockProvider implements DeliveryProvider {
 
   async requestDelivery(input: RequestDeliveryInput): Promise<RequestDeliveryResult> {
     const externalRef = `mock_d_${uuid().slice(0, 12)}`;
-    const trackingUrl = `https://mock-bolt.local/track/${externalRef}`;
+    const trackingUrl = `https://mock-shipbubble.local/track/${externalRef}`;
     const rider = RIDERS[Math.floor(Math.random() * RIDERS.length)]!;
     const schedule: MockSchedule = {
       externalRef,
@@ -202,14 +207,14 @@ export class BoltMockProvider implements DeliveryProvider {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-bolt-signature": "mock",
+          "x-ship-signature": "mock",
         },
         body: JSON.stringify(payload),
       });
     } catch {
       // Mock — if the webhook receiver is down, just log and drop.
       // eslint-disable-next-line no-console
-      console.warn("[bolt-mock] webhook delivery failed", externalRef, body.status);
+      console.warn("[shipbubble-mock] webhook delivery failed", externalRef, body.status);
     }
   }
 }

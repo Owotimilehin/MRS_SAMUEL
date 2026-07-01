@@ -79,7 +79,7 @@ async function loop(): Promise<void> {
         lastReminderAt = now;
       }
 
-      // Delivery watchdog: retry or escalate stuck Bolt deliveries every min.
+      // Delivery watchdog: retry or escalate stuck deliveries every min.
       if (now - lastDeliveryWatchdogAt > DELIVERY_WATCHDOG_MS) {
         const actions = await runJob(logger, "delivery_watchdog", () => runDeliveryWatchdog(db));
         if ((actions ?? 0) > 0) logger.info({ actions }, "delivery watchdog took action");

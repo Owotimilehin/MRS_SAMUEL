@@ -40,7 +40,7 @@ function mkOrder(partial: Partial<ApiOrderTracking> & { order_number: string }):
       rider_vehicle: null,
       tracking_url: null,
       eta_minutes: null,
-      provider: "bolt",
+      provider: "shipbubble",
     },
   };
 }

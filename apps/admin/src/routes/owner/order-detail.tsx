@@ -57,7 +57,7 @@ interface Sale {
   customerAddress?: string | null;
   items: SaleItem[];
   delivery?: {
-    provider: "bolt" | "manual" | "shipbubble";
+    provider: "manual" | "shipbubble";
     status: string;
     externalRef?: string | null;
     riderName: string | null;

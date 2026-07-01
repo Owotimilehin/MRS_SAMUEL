@@ -78,7 +78,7 @@ describe("sale.paid_online message formatting", () => {
     total_ngn: 9000,
   };
 
-  it("scheduled order names the time and says Bolt is NOT dispatched", async () => {
+  it("scheduled order names the time and says the rider is NOT dispatched", async () => {
     const { format } = await import("../src/outbox.js");
     const { text } = format({
       eventType: "sale.paid_online",
@@ -89,7 +89,7 @@ describe("sale.paid_online message formatting", () => {
     expect(text).not.toContain("dispatch queued");
   });
 
-  it("outside-Lagos order names the state and says Bolt is NOT dispatched", async () => {
+  it("outside-Lagos order names the state and says the rider is NOT dispatched", async () => {
     const { format } = await import("../src/outbox.js");
     const { text } = format({
       eventType: "sale.paid_online",

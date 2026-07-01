@@ -13,7 +13,7 @@ export const branch = pgTable("branch", {
   address: text("address"),
   phone: text("phone"),
   /** Branch coordinates used for pickup when requesting delivery from
-   *  third-party providers (Bolt, etc). Optional — if null, the provider
+   *  third-party providers (Shipbubble, etc). Optional — if null, the provider
    *  geocodes the address text instead (lower accuracy). */
   lat: numeric("lat", { precision: 10, scale: 6 }),
   lng: numeric("lng", { precision: 10, scale: 6 }),

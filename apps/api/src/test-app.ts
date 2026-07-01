@@ -41,7 +41,7 @@ import { marketingRoutes } from "./routes/marketing.js";
 import { publicBlogRoutes } from "./routes/public-blog.js";
 import { publicContactRoutes } from "./routes/public-contact.js";
 import { publicSubscriptionRoutes } from "./routes/public-subscriptions.js";
-import { boltWebhookRoutes, shipbubbleWebhookRoutes } from "./routes/webhooks-bolt.js";
+import { shipbubbleWebhookRoutes } from "./routes/webhooks-shipbubble.js";
 import { deliveryReconcileRoutes } from "./routes/delivery-reconcile.js";
 import { deliveryAdminRoutes } from "./routes/delivery-admin.js";
 import { paymentsAdminRoutes } from "./routes/payments-admin.js";
@@ -129,7 +129,6 @@ export function buildApp(): Hono {
   app.route("/v1/public/subscriptions", publicSubscriptionRoutes(db));
   app.route("/v1/public/telemetry", telemetryRoutes(db));
   app.route("/v1/webhooks/payaza", payazaWebhookRoutes(db));
-  app.route("/v1/webhooks/bolt", boltWebhookRoutes(db));
   app.route("/v1/webhooks/shipbubble", shipbubbleWebhookRoutes(db));
   app.route("/v1/webhooks/delivery-reconcile", deliveryReconcileRoutes(db));
 

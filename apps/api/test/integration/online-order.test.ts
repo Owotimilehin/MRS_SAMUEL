@@ -896,7 +896,7 @@ describe("Phase 3 customer-site online order flow", () => {
     const { deliveryOrder } = await import("@ms/db");
     await db.insert(deliveryOrder).values({
       saleOrderId,
-      provider: "bolt",
+      provider: "shipbubble",
       status: "in_transit",
       pickupBranchId: branchId,
       pickupAddress: "1 Mrs Samuel Kitchen, Lagos",
@@ -905,7 +905,7 @@ describe("Phase 3 customer-site online order flow", () => {
       riderName: "Emeka Obi",
       riderPhone: "+2348033001234",
       riderVehicle: "Motorcycle",
-      trackingUrl: "https://bolt.eu/track/test-123",
+      trackingUrl: "https://shipbubble.test/track/test-123",
     });
 
     const track = await fetch(
@@ -926,6 +926,6 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(trackBody.data.delivery).not.toBeNull();
     expect(trackBody.data.delivery!.status).toBe("in_transit");
     expect(trackBody.data.delivery!.rider_name).toBe("Emeka Obi");
-    expect(trackBody.data.delivery!.tracking_url).toBe("https://bolt.eu/track/test-123");
+    expect(trackBody.data.delivery!.tracking_url).toBe("https://shipbubble.test/track/test-123");
   });
 });

@@ -69,7 +69,7 @@ export const saleOrder = pgTable("sale_order", {
   outForDeliveryAt: timestamp("out_for_delivery_at", { withTimezone: true }),
   // When set, the customer asked for a future delivery time.
   scheduledDeliveryAt: timestamp("scheduled_delivery_at", { withTimezone: true }),
-  // Destination state. NULL or "Lagos" = in-area (Bolt dispatch). Any other
+  // Destination state. NULL or "Lagos" = in-area (courier dispatch). Any other
   // value = outside Lagos: automated dispatch is bypassed and delivery is ₦0.
   deliveryState: text("delivery_state"),
   deliveryProviderRef: text("delivery_provider_ref"),

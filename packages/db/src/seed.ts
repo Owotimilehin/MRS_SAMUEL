@@ -442,7 +442,7 @@ A bottle of cold-pressed juice has roughly 48 hours of useful life from the mome
 - **5:30am** — fruit arrives from Mile 12 market
 - **6:30am** — first press starts
 - **8:00am** — orders for the day open
-- **9:00am–7:00pm** — Bolt riders pick up in 15-minute windows
+- **9:00am–7:00pm** — riders pick up in 15-minute windows
 
 The bottle that lands at your door at 2pm was pressed before sunrise the same day. That's the whole reason we limit delivery to Lagos for now.
 
@@ -454,7 +454,7 @@ The bottle that lands at your door at 2pm was pressed before sunrise the same da
 
 ## What this costs you
 
-Delivery is between ₦1,500 and ₦3,500 depending on zone. We're not making money on that line — it covers Bolt + the rider's time. We'd rather charge the real cost than fake "free delivery" and bake it into the bottle price.
+Delivery is between ₦1,500 and ₦3,500 depending on zone. We're not making money on that line — it covers the courier + the rider's time. We'd rather charge the real cost than fake "free delivery" and bake it into the bottle price.
 
 ## What's next
 

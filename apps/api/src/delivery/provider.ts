@@ -1,6 +1,6 @@
 /**
  * Provider-agnostic interface for on-demand last-mile delivery. Today only
- * Bolt is wired (mock + live). To add Glovo / Chowdeck Send / in-house
+ * Shipbubble is wired (mock + live). To add Glovo / Chowdeck Send / in-house
  * dispatch, implement this interface and update env-keyed selection in
  * `./index.ts`.
  */
@@ -115,7 +115,7 @@ export interface NormalizedWebhook {
 }
 
 export interface DeliveryProvider {
-  readonly name: "bolt" | "manual" | "shipbubble";
+  readonly name: "manual" | "shipbubble";
   quote(input: DeliveryQuoteInput): Promise<DeliveryQuote>;
   /** Return every courier option for the route so the customer can choose. */
   quoteOptions(input: DeliveryQuoteInput): Promise<DeliveryQuoteOptions>;

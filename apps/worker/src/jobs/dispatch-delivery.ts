@@ -29,7 +29,7 @@ interface DeliveryRequestInput {
   receiverAddressCode?: number;
 }
 interface DeliveryProviderShape {
-  readonly name: "bolt" | "manual" | "shipbubble";
+  readonly name: "manual" | "shipbubble";
   requestDelivery(input: DeliveryRequestInput): Promise<{
     externalRef: string;
     trackingUrl: string | null;
