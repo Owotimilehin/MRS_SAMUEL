@@ -115,6 +115,29 @@ function normalizeDropoff(addr: string, state?: string): string {
   return new RegExp(st, "i").test(a) ? `${a}, Nigeria` : `${a}, ${st}, Nigeria`;
 }
 
+const LAGOS_OFFSET_MS = 3_600_000; // UTC+1, no DST
+
+/** Lagos (UTC+1) calendar date (YYYY-MM-DD) for an epoch-ms instant. */
+function lagosDateStr(ms: number): string {
+  const l = new Date(ms + LAGOS_OFFSET_MS);
+  return [
+    l.getUTCFullYear(),
+    String(l.getUTCMonth() + 1).padStart(2, "0"),
+    String(l.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+/** Lagos calendar date three months from `ms` — the furthest a customer may schedule. */
+function maxScheduleDateStr(ms: number): string {
+  const l = new Date(ms + LAGOS_OFFSET_MS);
+  const capped = new Date(Date.UTC(l.getUTCFullYear(), l.getUTCMonth() + 3, l.getUTCDate()));
+  return [
+    capped.getUTCFullYear(),
+    String(capped.getUTCMonth() + 1).padStart(2, "0"),
+    String(capped.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 const TrackQuery = z.object({
   phone: z.string().min(7),
 });
@@ -261,6 +284,15 @@ export function publicOrderRoutes(db: DbClient) {
         throw new BusinessError(
           "validation_failed",
           "scheduled_delivery_at must be in the future",
+          422,
+        );
+      }
+      // Cap how far ahead a customer may schedule (safety net; the checkout UI
+      // caps its date picker at the same 3-month horizon).
+      if (lagosDateStr(scheduledMs) > maxScheduleDateStr(Date.now())) {
+        throw new BusinessError(
+          "validation_failed",
+          "scheduled_delivery_at is too far in the future",
           422,
         );
       }
@@ -433,23 +465,46 @@ export function publicOrderRoutes(db: DbClient) {
       }
 
       // Compute server-authoritative delivery schedule from line kinds.
+      // `schedResult.date` is the earliest FEASIBLE (floor) date — a preorder
+      // cannot be delivered sooner than this.
       const lineKinds = lines.map((l) => ({ sizeMl: l.sizeMl, inStock: l.inStock }));
       const scheduleNow = new Date();
       const schedResult = orderSchedule(scheduleNow, lineKinds);
-      // Honor the customer's preferred window ONLY when it is valid for the
-      // computed schedule: it must equal fixedWindow (for fixed schedules) or
-      // be present in selectableWindows (for selectable schedules). Any other
-      // value — including undefined — falls back to the server default.
+
+      // Honour a customer-chosen delivery date. When they scheduled a day later
+      // than the floor, deliver on that day (clamped to >= floor, already capped
+      // to <= 3 months above) and allow any of the three windows for it. When no
+      // date is sent, or it falls on/before the floor, we keep the floor date.
+      let effectiveDate = schedResult.date;
+      let scheduledLaterDay = false;
+      if (body.scheduled_delivery_at != null) {
+        const requestedDate = lagosDateStr(Date.parse(body.scheduled_delivery_at));
+        if (requestedDate > schedResult.date) {
+          effectiveDate = requestedDate;
+          scheduledLaterDay = true;
+        }
+      }
+
+      // Choose the delivery window. On an explicitly-scheduled later day any of
+      // the three windows is valid. Otherwise the window must fit the computed
+      // schedule: it must equal fixedWindow (fixed schedules) or be present in
+      // selectableWindows. Any other value — including undefined — falls back to
+      // the server default.
       const requested = body.delivery_window;
-      const isValidWindow =
-        requested != null &&
-        (schedResult.fixedWindow
-          ? requested === schedResult.fixedWindow
-          : schedResult.selectableWindows.includes(requested));
-      const chosenWindow: DeliveryWindow = isValidWindow
-        ? requested!
-        : (schedResult.fixedWindow ?? schedResult.selectableWindows[0] ?? "morning");
-      const scheduledDeliveryAt = new Date(scheduledIso(schedResult.date, chosenWindow));
+      let chosenWindow: DeliveryWindow;
+      if (scheduledLaterDay) {
+        chosenWindow = requested ?? "morning";
+      } else {
+        const isValidWindow =
+          requested != null &&
+          (schedResult.fixedWindow
+            ? requested === schedResult.fixedWindow
+            : schedResult.selectableWindows.includes(requested));
+        chosenWindow = isValidWindow
+          ? requested!
+          : (schedResult.fixedWindow ?? schedResult.selectableWindows[0] ?? "morning");
+      }
+      const scheduledDeliveryAt = new Date(scheduledIso(effectiveDate, chosenWindow));
 
       const total = subtotal + deliveryFeeFinal;
       const orderNumber = await nextOrderNumber(tx);
