@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import {
   ShipbubbleClient,
   etaMinutesUntil,
+  mapShipbubbleStatus,
   parseShipbubbleWebhook,
   type ShipbubbleAddress,
 } from "@ms/domain";
@@ -152,6 +153,19 @@ export class ShipbubbleLiveProvider implements DeliveryProvider {
 
   async cancelDelivery(externalRef: string): Promise<void> {
     await this.client.cancelLabel(externalRef);
+  }
+
+  async getStatus(externalRef: string): Promise<NormalizedWebhook | null> {
+    const snap = await this.client.getShipmentStatus(externalRef);
+    if (!snap) return null;
+    const status = mapShipbubbleStatus(snap.status);
+    if (!status) return null;
+    return {
+      externalRef,
+      status,
+      ...(snap.rider ? { rider: snap.rider } : {}),
+      raw: snap.raw,
+    };
   }
 
   parseWebhook(rawBody: string, signature: string | null): NormalizedWebhook | null {

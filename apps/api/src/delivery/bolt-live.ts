@@ -98,6 +98,12 @@ export class BoltLiveProvider implements DeliveryProvider {
     await this.call("POST", `/v2/orders/${encodeURIComponent(externalRef)}/cancel`, {});
   }
 
+  async getStatus(_externalRef: string): Promise<NormalizedWebhook | null> {
+    // Bolt live polling is not implemented — prod runs Shipbubble/mock. Return
+    // null so the reconciler skips Bolt-backed rows rather than guessing.
+    return null;
+  }
+
   parseWebhook(rawBody: string, signature: string | null): NormalizedWebhook | null {
     if (!signature) throw new Error("missing signature");
     const expected = crypto

@@ -121,6 +121,12 @@ export class BoltMockProvider implements DeliveryProvider {
     });
   }
 
+  async getStatus(externalRef: string): Promise<NormalizedWebhook | null> {
+    // The mock does not persist a timeline; report a terminal 'delivered'
+    // snapshot so a reconcile poll can simulate a dropped final webhook.
+    return { externalRef, status: "delivered", raw: { external_ref: externalRef, status: "delivered" } };
+  }
+
   parseWebhook(rawBody: string, _signature: string | null): NormalizedWebhook | null {
     // Mock doesn't sign — accept anything in the format we send.
     try {

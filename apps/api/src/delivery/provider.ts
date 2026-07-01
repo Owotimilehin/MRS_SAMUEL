@@ -127,4 +127,11 @@ export interface DeliveryProvider {
    * be silently ignored (e.g. heartbeat events).
    */
   parseWebhook(rawBody: string, signature: string | null): NormalizedWebhook | null;
+  /**
+   * Poll the provider for the current status of a dispatched delivery, used by
+   * the worker to reconcile when a webhook never arrived. Returns a
+   * NormalizedWebhook-shaped snapshot, or null when the provider cannot report
+   * status (manual) or the ref is unknown.
+   */
+  getStatus(externalRef: string): Promise<NormalizedWebhook | null>;
 }

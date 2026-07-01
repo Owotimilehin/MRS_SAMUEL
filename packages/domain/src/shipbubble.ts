@@ -307,6 +307,32 @@ export class ShipbubbleClient {
     return { label, chosen };
   }
 
+  /** Poll a shipment's current status for reconcile-on-silent-webhook.
+   *  Returns null if the order is unknown or the request fails.
+   *  // VERIFY path against live Shipbubble docs before enabling live polling */
+  async getShipmentStatus(orderId: string): Promise<{ status: string; rider?: { name?: string; phone?: string }; raw: unknown } | null> {
+    try {
+      const data = await this.call<{ status?: string; courier?: { rider_name?: string; rider_phone?: string } }>(
+        "GET",
+        `/shipping/status/${encodeURIComponent(orderId)}`,
+        {},
+      );
+      if (!data?.status) return null;
+      const riderName = data.courier?.rider_name;
+      const riderPhone = data.courier?.rider_phone;
+      const rider: { name?: string; phone?: string } | undefined =
+        riderName || riderPhone
+          ? {
+              ...(riderName ? { name: riderName } : {}),
+              ...(riderPhone ? { phone: riderPhone } : {}),
+            }
+          : undefined;
+      return { status: data.status, ...(rider ? { rider } : {}), raw: data };
+    } catch {
+      return null; // treat any fetch/parse error as "no update available"
+    }
+  }
+
   // ───────── private ─────────
 
   private async call<T = Record<string, unknown>>(
