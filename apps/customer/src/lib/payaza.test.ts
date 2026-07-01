@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { interpretPayazaResponse, payazaNames } from "./payaza";
+import { interpretPayazaResponse, payazaNames, isPayazaPopupVisible } from "./payaza";
+
+describe("isPayazaPopupVisible", () => {
+  it("returns false during SSR / when there is no document", () => {
+    // The watchdog polls this; it must be safe to call with no DOM (node/SSR).
+    expect(isPayazaPopupVisible()).toBe(false);
+  });
+});
 
 describe("interpretPayazaResponse", () => {
   it("treats an explicit success as paid", () => {

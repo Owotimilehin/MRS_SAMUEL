@@ -16,6 +16,10 @@ interface PayazaInstance {
   setCallback(cb: (res: unknown) => void): void;
   setOnClose(cb: () => void): void;
   showPopup(): void;
+  // Internal SDK teardown helpers — used best-effort by the watchdog to clear
+  // Payaza's own full-screen loader/iframe if the portal never finishes opening.
+  removeLoader?(): void;
+  removePopup?(): void;
 }
 interface PayazaGlobal {
   setup(opts: Record<string, unknown>): PayazaInstance;
@@ -95,6 +99,37 @@ function loadSdk(): Promise<PayazaGlobal> {
   return loadPromise;
 }
 
+/** How long to wait for the Payaza portal to actually become visible before we
+ *  treat it as a failed-to-open and stop the customer hanging on a dead spinner.
+ *  Generous so a slow network still gets the popup; the poll resolves the instant
+ *  the portal appears, so a real (even slow) open is never interrupted. */
+const POPUP_OPEN_TIMEOUT_MS = 20_000;
+
+/**
+ * True once Payaza's checkout iframe is on the page AND visible. The SDK appends
+ * the iframe at opacity 0 and only flips it to opacity 1 once its contents have
+ * loaded (`showHiddenIframe`), so opacity === "1" is our signal that the portal
+ * actually opened rather than hanging on the loader overlay.
+ */
+export function isPayazaPopupVisible(): boolean {
+  if (typeof document === "undefined") return false;
+  const frame = document.querySelector<HTMLElement>(
+    'iframe[src^="https://checkout-v2.payaza.africa"]',
+  );
+  return !!frame && frame.style.opacity === "1";
+}
+
+/** Resolve `true` as soon as the portal is visible, or `false` if it never
+ *  becomes visible within `timeoutMs`. */
+async function waitForPopupOpen(timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (isPayazaPopupVisible()) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return isPayazaPopupVisible();
+}
+
 /**
  * Open the Payaza checkout popup for an order. Resolves once the popup is shown
  * (the actual payment outcome is confirmed server-side via webhook). `onPaid`
@@ -115,13 +150,30 @@ export async function launchPayazaCheckout(
     return;
   }
 
+  // A press is "settled" once the SDK reports a terminal outcome (paid/closed/
+  // error) OR the watchdog fires. Guards against double-firing and stops the
+  // watchdog from interrupting a payment that actually opened.
+  let settled = false;
+  const settle = (): boolean => {
+    if (settled) return false;
+    settled = true;
+    return true;
+  };
+
   // Route the SDK callback by response type: pay only on success, surface
   // errors, ignore in-flight messages. Wired to BOTH the setup callback and
   // setCallback because the SDK reads whichever is set last.
   const handle = (res: unknown) => {
     const { paid, errorMessage } = interpretPayazaResponse(res);
-    if (paid) handlers.onPaid();
-    else if (errorMessage) handlers.onError?.(errorMessage);
+    if (paid) {
+      if (settle()) handlers.onPaid();
+    } else if (errorMessage) {
+      if (settle()) handlers.onError?.(errorMessage);
+    }
+    // non-terminal (copy/info/action): leave unsettled.
+  };
+  const onClose = () => {
+    if (settle()) handlers.onClose?.();
   };
 
   const { firstName, lastName } = payazaNames(config);
@@ -135,10 +187,28 @@ export async function launchPayazaCheckout(
     last_name: lastName,
     phone_number: config.phone ?? "",
     transaction_reference: config.reference,
-    onClose: () => handlers.onClose?.(),
+    onClose,
     callback: handle,
   });
   instance.setCallback(handle);
-  instance.setOnClose(() => handlers.onClose?.());
+  instance.setOnClose(onClose);
   instance.showPopup();
+
+  // Watchdog: if the portal never actually becomes visible (Payaza's iframe
+  // loads its overlay but the checkout never renders and no callback fires),
+  // the customer would otherwise hang forever on a dead spinner. Detect the
+  // no-open, tear down Payaza's leftover overlay, and surface a retryable error.
+  void waitForPopupOpen(POPUP_OPEN_TIMEOUT_MS).then((opened) => {
+    if (opened || settled) return; // opened fine, or already resolved — nothing to do.
+    if (!settle()) return;
+    try {
+      instance.removeLoader?.();
+      instance.removePopup?.();
+    } catch {
+      /* best-effort teardown of the SDK's own overlay */
+    }
+    handlers.onError?.(
+      "The payment window didn't open. Please check your connection and try again.",
+    );
+  });
 }
