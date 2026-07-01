@@ -931,7 +931,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
 
             {/* Danger zone — cancel/refund, pre-dispatch only */}
             {actions && actions.danger.some((b) => actionAllowed(b.id)) && (
-              <section className="card" style={{ borderColor: "var(--danger)" }}>
+              <section className="card" style={{ border: "1.5px solid var(--danger)" }}>
                 <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "var(--danger)" }}>
                   Danger zone
                 </h3>
