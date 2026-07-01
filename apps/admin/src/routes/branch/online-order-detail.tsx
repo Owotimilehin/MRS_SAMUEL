@@ -183,7 +183,7 @@ export function BranchOnlineOrderDetailPage({
     }
   }
   function actionAllowed(id: OrderActionId): boolean {
-    if (id === "accept_paid" || id === "mark_refunded" || id === "cancel_refund") return false;
+    if (id === "accept_paid" || id === "mark_refunded" || id === "cancel_refund" || id === "recheck_payment") return false;
     return can("pos.sell");
   }
 
