@@ -19,7 +19,12 @@ export function onlineOrdersQueueRoutes(db: DbClient) {
   r.use("*", requireAuth(), requireCapability("sales.view"));
 
   const ACTIVE_CHANNELS = ["online", "phone"] as const;
+  // Counted for the nav badge / new-order chime — only orders actually ready to
+  // fulfil. Unpaid orders must never trip a "new order!" alert.
   const ACTIVE_STATUSES = ["paid", "out_for_delivery"] as const;
+  // Shown in the till's Online list — widened so staff SEE (not fulfil) orders
+  // still awaiting payment and can follow up. Fulfilment stays gated on 'paid'.
+  const LIST_STATUSES = ["confirmed", "reconcile_needed", "paid", "out_for_delivery"] as const;
 
   /**
    * GET /active
@@ -31,10 +36,10 @@ export function onlineOrdersQueueRoutes(db: DbClient) {
     const auth = c.get("auth");
     const branchScoped = auth.role === "branch_staff" ? auth.branchId : null;
 
-    // Base filter: active channel + active status
+    // Base filter: active channel + LIST statuses (includes awaiting-payment).
     const baseWhere = and(
       inArray(saleOrder.channel, [...ACTIVE_CHANNELS]),
-      inArray(saleOrder.status, [...ACTIVE_STATUSES]),
+      inArray(saleOrder.status, [...LIST_STATUSES]),
       branchScoped ? eq(saleOrder.branchId, branchScoped) : undefined,
     );
 

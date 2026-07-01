@@ -208,7 +208,7 @@ export async function authOwner(
 export async function seedOnlineOrder(
   db: ReturnType<typeof createDbClient>,
   opts: {
-    status: "confirmed" | "paid" | "handed_over" | "out_for_delivery" | "delivered" | "cancelled" | "failed";
+    status: "confirmed" | "reconcile_needed" | "paid" | "handed_over" | "out_for_delivery" | "delivered" | "cancelled" | "failed";
     deliveryState?: string;
     deliveryFeeNgn?: number;
     branchId?: string;
