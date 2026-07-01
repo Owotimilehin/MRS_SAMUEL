@@ -6,7 +6,7 @@ import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
 import { OrderJourney } from "../../components/OrderJourney.js";
 import { deriveOrderJourney } from "../../lib/order-journey.js";
-import { nextFulfilAction } from "../../lib/order-fulfil-action.js";
+import { deriveOrderActions, type OrderActionId } from "../../lib/order-actions.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -15,6 +15,8 @@ import { useAuthUser, useCan } from "../../lib/auth.js";
 import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
 import { getReceiptStyle } from "../../lib/receipt-settings.js";
 import { fetchBranchInfo, printAndToast } from "../../lib/reprint.js";
+
+const STALE_DELIVERY_HOURS = 2;
 
 interface SaleItem {
   id: string;
@@ -61,6 +63,10 @@ interface Sale {
     trackingUrl: string | null;
     quotedFeeNgn?: number | null;
     actualFeeNgn?: number | null;
+    assignedAt?: string | null;
+    pickedUpAt?: string | null;
+    failedAt?: string | null;
+    failReason?: string | null;
   } | null;
 }
 
@@ -133,6 +139,26 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
     } finally {
       setAdvanceBusy(false);
     }
+  }
+
+  function runAction(id: OrderActionId): void {
+    switch (id) {
+      case "recheck_payment": void recheckPayment(); break;
+      case "accept_paid": setShowAcceptModal(true); break;
+      case "produce": void produce(); break;
+      case "advance": void advance(); break;
+      case "force_delivered": void advance(); break;
+      case "book_rider": bookRide(); break;
+      case "rebook_rider": bookRide(); break;
+      case "mark_refunded": setShowMarkRefundedModal(true); break;
+      case "cancel_refund": setCancelReason(""); setShowCancelModal(true); break;
+    }
+  }
+
+  /** Which capability gates each action. */
+  function actionAllowed(id: OrderActionId): boolean {
+    if (id === "accept_paid" || id === "mark_refunded") return can("orders.accept_payment");
+    return can("orders.manage");
   }
 
   async function produce(): Promise<void> {
@@ -380,6 +406,14 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   }, [saleId]);
 
   const journey = data ? deriveOrderJourney(data) : null;
+  const actions = data ? deriveOrderActions(data) : null;
+  const lastRiderUpdate = data?.delivery
+    ? [data.delivery.pickedUpAt, data.delivery.assignedAt].find(Boolean) ?? null
+    : null;
+  const deliveryStalled =
+    data?.status === "out_for_delivery" &&
+    !!lastRiderUpdate &&
+    Date.now() - new Date(lastRiderUpdate).getTime() > STALE_DELIVERY_HOURS * 3600_000;
 
   return (
     <Shell
@@ -587,59 +621,48 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                 )}
 
                 {/* Fulfilment actions + rider panel */}
-                {(() => {
-                  const liveDeliveryStatuses = new Set(["searching_rider", "assigned", "picked_up", "in_transit"]);
-                  const deliveryIsLive = !!(data.delivery && liveDeliveryStatuses.has(data.delivery.status));
-                  const showAdvanceButtons = can("orders.manage") && !deliveryIsLive;
+                <div style={{ marginTop: 14 }}>
+                  {deliveryStalled && (
+                    <p style={{ fontSize: 13, color: "var(--warning)", marginBottom: 10 }}>
+                      ⚠ Delivery may be stalled — no rider update in over {STALE_DELIVERY_HOURS}h. Track, re-book, or force delivered.
+                    </p>
+                  )}
 
-                  return (
-                    <div style={{ marginTop: 14 }}>
-                      {deliveryIsLive && (
-                        <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 10 }}>
-                          Rider is active — status updates via webhook.
-                        </p>
-                      )}
+                  {actions?.primary && actionAllowed(actions.primary.id) && (
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--sm"
+                      disabled={advanceBusy || recheckBusy}
+                      onClick={() => runAction(actions.primary!.id)}
+                      style={{ width: "100%", justifyContent: "center" }}
+                    >
+                      {advanceBusy || recheckBusy ? "Saving…" : actions.primary.label}
+                    </button>
+                  )}
 
-                      {showAdvanceButtons && (() => {
-                        const action = nextFulfilAction(data);
-                        if (action.kind === "none") return null;
-                        const onClick = action.kind === "produce" ? produce : advance;
-                        return (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            <button
-                              type="button"
-                              className="btn btn--primary btn--sm"
-                              disabled={advanceBusy}
-                              onClick={() => void onClick()}
-                            >
-                              {advanceBusy ? "Saving…" : action.label}
-                            </button>
-                          </div>
-                        );
-                      })()}
+                  {/* Secondary fulfilment/override actions (produce/advance/force). Payment
+                      + refund secondaries render inside the Payment card instead. */}
+                  {actions?.secondary
+                    .filter((b) => (b.id === "advance" || b.id === "force_delivered") && actionAllowed(b.id))
+                    .map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        className="btn btn--subtle btn--sm"
+                        disabled={advanceBusy}
+                        onClick={() => runAction(b.id)}
+                        style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 8 }}
+                      >
+                        {advanceBusy ? "Saving…" : b.label}
+                      </button>
+                    ))}
 
-                      {/* Force-delivered fallback when webhook is live */}
-                      {deliveryIsLive && can("orders.manage") && (
-                        <button
-                          type="button"
-                          className="btn btn--subtle btn--sm"
-                          disabled={advanceBusy}
-                          onClick={() => void advance()}
-                          style={{ fontSize: 12, color: "var(--ink-soft)" }}
-                        >
-                          {advanceBusy ? "Saving…" : "Force delivered (fallback)"}
-                        </button>
-                      )}
+                  {deliveryError && !editingAddress && (
+                    <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{deliveryError}</p>
+                  )}
 
-                      {deliveryError && !editingAddress && (
-                        <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{deliveryError}</p>
-                      )}
-
-                      {/* Rider journey panel */}
-                      <DeliveryStatusPanel delivery={data.delivery ?? null} onRebook={bookRide} />
-                    </div>
-                  );
-                })()}
+                  <DeliveryStatusPanel delivery={data.delivery ?? null} onRebook={bookRide} />
+                </div>
               </section>
             )}
 
@@ -698,49 +721,35 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                     </div>
                   )}
 
-                  {/* Action buttons */}
+                  {/* Action buttons — only when payment is unsettled or a refund is owed.
+                      A settled (paid+) order shows no recheck/accept. */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {can("orders.manage") && (
-                      <button
-                        type="button"
-                        className="btn btn--subtle btn--sm"
-                        disabled={recheckBusy}
-                        onClick={() => void recheckPayment()}
-                        style={{ justifyContent: "center" }}
-                      >
-                        {recheckBusy ? "Checking…" : "↻ Re-check payment"}
-                      </button>
-                    )}
-                    {can("orders.accept_payment") && (
-                      <button
-                        type="button"
-                        className="btn btn--primary btn--sm"
-                        onClick={() => setShowAcceptModal(true)}
-                        style={{ justifyContent: "center" }}
-                      >
-                        ✓ Accept as paid
-                      </button>
-                    )}
-                    {can("orders.manage") && (
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        onClick={() => { setCancelReason(""); setShowCancelModal(true); }}
-                        style={{ justifyContent: "center", color: "var(--danger)" }}
-                      >
-                        ✕ Cancel &amp; mark refund owed
-                      </button>
-                    )}
-                    {can("orders.accept_payment") && data.refundOwedNgn != null && data.refundOwedNgn > 0 && (
-                      <button
-                        type="button"
-                        className="btn btn--subtle btn--sm"
-                        onClick={() => setShowMarkRefundedModal(true)}
-                        style={{ justifyContent: "center" }}
-                      >
-                        ✓ Mark refunded
-                      </button>
-                    )}
+                    {actions?.secondary
+                      .filter((b) => b.id === "accept_paid" && actionAllowed(b.id))
+                      .map((b) => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          className="btn btn--subtle btn--sm"
+                          onClick={() => runAction(b.id)}
+                          style={{ justifyContent: "center" }}
+                        >
+                          ✓ {b.label}
+                        </button>
+                      ))}
+                    {actions?.secondary
+                      .filter((b) => b.id === "mark_refunded" && actionAllowed(b.id))
+                      .map((b) => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          className="btn btn--subtle btn--sm"
+                          onClick={() => runAction(b.id)}
+                          style={{ justifyContent: "center" }}
+                        >
+                          ✓ {b.label}
+                        </button>
+                      ))}
                   </div>
                 </div>
               )}
@@ -875,11 +884,6 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                     {data.delivery.riderName && <div style={{ marginTop: 4 }}>Rider: {data.delivery.riderName}</div>}
                     {data.delivery.riderPhone && <div>Rider phone: {data.delivery.riderPhone}</div>}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                      {data.customerPhone && (
-                        <a className="btn btn--primary btn--sm" href={waLink(data.customerPhone)} target="_blank" rel="noopener noreferrer">
-                          WhatsApp customer
-                        </a>
-                      )}
                       {data.delivery.trackingUrl && (
                         <a className="btn btn--subtle btn--sm" href={data.delivery.trackingUrl} target="_blank" rel="noopener noreferrer">
                           Track →
@@ -922,6 +926,28 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                     {loadingOptions ? "Getting options…" : "Get delivery options"}
                   </button>
                 ))}
+              </section>
+            )}
+
+            {/* Danger zone — cancel/refund, pre-dispatch only */}
+            {actions && actions.danger.some((b) => actionAllowed(b.id)) && (
+              <section className="card" style={{ borderColor: "var(--danger)" }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "var(--danger)" }}>
+                  Danger zone
+                </h3>
+                {actions.danger
+                  .filter((b) => actionAllowed(b.id))
+                  .map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => runAction(b.id)}
+                      style={{ justifyContent: "center", color: "var(--danger)", width: "100%" }}
+                    >
+                      ✕ {b.label}
+                    </button>
+                  ))}
               </section>
             )}
           </aside>
