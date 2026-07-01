@@ -128,12 +128,16 @@ export async function runDeliveryWatchdog(db: DbClient): Promise<number> {
   if (toReconcile.length > 0) {
     const base = process.env["INTERNAL_API_URL"] || "http://api:3001";
     const reconcileUrl = `${base}/v1/webhooks/delivery-reconcile`;
+    const token = process.env["INTERNAL_RECONCILE_TOKEN"];
     for (const d of toReconcile) {
       if (!d.externalRef) continue;
       try {
         const res = await fetch(reconcileUrl, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            ...(token ? { "x-internal-token": token } : {}),
+          },
           body: JSON.stringify({ external_ref: d.externalRef }),
         });
         if (!res.ok) {

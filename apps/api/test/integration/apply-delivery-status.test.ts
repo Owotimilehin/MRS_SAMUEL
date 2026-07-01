@@ -93,4 +93,44 @@ describe("applyDeliveryStatus + reconcile endpoint (mock provider)", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("reconcile endpoint rejects with 401 when INTERNAL_RECONCILE_TOKEN is set and header is missing/wrong, accepts with the matching token", async () => {
+    const prev = process.env["INTERNAL_RECONCILE_TOKEN"];
+    process.env["INTERNAL_RECONCILE_TOKEN"] = "s3cret-token";
+    try {
+      const ref = "ext_auth_1";
+      const { saleId } = await seedDelivery("in_transit", ref);
+
+      // No token header → 401 (and no state change).
+      const noTok = await app.request("/v1/webhooks/delivery-reconcile", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ external_ref: ref }),
+      });
+      expect(noTok.status).toBe(401);
+      const [before] = await db.select().from(saleOrder).where(eq(saleOrder.id, saleId));
+      expect(before!.status).toBe("paid");
+
+      // Wrong token → 401.
+      const badTok = await app.request("/v1/webhooks/delivery-reconcile", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-internal-token": "nope" },
+        body: JSON.stringify({ external_ref: ref }),
+      });
+      expect(badTok.status).toBe(401);
+
+      // Correct token → 200 and the ride reconciles.
+      const okRes = await app.request("/v1/webhooks/delivery-reconcile", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-internal-token": "s3cret-token" },
+        body: JSON.stringify({ external_ref: ref }),
+      });
+      expect(okRes.status).toBe(200);
+      const [after] = await db.select().from(saleOrder).where(eq(saleOrder.id, saleId));
+      expect(after!.status).toBe("delivered");
+    } finally {
+      if (prev === undefined) delete process.env["INTERNAL_RECONCILE_TOKEN"];
+      else process.env["INTERNAL_RECONCILE_TOKEN"] = prev;
+    }
+  });
 });
