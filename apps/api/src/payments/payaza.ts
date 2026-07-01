@@ -27,9 +27,12 @@ export interface PayazaCheckoutConfig {
 export interface PayazaTransactionStatus {
   status: string;
   amountNgn: number | null;
+  feeNgn: number | null;
+  netNgn: number | null;
   processorReference: string | null;
   /** Reusable card authorization captured for recurring subscription charges. */
   authorization: { token: string; reusable: boolean } | null;
+  raw: unknown;
 }
 
 // `||` not `??` — empty string in .env should fall back to the default, not
@@ -86,6 +89,56 @@ export function buildPayazaCheckoutConfig(opts: {
   };
 }
 
+/** Pure body→status mapping, split out so it is unit-testable without HTTP.
+ *  `httpStatus` is the fetch status; 401/403/5xx are hard errors (throw so the
+ *  webhook 500s and Payaza retries). A 4xx JSON envelope is a legitimate
+ *  "not confirmed yet" answer and falls through to a non-"Completed" status. */
+export function parsePayazaBody(httpStatus: number, text: string): PayazaTransactionStatus {
+  if (httpStatus === 401 || httpStatus === 403 || httpStatus >= 500) {
+    throw new Error(`payaza verify failed: ${httpStatus} ${text}`);
+  }
+  let body: {
+    success?: boolean;
+    data?: {
+      transaction_status?: string;
+      amount_received?: number;
+      // Payaza decides the fee per transaction — read it, never hardcode.
+      // Field name confirmed against a real transaction in Task 7; read
+      // candidates defensively so a naming variant does not silently drop it.
+      fee?: number;
+      charge?: number;
+      transaction_fee?: number;
+      processor_fee?: number;
+      settlement_amount?: number;
+      amount_settled?: number;
+      transaction_reference?: string;
+      merchant_transaction_reference?: string;
+      authorization?: { authorization_code?: string; reusable?: boolean };
+    } | null;
+  };
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error(`payaza verify failed: ${httpStatus} ${text}`);
+  }
+  const d = body.data ?? {};
+  const num = (v: unknown): number | null => (typeof v === "number" ? Math.round(v) : null);
+  const gross = num(d.amount_received);
+  const feeNgn = num(d.fee) ?? num(d.charge) ?? num(d.transaction_fee) ?? num(d.processor_fee);
+  const settlement = num(d.settlement_amount) ?? num(d.amount_settled);
+  const netNgn = settlement ?? (gross != null && feeNgn != null ? gross - feeNgn : null);
+  const authCode = d.authorization?.authorization_code;
+  return {
+    status: d.transaction_status ?? (body.success ? "Completed" : "PENDING"),
+    amountNgn: gross,
+    feeNgn,
+    netNgn,
+    processorReference: d.transaction_reference ?? d.merchant_transaction_reference ?? null,
+    authorization: authCode ? { token: authCode, reusable: d.authorization?.reusable ?? false } : null,
+    raw: body,
+  };
+}
+
 /**
  * Authoritatively confirm a payment by asking Payaza directly. The webhook uses
  * this rather than trusting the callback body — the callback is treated as a
@@ -114,41 +167,7 @@ export async function verifyPayazaTransaction(
     headers: { "content-type": "application/json", authorization: payazaReadAuthHeader() },
   });
   const text = await res.text();
-  // Auth/upstream failures are real errors worth surfacing + retrying. A 400
-  // with a JSON envelope (e.g. {success:false,"message":"Transaction not
-  // found"}) is a legitimate "not confirmed yet" answer, not an error — fall
-  // through and let the status come back non-"Completed".
-  if (res.status === 401 || res.status === 403 || res.status >= 500) {
-    throw new Error(`payaza verify failed: ${res.status} ${text}`);
-  }
-  // Confirmed shape (Payaza WooCommerce plugin): success boolean +
-  // data.transaction_status ("Completed" on success) + data.amount_received in
-  // FULL naira units (not cents) + data.transaction_reference (Payaza's own id).
-  let body: {
-    success?: boolean;
-    data?: {
-      transaction_status?: string;
-      amount_received?: number;
-      transaction_reference?: string;
-      merchant_transaction_reference?: string;
-      authorization?: { authorization_code?: string; reusable?: boolean };
-    } | null;
-  };
-  try {
-    body = JSON.parse(text);
-  } catch {
-    throw new Error(`payaza verify failed: ${res.status} ${text}`);
-  }
-  const d = body.data ?? {};
-  const authCode = d.authorization?.authorization_code;
-  return {
-    status: d.transaction_status ?? (body.success ? "Completed" : "PENDING"),
-    amountNgn: typeof d.amount_received === "number" ? Math.round(d.amount_received) : null,
-    processorReference: d.transaction_reference ?? d.merchant_transaction_reference ?? null,
-    authorization: authCode
-      ? { token: authCode, reusable: d.authorization?.reusable ?? false }
-      : null,
-  };
+  return parsePayazaBody(res.status, text);
 }
 
 /** Payaza's verify API reports success as transaction_status "Completed". */
