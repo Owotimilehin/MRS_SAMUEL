@@ -95,6 +95,9 @@ Add to the `payment` row (`packages/db/src/schema/payment.ts`) — one migration
 
 `amount_ngn` keeps its current meaning — the business's **revenue figure = product
 total** — so existing revenue reports that sum `payment.amount_ngn` are unaffected.
+The new `gross_ngn` / `fee_ngn` columns are for reconciliation and display **only**;
+they are never summed into any revenue or analytics figure (see "Accounting &
+analytics boundary" below).
 
 Add to `sale_order` (`packages/db/src/schema/sale-order.ts`):
 
@@ -160,6 +163,29 @@ fee to the customer per the owner's Payaza dashboard setting, so the customer is
 - `sale_order.fee_shortfall_ngn` gives a simple sum for a "fee losses" figure in the
   owner money/variance report. Payment-fee shortfalls are a **money** loss and are kept
   on the order, distinct from the stock-based `variance_loss` table.
+
+### Part 7 — Accounting & analytics boundary (only the business's money counts)
+
+**Hard rule: only the business's money enters accounting and analytics.** The Payaza
+transaction fee, and the fee-inclusive gross the customer paid, are **never** counted as
+revenue, sales, or income anywhere.
+
+- **Revenue / sales / dashboards / daily-close / reports** recognize the **product
+  total** (`sale_order.totalNgn` = subtotal + delivery), i.e. the business's money —
+  exactly what `payment.amount_ngn` already sums to today. Nothing changes in these
+  aggregations; enrichment does not leak the fee into them.
+- **`gross_ngn` and `fee_ngn` are display/reconciliation-only** and are excluded from
+  every SUM/count used for money analytics.
+- **Shortfall handling for "only what I got":** when a customer underpays, the business
+  actually received less than the product total. That gap lives in
+  `sale_order.fee_shortfall_ngn` and is reported as a **loss** that offsets recognized
+  revenue in the money/variance report — so the owner's *net* accounting reflects the
+  real amount received (`total − shortfall`), never an inflated figure. The clean case
+  (net ≥ total) recognizes the full product total with no offset.
+
+Net effect: analytics answer "what did the business earn" using only the business's
+money; Payaza's fee is visible on the order for transparency but sits entirely outside
+the revenue numbers.
 
 ## Out of scope
 
