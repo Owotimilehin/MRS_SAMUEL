@@ -23,19 +23,23 @@ describe("online orders queue", () => {
     await container.stop();
   }, 30_000);
 
-  it("lists active online orders newest-first", async () => {
-    // Seed two orders: one active (paid), one inactive (confirmed)
+  it("lists active online orders newest-first (now including awaiting-payment)", async () => {
     await seedOnlineOrder(db, { status: "paid" });
-    await seedOnlineOrder(db, { status: "confirmed" }); // not active
+    await seedOnlineOrder(db, { status: "confirmed" });
 
     const res = await app.request("/v1/online-orders/active", {
       headers: ownerHeaders,
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: Array<{ status: string }> };
-    // All paid/out_for_delivery online orders should appear; confirmed should not
-    const activeStatuses = body.data.map((o) => o.status);
-    expect(activeStatuses.every((s) => ["paid", "out_for_delivery"].includes(s))).toBe(true);
+    // The till list now shows the awaiting-payment states too, so every row is
+    // one of the widened LIST_STATUSES.
+    const listStatuses = body.data.map((o) => o.status);
+    expect(
+      listStatuses.every((s) =>
+        ["confirmed", "reconcile_needed", "paid", "out_for_delivery"].includes(s),
+      ),
+    ).toBe(true);
     // At least 1 paid order is present
     expect(body.data.some((o) => o.status === "paid")).toBe(true);
 
@@ -46,6 +50,56 @@ describe("online orders queue", () => {
         expect(dates[i - 1]).toBeGreaterThanOrEqual(dates[i]!);
       }
     }
+  });
+
+  it("till /active lists awaiting-payment orders (confirmed + reconcile_needed), branch-scoped", async () => {
+    // A dedicated branch so the assertions are exact.
+    const [br] = await db
+      .insert(branch)
+      .values({ name: "Awaiting Pay Branch", code: `APB-${Date.now()}` })
+      .returning();
+    if (!br) throw new Error("branch insert failed");
+    const [otherBr] = await db
+      .insert(branch)
+      .values({ name: "Other Await Branch", code: `OAB-${Date.now()}` })
+      .returning();
+    if (!otherBr) throw new Error("other branch insert failed");
+
+    const paid = await seedOnlineOrder(db, { status: "paid", branchId: br.id });
+    const confirmed = await seedOnlineOrder(db, { status: "confirmed", branchId: br.id });
+    const reconcile = await seedOnlineOrder(db, { status: "reconcile_needed", branchId: br.id });
+    // Same-status order on a DIFFERENT branch must not leak to this till.
+    const otherConfirmed = await seedOnlineOrder(db, { status: "confirmed", branchId: otherBr.id });
+
+    const staffHeaders = await authBranchStaff(app, db, { branchId: br.id });
+    const res = await app.request("/v1/online-orders/active", { headers: staffHeaders });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: Array<{ id: string }> };
+    const ids = body.data.map((o) => o.id);
+    expect(ids).toContain(paid.id);
+    expect(ids).toContain(confirmed.id);
+    expect(ids).toContain(reconcile.id);
+    expect(ids).not.toContain(otherConfirmed.id); // branch scope holds
+  });
+
+  it("badge count stays paid-only after the list widens", async () => {
+    const [br] = await db
+      .insert(branch)
+      .values({ name: "Badge Count Branch", code: `BCB-${Date.now()}` })
+      .returning();
+    if (!br) throw new Error("branch insert failed");
+
+    await seedOnlineOrder(db, { status: "paid", branchId: br.id });
+    await seedOnlineOrder(db, { status: "confirmed", branchId: br.id });
+    await seedOnlineOrder(db, { status: "reconcile_needed", branchId: br.id });
+
+    const staffHeaders = await authBranchStaff(app, db, { branchId: br.id });
+    const res = await app.request("/v1/online-orders/active-count", { headers: staffHeaders });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { count: number } };
+    // Only the single paid order counts — confirmed/reconcile_needed must not
+    // trip the new-order badge/chime.
+    expect(body.data.count).toBe(1);
   });
 
   it("active-count reports new_since", async () => {
