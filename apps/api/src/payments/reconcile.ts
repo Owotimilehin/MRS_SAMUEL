@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   saleOrder,
   saleOrderItem,
@@ -194,4 +194,84 @@ export async function verifyAndReconcile(
 
     return applyPayazaConfirmation(tx, orderForConfirmation, confirmed);
   });
+}
+
+export interface OfflinePaymentInput {
+  method: "transfer" | "cash";
+  amountNgn: number;
+  collectedByUserId: string | null;
+}
+
+/**
+ * Record a payment received OUTSIDE Payaza (bank transfer / cash) and mark the
+ * order paid. Used when the customer paid the whole amount, or topped up a
+ * shortfall, by a non-Payaza means. Mirrors applyPayazaConfirmation's paid
+ * branch: CAS flip, one payment row (processor 'manual'), stock for a non-
+ * preorder, preorder-paid/paid-online outbox event. Idempotent.
+ */
+export async function applyOfflinePayment(
+  tx: Parameters<Parameters<DbClient["transaction"]>[0]>[0],
+  order: typeof saleOrder.$inferSelect,
+  input: OfflinePaymentInput,
+): Promise<ReconcileOutcome> {
+  const o = order;
+  if (o.status !== "confirmed" && o.status !== "reconcile_needed") {
+    return { kind: "already_processed", status: o.status };
+  }
+
+  const won = await tx
+    .update(saleOrder)
+    .set({ status: "paid", paymentStatus: "paid", feeShortfallNgn: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(saleOrder.id, o.id),
+        inArray(saleOrder.status, ["confirmed", "reconcile_needed"]),
+      ),
+    )
+    .returning({ id: saleOrder.id });
+  if (won.length === 0) return { kind: "already_processed", status: o.status };
+
+  if (!o.isPreorder) {
+    const items = await tx.select().from(saleOrderItem).where(eq(saleOrderItem.saleOrderId, o.id));
+    for (const it of items) {
+      await tx.insert(stockLedger).values({
+        locationType: "branch",
+        locationId: o.branchId,
+        productId: it.productId,
+        variantId: it.variantId ?? null,
+        delta: -it.quantity,
+        sourceType: "sale",
+        sourceId: o.id,
+        note: `Offline (${input.method}) sale ${o.orderNumber}`,
+      });
+    }
+    await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, o.id));
+  }
+
+  await tx.insert(payment).values({
+    saleOrderId: o.id,
+    method: input.method,
+    amountNgn: input.amountNgn,
+    status: "paid",
+    processor: "manual",
+    collectedByUserId: input.collectedByUserId,
+    paidAt: new Date(),
+  });
+
+  await tx.insert(outboxEvent).values({
+    eventType: o.isPreorder ? "sale.preorder_paid" : "sale.paid_online",
+    payload: {
+      sale_order_id: o.id,
+      order_number: o.orderNumber,
+      branch_id: o.branchId,
+      customer_id: o.customerId,
+      total_ngn: o.totalNgn,
+      payment_method: input.method,
+      offline: true,
+      scheduled_delivery_at: o.scheduledDeliveryAt ? o.scheduledDeliveryAt.toISOString() : null,
+      delivery_state: o.deliveryState ?? null,
+    },
+  });
+
+  return { kind: "paid", orderNumber: o.orderNumber, amountNgn: o.totalNgn, isPreorder: o.isPreorder };
 }
