@@ -94,6 +94,13 @@ export function BranchOnlineOrderDetailPage({
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
 
+  // Payment follow-up (awaiting-payment orders): re-check Payaza, record an
+  // offline transfer/cash payment, or cancel as unpaid.
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [payNote, setPayNote] = useState<string | null>(null);
+  const [confirmCancelUnpaid, setConfirmCancelUnpaid] = useState(false);
+
   // Inline delivery-address editor
   const [editingAddress, setEditingAddress] = useState(false);
   const [addressDraft, setAddressDraft] = useState("");
@@ -173,6 +180,59 @@ export function BranchOnlineOrderDetailPage({
         : msg);
     } finally {
       setAdvanceBusy(false);
+    }
+  }
+
+  async function recheckPayment(): Promise<void> {
+    setPayBusy(true);
+    setPayError(null);
+    setPayNote(null);
+    try {
+      const res = await api<{ data: { status: string; outcome: { kind: string } } }>(
+        `/online-orders/${orderId}/recheck`,
+        { method: "POST", body: "{}" },
+      );
+      await loadOrder();
+      if (res.data.status === "paid") setPayNote("Payment confirmed — order is now paid.");
+      else setPayNote("Payaza still shows no completed payment for this order.");
+    } catch (err) {
+      setPayError(humanizeError(err));
+    } finally {
+      setPayBusy(false);
+    }
+  }
+
+  async function recordPayment(method: "transfer" | "cash"): Promise<void> {
+    setPayBusy(true);
+    setPayError(null);
+    setPayNote(null);
+    try {
+      await api(`/online-orders/${orderId}/record-payment`, {
+        method: "POST",
+        body: JSON.stringify({ method }),
+      });
+      await loadOrder();
+      setPayNote(`Recorded ${method} payment — order is now paid.`);
+    } catch (err) {
+      setPayError(humanizeError(err));
+    } finally {
+      setPayBusy(false);
+    }
+  }
+
+  async function cancelUnpaid(): Promise<void> {
+    setConfirmCancelUnpaid(false);
+    setPayBusy(true);
+    setPayError(null);
+    setPayNote(null);
+    try {
+      await api(`/online-orders/${orderId}/cancel-unpaid`, { method: "POST", body: "{}" });
+      await loadOrder();
+      setPayNote("Order cancelled as unpaid.");
+    } catch (err) {
+      setPayError(humanizeError(err));
+    } finally {
+      setPayBusy(false);
     }
   }
 
@@ -588,10 +648,64 @@ export function BranchOnlineOrderDetailPage({
               </section>
             )}
 
-            {/* 2. Payment (read-only — no payment actions for branch staff) */}
+            {/* 2. Payment — read-only, plus follow-up actions when awaiting payment. */}
             <section className="card">
               <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Payment</h3>
               <div style={{ fontSize: 14, textTransform: "capitalize" }}>{data.paymentMethod}</div>
+
+              {(data.status === "confirmed" || data.status === "reconcile_needed") &&
+                can("orders.manage") && (
+                  <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                    <p style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+                      Not paid yet. Re-check Payaza, or record a payment the customer sent by
+                      transfer or cash. Cancel as unpaid only if no money came at all.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn btn--subtle btn--sm"
+                      disabled={payBusy}
+                      onClick={() => void recheckPayment()}
+                      style={{ justifyContent: "center" }}
+                    >
+                      {payBusy ? "Working…" : "Re-check payment"}
+                    </button>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        disabled={payBusy}
+                        onClick={() => void recordPayment("transfer")}
+                        style={{ flex: 1, justifyContent: "center" }}
+                      >
+                        Paid by transfer
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        disabled={payBusy}
+                        onClick={() => void recordPayment("cash")}
+                        style={{ flex: 1, justifyContent: "center" }}
+                      >
+                        Paid by cash
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn--subtle btn--sm"
+                      disabled={payBusy}
+                      onClick={() => setConfirmCancelUnpaid(true)}
+                      style={{ justifyContent: "center", color: "var(--danger)" }}
+                    >
+                      Cancel — unpaid
+                    </button>
+                    {payNote && (
+                      <p style={{ fontSize: 13, color: "var(--accent)" }}>{payNote}</p>
+                    )}
+                    {payError && (
+                      <p style={{ fontSize: 13, color: "var(--danger)" }}>{payError}</p>
+                    )}
+                  </div>
+                )}
             </section>
 
             {/* 3. Customer */}
@@ -801,6 +915,23 @@ export function BranchOnlineOrderDetailPage({
           <p style={{ fontSize: 14 }}>
             Book <strong>{picked.courier_name}</strong> for <strong>{ngn(picked.fee_ngn)}</strong>. This debits
             the Shipbubble wallet. Tell the customer this amount on WhatsApp.
+          </p>
+        </ConfirmModal>
+      )}
+
+      {confirmCancelUnpaid && (
+        <ConfirmModal
+          title="Cancel this order as unpaid?"
+          confirmLabel="Cancel — unpaid"
+          busyLabel="Cancelling…"
+          busy={payBusy}
+          onCancel={() => setConfirmCancelUnpaid(false)}
+          onConfirm={() => void cancelUnpaid()}
+        >
+          <p style={{ fontSize: 14 }}>
+            Only do this if <strong>no money came at all</strong> — not on Payaza and not by
+            transfer. This cancels the order and owes the customer nothing. If they actually paid
+            by transfer, use “Paid by transfer” instead.
           </p>
         </ConfirmModal>
       )}
