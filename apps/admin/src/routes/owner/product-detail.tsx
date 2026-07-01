@@ -61,6 +61,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
   const [error, setError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [retiringId, setRetiringId] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -136,6 +137,36 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
       setError(humanizeError(err));
     } finally {
       setPublishingId(null);
+    }
+  }
+
+  async function retireVariant(variant: Variant, next: boolean): Promise<void> {
+    if (!next) {
+      const activeCount = (product?.variants ?? []).filter((v) => v.is_active).length;
+      if (activeCount <= 1) {
+        setError(
+          "This is the only active size. Retiring it would remove the whole flavour from the storefront — use Deactivate above instead.",
+        );
+        return;
+      }
+      const ok = window.confirm(
+        `Retire the ${variant.size_ml}ml size? It disappears from the customer website immediately. You can Restore it here anytime.`,
+      );
+      if (!ok) return;
+    }
+    setRetiringId(variant.id);
+    setError(null);
+    try {
+      await api(`/products/${productId}/variants/${variant.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: next }),
+      });
+      showFlash(next ? `${variant.size_ml}ml restored` : `${variant.size_ml}ml retired from the website`);
+      await load();
+    } catch (err) {
+      setError(humanizeError(err));
+    } finally {
+      setRetiringId(null);
     }
   }
 
@@ -378,43 +409,73 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
                 {product.variants.map((v) => (
-                  <form
+                  <div
                     key={v.id}
-                    onSubmit={(e) => publishPrice(v, e)}
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "80px 1fr auto",
-                      gap: 10,
-                      alignItems: "center",
                       paddingBottom: 12,
                       borderBottom: "1px solid var(--line)",
+                      opacity: v.is_active ? 1 : 0.6,
                     }}
                   >
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{v.size_ml}ml</div>
-                      <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: v.is_active ? 8 : 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontWeight: 700 }}>{v.size_ml}ml</span>
+                        {!v.is_active && <span className="pill pill--ink">Retired</span>}
+                      </div>
+                      {v.is_active ? (
+                        <button
+                          type="button"
+                          className="btn btn--subtle btn--sm"
+                          onClick={() => void retireVariant(v, false)}
+                          disabled={retiringId === v.id}
+                        >
+                          {retiringId === v.id ? "…" : "Retire"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn--primary btn--sm"
+                          onClick={() => void retireVariant(v, true)}
+                          disabled={retiringId === v.id}
+                        >
+                          {retiringId === v.id ? "…" : "Restore"}
+                        </button>
+                      )}
+                    </div>
+                    {v.is_active && (
+                      <form
+                        onSubmit={(e) => publishPrice(v, e)}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr auto",
+                          gap: 10,
+                          alignItems: "center",
+                        }}
+                      >
+                        <input
+                          className="input"
+                          type="number"
+                          inputMode="numeric"
+                          value={drafts[v.id] ?? ""}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [v.id]: e.target.value }))}
+                          placeholder={v.current_price_ngn != null ? String(v.current_price_ngn) : "Set price"}
+                          required
+                        />
+                        <button
+                          type="submit"
+                          className="btn btn--primary btn--sm"
+                          disabled={publishingId === v.id || !drafts[v.id]}
+                        >
+                          {publishingId === v.id ? "…" : "Publish"}
+                        </button>
+                      </form>
+                    )}
+                    {v.is_active && (
+                      <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 4 }}>
                         {v.current_price_ngn != null ? ngn(v.current_price_ngn) : "no price set"}
                       </div>
-                    </div>
-                    <input
-                      className="input"
-                      type="number"
-                      inputMode="numeric"
-                      value={drafts[v.id] ?? ""}
-                      onChange={(e) => setDrafts((d) => ({ ...d, [v.id]: e.target.value }))}
-                      placeholder={
-                        v.current_price_ngn != null ? String(v.current_price_ngn) : "Set price"
-                      }
-                      required
-                    />
-                    <button
-                      type="submit"
-                      className="btn btn--primary btn--sm"
-                      disabled={publishingId === v.id || !drafts[v.id]}
-                    >
-                      {publishingId === v.id ? "…" : "Publish"}
-                    </button>
-                  </form>
+                    )}
+                  </div>
                 ))}
               </div>
               <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 14 }}>
