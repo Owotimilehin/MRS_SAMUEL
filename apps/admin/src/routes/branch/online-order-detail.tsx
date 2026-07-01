@@ -7,7 +7,7 @@ import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
 import { OrderJourney } from "../../components/OrderJourney.js";
 import { deriveOrderJourney } from "../../lib/order-journey.js";
-import { nextFulfilAction } from "../../lib/order-fulfil-action.js";
+import { deriveOrderActions, type OrderActionId } from "../../lib/order-actions.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
@@ -172,6 +172,21 @@ export function BranchOnlineOrderDetailPage({
     }
   }
 
+  function runAction(id: OrderActionId): void {
+    switch (id) {
+      case "produce": void produce(); break;
+      case "advance":
+      case "force_delivered": void advance(); break;
+      case "book_rider":
+      case "rebook_rider": bookRide(); break;
+      default: break; // payment/refund/cancel: owner-only, not shown here
+    }
+  }
+  function actionAllowed(id: OrderActionId): boolean {
+    if (id === "accept_paid" || id === "mark_refunded" || id === "cancel_refund") return false;
+    return can("pos.sell");
+  }
+
   async function getOptions(): Promise<void> {
     setLoadingOptions(true);
     setDeliveryError(null);
@@ -295,6 +310,14 @@ export function BranchOnlineOrderDetailPage({
   }
 
   const journey = data ? deriveOrderJourney(data) : null;
+  const actions = data ? deriveOrderActions(data) : null;
+  const lastRiderUpdate = data?.delivery
+    ? [data.delivery.pickedUpAt, data.delivery.assignedAt].find(Boolean) ?? null
+    : null;
+  const deliveryStalled =
+    data?.status === "out_for_delivery" &&
+    !!lastRiderUpdate &&
+    Date.now() - new Date(lastRiderUpdate).getTime() > 2 * 3600_000;
 
   const chips: StatChip[] = [
     { label: "Items", value: data ? data.items.length : "—" },
@@ -302,12 +325,6 @@ export function BranchOnlineOrderDetailPage({
     { label: "Status", value: journey?.currentLabel ?? "—" },
     { label: "Channel", value: data?.channel ?? "—" },
   ];
-
-  // Delivery + fulfilment logic — mirrors owner detail, gated on pos.sell for branch staff
-  const liveDeliveryStatuses = new Set(["searching_rider", "assigned", "picked_up", "in_transit"]);
-  const deliveryIsLive = !!(data?.delivery && liveDeliveryStatuses.has(data.delivery.status));
-
-  const canAct = can("pos.sell") && !deliveryIsLive;
 
   return (
     <BranchShell
@@ -505,48 +522,39 @@ export function BranchOnlineOrderDetailPage({
                 )}
 
                 <div style={{ marginTop: 14 }}>
-                  {deliveryIsLive && (
-                    <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 10 }}>
-                      Rider is active — status updates via webhook.
+                  {deliveryStalled && (
+                    <p style={{ fontSize: 13, color: "var(--warning)", marginBottom: 10 }}>
+                      ⚠ Delivery may be stalled — no rider update in over 2h.
                     </p>
                   )}
-
-                  {canAct && (() => {
-                    const action = nextFulfilAction(data);
-                    if (action.kind === "none") return null;
-                    const onClick = action.kind === "produce" ? produce : advance;
-                    return (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <button
-                          type="button"
-                          className="btn btn--primary btn--sm"
-                          disabled={advanceBusy}
-                          onClick={() => void onClick()}
-                        >
-                          {advanceBusy ? "Saving…" : action.label}
-                        </button>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Force-delivered fallback when webhook is live but stalled */}
-                  {deliveryIsLive && can("pos.sell") && (
+                  {actions?.primary && actionAllowed(actions.primary.id) && (
                     <button
                       type="button"
-                      className="btn btn--subtle btn--sm"
+                      className="btn btn--primary btn--sm"
                       disabled={advanceBusy}
-                      onClick={() => void advance()}
-                      style={{ fontSize: 12, color: "var(--ink-soft)" }}
+                      onClick={() => runAction(actions.primary!.id)}
+                      style={{ width: "100%", justifyContent: "center" }}
                     >
-                      {advanceBusy ? "Saving…" : "Force delivered (fallback)"}
+                      {advanceBusy ? "Saving…" : actions.primary.label}
                     </button>
                   )}
-
+                  {actions?.secondary
+                    .filter((b) => (b.id === "advance" || b.id === "force_delivered") && actionAllowed(b.id))
+                    .map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        className="btn btn--subtle btn--sm"
+                        disabled={advanceBusy}
+                        onClick={() => runAction(b.id)}
+                        style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 8 }}
+                      >
+                        {advanceBusy ? "Saving…" : b.label}
+                      </button>
+                    ))}
                   {deliveryError && !editingAddress && (
                     <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{deliveryError}</p>
                   )}
-
-                  {/* Rider journey panel */}
                   <DeliveryStatusPanel delivery={data.delivery ?? null} onRebook={bookRide} />
                 </div>
               </section>
@@ -690,16 +698,6 @@ export function BranchOnlineOrderDetailPage({
                         <div>Rider phone: {data.delivery.riderPhone}</div>
                       )}
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                        {data.customerPhone && (
-                          <a
-                            className="btn btn--primary btn--sm"
-                            href={waLink(data.customerPhone)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            WhatsApp customer
-                          </a>
-                        )}
                         {data.delivery.trackingUrl && (
                           <a
                             className="btn btn--subtle btn--sm"
