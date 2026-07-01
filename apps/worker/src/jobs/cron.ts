@@ -2,6 +2,7 @@ import pino from "pino";
 import { sql } from "drizzle-orm";
 import { cronRun, type DbClient } from "@ms/db";
 import { fireMonthlyPnlDigest, shouldFirePnlDigestNow } from "./pnl-digest.js";
+import { fireMonthlyVarianceLossDigest } from "./variance-loss-digest.js";
 import { sweepRecurringExpenses } from "./recurring-expense-sweeper.js";
 import { sweepSubscriptionBilling, sweepPastDueCancellations } from "./subscription-billing.js";
 import { runJob } from "./run-job.js";
@@ -82,6 +83,11 @@ export async function runDueCronJobs(db: DbClient): Promise<void> {
     // the caller knows the claim itself failed (not just the digest run).
     if (await claimCronRun(db, "pnl_monthly_digest", prevMonthIso)) {
       await runJob(cronLogger, "pnl_digest", () => fireMonthlyPnlDigest(db, prevMonthIso));
+    }
+    // Monthly stock-loss digest fires in the same day-1 window, separately
+    // claimed so it never double-fires on restart.
+    if (await claimCronRun(db, "variance_loss_monthly_digest", prevMonthIso)) {
+      await runJob(cronLogger, "variance_loss_digest", () => fireMonthlyVarianceLossDigest(db, prevMonthIso));
     }
   }
 

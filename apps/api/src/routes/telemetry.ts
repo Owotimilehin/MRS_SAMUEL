@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
-import { deviceStatus, type DbClient } from "@ms/db";
+import { deviceStatus, checkoutAttemptLog, outboxEvent, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { logger } from "../logger.js";
 import { rateLimit } from "../middleware/rate-limit.js";
+import { checkoutLogSchema, statusForStage, isFailureStage } from "../lib/checkout-log.js";
 
 const Telemetry = z.object({
   device_id: z.string().min(1),
@@ -53,6 +54,55 @@ export function telemetryRoutes(db: DbClient) {
         );
       } catch {
         /* swallow malformed reports */
+      }
+      return c.body(null, 204);
+    },
+  );
+
+  // Diagnostic log of a customer checkout attempt (one row per stage of a
+  // "Place order" press). Public + rate-limited; it must never error back to
+  // the customer (logging can't break checkout). On a failure stage it also
+  // enqueues a Telegram alert via the outbox.
+  r.post(
+    "/checkout",
+    rateLimit({ points: 60, durationSeconds: 300, keyPrefix: "checkout-log" }),
+    async (c) => {
+      try {
+        const body = checkoutLogSchema.parse(await c.req.json());
+        await db.insert(checkoutAttemptLog).values({
+          attemptId: body.attempt_id,
+          stage: body.stage,
+          status: statusForStage(body.stage),
+          orderNumber: body.order_number ?? null,
+          customerName: body.customer?.name ?? null,
+          customerPhone: body.customer?.phone ?? null,
+          customerEmail: body.customer?.email ?? null,
+          deliveryAddress: body.customer?.address ?? null,
+          deliveryState: body.customer?.state ?? null,
+          deliveryWindow: body.delivery_window ?? null,
+          scheduledFor: body.scheduled_for ? new Date(body.scheduled_for) : null,
+          itemsJson: body.items ?? null,
+          totalNgn: body.total_ngn ?? null,
+          errorMessage: body.error_message ?? null,
+          responseJson: body.response ?? null,
+          userAgent: c.req.header("user-agent") ?? null,
+          ipAddress: c.req.header("x-forwarded-for") ?? null,
+        });
+        if (isFailureStage(body.stage)) {
+          await db.insert(outboxEvent).values({
+            eventType: "checkout.failed",
+            payload: {
+              attempt_id: body.attempt_id,
+              stage: body.stage,
+              customer_name: body.customer?.name ?? null,
+              customer_phone: body.customer?.phone ?? null,
+              order_number: body.order_number ?? null,
+              error_message: body.error_message ?? null,
+            },
+          });
+        }
+      } catch {
+        /* swallow malformed/oversized reports — logging must never 500 */
       }
       return c.body(null, 204);
     },

@@ -40,3 +40,5 @@ export * from "./customer-subscription.js";
 export * from "./subscription-charge.js";
 export * from "./bundle.js";
 export * from "./shift-open.js";
+export * from "./checkout-attempt-log.js";
+export * from "./variance-loss.js";

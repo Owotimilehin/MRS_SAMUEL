@@ -19,6 +19,7 @@ import {
   Milk,
   User,
   ClipboardList,
+  TrendingDown,
   Undo2,
   Truck,
   Users,
@@ -83,6 +84,7 @@ const NAV_PRODUCTS: NavLink[] = [
 ];
 const NAV_FINANCE: NavLink[] = [
   { to: "/owner/bookkeeping", label: "Bookkeeping", Icon: Wallet, cap: "expenses.view" },
+  { to: "/owner/variance", label: "Variance & losses", Icon: TrendingDown, cap: "finance.view" },
   { to: "/owner/vendors", label: "Vendors", Icon: Tags, cap: "expenses.view" },
   { to: "/owner/closes", label: "Shift-end reports", Icon: ClipboardList, cap: "close.approve" },
 ];
@@ -97,6 +99,7 @@ const NAV_ADMIN: NavLink[] = [
   { to: "/owner/users", label: "Admin users", Icon: Users, cap: "users.manage" },
   { to: "/owner/devices", label: "Devices", Icon: Smartphone, cap: "devices.view" },
   { to: "/owner/audit-log", label: "Audit log", Icon: ScrollText, cap: "audit.view" },
+  { to: "/owner/checkout-log", label: "Checkout log", Icon: ReceiptText, cap: "reports.view" },
   { to: "/owner/settings", label: "Settings", Icon: Settings, cap: "branches.manage" },
 ];
 

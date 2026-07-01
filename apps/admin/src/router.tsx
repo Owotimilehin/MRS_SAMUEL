@@ -49,6 +49,8 @@ function L({ children }: { children: ReactNode }): JSX.Element {
 // ───── Lazy route components ─────
 const DashboardPage = lazyNamed(() => import("./routes/owner/dashboard.js"), "DashboardPage");
 const AnalyticsPage = lazyNamed(() => import("./routes/owner/analytics.js"), "AnalyticsPage");
+const CheckoutLogPage = lazyNamed(() => import("./routes/owner/checkout-log.js"), "CheckoutLogPage");
+const VarianceReportPage = lazyNamed(() => import("./routes/owner/variance.js"), "VarianceReportPage");
 const ReviewPage = lazyNamed(() => import("./routes/owner/review.js"), "ReviewPage");
 const ProductsPage = lazyNamed(() => import("./routes/owner/products.js"), "ProductsPage");
 const ProductDetailPage = lazyNamed<{ productId: string }>(
@@ -314,6 +316,11 @@ const analyticsRoute = createRoute({
   path: "/owner/analytics",
   component: () => guarded(<L><AnalyticsPage /></L>),
 });
+const varianceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/variance",
+  component: () => guarded(<L><VarianceReportPage /></L>),
+});
 const reviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/owner/review",
@@ -470,6 +477,11 @@ const ownerClosesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/owner/closes",
   component: () => guarded(<L><OwnerClosesPage /></L>),
+});
+const checkoutLogRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/owner/checkout-log",
+  component: () => guarded(<L><CheckoutLogPage /></L>),
 });
 const ownerOnlineOrdersRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -652,6 +664,7 @@ const routeTree = rootRoute.addChildren([
   // owner
   dashboardRoute,
   analyticsRoute,
+  varianceRoute,
   reviewRoute,
   ordersRoute,
   preordersRoute,
@@ -680,6 +693,7 @@ const routeTree = rootRoute.addChildren([
   bundlesRoute,
   leadsRoute,
   ownerClosesRoute,
+  checkoutLogRoute,
   closeDetailRoute,
   ownerOnlineOrdersRoute,
   // factory

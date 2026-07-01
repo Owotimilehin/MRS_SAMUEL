@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft, Check, Lock, Truck, ShoppingBag, AlertCircle, Loader2, CalendarClock,
 } from "lucide-react";
 import { SiteShell } from "@/components/SiteShell";
 import { useCart, formatNaira } from "@/lib/cart";
-import { fetchBranches, requestQuote, placeOrder as placeOrderFn } from "@/lib/api/server-fns";
+import { fetchBranches, requestQuote, placeOrder as placeOrderFn, logCheckoutAttempt } from "@/lib/api/server-fns";
+import { buildCheckoutLogPayload, type CheckoutStage } from "@/lib/checkout-log";
 import { asApiError } from "@/lib/api/client";
 import type { ApiDeliveryOption, ApiPlacedOrder } from "@/lib/api/types";
 import { launchPayazaCheckout } from "@/lib/payaza";
@@ -76,22 +77,60 @@ function Page() {
     [items],
   );
   const sched = useMemo(() => orderSchedule(new Date(), lineKinds), [lineKinds]);
-  // Same-day in-stock orders go out today ASAP — no window to pick.
+  // Same-day in-stock orders CAN go out today ASAP. The customer still chooses
+  // between that and scheduling a later date below.
   const immediate = useMemo(() => isImmediateSchedule(sched), [sched]);
+
+  // Timing mode: dispatch now ("asap") or a customer-picked date ("schedule").
+  // ASAP is only available when same-day delivery is actually feasible.
+  const [mode, setMode] = useState<"asap" | "schedule">(immediate ? "asap" : "schedule");
+  useEffect(() => {
+    // When same-day is no longer feasible (cart now has a preorder line), force
+    // scheduling. When it becomes feasible again, leave the customer's choice be.
+    if (!immediate) setMode("schedule");
+  }, [immediate]);
+
+  // The earliest date the customer may schedule (the schedule "floor"), and the
+  // 3-month horizon — both as Lagos YYYY-MM-DD for the native date input.
+  const minDate = sched.date;
+  const maxDate = useMemo(() => {
+    const [y, m, d] = todayLagos().split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1 + 3, d));
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+  }, []);
+
+  // Chosen schedule date; never earlier than the floor.
+  const [scheduleDate, setScheduleDate] = useState<string>(sched.date);
+  useEffect(() => {
+    setScheduleDate((d) => (d < sched.date ? sched.date : d));
+  }, [sched.date]);
+
+  // Window options for the chosen date: the floor date keeps the schedule's own
+  // constraints (fixed window, or the windows still selectable today); any later
+  // day offers all three windows.
+  const onFloorDate = scheduleDate === sched.date;
+  const fixedWindow = onFloorDate ? sched.fixedWindow : undefined;
+  const selectableWindows: DeliveryWindow[] = onFloorDate
+    ? (sched.fixedWindow ? [] : sched.selectableWindows)
+    : (["morning", "afternoon", "evening"] as DeliveryWindow[]);
 
   // Chosen window: start from first selectable, or the fixed window.
   const [selectedWindow, setSelectedWindow] = useState<DeliveryWindow>(
     () => sched.fixedWindow ?? sched.selectableWindows[0] ?? "afternoon",
   );
-  // Keep selection in sync if sched changes (e.g. items added/removed).
+  // Keep the window valid for the chosen date/schedule.
   useEffect(() => {
-    const windows = sched.fixedWindow ? [] : sched.selectableWindows;
-    if (sched.fixedWindow) {
-      setSelectedWindow(sched.fixedWindow);
-    } else if (!windows.includes(selectedWindow)) {
-      setSelectedWindow(windows[0] ?? "afternoon");
+    if (fixedWindow) {
+      setSelectedWindow(fixedWindow);
+    } else if (!selectableWindows.includes(selectedWindow)) {
+      setSelectedWindow(selectableWindows[0] ?? "afternoon");
     }
-  }, [sched, selectedWindow]);
+    // fixedWindow/selectableWindows derive from scheduleDate + sched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleDate, sched, selectedWindow]);
+
+  // The window we'll actually send: a fixed window wins, else the picked one.
+  const chosenWindow = fixedWindow ?? selectedWindow;
 
   // --- live delivery quote (Lagos + now only) ---
   const [quoting, setQuoting] = useState(false);
@@ -144,15 +183,54 @@ function Page() {
     () => items.map((i) => ({ variant_id: i.variantId, quantity: i.qty })),
     [items],
   );
+  // Required fields the customer must supply before we can place the order.
+  // Returned as friendly labels so we can show exactly what's missing.
+  function missingFields(): string[] {
+    const missing: string[] = [];
+    if (form.name.trim() === "") missing.push("your full name");
+    if (!validNgPhone(form.phone)) missing.push("a valid phone number");
+    if (form.address.trim().length < 3) missing.push("your delivery address");
+    return missing;
+  }
+
+  // The button stays clickable whenever an order *could* be attempted, so a tap
+  // always responds — either it opens payment or it tells the customer what's
+  // missing. Only a busy/blocked state disables it.
   const canPlace =
-    items.length > 0 &&
-    !!branchId &&
-    form.name.trim() !== "" &&
-    validNgPhone(form.phone) &&
-    form.address.trim().length >= 3 &&
-    scheduleValid &&
-    !placing &&
-    !quoting;
+    items.length > 0 && !!branchId && scheduleValid && !placing && !quoting;
+
+  // Fire-and-forget diagnostic log of each checkout stage (delivery details,
+  // error, response). Wrapped so logging can never break the order.
+  function logStage(
+    stage: CheckoutStage,
+    extra?: { orderNumber?: string; errorMessage?: string; response?: Record<string, unknown> },
+  ) {
+    try {
+      const payload = buildCheckoutLogPayload({
+        attemptId: idemRef.current || "no-attempt",
+        stage,
+        form: {
+          name: form.name,
+          phone: form.phone,
+          email: form.email,
+          address: form.address,
+          state: form.state,
+        },
+        items: items.map((it) => ({
+          variantId: it.variantId,
+          name: it.product.name,
+          size: it.size,
+          qty: it.qty,
+        })),
+        total,
+        deliveryWindow: chosenWindow,
+        ...extra,
+      });
+      void logCheckoutAttempt({ data: payload });
+    } catch {
+      /* never break checkout on logging */
+    }
+  }
 
   // Hand the (already-created) order to Payaza and route to tracking on success.
   // Shared by the normal path and the gracious-modal "Continue" path.
@@ -169,17 +247,30 @@ function Page() {
     } catch {
       /* ignore storage failures */
     }
-    clear();
     // Payaza checkout is a client-side popup (no redirect). On success the
     // server webhook confirms payment; we just move to the tracking page.
     const trackUrl = `/order/${order.order_number}?paid=1`;
     await launchPayazaCheckout(order.payment.payaza, {
       onPaid: () => {
+        // Log before navigating away so the success is recorded.
+        logStage("payment_paid", { orderNumber: order.order_number });
+        // Only empty the basket once payment actually succeeded. Clearing it
+        // before the popup opened was what flipped the page to the empty-basket
+        // screen and hid any error when the popup failed to open.
+        clear();
         window.location.href = trackUrl;
       },
       onClose: () => {
         // Popup dismissed without paying — order stays 'confirmed'; let the
         // customer retry or view the (unpaid) order.
+        logStage("payment_closed", { orderNumber: order.order_number });
+        setPlacing(false);
+      },
+      onError: (message) => {
+        // The popup never opened (bad network, SDK blocked, or Payaza rejected
+        // the order). Surface it instead of failing silently, and let them retry.
+        logStage("payment_failed", { orderNumber: order.order_number, errorMessage: message });
+        setPlaceError(message);
         setPlacing(false);
       },
     });
@@ -187,14 +278,28 @@ function Page() {
 
   async function submit(retry = false) {
     if (!branchId || items.length === 0) return;
+    // Validate required fields up front and tell the customer exactly what's
+    // missing, instead of leaving the button quietly disabled.
+    const missing = missingFields();
+    if (missing.length > 0) {
+      const list =
+        missing.length === 1
+          ? missing[0]
+          : `${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}`;
+      const message = `Please add ${list} before placing your order.`;
+      // Generate an attempt id even for a rejected press so it's logged distinctly.
+      if (!idemRef.current) idemRef.current = crypto.randomUUID();
+      logStage("validation_failed", { errorMessage: message });
+      setPlaceError(message);
+      return;
+    }
     if (!retry) idemRef.current = crypto.randomUUID();
     setPlacing(true);
     setPlaceError(null);
+    logStage("pressed");
 
     const phone = form.phone.replace(/[\s-]/g, "");
     const altPhone = form.altPhone.trim();
-    // Chosen delivery window from the schedule-driven picker.
-    const chosenWindow = sched.fixedWindow ?? selectedWindow;
     try {
       const res = await placeOrderFn({
         data: {
@@ -202,13 +307,14 @@ function Page() {
           delivery_fee_ngn: 0,
           delivery_state: form.state,
           ...(selectedOption && !outsideLagos ? { delivery_quote_id: selectedOption.id } : {}),
-          // Immediate (same-day in-stock) orders omit the window/schedule so the
-          // API treats them as dispatch-now, not a scheduled slot.
-          ...(immediate
+          // "As soon as possible" orders omit the window/schedule so the API
+          // treats them as dispatch-now. A scheduled order sends the customer's
+          // chosen date + window.
+          ...(mode === "asap"
             ? {}
             : {
                 delivery_window: chosenWindow,
-                scheduled_delivery_at: scheduledIso(sched.date, chosenWindow),
+                scheduled_delivery_at: scheduledIso(scheduleDate, chosenWindow),
               }),
           customer: {
             name: form.name.trim(),
@@ -221,6 +327,10 @@ function Page() {
           ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
           idempotency_key: idemRef.current,
         },
+      });
+      logStage("order_created", {
+        orderNumber: res.order_number,
+        response: { id: res.id, total_ngn: res.total_ngn, is_preorder: res.is_preorder },
       });
       await proceedToPayment(res);
       return;
@@ -237,12 +347,15 @@ function Page() {
         await submit(false); // body changed under the same key — fresh attempt
         return;
       }
+      let message: string;
       if (err && (err.code === "conflict" || err.status === 422)) {
         // Stock/validation conflict — the API message explains (e.g. "only N left").
-        setPlaceError(`${err.message} Adjust your basket and try again.`);
+        message = `${err.message} Adjust your basket and try again.`;
       } else {
-        setPlaceError(err ? err.message : "Something went wrong placing your order. Please try again.");
+        message = err ? err.message : "Something went wrong placing your order. Please try again.";
       }
+      logStage("order_failed", { errorMessage: message, response: err ? { code: err.code, status: err.status } : undefined });
+      setPlaceError(message);
       setPlacing(false);
     }
   }
@@ -266,6 +379,7 @@ function Page() {
 
   return (
     <SiteShell>
+      <CheckoutErrorModal message={placeError} onDismiss={() => setPlaceError(null)} />
       <div className="px-5 sm:px-10 max-w-6xl mx-auto pt-32 sm:pt-36 pb-24">
         <Link to="/juices" className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--brand)]/70 hover:text-[color:var(--brand-orange)]">
           <ArrowLeft className="h-4 w-4" /> Continue shopping
@@ -304,53 +418,95 @@ function Page() {
                 </div>
               </section>
 
-              {/* When — schedule-driven delivery date & window picker */}
+              {/* When — as-soon-as-possible or a customer-scheduled date + window */}
               <section>
-                <h2 className="font-display text-2xl text-[color:var(--brand)]">{immediate ? "Delivery" : "Delivery window"}</h2>
-                <div className="mt-4 rounded-2xl bg-[color:var(--cream)]/60 p-4 space-y-3">
-                  <div className="flex items-center gap-2 text-sm">
-                    <CalendarClock className="h-4 w-4 text-[color:var(--brand-orange)] shrink-0" />
-                    <span className="font-semibold text-[color:var(--brand)]">{formatDeliveryDate(sched.date)}</span>
+                <h2 className="font-display text-2xl text-[color:var(--brand)]">Delivery</h2>
+                <div className="mt-4 rounded-2xl bg-[color:var(--cream)]/60 p-4 space-y-4">
+                  {/* Mode toggle: ASAP (only when same-day is feasible) vs Schedule */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={!immediate}
+                      onClick={() => setMode("asap")}
+                      className={`rounded-xl px-3 py-2.5 text-left ring-1 transition ${mode === "asap" && immediate ? "bg-[color:var(--brand)] text-white ring-transparent" : "bg-white text-[color:var(--brand)] ring-black/10"} ${!immediate ? "opacity-40 cursor-not-allowed" : ""}`}
+                    >
+                      <span className="block text-sm font-semibold">As soon as possible</span>
+                      <span className={`block text-[11px] ${mode === "asap" && immediate ? "text-white/70" : "text-[color:var(--brand)]/55"}`}>
+                        {immediate ? "Delivered today" : "Not available today"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMode("schedule")}
+                      className={`rounded-xl px-3 py-2.5 text-left ring-1 transition ${mode === "schedule" ? "bg-[color:var(--brand)] text-white ring-transparent" : "bg-white text-[color:var(--brand)] ring-black/10"}`}
+                    >
+                      <span className="block text-sm font-semibold">Schedule for later</span>
+                      <span className={`block text-[11px] ${mode === "schedule" ? "text-white/70" : "text-[color:var(--brand)]/55"}`}>
+                        Pick a date &amp; time
+                      </span>
+                    </button>
                   </div>
-                  {immediate ? (
+
+                  {mode === "asap" ? (
                     <div className="flex items-center gap-2 text-sm text-[color:var(--brand)]/70">
                       <Truck className="h-4 w-4 shrink-0" />
                       <span>Delivered today — as soon as possible. No window to pick.</span>
                     </div>
-                  ) : sched.fixedWindow ? (
-                    <div className="flex items-center gap-2 text-sm text-[color:var(--brand)]/70">
-                      <Truck className="h-4 w-4 shrink-0" />
-                      <span>
-                        {sched.fixedWindow === "morning" && "Morning · 8am–12pm"}
-                        {sched.fixedWindow === "afternoon" && "Afternoon · 12–4pm"}
-                        {sched.fixedWindow === "evening" && "Evening · 4–8pm"}
-                      </span>
-                    </div>
                   ) : (
-                    <div>
-                      <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-2">Pick a window</span>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(["morning", "afternoon", "evening"] as DeliveryWindow[]).map((w) => {
-                          const isSelectable = sched.selectableWindows.includes(w);
-                          const active = selectedWindow === w;
-                          const label = w === "morning" ? "Morning" : w === "afternoon" ? "Afternoon" : "Evening";
-                          return (
-                            <button
-                              key={w}
-                              disabled={!isSelectable}
-                              onClick={() => setSelectedWindow(w)}
-                              className={`rounded-xl px-2 py-2 text-xs font-semibold ring-1 transition ${active && isSelectable ? "bg-[color:var(--brand)] text-white ring-transparent" : "bg-white text-[color:var(--brand)] ring-black/10"} ${!isSelectable ? "opacity-30 cursor-not-allowed" : ""}`}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <p className="mt-2 text-xs text-[color:var(--brand)]/55">
-                        {selectedWindow === "morning" && "8am–12pm"}
-                        {selectedWindow === "afternoon" && "12–4pm"}
-                        {selectedWindow === "evening" && "4–8pm"}
-                      </p>
+                    <div className="space-y-3">
+                      <label className="block">
+                        <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">Delivery date</span>
+                        <input
+                          type="date"
+                          value={scheduleDate}
+                          min={minDate}
+                          max={maxDate}
+                          onChange={(e) => setScheduleDate(e.target.value < minDate ? minDate : (e.target.value || minDate))}
+                          className="w-full rounded-xl bg-white px-4 py-3 text-sm text-[color:var(--brand)] ring-1 ring-black/5 focus:ring-2 focus:ring-[color:var(--brand-orange)] focus:outline-none"
+                        />
+                        <span className="mt-1.5 flex items-center gap-2 text-xs text-[color:var(--brand)]/60">
+                          <CalendarClock className="h-3.5 w-3.5 text-[color:var(--brand-orange)] shrink-0" />
+                          {formatDeliveryDate(scheduleDate)}
+                        </span>
+                      </label>
+
+                      {fixedWindow ? (
+                        <div className="flex items-center gap-2 text-sm text-[color:var(--brand)]/70">
+                          <Truck className="h-4 w-4 shrink-0" />
+                          <span>
+                            {fixedWindow === "morning" && "Morning · 8am–12pm"}
+                            {fixedWindow === "afternoon" && "Afternoon · 12–4pm"}
+                            {fixedWindow === "evening" && "Evening · 4–8pm"}
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-2">Pick a window</span>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(["morning", "afternoon", "evening"] as DeliveryWindow[]).map((w) => {
+                              const isSelectable = selectableWindows.includes(w);
+                              const active = selectedWindow === w;
+                              const label = w === "morning" ? "Morning" : w === "afternoon" ? "Afternoon" : "Evening";
+                              return (
+                                <button
+                                  key={w}
+                                  type="button"
+                                  disabled={!isSelectable}
+                                  onClick={() => setSelectedWindow(w)}
+                                  className={`rounded-xl px-2 py-2 text-xs font-semibold ring-1 transition ${active && isSelectable ? "bg-[color:var(--brand)] text-white ring-transparent" : "bg-white text-[color:var(--brand)] ring-black/10"} ${!isSelectable ? "opacity-30 cursor-not-allowed" : ""}`}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="mt-2 text-xs text-[color:var(--brand)]/55">
+                            {selectedWindow === "morning" && "8am–12pm"}
+                            {selectedWindow === "afternoon" && "12–4pm"}
+                            {selectedWindow === "evening" && "4–8pm"}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                   <p className="text-xs text-[color:var(--brand)]/60 pt-1 border-t border-black/5">
@@ -422,16 +578,10 @@ function Page() {
                 </div>
               </div>
 
-              {placeError && (
-                <div className="mt-4 rounded-xl bg-white/10 p-3 text-sm">
-                  <div className="flex items-center gap-2 font-semibold"><AlertCircle className="h-4 w-4" /> {placeError}</div>
-                  <button onClick={() => submit(false)} className="mt-2 text-xs font-semibold underline">Retry payment</button>
-                </div>
-              )}
-
               <button
                 disabled={!canPlace}
                 onClick={() => submit(false)}
+                aria-busy={placing}
                 className="mt-5 w-full rounded-full bg-[color:var(--brand-orange)] text-white px-6 py-4 text-sm font-bold disabled:opacity-40 hover:opacity-90 transition flex items-center justify-center gap-2"
               >
                 {placing ? (<><Loader2 className="h-4 w-4 animate-spin" /> Opening payment…</>) : (<>Place order — {formatNaira(total)}</>)}
@@ -442,6 +592,46 @@ function Page() {
         )}
       </div>
     </SiteShell>
+  );
+}
+
+/** A blocking error popup for checkout problems — empty required fields or a
+ *  payment window that failed to open. Replaces the old easy-to-miss inline note. */
+function CheckoutErrorModal({ message, onDismiss }: { message: string | null; onDismiss: () => void }) {
+  return (
+    <AnimatePresence>
+      {message && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          role="alertdialog"
+          aria-modal="true"
+        >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onDismiss} />
+          <motion.div
+            initial={{ scale: 0.94, opacity: 0, y: 8 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.94, opacity: 0, y: 8 }}
+            transition={{ type: "spring", damping: 24, stiffness: 280 }}
+            className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl text-center"
+          >
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[color:var(--brand-orange)]/10">
+              <AlertCircle className="h-6 w-6 text-[color:var(--brand-orange)]" />
+            </div>
+            <h3 className="mt-3 font-display text-xl text-[color:var(--brand)]">One more thing</h3>
+            <p className="mt-1.5 text-sm text-[color:var(--brand)]/75">{message}</p>
+            <button
+              onClick={onDismiss}
+              className="mt-5 w-full rounded-full bg-[color:var(--brand)] text-white px-6 py-3 text-sm font-bold hover:opacity-90 transition"
+            >
+              Got it
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 

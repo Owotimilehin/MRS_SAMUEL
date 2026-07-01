@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { sql } from "drizzle-orm";
-import type { DbClient } from "@ms/db";
+import { sql, desc, lt } from "drizzle-orm";
+import { checkoutAttemptLog, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { toCsv } from "../lib/csv.js";
 import { allocateFifo, type CostLayer } from "../lib/packaging-cost.js";
@@ -170,6 +170,64 @@ export function reportRoutes(db: DbClient) {
       ORDER BY business_date DESC
     `);
     return c.json({ data: rows });
+  });
+
+  // Monthly stock-loss report (owner-only). Aggregates variance_loss for the
+  // month: totals, by-source split, and a per-flavour/size breakdown.
+  r.get("/variance-losses", requireCapability("finance.view"), async (c) => {
+    const month = c.req.query("month") ?? new Date().toISOString().slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return c.json({ error: { code: "validation_failed", message: "month must be YYYY-MM" } }, 400);
+    }
+    const from = `${month}-01`;
+    const [yy, mm] = month.split("-").map((s) => Number(s));
+    const nextMonth = mm === 12 ? `${yy! + 1}-01-01` : `${yy}-${String(mm! + 1).padStart(2, "0")}-01`;
+
+    const rows = await db.execute<{
+      product_id: string;
+      name: string;
+      size_ml: number | null;
+      source: string;
+      bottles: number;
+      value_ngn: number;
+    }>(sql`
+      SELECT vl.product_id, p.name, vl.size_ml, vl.source,
+             SUM(vl.quantity)::int AS bottles, SUM(vl.value_ngn)::int AS value_ngn
+      FROM variance_loss vl
+      JOIN product p ON p.id = vl.product_id
+      WHERE vl.occurred_at >= ${from}::date
+        AND vl.occurred_at <  ${nextMonth}::date
+      GROUP BY vl.product_id, p.name, vl.size_ml, vl.source
+      ORDER BY value_ngn DESC
+    `);
+
+    const bySource: Record<string, { bottles: number; value_ngn: number }> = {};
+    let bottles = 0;
+    let valueNgn = 0;
+    for (const row of rows) {
+      const b = Number(row.bottles);
+      const v = Number(row.value_ngn);
+      bottles += b;
+      valueNgn += v;
+      const acc = (bySource[row.source] ??= { bottles: 0, value_ngn: 0 });
+      acc.bottles += b;
+      acc.value_ngn += v;
+    }
+
+    return c.json({
+      data: {
+        month,
+        totals: { bottles, value_ngn: valueNgn, by_source: bySource },
+        by_flavour: rows.map((r) => ({
+          product_id: r.product_id,
+          name: r.name,
+          size_ml: r.size_ml,
+          source: r.source,
+          bottles: Number(r.bottles),
+          value_ngn: Number(r.value_ngn),
+        })),
+      },
+    });
   });
 
   // Monthly P&L. Revenue from sale_order (paid/handed_over/delivered) and
@@ -679,6 +737,64 @@ export function reportRoutes(db: DbClient) {
         caveats: Array.from(new Set(caveats)),
       },
     });
+  });
+
+  // Owner diagnostic: recent checkout attempts, grouped by attempt_id. Each
+  // attempt carries its delivery-details snapshot + an ordered stage timeline.
+  r.get("/checkout-log", async (c) => {
+    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50), 1), 200);
+    const before = c.req.query("before");
+    // Over-fetch rows newest-first then group in memory, so a multi-stage
+    // attempt isn't split across the page boundary.
+    const rows = await db
+      .select()
+      .from(checkoutAttemptLog)
+      .where(before ? lt(checkoutAttemptLog.createdAt, new Date(before)) : undefined)
+      .orderBy(desc(checkoutAttemptLog.createdAt))
+      .limit(limit * 8);
+
+    const byAttempt = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const list = byAttempt.get(row.attemptId) ?? [];
+      list.push(row);
+      byAttempt.set(row.attemptId, list);
+    }
+
+    const attempts = [...byAttempt.values()]
+      .map((stageRows) => {
+        const ordered = [...stageRows].sort(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+        );
+        const first = ordered[0]!;
+        const withDetails = ordered.find((s) => s.customerName || s.deliveryAddress) ?? first;
+        return {
+          attempt_id: first.attemptId,
+          started_at: first.createdAt.toISOString(),
+          customer: {
+            name: withDetails.customerName,
+            phone: withDetails.customerPhone,
+            email: withDetails.customerEmail,
+            address: withDetails.deliveryAddress,
+            state: withDetails.deliveryState,
+          },
+          items: withDetails.itemsJson ?? [],
+          total_ngn: withDetails.totalNgn,
+          stages: ordered.map((s) => ({
+            stage: s.stage,
+            status: s.status,
+            error_message: s.errorMessage,
+            order_number: s.orderNumber,
+            response: s.responseJson,
+            created_at: s.createdAt.toISOString(),
+          })),
+        };
+      })
+      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+      .slice(0, limit);
+
+    const nextBefore =
+      attempts.length === limit ? attempts[attempts.length - 1]!.started_at : null;
+    return c.json({ attempts, next_before: nextBefore });
   });
 
   return r;

@@ -388,6 +388,154 @@ describe("Task 6: server-authoritative delivery schedule + alt_phone", () => {
     }
   });
 
+  // ---- customer-selectable delivery date (schedule even when in stock) ----
+
+  /** Lagos (UTC+1) YYYY-MM-DD for a given Date. */
+  function lagosYmd(d: Date): string {
+    const l = new Date(d.getTime() + 3_600_000);
+    return [
+      l.getUTCFullYear(),
+      String(l.getUTCMonth() + 1).padStart(2, "0"),
+      String(l.getUTCDate()).padStart(2, "0"),
+    ].join("-");
+  }
+
+  it("(f) in-stock order with a future scheduled_delivery_at honours the customer's chosen date + window", async () => {
+    const now = new Date();
+    // Ten days out is well past today's floor for an in-stock 650ml line.
+    const chosenDate = lagosYmd(new Date(now.getTime() + 10 * 86_400_000));
+    const chosenIso = `${chosenDate}T14:00:00+01:00`; // afternoon anchor
+
+    // Seed a dedicated, freshly-stocked 650ml variant so this is a true in-stock
+    // case (the shared variant's 5 units are consumed by earlier tests).
+    const { productVariant: pvTable, productPrice, stockLedger } = await import("@ms/db");
+    const pRes = await fetch(`${baseUrl}/v1/products`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookies, "idempotency-key": uuid() },
+      body: JSON.stringify({
+        name: "Future Juice 650",
+        slug: `future-juice-650-${Date.now()}`,
+        category: "regular",
+        initial_price_ngn: 4500,
+      }),
+    });
+    const futureProdId = ((await pRes.json()) as { data: { id: string } }).data.id;
+    const [vFut] = await db
+      .insert(pvTable)
+      .values({ productId: futureProdId, sizeMl: 650, sku: `future-juice-650-${Date.now()}` })
+      .returning();
+    if (!vFut) throw new Error("future 650ml variant insert failed");
+    await db.insert(productPrice).values({ productId: futureProdId, variantId: vFut.id, priceNgn: 4500 });
+    await db.insert(stockLedger).values({
+      locationType: "branch",
+      locationId: branchId,
+      productId: futureProdId,
+      variantId: vFut.id,
+      delta: 10,
+      sourceType: "opening_balance",
+      sourceId: uuid(),
+    });
+
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        delivery_fee_ngn: 0,
+        scheduled_delivery_at: chosenIso,
+        delivery_window: "afternoon",
+        customer: {
+          name: "Sched Customer F",
+          phone: "+2348025556666",
+          address: "6 Future Street",
+        },
+        items: [{ variant_id: vFut.id, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const body = (await orderRes.json()) as { data: { id: string; is_preorder: boolean } };
+    expect(body.data.is_preorder).toBe(false);
+
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await db
+      .select({ scheduledDeliveryAt: saleOrder.scheduledDeliveryAt })
+      .from(saleOrder)
+      .where(eq(saleOrder.id, body.data.id));
+    expect(row?.scheduledDeliveryAt).not.toBeNull();
+    // Stored date must be the customer's chosen date, not today's floor.
+    expect(row!.scheduledDeliveryAt!.toISOString().slice(0, 10)).toBe(chosenDate);
+    // Afternoon anchor = 14:00 Lagos = 13:00 UTC.
+    expect(row!.scheduledDeliveryAt!.getUTCHours()).toBe(13);
+  });
+
+  it("(g) a scheduled date earlier than the earliest feasible date is clamped up to the floor", async () => {
+    const now = new Date();
+    // Ask for a time ~2h out (today in Lagos except in the last 2h of the day) —
+    // below the next-day floor of an out-of-stock 330ml preorder line.
+    const clientMs = now.getTime() + 2 * 3_600_000;
+    const clientIso = new Date(clientMs).toISOString();
+    const clientLagosDate = lagosYmd(new Date(clientMs));
+
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        delivery_fee_ngn: 0,
+        scheduled_delivery_at: clientIso,
+        delivery_window: "afternoon",
+        customer: {
+          name: "Sched Customer G",
+          phone: "+2348025557777",
+          address: "7 Clamp Street",
+        },
+        items: [{ variant_id: variant330Id, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(201);
+    const body = (await orderRes.json()) as { data: { id: string } };
+
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await db
+      .select({ scheduledDeliveryAt: saleOrder.scheduledDeliveryAt })
+      .from(saleOrder)
+      .where(eq(saleOrder.id, body.data.id));
+    expect(row?.scheduledDeliveryAt).not.toBeNull();
+
+    const floor = orderSchedule(now, [{ sizeMl: 330, inStock: false }]).date;
+    const storedDate = row!.scheduledDeliveryAt!.toISOString().slice(0, 10);
+    // The server never schedules before the earliest feasible (floor) date.
+    expect(storedDate).toBe(floor);
+    // When the customer asked for a below-floor day, it was bumped up.
+    if (clientLagosDate < floor) {
+      expect(storedDate > clientLagosDate).toBe(true);
+    }
+  });
+
+  it("(h) a scheduled date beyond 3 months is rejected with 422", async () => {
+    const now = new Date();
+    const farIso = new Date(now.getTime() + 120 * 86_400_000).toISOString(); // ~4 months
+
+    const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": uuid() },
+      body: JSON.stringify({
+        branch_id: branchId,
+        delivery_fee_ngn: 0,
+        scheduled_delivery_at: farIso,
+        customer: {
+          name: "Sched Customer H",
+          phone: "+2348025558888",
+          address: "8 TooFar Street",
+        },
+        items: [{ variant_id: variant650Id, quantity: 1 }],
+      }),
+    });
+    expect(orderRes.status).toBe(422);
+  });
+
   it("(c) alt_phone in payload is persisted on the sale_order row and surfaced via admin detail API", async () => {
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",

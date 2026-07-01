@@ -178,6 +178,78 @@ describe("Phase 5 daily close flow", () => {
     expect(line?.balance).toBe(17); // 20 − 3 sold
   });
 
+  it("preview is scoped to the open shift, not the whole day", async () => {
+    // Fully isolated branch + product so this test shares no state with the
+    // ordered close/revenue tests below.
+    const today = new Date().toISOString().slice(0, 10);
+    const sb = await call<{ data: Branch }>("POST", "/v1/branches", {
+      name: "Preview Shift Branch",
+      code: `PSB-${Date.now()}`,
+      delivery_zones: [],
+    });
+    const sBranch = sb.body.data;
+    const sp = await call<{ data: ProductRow }>("POST", "/v1/products", {
+      name: "Preview Shift Sunrise",
+      slug: `preview-shift-${Date.now()}`,
+      category: "regular",
+      ingredients: ["Carrot"],
+      initial_price_ngn: 2500,
+    });
+    const sVariantId = sp.body.data.variants[0]!.id;
+    await call("POST", "/v1/inventory/adjust", {
+      location_type: "branch",
+      location_id: sBranch.id,
+      reason_code: "opening_balance",
+      items: [{ product_id: sp.body.data.id, variant_id: sVariantId, new_quantity: 20 }],
+    });
+
+    // Make 3 sales under a first (pre-)shift, then close it — these are the
+    // "earlier day" sales that must NOT show in the next shift's preview.
+    const { createDbClient, shiftOpen } = await import("@ms/db");
+    const { and, eq } = await import("drizzle-orm");
+    const tmpDb = createDbClient(process.env.DATABASE_URL!);
+    await call("POST", `/v1/branches/${sBranch.id}/shift-open`, { business_date: today, stock_counts: [] });
+    for (let i = 0; i < 3; i++) {
+      const s = await call<{ data: SaleOrderRow }>("POST", `/v1/branches/${sBranch.id}/sales`, {
+        channel: "walkup",
+        items: [{ product_id: sp.body.data.id, quantity: 1 }],
+        payment_method: "transfer",
+        created_at_local: new Date().toISOString(),
+      });
+      await call("PATCH", `/v1/branches/${sBranch.id}/sales/${s.body.data.id}/pay`);
+    }
+    await tmpDb.update(shiftOpen).set({ status: "closed", closedAt: new Date() })
+      .where(and(eq(shiftOpen.branchId, sBranch.id), eq(shiftOpen.status, "open")));
+
+    // No open shift → preview falls back to the day figure (3 sales).
+    const dayView = await call<{ data: ClosePreview }>(
+      "GET",
+      `/v1/branches/${sBranch.id}/daily-close/preview?date=${today}`,
+    );
+    expect(dayView.body.data.expected_cash_ngn).toBe(7500);
+
+    // Open a fresh shift NOW (after those 3 sales; stock is 17, count matches
+    // so no variance), then sell 1 more inside it.
+    await call(`POST`, `/v1/branches/${sBranch.id}/shift-open`, {
+      business_date: today,
+      stock_counts: [{ product_id: sp.body.data.id, variant_id: sVariantId, counted_quantity: 17 }],
+    });
+    const sale = await call<{ data: SaleOrderRow }>("POST", `/v1/branches/${sBranch.id}/sales`, {
+      channel: "walkup",
+      items: [{ product_id: sp.body.data.id, quantity: 1 }],
+      payment_method: "transfer",
+      created_at_local: new Date().toISOString(),
+    });
+    await call("PATCH", `/v1/branches/${sBranch.id}/sales/${sale.body.data.id}/pay`);
+
+    // Preview now reflects ONLY the in-shift sale (₦2,500), not the 3 earlier ones.
+    const shiftView = await call<{ data: ClosePreview }>(
+      "GET",
+      `/v1/branches/${sBranch.id}/daily-close/preview?date=${today}`,
+    );
+    expect(shiftView.body.data.expected_cash_ngn).toBe(2500);
+  });
+
   // -------------------------------------------------------------------------
   // Task-5 tests: conclusive shift-lifecycle close
   // -------------------------------------------------------------------------
