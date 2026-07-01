@@ -11,7 +11,7 @@ vi.mock("../../src/payments/payaza.js", () => ({
   isPayazaSuccess: (status: string) => status.toLowerCase() === "completed",
 }));
 
-import { applyPayazaConfirmation, verifyAndReconcile } from "../../src/payments/reconcile.js";
+import { applyPayazaConfirmation, verifyAndReconcile, applyOfflinePayment } from "../../src/payments/reconcile.js";
 import { saleOrder, saleOrderItem, stockLedger, stockReservation, payment } from "@ms/db";
 
 // Minimal fake tx: records inserts/updates and returns a seeded order. select()
@@ -226,5 +226,69 @@ describe("verifyAndReconcile heals a stuck reconcile_needed order", () => {
     expect(r).toEqual({ kind: "not_completed", payazaStatus: "Pending" });
     // No status writes at all — not auto-cancelled, not nudged.
     expect(calls.updates).toHaveLength(0);
+  });
+});
+
+describe("applyOfflinePayment (transfer/cash outside Payaza)", () => {
+  it("marks a confirmed non-preorder paid via transfer and deducts stock", async () => {
+    const { tx, calls } = fakeTx({ ...baseOrder, status: "confirmed", totalNgn: 3500 });
+    const r = await applyOfflinePayment(tx as any, { ...baseOrder, status: "confirmed", totalNgn: 3500 } as any, {
+      method: "transfer",
+      amountNgn: 3500,
+      collectedByUserId: "staff-1",
+    });
+    expect(r.kind).toBe("paid");
+    // A manual (NOT payaza) payment row for the transfer.
+    expect(
+      calls.inserts.some(
+        (i: any) =>
+          i.t === payment &&
+          i.v.status === "paid" &&
+          i.v.method === "transfer" &&
+          i.v.processor === "manual" &&
+          i.v.collectedByUserId === "staff-1",
+      ),
+    ).toBe(true);
+    // Stock ledgered out for the one fake item; reservation released.
+    expect(calls.inserts.some((i: any) => i.t === stockLedger && i.v.delta === -1)).toBe(true);
+    expect(calls.deletes.some((d: any) => d.t === stockReservation)).toBe(true);
+  });
+
+  it("pays a reconcile_needed preorder WITHOUT moving stock", async () => {
+    const order = { ...baseOrder, status: "reconcile_needed", isPreorder: true, totalNgn: 8500 };
+    const { tx, calls } = fakeTx(order);
+    const r = await applyOfflinePayment(tx as any, order as any, {
+      method: "transfer",
+      amountNgn: 8500,
+      collectedByUserId: "staff-1",
+    });
+    expect(r.kind).toBe("paid");
+    expect(calls.inserts.some((i: any) => i.t === payment && i.v.processor === "manual")).toBe(true);
+    // Preorder defers stock to fulfilment.
+    expect(calls.inserts.some((i: any) => i.t === stockLedger)).toBe(false);
+    expect(calls.deletes.some((d: any) => d.t === stockReservation)).toBe(false);
+    expect(calls.inserts.some((i: any) => i.v.eventType === "sale.preorder_paid")).toBe(true);
+  });
+
+  it("is idempotent: an already-paid order records no second payment", async () => {
+    const { tx, calls } = fakeTx({ ...baseOrder, status: "paid" });
+    const r = await applyOfflinePayment(tx as any, { ...baseOrder, status: "paid" } as any, {
+      method: "cash",
+      amountNgn: 3500,
+      collectedByUserId: "staff-1",
+    });
+    expect(r).toEqual({ kind: "already_processed", status: "paid" });
+    expect(calls.inserts).toHaveLength(0);
+  });
+
+  it("loses the CAS to a concurrent winner and inserts nothing", async () => {
+    const { tx, calls } = fakeTx({ ...baseOrder, status: "confirmed" }, { casWins: false });
+    const r = await applyOfflinePayment(tx as any, { ...baseOrder, status: "confirmed" } as any, {
+      method: "cash",
+      amountNgn: 3500,
+      collectedByUserId: "staff-1",
+    });
+    expect(r).toEqual({ kind: "already_processed", status: "confirmed" });
+    expect(calls.inserts).toHaveLength(0);
   });
 });
