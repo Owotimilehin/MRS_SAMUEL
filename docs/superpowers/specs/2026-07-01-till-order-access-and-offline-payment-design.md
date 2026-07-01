@@ -132,11 +132,15 @@ picker transfer/cash, amount defaulting to the balance) beside "Re-check payment
 ### 5. Resolve to Unpaid — deliberate, never automatic
 
 When staff have confirmed no money landed on **Payaza or by transfer**, they cancel the
-order. Reuse the existing cancel path with `cancel_reason = 'payment_not_received'`,
-surfaced everywhere as **"Unpaid — no payment received."** This is the existing
-`cancel-refund` / cancel action (gated `orders.manage`); it releases the reservation and
-drops the order off the till + review queues. No new status, no migration (chosen over a
-new `unpaid` status to stay light and match the existing 60-min auto-expiry resolution).
+order as unpaid. This must **not** reuse `cancel-refund` — that endpoint always sets
+`refund_owed_ngn = totalNgn`, which for a never-paid order would fabricate a refund
+liability the business does not owe. Instead add a dedicated **`cancel-unpaid`** action
+(gated `orders.manage`) that only acts on `confirmed` / `reconcile_needed` orders: sets
+`status = 'cancelled'`, `cancel_reason = 'payment_not_received'`, releases the stock
+reservation, and leaves `refund_owed_ngn` NULL. Surfaced everywhere as **"Unpaid — no
+payment received."** No new status, no migration (chosen over a new `unpaid` status to
+stay light and match the existing 60-min auto-expiry resolution, which likewise cancels
+with no refund). Paid orders that need cancelling still go through `cancel-refund`.
 
 `reconcile_needed` is thereby reserved strictly for "money in but short."
 
