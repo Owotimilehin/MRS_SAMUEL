@@ -2,7 +2,16 @@
    stand-in for Drizzle's transaction handle; typing it precisely would mean
    re-deriving Drizzle's generic query-builder types for no test value. */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { applyPayazaConfirmation } from "../../src/payments/reconcile.js";
+
+// Mock the Payaza verify call so verifyAndReconcile can be driven without HTTP.
+// isPayazaSuccess keeps its real (trivial) behaviour.
+const mockVerify = vi.fn();
+vi.mock("../../src/payments/payaza.js", () => ({
+  verifyPayazaTransaction: (...args: unknown[]) => mockVerify(...args),
+  isPayazaSuccess: (status: string) => status.toLowerCase() === "completed",
+}));
+
+import { applyPayazaConfirmation, verifyAndReconcile } from "../../src/payments/reconcile.js";
 import { saleOrder, saleOrderItem, stockLedger, stockReservation, payment } from "@ms/db";
 
 // Minimal fake tx: records inserts/updates and returns a seeded order. select()
@@ -185,5 +194,37 @@ describe("applyPayazaConfirmation", () => {
     );
     expect(r).toEqual({ kind: "already_processed", status: "confirmed" });
     expect(calls.inserts).toHaveLength(0);
+  });
+});
+
+describe("verifyAndReconcile heals a stuck reconcile_needed order", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    mockVerify.mockReset();
+  });
+
+  function fakeDb(order: any) {
+    const { tx, calls } = fakeTx(order);
+    const db = { transaction: (cb: any) => cb(tx) };
+    return { db, calls };
+  }
+
+  it("re-checks a reconcile_needed order Payaza reports paid in full -> paid", async () => {
+    mockVerify.mockResolvedValue(status({ amountNgn: 8600, feeNgn: 100, netNgn: 8500 }));
+    const { db, calls } = fakeDb({ ...baseOrder, status: "reconcile_needed", totalNgn: 8500 });
+    const r = await verifyAndReconcile(db as any, "SO-1");
+    expect(r.kind).toBe("paid");
+    // It nudged reconcile_needed -> confirmed, then flipped -> paid.
+    expect(calls.updates.some((u: any) => u.v.status === "confirmed")).toBe(true);
+    expect(calls.updates.some((u: any) => u.v.status === "paid")).toBe(true);
+  });
+
+  it("leaves a reconcile_needed order untouched when Payaza shows no payment", async () => {
+    mockVerify.mockResolvedValue({ status: "Pending" });
+    const { db, calls } = fakeDb({ ...baseOrder, status: "reconcile_needed", totalNgn: 8500 });
+    const r = await verifyAndReconcile(db as any, "SO-1");
+    expect(r).toEqual({ kind: "not_completed", payazaStatus: "Pending" });
+    // No status writes at all — not auto-cancelled, not nudged.
+    expect(calls.updates).toHaveLength(0);
   });
 });

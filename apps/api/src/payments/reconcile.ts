@@ -168,6 +168,30 @@ export async function verifyAndReconcile(
   return db.transaction(async (tx) => {
     const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.orderNumber, orderNumber));
     if (!o) return { kind: "order_not_found" };
-    return applyPayazaConfirmation(tx, o, confirmed);
+
+    // A previously-stuck order (flagged reconcile_needed by the old exact-equality
+    // reconciliation, or a genuine earlier shortfall since topped up) must be
+    // re-openable: nudge it back to 'confirmed' — CAS-guarded — so
+    // applyPayazaConfirmation's own guard/CAS acts on it. Only reached when
+    // Payaza already reports success (checked above), so we never reopen an order
+    // with no money behind it.
+    let orderForConfirmation = o;
+    if (o.status === "reconcile_needed") {
+      const won = await tx
+        .update(saleOrder)
+        .set({ status: "confirmed", updatedAt: new Date() })
+        .where(and(eq(saleOrder.id, o.id), eq(saleOrder.status, "reconcile_needed")))
+        .returning({ id: saleOrder.id });
+      if (won.length === 0) {
+        // A concurrent caller already moved it — re-read and let
+        // applyPayazaConfirmation decide from the fresh state.
+        const [fresh] = await tx.select().from(saleOrder).where(eq(saleOrder.id, o.id));
+        orderForConfirmation = fresh ?? o;
+      } else {
+        orderForConfirmation = { ...o, status: "confirmed" };
+      }
+    }
+
+    return applyPayazaConfirmation(tx, orderForConfirmation, confirmed);
   });
 }
