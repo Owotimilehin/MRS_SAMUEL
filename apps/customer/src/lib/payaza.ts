@@ -70,7 +70,85 @@ export function payazaNames(config: { firstName?: string; lastName?: string }): 
   return { firstName, lastName };
 }
 
+/** The three ways a pay-tap can fail before the customer sees a working popup.
+ *  Logged with every failure so we can tell them apart in the checkout log
+ *  instead of guessing from a generic message. */
+export type PayazaFailureReason = "sdk_load_failed" | "popup_not_visible" | "sdk_error";
+
+/** A snapshot of the customer's network at failure time (Network Information API,
+ *  where supported) — the single most useful signal for "why did it fail", since
+ *  these failures cluster on slow/saving connections. All fields best-effort. */
+export interface PayazaConnectionInfo {
+  effectiveType?: string; // "slow-2g" | "2g" | "3g" | "4g"
+  downlinkMbps?: number;
+  rttMs?: number;
+  saveData?: boolean;
+}
+
+/** Structured diagnostics attached to every payment failure so the checkout log
+ *  answers "which stage broke, how long it took, was the SDK/iframe there, and
+ *  on what network" — turning "the window didn't open" into an actionable row. */
+export interface PayazaFailureDiagnostics {
+  reason: PayazaFailureReason;
+  message: string;
+  /** ms from launch (pay-tap) to this failure. */
+  elapsedMs: number;
+  /** Was window.PayazaCheckout defined (i.e. did the SDK script load)? */
+  sdkLoaded: boolean;
+  /** Was Payaza's checkout iframe in the DOM at all (even if not visible)? */
+  iframePresent: boolean;
+  /** Had the iframe flipped to visible (opacity 1)? */
+  iframeVisible: boolean;
+  /** How many SDK <script> load attempts the loader made. */
+  loadAttempts: number;
+  /** The watchdog window in effect (ms). */
+  timeoutMs: number;
+  connection: PayazaConnectionInfo | null;
+  timestamp: string;
+}
+
+/** The customer-facing message for a failure reason. `sdk_error` keeps Payaza's
+ *  own (more specific) message when present. Pure so it's unit-tested. */
+export function payazaFailureMessage(reason: PayazaFailureReason, sdkMessage?: string): string {
+  switch (reason) {
+    case "sdk_load_failed":
+      return "We couldn't start the secure payment window. Check your connection and try again.";
+    case "popup_not_visible":
+      return "The payment window is taking longer than usual to open. If it doesn't appear, please check your connection and tap Try again.";
+    case "sdk_error":
+      return sdkMessage ?? "Payment could not be completed. Please try again.";
+  }
+}
+
+/** Read the Network Information API if the browser exposes it (Chrome/Android —
+ *  which is most of our customers). Returns null where unsupported (iOS Safari). */
+export function readConnectionInfo(): PayazaConnectionInfo | null {
+  if (typeof navigator === "undefined") return null;
+  const c = (navigator as Navigator & {
+    connection?: { effectiveType?: string; downlink?: number; rtt?: number; saveData?: boolean };
+  }).connection;
+  if (!c) return null;
+  return {
+    ...(typeof c.effectiveType === "string" ? { effectiveType: c.effectiveType } : {}),
+    ...(typeof c.downlink === "number" ? { downlinkMbps: c.downlink } : {}),
+    ...(typeof c.rtt === "number" ? { rttMs: c.rtt } : {}),
+    ...(typeof c.saveData === "boolean" ? { saveData: c.saveData } : {}),
+  };
+}
+
+/** True if Payaza's checkout iframe exists in the DOM at all, regardless of
+ *  whether it has become visible. Distinguishes "SDK never inserted the iframe"
+ *  from "iframe inserted but never rendered" in failure diagnostics. */
+function payazaIframePresent(): boolean {
+  if (typeof document === "undefined") return false;
+  return !!document.querySelector('iframe[src^="https://checkout-v2.payaza.africa"]');
+}
+
 let loadPromise: Promise<PayazaGlobal> | null = null;
+
+/** How many SDK <script> load attempts the last loadSdk() made — surfaced in
+ *  failure diagnostics. */
+let lastSdkLoadAttempts = 0;
 
 /** How many times to attempt fetching the SDK <script> in a single press before
  *  surfacing a load failure. Payaza's CDN bundle intermittently fails to fetch
@@ -109,6 +187,7 @@ function loadSdk(): Promise<PayazaGlobal> {
   }
   if (window.PayazaCheckout) return Promise.resolve(window.PayazaCheckout);
   if (loadPromise) return loadPromise;
+  lastSdkLoadAttempts = 0;
   loadPromise = (async () => {
     let lastError: unknown;
     for (let attempt = 0; attempt < SDK_LOAD_ATTEMPTS; attempt++) {
@@ -117,6 +196,7 @@ function loadSdk(): Promise<PayazaGlobal> {
       }
       // A prior attempt's <script> may have populated the global asynchronously.
       if (window.PayazaCheckout) return window.PayazaCheckout;
+      lastSdkLoadAttempts = attempt + 1;
       try {
         return await appendSdkScript();
       } catch (err) {
@@ -128,6 +208,21 @@ function loadSdk(): Promise<PayazaGlobal> {
     throw lastError ?? new Error("Failed to load Payaza checkout SDK");
   })();
   return loadPromise;
+}
+
+/**
+ * Pre-warm Payaza while the customer is still filling in the checkout form, so
+ * tapping Pay opens an already-loaded popup instead of starting a cold DNS + TLS
+ * + SDK download + iframe fetch at the worst possible moment. Safe to call on
+ * page mount and repeatedly: it reuses the cached load, and a warming failure is
+ * swallowed (the real pay-tap retries with full error handling). Pairs with a
+ * <link rel="preconnect"> to checkout-v2.payaza.africa in the checkout route head.
+ */
+export function prewarmPayaza(): void {
+  if (typeof window === "undefined") return;
+  void loadSdk().catch(() => {
+    /* best-effort warm-up; the pay-tap will retry and surface any real error */
+  });
 }
 
 /** How long to wait for the Payaza portal to actually become visible before we
@@ -169,16 +264,35 @@ async function waitForPopupOpen(timeoutMs: number): Promise<boolean> {
  */
 export async function launchPayazaCheckout(
   config: PayazaCheckoutConfig,
-  handlers: { onPaid: () => void; onClose?: () => void; onError?: (message: string) => void },
+  handlers: {
+    onPaid: () => void;
+    onClose?: () => void;
+    onError?: (message: string, diagnostics?: PayazaFailureDiagnostics) => void;
+  },
 ): Promise<void> {
+  const startedAt = Date.now();
+  // Snapshot everything we know about *this* failure so the checkout log can tell
+  // the three failure modes apart (and on what network they happen).
+  const diagnose = (reason: PayazaFailureReason, message: string): PayazaFailureDiagnostics => ({
+    reason,
+    message,
+    elapsedMs: Date.now() - startedAt,
+    sdkLoaded: typeof window !== "undefined" && !!window.PayazaCheckout,
+    iframePresent: payazaIframePresent(),
+    iframeVisible: isPayazaPopupVisible(),
+    loadAttempts: lastSdkLoadAttempts,
+    timeoutMs: POPUP_OPEN_TIMEOUT_MS,
+    connection: readConnectionInfo(),
+    timestamp: new Date().toISOString(),
+  });
+
   let Payaza: PayazaGlobal;
   try {
     Payaza = await loadSdk();
   } catch {
     // Network/CSP/blocked SDK — tell the customer instead of hanging silently.
-    handlers.onError?.(
-      "We couldn't start the secure payment window. Check your connection and try again.",
-    );
+    const message = payazaFailureMessage("sdk_load_failed");
+    handlers.onError?.(message, diagnose("sdk_load_failed", message));
     return;
   }
 
@@ -200,7 +314,9 @@ export async function launchPayazaCheckout(
     if (paid) {
       if (settle()) handlers.onPaid();
     } else if (errorMessage) {
-      if (settle()) handlers.onError?.(errorMessage);
+      // Keep Payaza's own message (e.g. a specific validation error) for the
+      // customer, but tag the diagnostics as an SDK-reported error.
+      if (settle()) handlers.onError?.(errorMessage, diagnose("sdk_error", errorMessage));
     }
     // non-terminal (copy/info/action): leave unsettled.
   };
@@ -237,8 +353,7 @@ export async function launchPayazaCheckout(
   void waitForPopupOpen(POPUP_OPEN_TIMEOUT_MS).then((opened) => {
     if (opened || settled) return; // opened fine, or already resolved — nothing to do.
     if (!settle()) return;
-    handlers.onError?.(
-      "The payment window is taking longer than usual to open. If it doesn't appear, please check your connection and tap Try again.",
-    );
+    const message = payazaFailureMessage("popup_not_visible");
+    handlers.onError?.(message, diagnose("popup_not_visible", message));
   });
 }

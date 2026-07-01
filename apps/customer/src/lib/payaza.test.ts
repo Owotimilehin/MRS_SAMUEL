@@ -4,6 +4,8 @@ import {
   payazaNames,
   isPayazaPopupVisible,
   sdkRetryDelayMs,
+  payazaFailureMessage,
+  readConnectionInfo,
 } from "./payaza";
 
 describe("isPayazaPopupVisible", () => {
@@ -21,6 +23,33 @@ describe("sdkRetryDelayMs", () => {
     const second = sdkRetryDelayMs(1);
     expect(first).toBeGreaterThan(0);
     expect(second).toBeGreaterThan(first);
+  });
+});
+
+describe("payazaFailureMessage", () => {
+  it("gives a distinct, non-empty customer message per failure reason", () => {
+    const load = payazaFailureMessage("sdk_load_failed");
+    const popup = payazaFailureMessage("popup_not_visible");
+    expect(load).toBeTruthy();
+    expect(popup).toBeTruthy();
+    expect(load).not.toBe(popup);
+  });
+
+  it("keeps Payaza's own message for an sdk_error when provided", () => {
+    expect(payazaFailureMessage("sdk_error", "'last_name' cannot be blank")).toBe(
+      "'last_name' cannot be blank",
+    );
+  });
+
+  it("falls back to a generic message for an sdk_error with no detail", () => {
+    expect(payazaFailureMessage("sdk_error")).toBeTruthy();
+  });
+});
+
+describe("readConnectionInfo", () => {
+  it("returns null when the Network Information API is unavailable (node/SSR/iOS)", () => {
+    // navigator has no `connection` in node; must not throw and must return null.
+    expect(readConnectionInfo()).toBeNull();
   });
 });
 

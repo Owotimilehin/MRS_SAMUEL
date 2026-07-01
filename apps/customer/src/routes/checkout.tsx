@@ -10,7 +10,7 @@ import { fetchBranches, requestQuote, placeOrder as placeOrderFn, logCheckoutAtt
 import { buildCheckoutLogPayload, type CheckoutStage } from "@/lib/checkout-log";
 import { asApiError } from "@/lib/api/client";
 import type { ApiDeliveryOption, ApiPlacedOrder } from "@/lib/api/types";
-import { launchPayazaCheckout } from "@/lib/payaza";
+import { launchPayazaCheckout, prewarmPayaza } from "@/lib/payaza";
 import { NIGERIA_STATES } from "@/lib/nigeria-states";
 import { scheduledIso, orderSchedule, type DeliveryWindow } from "@/lib/schedule";
 import { deliveryPromise, isImmediateSchedule } from "@/lib/availability-label";
@@ -22,6 +22,13 @@ export const Route = createFileRoute("/checkout")({
     meta: [
       { title: "Checkout — Mrs. Samuel Fruit Juice" },
       { name: "description", content: "Complete your Mrs. Samuel juice order. Lagos delivery now or scheduled; nationwide arranged separately. Pay securely with Payaza." },
+    ],
+    // Warm DNS + TLS to Payaza's checkout host the moment the page loads, so the
+    // SDK/iframe fetches at pay-time aren't paying a cold-connection tax. Pairs
+    // with prewarmPayaza() (eager SDK download) in the component below.
+    links: [
+      { rel: "preconnect", href: "https://checkout-v2.payaza.africa" },
+      { rel: "dns-prefetch", href: "https://checkout-v2.payaza.africa" },
     ],
   }),
   loader: async () => ({ branches: await fetchBranches() }),
@@ -89,6 +96,13 @@ function Page() {
     // scheduling. When it becomes feasible again, leave the customer's choice be.
     if (!immediate) setMode("schedule");
   }, [immediate]);
+
+  // Pre-warm Payaza the moment the customer reaches checkout (while they fill in
+  // details), so tapping Pay opens an already-downloaded popup instead of a cold
+  // DNS + TLS + SDK + iframe load — the slowest, most failure-prone moment.
+  useEffect(() => {
+    prewarmPayaza();
+  }, []);
 
   // The earliest date the customer may schedule (the schedule "floor"), and the
   // 3-month horizon — both as Lagos YYYY-MM-DD for the native date input.
@@ -266,10 +280,16 @@ function Page() {
         logStage("payment_closed", { orderNumber: order.order_number });
         setPlacing(false);
       },
-      onError: (message) => {
+      onError: (message, diagnostics) => {
         // The popup never opened (bad network, SDK blocked, or Payaza rejected
         // the order). Surface it instead of failing silently, and let them retry.
-        logStage("payment_failed", { orderNumber: order.order_number, errorMessage: message });
+        // Attach structured diagnostics (reason, timing, sdk/iframe state,
+        // network) so the checkout log shows WHY, not just a generic message.
+        logStage("payment_failed", {
+          orderNumber: order.order_number,
+          errorMessage: message,
+          ...(diagnostics ? { response: { payaza_failure: diagnostics } } : {}),
+        });
         setPlaceError(message);
         setPlacing(false);
       },
