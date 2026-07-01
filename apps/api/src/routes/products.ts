@@ -108,6 +108,8 @@ function contentToColumns(b: Record<string, unknown>): Record<string, unknown> {
   return cols;
 }
 
+const RetireVariant = z.object({ is_active: z.boolean() });
+
 const PublishPrice = z.object({
   // Preferred: target a specific can size. Omitted = the smallest variant
   // (preserves the legacy single-price contract for tests and older callers).
@@ -412,6 +414,79 @@ export function productRoutes(db: DbClient) {
       after: { variant_id: variantId, size_ml: variantSizeMl, price_ngn: body.price_ngn },
     });
     return c.json({ data: { ok: true } }, 201);
+  });
+
+  /**
+   * Retire (is_active=false) or restore (is_active=true) a single size of a
+   * flavour. The public catalog filters is_active=TRUE, so retiring hides the
+   * size from the storefront at once; the POS sync filters only deleted_at, so
+   * the till can still ring it up (customer-only scope, by design). Reversible:
+   * the size stays in the admin "Cans & prices" list, marked Retired.
+   */
+  r.patch("/:id/variants/:variantId", requireCapability("products.manage"), async (c) => {
+    const id = c.req.param("id");
+    const variantId = c.req.param("variantId");
+    const body = RetireVariant.parse(await c.req.json());
+
+    const [existingProduct] = await db
+      .select()
+      .from(product)
+      .where(and(eq(product.id, id), isNull(product.deletedAt)));
+    if (!existingProduct) throw new BusinessError("not_found", "product not found", 404);
+
+    const [variant] = await db
+      .select()
+      .from(productVariant)
+      .where(
+        and(
+          eq(productVariant.id, variantId),
+          eq(productVariant.productId, id),
+          isNull(productVariant.deletedAt),
+        ),
+      );
+    if (!variant) {
+      throw new BusinessError("validation_failed", "variant does not belong to this product", 422);
+    }
+
+    // Last-active-size guard: the size tool must never empty a flavour's
+    // storefront presence — that's what "Deactivate flavour" is for.
+    if (body.is_active === false) {
+      const active = await db
+        .select({ id: productVariant.id })
+        .from(productVariant)
+        .where(
+          and(
+            eq(productVariant.productId, id),
+            eq(productVariant.isActive, true),
+            isNull(productVariant.deletedAt),
+          ),
+        );
+      const remaining = active.filter((v) => v.id !== variantId);
+      if (remaining.length === 0) {
+        throw new BusinessError(
+          "validation_failed",
+          "This is the only active size; retiring it would remove the whole flavour from the storefront. Use Deactivate flavour instead.",
+          422,
+        );
+      }
+    }
+
+    const [updated] = await db
+      .update(productVariant)
+      .set({ isActive: body.is_active, updatedAt: new Date() })
+      .where(eq(productVariant.id, variantId))
+      .returning();
+    if (!updated) throw new BusinessError("internal_error", "variant update failed", 500);
+
+    await writeAudit(db, c, {
+      action: body.is_active ? "product_variant.restore" : "product_variant.retire",
+      entityType: "product_variant",
+      entityId: variantId,
+      before: { is_active: variant.isActive },
+      after: { is_active: body.is_active },
+    });
+
+    return c.json({ data: { id: updated.id, size_ml: updated.sizeMl, is_active: updated.isActive } });
   });
 
   return r;
