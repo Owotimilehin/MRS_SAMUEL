@@ -820,7 +820,12 @@ export function saleRoutes(db: DbClient) {
     // actually reported, which may differ from totalNgn on a mismatch. Same
     // pattern as review.ts's payment_attention inbox. Null if no payment yet.
     const [latestPayment] = await db
-      .select({ amountNgn: payment.amountNgn })
+      .select({
+        amountNgn: payment.amountNgn,
+        feeNgn: payment.feeNgn,
+        grossNgn: payment.grossNgn,
+        netNgn: payment.netNgn,
+      })
       .from(payment)
       .where(eq(payment.saleOrderId, id))
       .orderBy(descFn(payment.createdAt))
@@ -835,6 +840,9 @@ export function saleRoutes(db: DbClient) {
         customerAddress,
         delivery: delivery ?? null,
         reportedNgn: latestPayment?.amountNgn ?? null,
+        grossNgn: latestPayment?.grossNgn ?? null,
+        feeNgn: latestPayment?.feeNgn ?? null,
+        netNgn: latestPayment?.netNgn ?? null,
       },
     });
   });

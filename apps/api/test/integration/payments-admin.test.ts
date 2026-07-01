@@ -604,6 +604,54 @@ describe("admin payment reconciliation endpoints", () => {
     expect(body.data.reportedNgn).toBe(totalNgn);
   });
 
+  it("GET sale detail exposes Payaza fee/gross/net breakdown once paid", async () => {
+    const { id, orderNumber, totalNgn } = await placeOrder("+2348091111042");
+    // Override the Payaza stub so the transaction-query reports a fee-inclusive
+    // gross (customer paid total + 100 fee → net = total, paid in full).
+    const realFetch = globalThis.fetch;
+    const savedStub = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).includes("transaction-query")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                success: true,
+                data: {
+                  transaction_status: "Completed",
+                  amount_received: totalNgn + 100,
+                  fee: 100,
+                  transaction_reference: `PZ-${uuid()}`,
+                },
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+        // delegate non-Payaza calls to the underlying fetch
+        return (realFetch as typeof fetch)(url as never, init as never);
+      }),
+    );
+    try {
+      await sendWebhook(orderNumber);
+      const res = await fetch(`${baseUrl}/v1/branches/${branchId}/sales/${id}`, {
+        headers: { cookie: ownerCookies },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { grossNgn: number | null; feeNgn: number | null; netNgn: number | null; feeShortfallNgn: number | null };
+      };
+      expect(body.data.grossNgn).toBe(totalNgn + 100);
+      expect(body.data.feeNgn).toBe(100);
+      expect(body.data.netNgn).toBe(totalNgn);
+      expect(body.data.feeShortfallNgn ?? null).toBeNull();
+    } finally {
+      // Restore the suite's default Payaza stub for sibling tests.
+      vi.stubGlobal("fetch", savedStub);
+    }
+  });
+
   it("POST /mark-refunded returns 409 when order channel is walkup", async () => {
     // Seed a walkup order by inserting directly via DB then patching channel
     const { id } = await placeOrder("+2348091111030");
