@@ -96,6 +96,7 @@ export const saleOrder = pgTable("sale_order", {
   // money back (e.g. a confirmed Payaza charge with no matching paid order,
   // or a duplicate charge). Null = no refund owed.
   refundOwedNgn: integer("refund_owed_ngn"),
+  feeShortfallNgn: integer("fee_shortfall_ngn"),
   // Secondary contact for delivery when the primary phone isn't reachable on WhatsApp.
   altPhone: text("alt_phone"),
 }, (t) => ({

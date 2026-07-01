@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { saleOrder, paymentMethod, paymentStatus } from "./sale-order.js";
 import { adminUser } from "./admin-user.js";
 
@@ -13,6 +13,10 @@ export const payment = pgTable("payment", {
   processor: text("processor"),
   processorReference: text("processor_reference"),
   paidAt: timestamp("paid_at", { withTimezone: true }),
+  feeNgn: integer("fee_ngn"),
+  grossNgn: integer("gross_ngn"),
+  netNgn: integer("net_ngn"),
+  rawBreakdown: jsonb("raw_breakdown"),
   collectedByUserId: uuid("collected_by_user_id").references(() => adminUser.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
