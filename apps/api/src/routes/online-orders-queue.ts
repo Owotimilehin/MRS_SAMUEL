@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, gt, inArray, max, count, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, max, count, sql } from "drizzle-orm";
 import { saleOrder, deliveryOrder, customer, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { BusinessError } from "../lib/errors.js";
