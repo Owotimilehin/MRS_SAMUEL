@@ -750,4 +750,60 @@ describe("admin payment reconciliation endpoints", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // ─── cancel-unpaid (resolve to Unpaid, no phantom refund) ───────────────────
+
+  it("cancel-unpaid cancels a confirmed order with no refund owed", async () => {
+    const { id } = await placeOrder("+2348091111050");
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/cancel-unpaid`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: staffCookies, "idempotency-key": uuid() },
+    });
+    expect(res.status).toBe(200);
+
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
+    expect(row!.status).toBe("cancelled");
+    expect(row!.cancelReason).toBe("payment_not_received");
+    expect(row!.refundOwedNgn ?? null).toBeNull(); // no phantom refund liability
+  });
+
+  it("cancel-unpaid also resolves a reconcile_needed order", async () => {
+    const { id } = await placeOrder("+2348091111051");
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    await db.update(saleOrder).set({ status: "reconcile_needed" }).where(eq(saleOrder.id, id));
+
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/cancel-unpaid`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: staffCookies, "idempotency-key": uuid() },
+    });
+    expect(res.status).toBe(200);
+    const [row] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
+    expect(row!.status).toBe("cancelled");
+    expect(row!.refundOwedNgn ?? null).toBeNull();
+  });
+
+  it("cancel-unpaid refuses a paid order (must use cancel-refund)", async () => {
+    const { id } = await placeOrder("+2348091111052");
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    await db.update(saleOrder).set({ status: "paid", paymentStatus: "paid" }).where(eq(saleOrder.id, id));
+
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/cancel-unpaid`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: staffCookies, "idempotency-key": uuid() },
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("cancel-unpaid rejects a caller lacking orders.manage (403)", async () => {
+    const { id } = await placeOrder("+2348091111053");
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/cancel-unpaid`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: nocapsCookies, "idempotency-key": uuid() },
+    });
+    expect(res.status).toBe(403);
+  });
 });

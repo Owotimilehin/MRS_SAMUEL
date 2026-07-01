@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
   saleOrder,
@@ -124,6 +124,58 @@ export function paymentsAdminRoutes(db: DbClient) {
     });
 
     return c.json({ data: { status: "paid" } });
+  });
+
+  /**
+   * POST /:id/cancel-unpaid
+   * Resolve a genuinely unpaid online order to "Unpaid — no payment received".
+   * Only for 'confirmed' / 'reconcile_needed' orders; owes NO refund (unlike
+   * cancel-refund, which is for paid orders). Releases the reservation.
+   */
+  r.post("/:id/cancel-unpaid", requireCapability("orders.manage"), async (c) => {
+    const id = c.req.param("id");
+    if (!id) throw new BusinessError("validation_failed", "id required", 400);
+
+    const auth = c.get("auth");
+    const o = await loadOnlineOrder(id);
+    if (o.status !== "confirmed" && o.status !== "reconcile_needed") {
+      throw new BusinessError(
+        "conflict",
+        `cannot cancel-unpaid from status '${o.status}' — a paid order uses cancel-refund`,
+        409,
+      );
+    }
+
+    const updated = await db.transaction(async (tx) => {
+      const [won] = await tx
+        .update(saleOrder)
+        .set({
+          status: "cancelled",
+          cancelReason: "payment_not_received",
+          cancelledByUserId: auth.userId,
+          cancelledAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(saleOrder.id, id),
+            inArray(saleOrder.status, ["confirmed", "reconcile_needed"]),
+          ),
+        )
+        .returning();
+      if (!won) throw new BusinessError("conflict", "order changed — reload and retry", 409);
+      await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, id));
+      return won;
+    });
+
+    await writeAudit(db, c, {
+      action: "sale_order.cancel_unpaid",
+      entityType: "sale_order",
+      entityId: id,
+      after: { orderNumber: o.orderNumber, status: "cancelled", reason: "payment_not_received" },
+    });
+
+    return c.json({ data: { status: updated.status } });
   });
 
   /**
