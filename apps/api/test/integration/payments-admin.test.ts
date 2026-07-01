@@ -23,6 +23,7 @@ describe("admin payment reconciliation endpoints", () => {
   let baseUrl: string;
   let ownerCookies: string;
   let staffCookies: string;
+  let nocapsCookies: string;
   let server: ReturnType<typeof serve>;
   let branchId: string;
   let productId: string;
@@ -39,11 +40,19 @@ describe("admin payment reconciliation endpoints", () => {
     // (stubbed below). Direct process.env assignment, cleaned up in afterAll.
     process.env.PAYAZA_PUBLIC_KEY = "PZ78-PKTEST-itest";
 
-    // Seed a branch_staff user (no orders.accept_payment cap)
+    // Seed a branch_staff user (has orders.manage now, but no orders.accept_payment cap)
     await seedUser(tdb.db, {
       email: "staff@example.com",
       role: "branch_staff",
       password: "staffpassword123",
+    });
+
+    // Seed a user with orders.manage explicitly revoked, to prove the gate.
+    await seedUser(tdb.db, {
+      email: "nocaps@example.com",
+      role: "branch_staff",
+      password: "nocapspassword123",
+      revoked: ["orders.manage"],
     });
 
     const { buildApp } = await import("../../src/test-app.js");
@@ -53,6 +62,7 @@ describe("admin payment reconciliation endpoints", () => {
     baseUrl = `http://localhost:${addr.port}`;
     ownerCookies = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
     staffCookies = await loginAs(baseUrl, "staff@example.com", "staffpassword123");
+    nocapsCookies = await loginAs(baseUrl, "nocaps@example.com", "nocapspassword123");
 
     // Set up branch + inventory so we can place online orders.
     const bRes = await fetch(`${baseUrl}/v1/branches`, {
@@ -668,5 +678,76 @@ describe("admin payment reconciliation endpoints", () => {
       headers: { cookie: ownerCookies, "idempotency-key": uuid() },
     });
     expect(res.status).toBe(409);
+  });
+
+  // ─── record-payment (offline transfer/cash) ────────────────────────────────
+
+  it("branch_staff can record an offline transfer payment and the order goes paid", async () => {
+    const { id } = await placeOrder("+2348091111040");
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/record-payment`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: staffCookies, "idempotency-key": uuid() },
+      body: JSON.stringify({ method: "transfer" }),
+    });
+    expect(res.status).toBe(200);
+
+    const { saleOrder, payment } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const [after] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
+    expect(after!.status).toBe("paid");
+    const pays = await db.select().from(payment).where(eq(payment.saleOrderId, id));
+    expect(pays).toHaveLength(1);
+    expect(pays[0]!.method).toBe("transfer");
+    expect(pays[0]!.processor).toBe("manual");
+  });
+
+  it("record-payment tops up a reconcile_needed preorder to paid", async () => {
+    const { id } = await placeOrder("+2348091111041");
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    await db.update(saleOrder).set({ status: "reconcile_needed", isPreorder: true }).where(eq(saleOrder.id, id));
+
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/record-payment`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: staffCookies, "idempotency-key": uuid() },
+      body: JSON.stringify({ method: "transfer" }),
+    });
+    expect(res.status).toBe(200);
+    const [after] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
+    expect(after!.status).toBe("paid");
+  });
+
+  it("record-payment rejects a caller lacking orders.manage (403)", async () => {
+    const { id } = await placeOrder("+2348091111042");
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/record-payment`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: nocapsCookies, "idempotency-key": uuid() },
+      body: JSON.stringify({ method: "cash" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("record-payment 409s when the order is already paid", async () => {
+    const { id } = await placeOrder("+2348091111043");
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    await db.update(saleOrder).set({ status: "paid", paymentStatus: "paid" }).where(eq(saleOrder.id, id));
+
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/record-payment`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: staffCookies, "idempotency-key": uuid() },
+      body: JSON.stringify({ method: "cash" }),
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("record-payment rejects an invalid method (400)", async () => {
+    const { id } = await placeOrder("+2348091111044");
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/record-payment`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: staffCookies, "idempotency-key": uuid() },
+      body: JSON.stringify({ method: "card" }),
+    });
+    expect(res.status).toBe(400);
   });
 });
