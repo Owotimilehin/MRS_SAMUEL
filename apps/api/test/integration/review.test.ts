@@ -79,6 +79,7 @@ describe("GET /v1/review – payment_attention bucket", () => {
         status: "reconcile_needed",
         subtotalNgn: 5000,
         totalNgn: 5000,
+        feeShortfallNgn: 200,
         paymentMethod: "transfer",
         paymentStatus: "pending",
         createdAtLocal: new Date(),
@@ -92,6 +93,7 @@ describe("GET /v1/review – payment_attention bucket", () => {
       saleOrderId: reconcileOrder.id,
       method: "transfer",
       amountNgn: 4800, // slightly different — the "reported" amount
+      netNgn: 4800,
       status: "paid",
       processor: "payaza",
       processorReference: `PAY-${uuid().slice(0, 8)}`,
@@ -141,6 +143,8 @@ describe("GET /v1/review – payment_attention bucket", () => {
           total_ngn: number;
           refund_owed_ngn: number | null;
           reported_ngn: number | null;
+          net_ngn: number | null;
+          shortfall_ngn: number | null;
         }>;
       };
     }>("GET", "/v1/review");
@@ -158,12 +162,16 @@ describe("GET /v1/review – payment_attention bucket", () => {
     expect(reconcileItem!.total_ngn).toBe(5000);
     expect(reconcileItem!.refund_owed_ngn).toBeNull();
     expect(reconcileItem!.reported_ngn).toBe(4800); // from payment row
+    expect(reconcileItem!.shortfall_ngn).toBe(200);
+    expect(reconcileItem!.net_ngn).toBe(4800);
 
     expect(refundItem).toBeDefined();
     expect(refundItem!.status).toBe("cancelled");
     expect(refundItem!.total_ngn).toBe(3000);
     expect(refundItem!.refund_owed_ngn).toBe(3000);
     expect(refundItem!.reported_ngn).toBeNull(); // no payment row
+    expect(refundItem!.net_ngn).toBeNull();
+    expect(refundItem!.shortfall_ngn).toBeNull();
 
     // Walk-up order must NOT appear
     const walkupInAttention = attention.filter(

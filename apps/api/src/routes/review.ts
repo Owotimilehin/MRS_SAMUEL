@@ -50,6 +50,7 @@ export function reviewRoutes(db: DbClient) {
             .select({
               saleOrderId: payment.saleOrderId,
               amountNgn: payment.amountNgn,
+              netNgn: payment.netNgn,
               createdAt: payment.createdAt,
             })
             .from(payment)
@@ -70,6 +71,13 @@ export function reviewRoutes(db: DbClient) {
       }
     }
 
+    const netByOrderId = new Map<string, number | null>();
+    for (const p of latestPayments) {
+      if (!netByOrderId.has(p.saleOrderId)) {
+        netByOrderId.set(p.saleOrderId, p.netNgn ?? null);
+      }
+    }
+
     const paymentAttention = paymentAttentionOrders.map((o) => ({
       id: o.id,
       order_number: o.orderNumber,
@@ -77,6 +85,8 @@ export function reviewRoutes(db: DbClient) {
       total_ngn: o.totalNgn,
       refund_owed_ngn: o.refundOwedNgn ?? null,
       reported_ngn: reportedByOrderId.get(o.id) ?? null,
+      net_ngn: netByOrderId.get(o.id) ?? null,
+      shortfall_ngn: o.feeShortfallNgn ?? null,
     }));
 
     return c.json({

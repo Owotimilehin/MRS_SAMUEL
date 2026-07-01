@@ -31,6 +31,8 @@ interface PaymentAttentionItem {
   total_ngn: number;
   refund_owed_ngn: number | null;
   reported_ngn: number | null;
+  net_ngn: number | null;
+  shortfall_ngn: number | null;
 }
 interface ReviewResp {
   data: {
@@ -152,6 +154,8 @@ export function ReviewPage(): JSX.Element {
                   <th>Status</th>
                   <th className="table__num">Expected</th>
                   <th className="table__num">Payaza reported</th>
+                  <th className="table__num">Net settled</th>
+                  <th className="table__num">Shortfall</th>
                   <th className="table__num">Refund owed</th>
                   <th />
                 </tr>
@@ -175,6 +179,16 @@ export function ReviewPage(): JSX.Element {
                         <span style={p.reported_ngn !== p.total_ngn ? { color: "var(--danger)", fontWeight: 700 } : undefined}>
                           {ngn(p.reported_ngn)}
                         </span>
+                      ) : (
+                        <span style={{ color: "var(--ink-soft)" }}>—</span>
+                      )}
+                    </td>
+                    <td className="table__num">
+                      {p.net_ngn != null ? ngn(p.net_ngn) : <span style={{ color: "var(--ink-soft)" }}>—</span>}
+                    </td>
+                    <td className="table__num">
+                      {p.shortfall_ngn != null && p.shortfall_ngn > 0 ? (
+                        <span style={{ color: "var(--danger)", fontWeight: 700 }}>{ngn(p.shortfall_ngn)}</span>
                       ) : (
                         <span style={{ color: "var(--ink-soft)" }}>—</span>
                       )}
