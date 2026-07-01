@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import {
   deliveryOrder,
   outboxEvent,
@@ -12,6 +12,7 @@ const logger = pino({ base: { service: "ms-worker", part: "delivery-watchdog" } 
 const RETRY_AFTER_MIN = 2;
 const ESCALATE_AFTER_MIN = 5;
 const MAX_RETRIES = 1;
+const RECONCILE_STALE_MIN = 30; // no webhook update in 30 min → poll the provider via the API
 
 /**
  * Watchdog for deliveries stuck in `searching_rider`. Two thresholds:
@@ -103,6 +104,48 @@ export async function runDeliveryWatchdog(db: DbClient): Promise<number> {
     });
     logger.warn({ deliveryId: d.id, orderNumber: order.orderNumber }, "delivery escalated — no rider");
     actions++;
+  }
+
+  // Reconcile pass: active deliveries whose last update is stale get polled.
+  // The worker never imports the API's apply logic (same boundary as payaza
+  // reconcile) — it POSTs the external_ref to the internal reconcile endpoint,
+  // which asks the provider for current status and applies it through the same
+  // path the webhook uses. Best-effort: one bad POST must not abort the pass.
+  const staleCutoff = new Date(Date.now() - RECONCILE_STALE_MIN * 60_000);
+  const ACTIVE_STATUSES = ["assigned", "picked_up", "in_transit"] as const;
+  const toReconcile = await db
+    .select()
+    .from(deliveryOrder)
+    .where(
+      and(
+        inArray(deliveryOrder.status, ACTIVE_STATUSES),
+        lt(deliveryOrder.updatedAt, staleCutoff),
+        isNotNull(deliveryOrder.externalRef),
+      ),
+    )
+    .limit(20);
+
+  if (toReconcile.length > 0) {
+    const base = process.env["INTERNAL_API_URL"] || "http://api:3001";
+    const reconcileUrl = `${base}/v1/webhooks/delivery-reconcile`;
+    for (const d of toReconcile) {
+      if (!d.externalRef) continue;
+      try {
+        const res = await fetch(reconcileUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ external_ref: d.externalRef }),
+        });
+        if (!res.ok) {
+          logger.warn({ deliveryId: d.id, status: res.status }, "delivery reconcile: endpoint returned non-2xx");
+          continue;
+        }
+        logger.info({ deliveryId: d.id, externalRef: d.externalRef }, "delivery reconcile: polled");
+        actions++;
+      } catch (err) {
+        logger.warn({ deliveryId: d.id, err }, "delivery reconcile: POST failed — continuing");
+      }
+    }
   }
 
   return actions;
