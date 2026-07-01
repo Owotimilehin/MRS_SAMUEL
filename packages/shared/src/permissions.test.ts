@@ -6,10 +6,29 @@ describe("resolveCapabilities", () => {
     expect(resolveCapabilities("owner").sort()).toEqual([...CAPABILITIES].sort());
   });
 
-  it("branch_staff gets only the pos/sales/receive defaults", () => {
+  it("branch_staff gets the pos/sales/receive defaults plus order follow-up", () => {
     expect(resolveCapabilities("branch_staff").sort()).toEqual(
-      ["pos.sell", "pos.preorder", "shift_open.submit", "sales.view", "transfers.receive"].sort(),
+      [
+        "pos.sell",
+        "pos.preorder",
+        "shift_open.submit",
+        "sales.view",
+        "transfers.receive",
+        "orders.view",
+        "orders.manage",
+      ].sort(),
     );
+  });
+
+  it("branch_staff can view and manage orders (re-check / record payment)", () => {
+    const caps = resolveCapabilities("branch_staff");
+    expect(caps).toContain("orders.view");
+    expect(caps).toContain("orders.manage");
+  });
+
+  it("branch_staff still cannot force-accept a mismatched payment (owner-only)", () => {
+    const caps = resolveCapabilities("branch_staff");
+    expect(caps).not.toContain("orders.accept_payment");
   });
 
   it("variance.settle is owner-only", () => {
