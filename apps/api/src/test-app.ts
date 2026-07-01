@@ -42,6 +42,7 @@ import { publicBlogRoutes } from "./routes/public-blog.js";
 import { publicContactRoutes } from "./routes/public-contact.js";
 import { publicSubscriptionRoutes } from "./routes/public-subscriptions.js";
 import { boltWebhookRoutes, shipbubbleWebhookRoutes } from "./routes/webhooks-bolt.js";
+import { deliveryReconcileRoutes } from "./routes/delivery-reconcile.js";
 import { deliveryAdminRoutes } from "./routes/delivery-admin.js";
 import { paymentsAdminRoutes } from "./routes/payments-admin.js";
 import { onlineOrdersQueueRoutes } from "./routes/online-orders-queue.js";
@@ -130,6 +131,7 @@ export function buildApp(): Hono {
   app.route("/v1/webhooks/payaza", payazaWebhookRoutes(db));
   app.route("/v1/webhooks/bolt", boltWebhookRoutes(db));
   app.route("/v1/webhooks/shipbubble", shipbubbleWebhookRoutes(db));
+  app.route("/v1/webhooks/delivery-reconcile", deliveryReconcileRoutes(db));
 
   // Temporary echo endpoint used by idempotency integration tests.
   // TODO: remove once a real mutation endpoint exists (Phase 1).
