@@ -42,6 +42,12 @@ describe("deriveOrderActions — primary CTA priority", () => {
       .toEqual({ id: "advance", label: "Mark ready for pickup" });
   });
 
+  it("paid + live ride → no primary but keeps force-delivered fallback", () => {
+    const a = deriveOrderActions({ ...del, status: "paid", delivery: { status: "assigned" } });
+    expect(a.primary).toBeNull();
+    expect(a.secondary).toContainEqual({ id: "force_delivered", label: "Force delivered (fallback)" });
+  });
+
   it("out_for_delivery, no live ride → primary Mark delivered, force in secondary", () => {
     const a = deriveOrderActions({ ...del, status: "out_for_delivery" });
     expect(a.primary).toEqual({ id: "advance", label: "Mark delivered" });

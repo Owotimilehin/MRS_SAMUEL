@@ -29,7 +29,6 @@ export interface OrderActionsInput extends OrderJourneyInput {
 
 const LIVE_RIDE = new Set(["searching_rider", "assigned", "picked_up", "in_transit"]);
 const FAILED_RIDE = new Set(["failed", "cancelled"]);
-const SETTLED = new Set(["paid", "out_for_delivery", "handed_over", "delivered"]);
 
 /**
  * The single source of truth for what an admin can do on an online order,
@@ -87,6 +86,7 @@ export function deriveOrderActions(o: OrderActionsInput): OrderActions {
       primary = { id: "advance", label: "Mark ready for pickup" };
     } else if (rideLive) {
       primary = null; // webhook/poller drives the transition
+      secondary.push({ id: "force_delivered", label: "Force delivered (fallback)" });
     } else {
       primary = { id: "book_rider", label: "Book rider" };
       secondary.push({ id: "advance", label: "Mark out for delivery" });
