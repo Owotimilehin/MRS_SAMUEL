@@ -278,6 +278,8 @@ export function humanizeAction(row: AuditRow, branches: BranchLookup[]): string 
       return `Cancelled sale ${orderNum()}`;
     case "sale_order.record_offline_payment":
       return `Recorded offline payment for ${orderNum()}`;
+    case "sale_order.cancel_unpaid":
+      return `Cancelled ${orderNum()} — unpaid`;
 
     // ── Returns ──
     case "sale_return.create":
