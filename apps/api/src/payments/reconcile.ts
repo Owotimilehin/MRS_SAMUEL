@@ -16,7 +16,7 @@ export type ReconcileOutcome =
   | { kind: "order_not_found" }
   | { kind: "already_processed"; status: string }
   | { kind: "not_completed"; payazaStatus: string }
-  | { kind: "amount_mismatch"; expectedNgn: number; reportedNgn: number }
+  | { kind: "underpaid"; totalNgn: number; netNgn: number; shortfallNgn: number }
   | { kind: "paid"; orderNumber: string; amountNgn: number; isPreorder: boolean };
 
 /**
@@ -38,39 +38,34 @@ export async function applyPayazaConfirmation(
   const o = order;
   if (o.status !== "confirmed") return { kind: "already_processed", status: o.status };
 
-  // Reject a confirmation whose amount disagrees with our recorded total —
-  // partial capture, currency drift, or a replayed test event. Leave the
-  // order in 'confirmed' (reservation sweep handles it) and flag for manual
-  // review rather than ledger out stock for less than paid.
-  if (
-    !opts?.acceptReportedAmount &&
-    confirmed.amountNgn != null &&
-    confirmed.amountNgn !== o.totalNgn
-  ) {
-    // CAS: only the racer that actually flips confirmed→reconcile_needed may
-    // emit the mismatch alert. A concurrent caller that loses this race must
-    // not double-insert the outbox event for the same mismatch.
+  // What actually settles to the business = net (customer-paid minus Payaza's
+  // fee). Payaza always deducts its fee, so the order is "paid in full" only
+  // when net >= product total. Fall back to gross when Payaza reports no fee
+  // field (still kills false positives; loses exact underpayment detection).
+  const TOLERANCE = 1; // naira, absorbs Payaza's kobo rounding
+  const effectiveNet = confirmed.netNgn ?? confirmed.amountNgn ?? o.totalNgn;
+  if (!opts?.acceptReportedAmount && effectiveNet < o.totalNgn - TOLERANCE) {
+    const shortfallNgn = o.totalNgn - effectiveNet;
     const won = await tx
       .update(saleOrder)
-      .set({ status: "reconcile_needed", updatedAt: new Date() })
+      .set({ status: "reconcile_needed", feeShortfallNgn: shortfallNgn, updatedAt: new Date() })
       .where(and(eq(saleOrder.id, o.id), eq(saleOrder.status, "confirmed")))
       .returning({ id: saleOrder.id });
     if (won.length === 0) return { kind: "already_processed", status: o.status };
     await tx.insert(outboxEvent).values({
-      eventType: "sale.amount_mismatch",
+      eventType: "sale.fee_shortfall",
       payload: {
         sale_order_id: o.id,
         order_number: o.orderNumber,
-        expected_ngn: o.totalNgn,
-        reported_ngn: confirmed.amountNgn,
+        total_ngn: o.totalNgn,
+        gross_ngn: confirmed.amountNgn,
+        fee_ngn: confirmed.feeNgn,
+        net_ngn: effectiveNet,
+        shortfall_ngn: shortfallNgn,
         payaza_reference: confirmed.processorReference ?? null,
       },
     });
-    return {
-      kind: "amount_mismatch",
-      expectedNgn: o.totalNgn,
-      reportedNgn: confirmed.amountNgn,
-    };
+    return { kind: "underpaid", totalNgn: o.totalNgn, netNgn: effectiveNet, shortfallNgn };
   }
 
   // CAS: flip confirmed→paid FIRST, guarded by the current status. Two
@@ -81,7 +76,7 @@ export async function applyPayazaConfirmation(
   // further (no second payment row, no second stock deduction).
   const won = await tx
     .update(saleOrder)
-    .set({ status: "paid", paymentStatus: "paid", updatedAt: new Date() })
+    .set({ status: "paid", paymentStatus: "paid", feeShortfallNgn: null, updatedAt: new Date() })
     .where(and(eq(saleOrder.id, o.id), eq(saleOrder.status, "confirmed")))
     .returning({ id: saleOrder.id });
   if (won.length === 0) return { kind: "already_processed", status: o.status };
@@ -104,11 +99,16 @@ export async function applyPayazaConfirmation(
     }
     await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, o.id));
   }
-  const amountNgn = opts?.acceptReportedAmount ? confirmed.amountNgn ?? o.totalNgn : o.totalNgn;
+  // amount_ngn stays the product total (the business's money) so revenue
+  // reports that SUM(payment.amount_ngn) never include Payaza's fee.
   await tx.insert(payment).values({
     saleOrderId: o.id,
     method: "card",
-    amountNgn,
+    amountNgn: o.totalNgn,
+    grossNgn: confirmed.amountNgn ?? null,
+    feeNgn: confirmed.feeNgn ?? null,
+    netNgn: confirmed.netNgn ?? (confirmed.amountNgn != null && confirmed.feeNgn != null ? confirmed.amountNgn - confirmed.feeNgn : null),
+    rawBreakdown: confirmed.raw ?? null,
     status: "paid",
     processor: "payaza",
     processorReference: confirmed.processorReference ?? null,
@@ -147,7 +147,7 @@ export async function applyPayazaConfirmation(
   return {
     kind: "paid",
     orderNumber: o.orderNumber,
-    amountNgn,
+    amountNgn: o.totalNgn,
     isPreorder: o.isPreorder,
   };
 }

@@ -378,12 +378,12 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Dispatch manually via WhatsApp.\n` +
           `👉 ${ADMIN_URL}/branch/sales/${p["sale_order_id"]}`,
       };
-    case "sale.amount_mismatch":
+    case "sale.fee_shortfall":
       return {
         chatIds: [owner],
         text:
-          `🚨 *Payment amount mismatch*\n` +
-          `${p["order_number"]} expected ₦${p["expected_ngn"]} but Payaza reported ₦${p["reported_ngn"]}.\n` +
+          `🚨 *Payment shortfall*\n` +
+          `${p["order_number"]} total ₦${p["total_ngn"]} but net received ₦${p["net_ngn"]} (shortfall ₦${p["shortfall_ngn"]}).\n` +
           `Order parked for reconciliation.\n` +
           `👉 ${ADMIN_URL}/branch/sales/${p["sale_order_id"]}`,
       };

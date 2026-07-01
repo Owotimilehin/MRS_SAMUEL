@@ -61,6 +61,19 @@ const baseOrder = {
   scheduledDeliveryAt: null, deliveryState: "Lagos",
 };
 
+function status(over: Partial<{ amountNgn: number | null; feeNgn: number | null; netNgn: number | null }>) {
+  return {
+    status: "Completed",
+    amountNgn: 3600,
+    feeNgn: 100,
+    netNgn: 3500,
+    processorReference: "P-1",
+    authorization: null,
+    raw: { data: { amount_received: 3600, fee: 100 } },
+    ...over,
+  } as const;
+}
+
 describe("applyPayazaConfirmation", () => {
   beforeEach(() => vi.unstubAllEnvs());
 
@@ -68,27 +81,54 @@ describe("applyPayazaConfirmation", () => {
     const { tx, calls } = fakeTx(null);
     const r = await applyPayazaConfirmation(
       tx as any, { ...baseOrder, status: "paid" } as any,
-      { status: "Completed", amountNgn: 3500, processorReference: "P-1", authorization: null },
+      status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
     );
     expect(r).toEqual({ kind: "already_processed", status: "paid" });
     expect(calls.updates).toHaveLength(0);
   });
 
-  it("parks reconcile_needed when the amount differs", async () => {
+  it("parks underpaid when NET is below the product total", async () => {
+    const { tx, calls } = fakeTx(null);
+    // Customer paid 3400 gross, fee 100 -> net 3300 < total 3500.
+    const r = await applyPayazaConfirmation(
+      tx as any, { ...baseOrder } as any,
+      status({ amountNgn: 3400, feeNgn: 100, netNgn: 3300 }),
+    );
+    expect(r).toEqual({ kind: "underpaid", totalNgn: 3500, netNgn: 3300, shortfallNgn: 200 });
+    expect(calls.inserts.some((i: any) => i.v.eventType === "sale.fee_shortfall")).toBe(true);
+    // Order flagged reconcile_needed with the shortfall recorded.
+    expect(calls.updates.some((u: any) => u.v.status === "reconcile_needed" && u.v.feeShortfallNgn === 200)).toBe(true);
+  });
+
+  it("marks PAID when NET meets the product total even though gross is fee-inclusive", async () => {
     const { tx, calls } = fakeTx(null);
     const r = await applyPayazaConfirmation(
       tx as any, { ...baseOrder } as any,
-      { status: "Completed", amountNgn: 3000, processorReference: "P-1", authorization: null },
+      status({ amountNgn: 3600, feeNgn: 100, netNgn: 3500 }),
     );
-    expect(r).toEqual({ kind: "amount_mismatch", expectedNgn: 3500, reportedNgn: 3000 });
-    expect(calls.inserts.some((i: any) => i.v.eventType === "sale.amount_mismatch")).toBe(true);
+    expect(r.kind).toBe("paid");
+    // ANALYTICS BOUNDARY: revenue figure (amount_ngn) is the product total, NOT the gross.
+    expect(
+      calls.inserts.some(
+        (i: any) => i.t === payment && i.v.status === "paid" && i.v.amountNgn === 3500 && i.v.grossNgn === 3600 && i.v.feeNgn === 100 && i.v.netNgn === 3500,
+      ),
+    ).toBe(true);
+  });
+
+  it("falls back to gross>=total when Payaza reports no fee (net null)", async () => {
+    const { tx } = fakeTx(null);
+    const r = await applyPayazaConfirmation(
+      tx as any, { ...baseOrder } as any,
+      status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
+    );
+    expect(r.kind).toBe("paid");
   });
 
   it("marks an in-stock order paid, ledgers stock, and clears the reservation", async () => {
     const { tx, calls } = fakeTx(null);
     const r = await applyPayazaConfirmation(
       tx as any, { ...baseOrder } as any,
-      { status: "Completed", amountNgn: 3500, processorReference: "P-1", authorization: null },
+      status({ amountNgn: 3600, netNgn: 3500 }),
     );
     expect(r.kind).toBe("paid");
     // Payment row recorded for the order total via Payaza.
@@ -112,7 +152,7 @@ describe("applyPayazaConfirmation", () => {
     const { tx, calls } = fakeTx(null);
     const r = await applyPayazaConfirmation(
       tx as any, { ...baseOrder, isPreorder: true } as any,
-      { status: "Completed", amountNgn: 3500, processorReference: "P-1", authorization: null },
+      status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
     );
     expect(r.kind).toBe("paid");
     // Payment is still captured...
@@ -128,7 +168,7 @@ describe("applyPayazaConfirmation", () => {
     const { tx } = fakeTx(null);
     const r = await applyPayazaConfirmation(
       tx as any, { ...baseOrder } as any,
-      { status: "Completed", amountNgn: 3000, processorReference: "P-1", authorization: null },
+      status({ amountNgn: 3400, netNgn: 3300 }),
       { acceptReportedAmount: true },
     );
     expect(r.kind).toBe("paid");
@@ -141,7 +181,7 @@ describe("applyPayazaConfirmation", () => {
     const { tx, calls } = fakeTx(null, { casWins: false });
     const r = await applyPayazaConfirmation(
       tx as any, { ...baseOrder } as any,
-      { status: "Completed", amountNgn: 3500, processorReference: "P-1", authorization: null },
+      status({ amountNgn: 3500, netNgn: 3500 }),
     );
     expect(r).toEqual({ kind: "already_processed", status: "confirmed" });
     expect(calls.inserts).toHaveLength(0);

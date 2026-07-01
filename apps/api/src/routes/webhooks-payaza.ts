@@ -125,15 +125,10 @@ export function payazaWebhookRoutes(db: DbClient) {
           "payaza webhook: order already processed — no-op (idempotent)",
         );
         break;
-      case "amount_mismatch":
+      case "underpaid":
         logger.warn(
-          {
-            requestId,
-            reference,
-            expectedNgn: outcome.expectedNgn,
-            reportedNgn: outcome.reportedNgn,
-          },
-          "payaza webhook: AMOUNT MISMATCH — parked for reconcile",
+          { requestId, reference, totalNgn: outcome.totalNgn, netNgn: outcome.netNgn, shortfallNgn: outcome.shortfallNgn },
+          "payaza webhook: UNDERPAID — parked for reconcile",
         );
         break;
       case "paid":

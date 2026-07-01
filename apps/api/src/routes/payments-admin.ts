@@ -117,7 +117,7 @@ export function paymentsAdminRoutes(db: DbClient) {
     });
 
     if (outcome.kind !== "paid" && outcome.kind !== "already_processed") {
-      // applyPayazaConfirmation shouldn't reach amount_mismatch with acceptReportedAmount,
+      // applyPayazaConfirmation shouldn't reach underpaid with acceptReportedAmount,
       // but guard defensively.
       throw new BusinessError("conflict", `reconcile returned: ${outcome.kind}`, 409);
     }
