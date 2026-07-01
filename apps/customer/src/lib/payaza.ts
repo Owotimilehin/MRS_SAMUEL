@@ -16,10 +16,6 @@ interface PayazaInstance {
   setCallback(cb: (res: unknown) => void): void;
   setOnClose(cb: () => void): void;
   showPopup(): void;
-  // Internal SDK teardown helpers — used best-effort by the watchdog to clear
-  // Payaza's own full-screen loader/iframe if the portal never finishes opening.
-  removeLoader?(): void;
-  removePopup?(): void;
 }
 interface PayazaGlobal {
   setup(opts: Record<string, unknown>): PayazaInstance;
@@ -76,13 +72,21 @@ export function payazaNames(config: { firstName?: string; lastName?: string }): 
 
 let loadPromise: Promise<PayazaGlobal> | null = null;
 
-function loadSdk(): Promise<PayazaGlobal> {
-  if (typeof window === "undefined") {
-    return Promise.reject(new Error("Payaza SDK can only load in the browser"));
-  }
-  if (window.PayazaCheckout) return Promise.resolve(window.PayazaCheckout);
-  if (loadPromise) return loadPromise;
-  loadPromise = new Promise<PayazaGlobal>((resolve, reject) => {
+/** How many times to attempt fetching the SDK <script> in a single press before
+ *  surfacing a load failure. Payaza's CDN bundle intermittently fails to fetch
+ *  on flaky Nigerian mobile networks; one failed <script> would otherwise leave
+ *  the customer unable to pay ("We couldn't start the secure payment window"). */
+const SDK_LOAD_ATTEMPTS = 3;
+
+/** Backoff before the Nth SDK-load retry (0-based): 600ms, 1200ms, … Exported so
+ *  the backoff shape is unit-tested without a DOM. */
+export function sdkRetryDelayMs(retryIndex: number): number {
+  return 600 * (retryIndex + 1);
+}
+
+/** Append the Payaza SDK <script> once, resolving with the global it defines. */
+function appendSdkScript(): Promise<PayazaGlobal> {
+  return new Promise<PayazaGlobal>((resolve, reject) => {
     const script = document.createElement("script");
     script.src = SDK_URL;
     script.async = true;
@@ -91,19 +95,47 @@ function loadSdk(): Promise<PayazaGlobal> {
       else reject(new Error("Payaza SDK loaded but PayazaCheckout is undefined"));
     };
     script.onerror = () => {
-      loadPromise = null;
+      // Drop the failed node so a retry appends a fresh one instead of stacking.
+      script.remove();
       reject(new Error("Failed to load Payaza checkout SDK"));
     };
     document.head.appendChild(script);
   });
+}
+
+function loadSdk(): Promise<PayazaGlobal> {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("Payaza SDK can only load in the browser"));
+  }
+  if (window.PayazaCheckout) return Promise.resolve(window.PayazaCheckout);
+  if (loadPromise) return loadPromise;
+  loadPromise = (async () => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < SDK_LOAD_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, sdkRetryDelayMs(attempt - 1)));
+      }
+      // A prior attempt's <script> may have populated the global asynchronously.
+      if (window.PayazaCheckout) return window.PayazaCheckout;
+      try {
+        return await appendSdkScript();
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    // Don't cache the failure — let a later press retry from scratch.
+    loadPromise = null;
+    throw lastError ?? new Error("Failed to load Payaza checkout SDK");
+  })();
   return loadPromise;
 }
 
 /** How long to wait for the Payaza portal to actually become visible before we
- *  treat it as a failed-to-open and stop the customer hanging on a dead spinner.
- *  Generous so a slow network still gets the popup; the poll resolves the instant
- *  the portal appears, so a real (even slow) open is never interrupted. */
-const POPUP_OPEN_TIMEOUT_MS = 20_000;
+ *  show the customer a retryable hint instead of a silent dead spinner. Generous
+ *  (40s) so a slow Nigerian mobile network still gets the popup: the poll
+ *  resolves the instant the portal appears, so a real (even slow) open is never
+ *  interrupted, and 20s was cutting off portals that were still rendering. */
+const POPUP_OPEN_TIMEOUT_MS = 40_000;
 
 /**
  * True once Payaza's checkout iframe is on the page AND visible. The SDK appends
@@ -194,21 +226,19 @@ export async function launchPayazaCheckout(
   instance.setOnClose(onClose);
   instance.showPopup();
 
-  // Watchdog: if the portal never actually becomes visible (Payaza's iframe
-  // loads its overlay but the checkout never renders and no callback fires),
-  // the customer would otherwise hang forever on a dead spinner. Detect the
-  // no-open, tear down Payaza's leftover overlay, and surface a retryable error.
+  // Watchdog: if the portal hasn't become visible within the timeout, the
+  // customer would otherwise hang on a spinner with no idea what to do. Surface
+  // a retryable hint — but deliberately do NOT tear down Payaza's iframe/loader.
+  // On slow mobile networks the portal can still finish rendering after this
+  // point, and the money decision is entirely server-side (webhook + reconcile
+  // sweep confirm the payment regardless of what the client shows), so
+  // destroying a slow-but-loading popup only guarantees the customer can't pay.
+  // We leave the popup alone so a late open still works.
   void waitForPopupOpen(POPUP_OPEN_TIMEOUT_MS).then((opened) => {
     if (opened || settled) return; // opened fine, or already resolved — nothing to do.
     if (!settle()) return;
-    try {
-      instance.removeLoader?.();
-      instance.removePopup?.();
-    } catch {
-      /* best-effort teardown of the SDK's own overlay */
-    }
     handlers.onError?.(
-      "The payment window didn't open. Please check your connection and try again.",
+      "The payment window is taking longer than usual to open. If it doesn't appear, please check your connection and tap Try again.",
     );
   });
 }

@@ -1,10 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { interpretPayazaResponse, payazaNames, isPayazaPopupVisible } from "./payaza";
+import {
+  interpretPayazaResponse,
+  payazaNames,
+  isPayazaPopupVisible,
+  sdkRetryDelayMs,
+} from "./payaza";
 
 describe("isPayazaPopupVisible", () => {
   it("returns false during SSR / when there is no document", () => {
     // The watchdog polls this; it must be safe to call with no DOM (node/SSR).
     expect(isPayazaPopupVisible()).toBe(false);
+  });
+});
+
+describe("sdkRetryDelayMs", () => {
+  it("backs off between SDK load retries (increasing, positive delays)", () => {
+    // The Payaza CDN bundle intermittently fails on flaky mobile networks; the
+    // loader retries with a growing delay rather than giving up on the first miss.
+    const first = sdkRetryDelayMs(0);
+    const second = sdkRetryDelayMs(1);
+    expect(first).toBeGreaterThan(0);
+    expect(second).toBeGreaterThan(first);
   });
 });
 
