@@ -49,6 +49,10 @@ interface Sale {
   altPhone?: string | null;
   refundOwedNgn?: number | null;
   reportedNgn?: number | null;
+  grossNgn?: number | null;
+  feeNgn?: number | null;
+  netNgn?: number | null;
+  feeShortfallNgn?: number | null;
   customerEmail?: string | null;
   customerAddress?: string | null;
   items: SaleItem[];
@@ -550,6 +554,30 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
               >
                 {ngn(data.totalNgn)}
               </span>
+              {data.paymentMethod === "card" && data.grossNgn != null && (
+                <>
+                  <span style={{ color: "var(--ink-soft)" }}>Payaza fee</span>
+                  <span className="tabular-nums" style={{ textAlign: "right" }}>
+                    {data.feeNgn != null ? ngn(data.feeNgn) : "—"}
+                  </span>
+                  <span style={{ color: "var(--ink-soft)" }}>Customer paid</span>
+                  <span className="tabular-nums" style={{ textAlign: "right" }}>
+                    {ngn(data.grossNgn)}
+                  </span>
+                  <span style={{ color: "var(--ink-soft)" }}>Net settled to you</span>
+                  <span className="tabular-nums" style={{ textAlign: "right" }}>
+                    {data.netNgn != null ? ngn(data.netNgn) : "—"}
+                  </span>
+                  {data.feeShortfallNgn != null && data.feeShortfallNgn > 0 && (
+                    <>
+                      <span style={{ color: "var(--danger)", fontWeight: 700 }}>Shortfall (loss)</span>
+                      <span className="tabular-nums" style={{ textAlign: "right", color: "var(--danger)", fontWeight: 700 }}>
+                        -{ngn(data.feeShortfallNgn)}
+                      </span>
+                    </>
+                  )}
+                </>
+              )}
             </div>
 
             {data.notes && (
