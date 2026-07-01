@@ -12,7 +12,7 @@ import {
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
-import { applyPayazaConfirmation, verifyAndReconcile } from "../payments/reconcile.js";
+import { applyPayazaConfirmation, verifyAndReconcile, applyOfflinePayment } from "../payments/reconcile.js";
 import { verifyPayazaTransaction } from "../payments/payaza.js";
 
 const TERMINAL_STATUSES = [
@@ -67,6 +67,63 @@ export function paymentsAdminRoutes(db: DbClient) {
     const status = current?.status ?? o.status;
 
     return c.json({ data: { status, outcome } });
+  });
+
+  /**
+   * POST /:id/record-payment
+   * Record a payment received OUTSIDE Payaza (bank transfer / cash) and mark the
+   * order paid. Available to the till (orders.manage) — the staff attending the
+   * order confirm the money landed. Handles a full off-Payaza payment on a
+   * 'confirmed' order AND a top-up on a 'reconcile_needed' order. Fulfilment
+   * still gates on 'paid'. Force-accepting a MISMATCHED Payaza amount stays the
+   * owner-only /accept action.
+   */
+  r.post("/:id/record-payment", requireCapability("orders.manage"), async (c) => {
+    const id = c.req.param("id");
+    if (!id) throw new BusinessError("validation_failed", "id required", 400);
+
+    const body = (await c.req.json().catch(() => ({}))) as {
+      method?: string;
+      amount_ngn?: number;
+    };
+    const method = body.method;
+    if (method !== "transfer" && method !== "cash") {
+      throw new BusinessError("validation_failed", "method must be 'transfer' or 'cash'", 400);
+    }
+
+    const o = await loadOnlineOrder(id);
+    if (o.status !== "confirmed" && o.status !== "reconcile_needed") {
+      throw new BusinessError("conflict", `cannot record a payment from status '${o.status}'`, 409);
+    }
+
+    const auth = c.get("auth");
+    const amountNgn =
+      typeof body.amount_ngn === "number" && body.amount_ngn > 0
+        ? Math.round(body.amount_ngn)
+        : o.totalNgn;
+
+    const outcome = await db.transaction(async (tx) => {
+      const [fresh] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
+      if (!fresh) throw new BusinessError("not_found", "order not found", 404);
+      return applyOfflinePayment(tx, fresh, {
+        method,
+        amountNgn,
+        collectedByUserId: auth.userId ?? null,
+      });
+    });
+
+    if (outcome.kind !== "paid" && outcome.kind !== "already_processed") {
+      throw new BusinessError("conflict", `record-payment returned: ${outcome.kind}`, 409);
+    }
+
+    await writeAudit(db, c, {
+      action: "sale_order.record_offline_payment",
+      entityType: "sale_order",
+      entityId: id,
+      after: { orderNumber: o.orderNumber, method, amountNgn, outcome: outcome.kind },
+    });
+
+    return c.json({ data: { status: "paid" } });
   });
 
   /**
