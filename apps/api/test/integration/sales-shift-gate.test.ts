@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, seedUser, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { shiftOpen, stockLedger, type DbClient } from "@ms/db";
 import { eq } from "drizzle-orm";
@@ -10,14 +10,19 @@ import { eq } from "drizzle-orm";
 /**
  * Task 6 (Phase 2): Sale-creation open-shift gate.
  *
- * (a) POST walk-up sale with NO open shift → 409, code "conflict"
- * (b) Open a shift, POST again → 201 success
- * (c) Preorder create with NO open shift → 409
+ * The gate applies to stock-consuming roles (branch_staff) but the OWNER is
+ * exempt — the owner may ring a sale without first opening a shift.
+ *
+ * (a) branch_staff walk-up sale with NO open shift → 409, code "conflict"
+ * (b) OWNER walk-up sale with NO open shift → 201 (owner bypass)
+ * (c) Open a shift, branch_staff POST again → 201 success
+ * (d) branch_staff preorder create with NO open shift → 409
  */
 describe("Task 6: sale-creation open-shift gate", () => {
   let container: StartedPostgreSqlContainer;
   let baseUrl: string;
-  let cookies: string;
+  let cookies: string; // owner
+  let staffCookies: string; // branch_staff bound to branchId
   let server: ReturnType<typeof serve>;
   let db: DbClient;
   let branchId: string;
@@ -28,12 +33,13 @@ describe("Task 6: sale-creation open-shift gate", () => {
     method: string,
     path: string,
     body?: unknown,
+    cookieOverride?: string,
   ): Promise<{ status: number; body: T }> {
     const res = await fetch(`${baseUrl}${path}`, {
       method,
       headers: {
         "content-type": "application/json",
-        cookie: cookies,
+        cookie: cookieOverride ?? cookies,
         ...(["POST", "PATCH", "PUT"].includes(method) ? { "idempotency-key": uuid() } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -75,6 +81,15 @@ describe("Task 6: sale-creation open-shift gate", () => {
     });
     branchId = bRes.body.data.id;
 
+    // Seed a branch_staff user bound to this branch and log in — used for the
+    // gated cases (owner is exempt, branch_staff is not).
+    await seedUser(db, {
+      email: "staff@example.com",
+      role: "branch_staff",
+      branchId,
+    });
+    staffCookies = await loginAs(baseUrl, "staff@example.com", "userpassword123");
+
     // Create product
     const pRes = await call<{ data: { id: string; variants?: Array<{ id: string; size_ml: number }> } }>(
       "POST",
@@ -107,15 +122,15 @@ describe("Task 6: sale-creation open-shift gate", () => {
       sourceId: uuid(),
       note: "Task 6 test seed",
     });
-  }, 120_000);
+  }, 300_000);
 
   afterAll(async () => {
     server.close();
     await container.stop();
   });
 
-  // (a) Walk-up sale with NO open shift → 409
-  it("(a) walk-up sale with no open shift → 409 conflict", async () => {
+  // (a) branch_staff walk-up sale with NO open shift → 409
+  it("(a) branch_staff walk-up sale with no open shift → 409 conflict", async () => {
     // Confirm there is no open shift for this branch
     const openShifts = await db
       .select()
@@ -134,16 +149,21 @@ describe("Task 6: sale-creation open-shift gate", () => {
         payment_method: "transfer",
         created_at_local: new Date().toISOString(),
       },
+      staffCookies,
     );
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("conflict");
     expect(res.body.error.message).toMatch(/open a shift/i);
   });
 
-  // (b) After opening a shift → 201 success
-  it("(b) with open shift → sale creates successfully (201)", async () => {
-    const today = new Date().toISOString().slice(0, 10);
-    await openShiftForBranch(branchId, today);
+  // (b) OWNER walk-up sale with NO open shift → 201 (owner is exempt from the gate)
+  it("(b) owner walk-up sale with no open shift → 201 (bypass)", async () => {
+    // Still no open shift for this branch.
+    const openShifts = await db
+      .select()
+      .from(shiftOpen)
+      .where(eq(shiftOpen.branchId, branchId));
+    expect(openShifts.some((s) => s.status === "open")).toBe(false);
 
     const res = await call<{ data: { id: string; status: string } }>(
       "POST",
@@ -159,9 +179,29 @@ describe("Task 6: sale-creation open-shift gate", () => {
     expect(res.body.data.status).toBe("confirmed");
   });
 
-  // (c) Preorder create with NO open shift → 409
+  // (c) After opening a shift → branch_staff sale succeeds (201)
+  it("(c) branch_staff with open shift → sale creates successfully (201)", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    await openShiftForBranch(branchId, today);
+
+    const res = await call<{ data: { id: string; status: string } }>(
+      "POST",
+      `/v1/branches/${branchId}/sales`,
+      {
+        channel: "walkup",
+        items: [{ variant_id: variantId, product_id: productId, quantity: 1 }],
+        payment_method: "transfer",
+        created_at_local: new Date().toISOString(),
+      },
+      staffCookies,
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe("confirmed");
+  });
+
+  // (d) branch_staff preorder create with NO open shift → 409
   // Use a fresh branch with no shift
-  it("(c) preorder create with no open shift → 409 conflict", async () => {
+  it("(d) branch_staff preorder create with no open shift → 409 conflict", async () => {
     // Create a fresh branch (guaranteed no shift)
     const b2Res = await call<{ data: { id: string } }>("POST", "/v1/branches", {
       name: "Shift Gate Branch 2",
@@ -182,6 +222,15 @@ describe("Task 6: sale-creation open-shift gate", () => {
       note: "Task 6 preorder gate test seed",
     });
 
+    // Seed a branch_staff bound to the fresh branch and log in (owner is exempt,
+    // so the gate can only be exercised by a non-owner).
+    await seedUser(db, {
+      email: "staff2@example.com",
+      role: "branch_staff",
+      branchId: b2Id,
+    });
+    const staff2Cookies = await loginAs(baseUrl, "staff2@example.com", "userpassword123");
+
     const res = await call<{ error: { code: string; message: string } }>(
       "POST",
       `/v1/branches/${b2Id}/sales`,
@@ -193,6 +242,7 @@ describe("Task 6: sale-creation open-shift gate", () => {
         scheduled_delivery_at: new Date(Date.now() + 86_400_000).toISOString(),
         created_at_local: new Date().toISOString(),
       },
+      staff2Cookies,
     );
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("conflict");

@@ -165,14 +165,18 @@ export function saleRoutes(db: DbClient) {
     }
 
     // Open-shift gate: the branch must have an open shift before any sale
-    // (walk-up or preorder) can be created. Applies to all roles including owner.
-    const [openShift] = await db
-      .select({ id: shiftOpen.id })
-      .from(shiftOpen)
-      .where(and(eq(shiftOpen.branchId, branchId), eq(shiftOpen.status, "open")))
-      .limit(1);
-    if (!openShift) {
-      throw new BusinessError("conflict", "Open a shift before selling", 409);
+    // (walk-up or preorder) can be created. The OWNER is exempt — they may ring
+    // a sale on the till without first opening a shift; every other role
+    // (branch_staff, and preorder-taking manager/admin) is still gated.
+    if (auth.role !== "owner") {
+      const [openShift] = await db
+        .select({ id: shiftOpen.id })
+        .from(shiftOpen)
+        .where(and(eq(shiftOpen.branchId, branchId), eq(shiftOpen.status, "open")))
+        .limit(1);
+      if (!openShift) {
+        throw new BusinessError("conflict", "Open a shift before selling", 409);
+      }
     }
 
     const created = await db.transaction(async (tx) => {

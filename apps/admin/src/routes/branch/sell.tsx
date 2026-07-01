@@ -100,10 +100,16 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const canSellStock = authUser.capabilities.includes("pos.sell");
   const canPreorder = authUser.capabilities.includes("pos.preorder");
   // Is there an open shift on this device? null = still loading (no flash).
-  // The gate is UNIVERSAL: all roles (owner included) must have an open shift
-  // before the till accepts sales.
-  const [hasShift, setHasShift] = useState<boolean | null>(null);
+  // The gate applies to every role EXCEPT the owner: the owner may sell without
+  // first opening a shift (the server enforces the same exemption). For the
+  // owner we skip the check entirely and treat the shift as satisfied.
+  const isOwner = authUser.role === "owner";
+  const [hasShift, setHasShift] = useState<boolean | null>(isOwner ? true : null);
   useEffect(() => {
+    if (isOwner) {
+      setHasShift(true);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       const { hasOpenShift } = await import("../../sync/local-shift-open.js");
@@ -113,7 +119,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [branchId]);
+  }, [branchId, isOwner]);
   // Defensive: a user with neither selling capability can't check out at all.
   const checkoutDisabled = !canSellStock && !canPreorder;
   // Branch header for the receipt, fetched best-effort (works online; offline we
