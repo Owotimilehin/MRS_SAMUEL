@@ -130,6 +130,7 @@ export function SettingsPage(): JSX.Element {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <ReceiptStyleCard />
+          <BannerCard />
           <section className="card">
             <h2 className="t-h2" style={{ marginBottom: 4 }}>
               Operating hours & contact
@@ -404,6 +405,130 @@ function ReceiptStyleCard(): JSX.Element {
           </div>
         </div>
       </div>
+    </section>
+  );
+}
+
+function BannerCard(): JSX.Element {
+  const [enabled, setEnabled] = useState(false);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const cfg = await api<{ enabled: boolean; message: string }>("/settings/banner");
+        if (alive) {
+          setEnabled(Boolean(cfg.enabled));
+          setMessage(cfg.message ?? "");
+        }
+      } catch {
+        /* leave defaults */
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function save(): Promise<void> {
+    setSaving(true);
+    setMsg(null);
+    try {
+      await api("/settings/banner", {
+        method: "PATCH",
+        body: JSON.stringify({ enabled, message }),
+      });
+      setMsg({ ok: true, text: "Saved." });
+      window.setTimeout(() => setMsg(null), 3000);
+    } catch (err) {
+      setMsg({ ok: false, text: humanizeError(err) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="card">
+      <h2 className="t-h2" style={{ marginBottom: 4 }}>
+        Homepage banner
+      </h2>
+      <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 14 }}>
+        A message across the top of the homepage. When off (or empty), the site shows the
+        automatic in-stock / preorder banner instead.
+      </p>
+      {loading ? (
+        <InlineLoader />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              style={{ width: 18, height: 18 }}
+            />
+            Show banner
+          </label>
+          <label className="field">
+            <span className="field__label">Message</span>
+            <textarea
+              className="input"
+              rows={3}
+              maxLength={280}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="330ml is for bulk preorder only. 650ml still available for same-day delivery."
+            />
+            <span style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>
+              {message.length}/280
+            </span>
+          </label>
+          {enabled && message.trim() && (
+            <div>
+              <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 6 }}>Preview</div>
+              <div
+                style={{
+                  background: "var(--brand, #0b3d2e)",
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  textAlign: "center",
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  whiteSpace: "pre-line",
+                }}
+              >
+                {message}
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <button
+              type="button"
+              className="btn btn--primary btn--sm"
+              disabled={saving}
+              onClick={() => void save()}
+              style={{ alignSelf: "flex-start" }}
+            >
+              {saving ? "Saving…" : "Save banner"}
+            </button>
+            {msg && (
+              <span
+                role="status"
+                style={{ fontSize: 12, color: msg.ok ? "var(--success)" : "var(--danger)" }}
+              >
+                {msg.text}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
