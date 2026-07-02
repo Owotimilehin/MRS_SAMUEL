@@ -448,35 +448,43 @@ export function productRoutes(db: DbClient) {
       throw new BusinessError("validation_failed", "variant does not belong to this product", 422);
     }
 
-    // Last-active-size guard: the size tool must never empty a flavour's
-    // storefront presence — that's what "Deactivate flavour" is for.
-    if (body.is_active === false) {
-      const active = await db
-        .select({ id: productVariant.id })
-        .from(productVariant)
-        .where(
-          and(
-            eq(productVariant.productId, id),
-            eq(productVariant.isActive, true),
-            isNull(productVariant.deletedAt),
-          ),
-        );
-      const remaining = active.filter((v) => v.id !== variantId);
-      if (remaining.length === 0) {
-        throw new BusinessError(
-          "validation_failed",
-          "This is the only active size; retiring it would remove the whole flavour from the storefront. Use Deactivate flavour instead.",
-          422,
-        );
-      }
-    }
+    // Lock the product row so two concurrent retires on the same flavour can't
+    // both pass the last-active-size guard and empty its storefront presence —
+    // the guard read and the update must be a single serialized check-then-act.
+    const updated = await db.transaction(async (tx) => {
+      await tx.select({ id: product.id }).from(product).where(eq(product.id, id)).for("update");
 
-    const [updated] = await db
-      .update(productVariant)
-      .set({ isActive: body.is_active, updatedAt: new Date() })
-      .where(eq(productVariant.id, variantId))
-      .returning();
-    if (!updated) throw new BusinessError("internal_error", "variant update failed", 500);
+      // Last-active-size guard: the size tool must never empty a flavour's
+      // storefront presence — that's what "Deactivate flavour" is for.
+      if (body.is_active === false) {
+        const active = await tx
+          .select({ id: productVariant.id })
+          .from(productVariant)
+          .where(
+            and(
+              eq(productVariant.productId, id),
+              eq(productVariant.isActive, true),
+              isNull(productVariant.deletedAt),
+            ),
+          );
+        const remaining = active.filter((v) => v.id !== variantId);
+        if (remaining.length === 0) {
+          throw new BusinessError(
+            "validation_failed",
+            "This is the only active size; retiring it would remove the whole flavour from the storefront. Use Deactivate flavour instead.",
+            422,
+          );
+        }
+      }
+
+      const [row] = await tx
+        .update(productVariant)
+        .set({ isActive: body.is_active, updatedAt: new Date() })
+        .where(eq(productVariant.id, variantId))
+        .returning();
+      if (!row) throw new BusinessError("internal_error", "variant update failed", 500);
+      return row;
+    });
 
     await writeAudit(db, c, {
       action: body.is_active ? "product_variant.restore" : "product_variant.retire",

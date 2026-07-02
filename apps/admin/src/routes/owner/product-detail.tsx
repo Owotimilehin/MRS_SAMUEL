@@ -145,7 +145,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
       const activeCount = (product?.variants ?? []).filter((v) => v.is_active).length;
       if (activeCount <= 1) {
         setError(
-          "This is the only active size. Retiring it would remove the whole flavour from the storefront — use Deactivate above instead.",
+          "This is the only active size; retiring it would remove the whole flavour from the storefront. Use Deactivate flavour instead.",
         );
         return;
       }
