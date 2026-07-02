@@ -3,7 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import type { Product } from "@/lib/api/mappers";
-import { fetchProducts, fetchBlogPosts, fetchSubscriptionPlans } from "@/lib/api/server-fns";
+import { fetchProducts, fetchBlogPosts, fetchSubscriptionPlans, fetchBanner } from "@/lib/api/server-fns";
+import { TopBanner } from "@/components/TopBanner";
+import { pickCustomBannerMessage } from "@/lib/banner";
 import { SiteShell } from "@/components/SiteShell";
 import { Hero } from "@/components/Hero";
 import { StockBanner } from "@/components/StockBanner";
@@ -41,26 +43,32 @@ export const Route = createFileRoute("/")({
     };
   },
   loader: async () => {
-    const [products, posts, plans] = await Promise.all([
+    const [products, posts, plans, banner] = await Promise.all([
       fetchProducts(),
       fetchBlogPosts(),
       fetchSubscriptionPlans(),
+      fetchBanner(),
     ]);
-    return { products, posts, plans };
+    return { products, posts, plans, banner };
   },
   component: Page,
 });
 
 function Page() {
-  const { products, posts, plans } = Route.useLoaderData();
+  const { products, posts, plans, banner } = Route.useLoaderData();
   const [selected, setSelected] = useState<Product | null>(null);
   const classics = sortByStock650(products.filter((p) => p.category === "Classic")).slice(0, 8);
   const specials = sortByStock650(products.filter((p) => p.category === "Special"));
 
   const stockSummary = deriveStockSummary(products);
 
+  const customMessage = pickCustomBannerMessage(banner);
+  const topBar = customMessage
+    ? <TopBanner message={customMessage} />
+    : <StockBanner summary={stockSummary} />;
+
   return (
-    <SiteShell topBar={<StockBanner summary={stockSummary} />}>
+    <SiteShell topBar={topBar}>
       <Hero products={products} />
 
       <section id="products" className="px-5 sm:px-10 pt-6 pb-10 max-w-7xl mx-auto">

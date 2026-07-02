@@ -131,6 +131,8 @@ export function ProductsPage(): JSX.Element {
         <div className="flav-grid ed-rise">
           {rows.map((p) => {
             const accent = getFlavourVisual({ slug: p.slug }).accent;
+            const allRetired =
+              !!p.variants && p.variants.length > 0 && p.variants.every((v) => !v.is_active);
             return (
               <article key={p.id} className="flav-card">
                 <FlavourMedia
@@ -140,6 +142,18 @@ export function ProductsPage(): JSX.Element {
                 <span className="flav-tag flav-card__cat" style={{ ["--fl-accent" as string]: accent } as CSSProperties}>
                   {p.category}
                 </span>
+                {allRetired && (
+                  <span
+                    className="flav-tag flav-card__cat"
+                    style={{
+                      ["--fl-accent" as string]: "var(--ink-soft)",
+                      right: "auto",
+                      left: 12,
+                    } as CSSProperties}
+                  >
+                    Not selling
+                  </span>
+                )}
                 <div className="flav-card__body">
                   <div className="flav-card__name">{p.name}</div>
                   <div className="flav-card__slug">{p.slug}</div>
@@ -149,13 +163,35 @@ export function ProductsPage(): JSX.Element {
                   {p.variants && p.variants.length > 0 ? (
                     <div className="flav-card__sizes">
                       {p.variants.map((v) => (
-                        <div key={v.id} className="flav-size">
+                        <div
+                          key={v.id}
+                          className="flav-size"
+                          style={v.is_active ? undefined : { opacity: 0.55 }}
+                        >
                           <span className="flav-size__ml">{v.size_ml} ml</span>
-                          {v.current_price_ngn != null ? (
-                            <span className="flav-size__pr">{ngn(v.current_price_ngn)}</span>
-                          ) : (
-                            <span className="flav-size__pr--none">no price — set it</span>
-                          )}
+                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            {!v.is_active && (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.04em",
+                                  color: "var(--ink-soft)",
+                                  background: "var(--line)",
+                                  borderRadius: 999,
+                                  padding: "2px 7px",
+                                }}
+                              >
+                                Retired
+                              </span>
+                            )}
+                            {v.current_price_ngn != null ? (
+                              <span className="flav-size__pr">{ngn(v.current_price_ngn)}</span>
+                            ) : (
+                              <span className="flav-size__pr--none">no price — set it</span>
+                            )}
+                          </span>
                         </div>
                       ))}
                     </div>

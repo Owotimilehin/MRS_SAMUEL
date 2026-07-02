@@ -11,6 +11,7 @@ import type {
   ApiQuote, ApiPlacedOrder, ApiOrderTracking, ApiSubscribeResult,
 } from "./types";
 import type { CheckoutLogPayload } from "@/lib/checkout-log";
+import type { BannerConfig } from "@/lib/banner";
 
 // ---------- Catalog ----------
 export const fetchProducts = createServerFn({ method: "GET" }).handler(async (): Promise<Product[]> => {
@@ -61,6 +62,17 @@ export const fetchBundles = createServerFn({ method: "GET" }).handler(async (): 
 export const fetchSubscriptionPlans = createServerFn({ method: "GET" }).handler(async (): Promise<SubscriptionPlan[]> => {
   const rows = await apiFetch<ApiSubscriptionPlan[]>("/v1/public/catalog/subscription-plans");
   return rows.map(toUiPlan);
+});
+
+// ---------- Banner ----------
+export const fetchBanner = createServerFn({ method: "GET" }).handler(async (): Promise<BannerConfig> => {
+  try {
+    const cfg = await apiFetch<BannerConfig>("/v1/public/settings/banner");
+    return { enabled: Boolean(cfg.enabled), message: typeof cfg.message === "string" ? cfg.message : "" };
+  } catch {
+    // Banner is decorative — never block the homepage on it.
+    return { enabled: false, message: "" };
+  }
 });
 
 // ---------- Checkout writes ----------
