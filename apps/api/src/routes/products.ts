@@ -353,6 +353,71 @@ export function productRoutes(db: DbClient) {
   });
 
   /**
+   * Add a new size (variant) to a flavour that already exists, with its initial
+   * price. Mirrors the variant-creation loop in POST /: resolve the bottle
+   * material for the size, insert the variant, publish the first price. The
+   * (product, size) pair is uniquely constrained (ignoring deleted_at), so a
+   * pre-existing size — active or retired — is rejected with a friendly 422
+   * rather than a raw 23505.
+   */
+  r.post("/:id/variants", requireCapability("products.manage"), async (c) => {
+    const id = c.req.param("id");
+    const body = VariantInput.parse(await c.req.json());
+    const auth = c.get("auth");
+
+    const [existing] = await db
+      .select()
+      .from(product)
+      .where(and(eq(product.id, id), isNull(product.deletedAt)));
+    if (!existing) throw new BusinessError("not_found", "product not found", 404);
+
+    const created = await db.transaction(async (tx) => {
+      // Reject any pre-existing row for this (product, size) — including a
+      // retired/soft-deleted one — since the unique constraint spans them.
+      const [clash] = await tx
+        .select({ id: productVariant.id, isActive: productVariant.isActive, deletedAt: productVariant.deletedAt })
+        .from(productVariant)
+        .where(and(eq(productVariant.productId, id), eq(productVariant.sizeMl, body.size_ml)));
+      if (clash) {
+        const hint = clash.deletedAt || !clash.isActive ? " — it's retired; use Restore instead" : "";
+        throw new BusinessError(
+          "validation_failed",
+          `${existing.name} already has a ${body.size_ml}ml size${hint}`,
+          422,
+        );
+      }
+
+      const sku = body.sku ?? `${existing.slug}-${body.size_ml}ml`;
+      const bottleMaterialId = await bottleMaterialIdForSize(tx, body.size_ml);
+      const [vRow] = await tx
+        .insert(productVariant)
+        .values({
+          productId: id,
+          sizeMl: body.size_ml,
+          sku,
+          bottleMaterialId: bottleMaterialId ?? null,
+        })
+        .returning();
+      if (!vRow) throw new BusinessError("internal_error", "variant insert failed", 500);
+      await tx.insert(productPrice).values({
+        productId: id,
+        variantId: vRow.id,
+        priceNgn: body.price_ngn,
+        createdByUserId: auth.userId,
+      });
+      return { id: vRow.id, size_ml: vRow.sizeMl, price_ngn: body.price_ngn, is_active: vRow.isActive };
+    });
+
+    await writeAudit(db, c, {
+      action: "product_variant.create",
+      entityType: "product_variant",
+      entityId: created.id,
+      after: created,
+    });
+    return c.json({ data: created }, 201);
+  });
+
+  /**
    * Publish a new price for one variant. Closes the existing price row (sets
    * valid_to=now()) and inserts a fresh row.
    */
