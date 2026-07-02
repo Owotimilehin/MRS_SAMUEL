@@ -2,7 +2,13 @@ import { Hono } from "hono";
 import { eq, isNull, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { adminUser, type DbClient } from "@ms/db";
-import { CAPABILITIES } from "@ms/shared";
+import {
+  CAPABILITIES,
+  resolveCapabilities,
+  EMPTY_OVERRIDES,
+  type Capability,
+  type PermissionOverrides,
+} from "@ms/shared";
 import { hashPassword } from "../auth/argon.js";
 import { revokeAllUserSessions } from "../auth/session.js";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
@@ -13,6 +19,14 @@ import { BusinessError } from "../lib/errors.js";
  *  referencing row (a sale/payment/stock entry the user recorded). */
 function isForeignKeyViolation(e: unknown): boolean {
   return typeof e === "object" && e !== null && (e as { code?: string }).code === "23503";
+}
+
+/** True when two effective-capability lists hold the same set. resolveCapabilities
+ *  returns catalog-ordered arrays, but compare as sets to be order-independent. */
+function sameCapabilities(a: Capability[], b: Capability[]): boolean {
+  if (a.length !== b.length) return false;
+  const setB = new Set(b);
+  return a.every((cap) => setB.has(cap));
 }
 
 /**
@@ -162,16 +176,26 @@ export function adminUserRoutes(db: DbClient) {
       .returning();
     if (!row) throw new BusinessError("internal_error", "update failed", 500);
 
-    // A role/permission change only lives in the user's 15-minute access token.
-    // Revoke their sessions so the new capabilities take effect on next sign-in
-    // instead of silently lagging (the "granted access but it didn't work" bug).
-    // Disabling a user likewise kicks them out immediately.
+    // A role/permission change only lives in the user's access token, so revoke
+    // their sessions to force a re-login that picks up the new capabilities (the
+    // "granted access but it didn't work" bug). Disabling a user likewise kicks
+    // them out immediately. Crucially, compare the EFFECTIVE capabilities before
+    // and after: the owner's edit form replays role + permission_overrides on
+    // every save, so keying off mere presence bounced a signed-in till to login
+    // on a benign name/branch edit. Only a real change should revoke.
+    const capsBefore = resolveCapabilities(
+      before.role,
+      (before.permissionOverrides as PermissionOverrides | null) ?? EMPTY_OVERRIDES,
+    );
+    const capsAfter = resolveCapabilities(
+      row.role,
+      (row.permissionOverrides as PermissionOverrides | null) ?? EMPTY_OVERRIDES,
+    );
+    const roleChanged = row.role !== before.role;
+    const capabilitiesChanged = !sameCapabilities(capsBefore, capsAfter);
+    const deactivated = body.is_active === false && before.isActive;
     let sessionsRevoked = 0;
-    if (
-      body.role !== undefined ||
-      body.permission_overrides !== undefined ||
-      body.is_active === false
-    ) {
+    if (roleChanged || capabilitiesChanged || deactivated) {
       sessionsRevoked = await revokeAllUserSessions(db, id);
     }
 
