@@ -42,3 +42,4 @@ export * from "./bundle.js";
 export * from "./shift-open.js";
 export * from "./checkout-attempt-log.js";
 export * from "./variance-loss.js";
+export * from "./app-setting.js";

@@ -378,5 +378,6 @@
     ,{ "idx": 61, "version": "7", "when": 1783220000000, "tag": "0062_checkout_attempt_log", "breakpoints": true }
     ,{ "idx": 62, "version": "7", "when": 1783250000000, "tag": "0063_payaza_fee_breakdown", "breakpoints": true }
     ,{ "idx": 63, "version": "7", "when": 1783280000000, "tag": "0064_delivery_provider_default_shipbubble", "breakpoints": true }
+    ,{ "idx": 64, "version": "7", "when": 1783310000000, "tag": "0065_app_settings", "breakpoints": true }
   ]
 }
