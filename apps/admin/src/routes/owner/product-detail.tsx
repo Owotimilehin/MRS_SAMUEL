@@ -28,6 +28,10 @@ interface Variant {
   current_price_ngn: number | null;
 }
 
+// Sizes we have a bottle/packaging material for. The "Add a size" form only
+// offers these so a new variant can never be created without packaging.
+const KNOWN_SIZES = [330, 650] as const;
+
 interface Product {
   id: string;
   name: string;
@@ -62,6 +66,9 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [retiringId, setRetiringId] = useState<string | null>(null);
+  const [newSize, setNewSize] = useState<number | "">("");
+  const [newSizePrice, setNewSizePrice] = useState("");
+  const [addingSize, setAddingSize] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -167,6 +174,35 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
       setError(humanizeError(err));
     } finally {
       setRetiringId(null);
+    }
+  }
+
+  async function addSize(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (newSize === "") {
+      setError("Pick a size to add.");
+      return;
+    }
+    const priceNgn = Number(newSizePrice);
+    if (!Number.isFinite(priceNgn) || priceNgn <= 0) {
+      setError("Enter a valid price for the new size.");
+      return;
+    }
+    setAddingSize(true);
+    setError(null);
+    try {
+      await api(`/products/${productId}/variants`, {
+        method: "POST",
+        body: JSON.stringify({ size_ml: newSize, price_ngn: priceNgn }),
+      });
+      showFlash(`${newSize}ml added`);
+      setNewSize("");
+      setNewSizePrice("");
+      await load();
+    } catch (err) {
+      setError(humanizeError(err));
+    } finally {
+      setAddingSize(false);
     }
   }
 
@@ -478,6 +514,61 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
                   </div>
                 ))}
               </div>
+              {(() => {
+                const existing = new Set(product.variants.map((v) => v.size_ml));
+                const available = KNOWN_SIZES.filter((s) => !existing.has(s));
+                if (available.length === 0) {
+                  return (
+                    <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 14 }}>
+                      This flavour already has every available size.
+                    </p>
+                  );
+                }
+                return (
+                  <form
+                    onSubmit={addSize}
+                    style={{
+                      marginTop: 14,
+                      paddingTop: 14,
+                      borderTop: "1px solid var(--line)",
+                      display: "grid",
+                      gridTemplateColumns: "auto 1fr auto",
+                      gap: 10,
+                      alignItems: "center",
+                    }}
+                  >
+                    <select
+                      className="input"
+                      value={newSize === "" ? "" : String(newSize)}
+                      onChange={(e) => setNewSize(e.target.value === "" ? "" : Number(e.target.value))}
+                      required
+                    >
+                      <option value="">Add size…</option>
+                      {available.map((s) => (
+                        <option key={s} value={s}>
+                          {s}ml
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="input"
+                      type="number"
+                      inputMode="numeric"
+                      value={newSizePrice}
+                      onChange={(e) => setNewSizePrice(e.target.value)}
+                      placeholder="Price ₦"
+                      required
+                    />
+                    <button
+                      type="submit"
+                      className="btn btn--primary btn--sm"
+                      disabled={addingSize || newSize === "" || !newSizePrice}
+                    >
+                      {addingSize ? "…" : "Add size"}
+                    </button>
+                  </form>
+                );
+              })()}
               <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 14 }}>
                 Last loaded {formatDate(new Date())}. Audit log records every change.
               </p>
