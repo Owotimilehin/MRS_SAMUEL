@@ -46,6 +46,7 @@ import { deliveryReconcileRoutes } from "./routes/delivery-reconcile.js";
 import { deliveryAdminRoutes } from "./routes/delivery-admin.js";
 import { paymentsAdminRoutes } from "./routes/payments-admin.js";
 import { onlineOrdersQueueRoutes } from "./routes/online-orders-queue.js";
+import { settingsRoutes, publicSettingsRoutes } from "./routes/settings.js";
 
 let cachedDb: DbClient | null = null;
 function getDb(): DbClient {
@@ -118,6 +119,7 @@ export function buildApp(): Hono {
   app.route("/v1/marketing", marketingRoutes(db));
   app.route("/v1/online-orders", paymentsAdminRoutes(db));
   app.route("/v1/online-orders", onlineOrdersQueueRoutes(db));
+  app.route("/v1/settings", settingsRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));
@@ -127,6 +129,7 @@ export function buildApp(): Hono {
   app.route("/v1/public/blog", publicBlogRoutes(db));
   app.route("/v1/public/contact", publicContactRoutes(db));
   app.route("/v1/public/subscriptions", publicSubscriptionRoutes(db));
+  app.route("/v1/public/settings", publicSettingsRoutes(db));
   app.route("/v1/public/telemetry", telemetryRoutes(db));
   app.route("/v1/webhooks/payaza", payazaWebhookRoutes(db));
   app.route("/v1/webhooks/shipbubble", shipbubbleWebhookRoutes(db));
