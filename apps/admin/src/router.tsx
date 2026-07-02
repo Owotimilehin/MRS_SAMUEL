@@ -14,6 +14,7 @@ import { NotFound } from "./components/NotFound.js";
 import { RouteErrorComponent } from "./components/RouteErrorComponent.js";
 import { InlineLoader, PageLoader } from "./components/Spinner.js";
 import { RequireAuth, useAuthUser } from "./lib/auth.js";
+import { refreshAccessToken } from "./lib/api.js";
 import {
   lazy,
   Suspense,
@@ -217,7 +218,15 @@ function RootRedirect(): JSX.Element {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/v1/auth/me", { credentials: "include" });
+        let res = await fetch("/v1/auth/me", { credentials: "include" });
+        // The 30-minute access cookie may have expired while the long-lived
+        // 30-day session is still valid — renew once before giving up, exactly
+        // like resolveSession(). Without this, landing on "/" with an expired
+        // access token bounces a still-signed-in user to login.
+        if (res.status === 401) {
+          const refreshed = await refreshAccessToken();
+          if (refreshed) res = await fetch("/v1/auth/me", { credentials: "include" });
+        }
         if (!res.ok) {
           if (!cancelled && typeof window !== "undefined") {
             window.location.replace("/login");
