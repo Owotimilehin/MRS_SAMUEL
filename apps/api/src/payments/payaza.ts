@@ -6,6 +6,8 @@
  * page exactly these params. Field names match the SDK (confirmed against
  * Payaza's WooCommerce plugin). `amount` is in kobo (naira × 100).
  */
+import type { ConfirmedTransaction } from "./opay.js";
+
 export interface PayazaCheckoutConfig {
   reference: string;
   /** Selected from the public key prefix: "Test" (PKTEST) or "Live" (PKLIVE).
@@ -21,19 +23,8 @@ export interface PayazaCheckoutConfig {
   phone?: string;
 }
 
-/** Payaza transaction states vary by product: SUCCESSFUL | PENDING | FAILED |
- *  REVERSED. Kept as a plain string since Payaza may report states we don't
- *  enumerate; the webhook only treats an explicit success as paid. */
-export interface PayazaTransactionStatus {
-  status: string;
-  amountNgn: number | null;
-  feeNgn: number | null;
-  netNgn: number | null;
-  processorReference: string | null;
-  /** Reusable card authorization captured for recurring subscription charges. */
-  authorization: { token: string; reusable: boolean } | null;
-  raw: unknown;
-}
+/** @deprecated name — kept as an alias so existing imports keep working. */
+export type PayazaTransactionStatus = ConfirmedTransaction;
 
 // `||` not `??` — empty string in .env should fall back to the default, not
 // produce a relative URL.

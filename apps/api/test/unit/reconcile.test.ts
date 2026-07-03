@@ -195,6 +195,18 @@ describe("applyPayazaConfirmation", () => {
     expect(r).toEqual({ kind: "already_processed", status: "confirmed" });
     expect(calls.inserts).toHaveLength(0);
   });
+
+  it("stamps the payment row with the given processor (opay)", async () => {
+    const { tx, calls } = fakeTx(null);
+    const r = await applyPayazaConfirmation(
+      tx as any, { ...baseOrder } as any,
+      status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
+      { processor: "opay" },
+    );
+    expect(r.kind).toBe("paid");
+    const paymentRow = calls.inserts.find((i: any) => i.t === payment);
+    expect(paymentRow?.v.processor).toBe("opay");
+  });
 });
 
 describe("verifyAndReconcile heals a stuck reconcile_needed order", () => {

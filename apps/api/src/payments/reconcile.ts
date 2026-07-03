@@ -9,7 +9,8 @@ import {
   type DbClient,
 } from "@ms/db";
 import { isOutsideLagos } from "@ms/shared";
-import { verifyPayazaTransaction, isPayazaSuccess, type PayazaTransactionStatus } from "./payaza.js";
+import { verifyPayazaTransaction, isPayazaSuccess } from "./payaza.js";
+import { verifyOpayTransaction, isOpaySuccess, type ConfirmedTransaction } from "./opay.js";
 import { autoDispatchEnabled } from "../lib/delivery-flags.js";
 
 export type ReconcileOutcome =
@@ -29,11 +30,11 @@ export type ReconcileOutcome =
  * admin) accept whatever Payaza reports as the truth instead of rejecting on
  * mismatch — the webhook never sets this.
  */
-export async function applyPayazaConfirmation(
+export async function applyPaymentConfirmation(
   tx: Parameters<Parameters<DbClient["transaction"]>[0]>[0],
   order: typeof saleOrder.$inferSelect,
-  confirmed: PayazaTransactionStatus,
-  opts?: { acceptReportedAmount?: boolean },
+  confirmed: ConfirmedTransaction,
+  opts?: { acceptReportedAmount?: boolean; processor?: string },
 ): Promise<ReconcileOutcome> {
   const o = order;
   if (o.status !== "confirmed") return { kind: "already_processed", status: o.status };
@@ -110,7 +111,7 @@ export async function applyPayazaConfirmation(
     netNgn: confirmed.netNgn ?? (confirmed.amountNgn != null && confirmed.feeNgn != null ? confirmed.amountNgn - confirmed.feeNgn : null),
     rawBreakdown: confirmed.raw ?? null,
     status: "paid",
-    processor: "payaza",
+    processor: opts?.processor ?? "payaza",
     processorReference: confirmed.processorReference ?? null,
     paidAt: new Date(),
   });
@@ -152,17 +153,26 @@ export async function applyPayazaConfirmation(
   };
 }
 
+/** Back-compat alias: existing Payaza call sites import this name. */
+export const applyPayazaConfirmation = applyPaymentConfirmation;
+
 /**
- * Re-verify a single order against Payaza and reconcile if it reports
+ * Re-verify a single order against a provider and reconcile if it reports
  * success. Used by the cron sweeper and on-view re-verify — not the webhook
  * (which already has its own `confirmed` from the callback wake-up).
  */
 export async function verifyAndReconcile(
   db: DbClient,
   orderNumber: string,
+  provider: "opay" | "payaza" = "payaza",
 ): Promise<ReconcileOutcome> {
-  const confirmed = await verifyPayazaTransaction(orderNumber);
-  if (!isPayazaSuccess(confirmed.status)) {
+  const confirmed =
+    provider === "opay"
+      ? await verifyOpayTransaction(orderNumber)
+      : await verifyPayazaTransaction(orderNumber);
+  const success =
+    provider === "opay" ? isOpaySuccess(confirmed.status) : isPayazaSuccess(confirmed.status);
+  if (!success) {
     return { kind: "not_completed", payazaStatus: confirmed.status };
   }
   return db.transaction(async (tx) => {
@@ -172,9 +182,9 @@ export async function verifyAndReconcile(
     // A previously-stuck order (flagged reconcile_needed by the old exact-equality
     // reconciliation, or a genuine earlier shortfall since topped up) must be
     // re-openable: nudge it back to 'confirmed' — CAS-guarded — so
-    // applyPayazaConfirmation's own guard/CAS acts on it. Only reached when
-    // Payaza already reports success (checked above), so we never reopen an order
-    // with no money behind it.
+    // applyPaymentConfirmation's own guard/CAS acts on it. Only reached when
+    // the provider already reports success (checked above), so we never reopen
+    // an order with no money behind it.
     let orderForConfirmation = o;
     if (o.status === "reconcile_needed") {
       const won = await tx
@@ -184,7 +194,7 @@ export async function verifyAndReconcile(
         .returning({ id: saleOrder.id });
       if (won.length === 0) {
         // A concurrent caller already moved it — re-read and let
-        // applyPayazaConfirmation decide from the fresh state.
+        // applyPaymentConfirmation decide from the fresh state.
         const [fresh] = await tx.select().from(saleOrder).where(eq(saleOrder.id, o.id));
         orderForConfirmation = fresh ?? o;
       } else {
@@ -192,7 +202,7 @@ export async function verifyAndReconcile(
       }
     }
 
-    return applyPayazaConfirmation(tx, orderForConfirmation, confirmed);
+    return applyPaymentConfirmation(tx, orderForConfirmation, confirmed, { processor: provider });
   });
 }
 
