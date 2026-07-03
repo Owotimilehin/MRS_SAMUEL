@@ -97,6 +97,12 @@ export const saleOrder = pgTable("sale_order", {
   // or a duplicate charge). Null = no refund owed.
   refundOwedNgn: integer("refund_owed_ngn"),
   feeShortfallNgn: integer("fee_shortfall_ngn"),
+  // Which payment provider created this order's checkout. Stamped at order
+  // creation so the webhook / worker sweep / on-view re-verify confirm it
+  // against the RIGHT provider even if the owner flips the active-provider
+  // toggle mid-flight. Null on rows created before this column existed → the
+  // reconcile paths default those to "payaza".
+  paymentProvider: text("payment_provider"),
   // Secondary contact for delivery when the primary phone isn't reachable on WhatsApp.
   altPhone: text("alt_phone"),
 }, (t) => ({
