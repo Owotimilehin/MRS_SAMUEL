@@ -1049,5 +1049,101 @@ describe("Phase 3 customer-site online order flow", () => {
         .where(eq(saleOrder.orderNumber, body.data.order_number));
       expect(row!.paymentProvider).toBe("opay");
     });
+
+    it("OPay webhook wake-up re-queries cashier/status and marks the order paid", async () => {
+      await setActiveProvider("opay");
+      vi.stubEnv("OPAY_MERCHANT_ID", "256625123456789");
+      vi.stubEnv("OPAY_PUBLIC_KEY", "OPAYPUB_TEST_itest");
+      vi.stubEnv("OPAY_SECRET_KEY", "OPAYPRV_TEST_itest");
+
+      // Stub BOTH OPay endpoints: cashier/create (order placement) and
+      // cashier/status (the webhook's authoritative re-query). status reports
+      // SUCCESS with amount.total in kobo (naira × 100). Every other URL —
+      // including this test's own calls to baseUrl — delegates to the real fetch.
+      const realFetch = globalThis.fetch;
+      const total = 2500; // 1 bottle @ ₦2500
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: string | URL | Request, init?: RequestInit) => {
+          if (String(url).includes("cashier/create")) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  code: "00000",
+                  data: { cashierUrl: "https://sandboxcashier.opaycheckout.com/y", orderNo: "2110" },
+                }),
+                { status: 200 },
+              ),
+            );
+          }
+          if (String(url).includes("cashier/status")) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  code: "00000",
+                  message: "SUCCESSFUL",
+                  data: {
+                    reference: refHolder.value,
+                    orderNo: "2110",
+                    status: "SUCCESS",
+                    amount: { total: total * 100, currency: "NGN" },
+                  },
+                }),
+                { status: 200 },
+              ),
+            );
+          }
+          return realFetch(url as Parameters<typeof realFetch>[0], init);
+        }),
+      );
+
+      // Placeholder so the status stub can echo back the created order number.
+      const refHolder = { value: "" };
+
+      const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": uuid() },
+        body: JSON.stringify({
+          branch_id: branchId,
+          zone_name: "Test zone",
+          delivery_fee_ngn: 0,
+          customer: {
+            name: "Opay Webhook",
+            phone: "+2348025550022",
+            email: "opaywebhook@example.com",
+            address: "22 Webhook Street",
+          },
+          items: [{ product_id: productId, quantity: 1 }],
+        }),
+      });
+      expect(orderRes.status).toBe(201);
+      const orderBody = (await orderRes.json()) as { data: { order_number: string } };
+      refHolder.value = orderBody.data.order_number;
+
+      // OPay's callback is a wake-up only; the money decision comes from the
+      // cashier/status re-query above. Post the minimal { reference } body.
+      const webhook = await fetch(`${baseUrl}/v1/webhooks/opay`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reference: orderBody.data.order_number }),
+      });
+      expect(webhook.status).toBe(200);
+
+      // Assert straight from the DB — the webhook itself must have marked it paid
+      // and stamped the payment row with the opay processor.
+      const { saleOrder, payment } = await import("@ms/db");
+      const { eq } = await import("drizzle-orm");
+      const [row] = await db
+        .select({ status: saleOrder.status, paymentStatus: saleOrder.paymentStatus, id: saleOrder.id })
+        .from(saleOrder)
+        .where(eq(saleOrder.orderNumber, orderBody.data.order_number));
+      expect(row!.status).toBe("paid");
+      expect(row!.paymentStatus).toBe("paid");
+      const [pay] = await db
+        .select({ processor: payment.processor })
+        .from(payment)
+        .where(eq(payment.saleOrderId, row!.id));
+      expect(pay!.processor).toBe("opay");
+    });
   });
 });
