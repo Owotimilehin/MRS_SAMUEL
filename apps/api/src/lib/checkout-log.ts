@@ -8,6 +8,7 @@ export const CHECKOUT_STAGES = [
   "order_created",
   "order_failed",
   "payment_paid",
+  "payment_redirect",
   "payment_closed",
   "payment_failed",
 ] as const;
@@ -19,6 +20,7 @@ const STATUS_BY_STAGE: Record<CheckoutStage, "info" | "ok" | "error" | "abandone
   order_created: "ok",
   order_failed: "error",
   payment_paid: "ok",
+  payment_redirect: "info",
   payment_closed: "abandoned",
   payment_failed: "error",
 };

@@ -5,6 +5,7 @@ export type CheckoutStage =
   | "order_created"
   | "order_failed"
   | "payment_paid"
+  | "payment_redirect"
   | "payment_closed"
   | "payment_failed";
 
