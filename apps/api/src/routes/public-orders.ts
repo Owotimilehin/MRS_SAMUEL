@@ -26,6 +26,7 @@ import {
 import { rateLimit } from "../middleware/rate-limit.js";
 import { BusinessError } from "../lib/errors.js";
 import { buildPayazaCheckoutConfig } from "../payments/payaza.js";
+import { getActiveProvider, createCheckout } from "../payments/provider.js";
 import { resolveCustomer } from "../lib/customers.js";
 import { getDeliveryProvider } from "../delivery/index.js";
 import { storeOptionSet, loadOptionSet } from "../delivery/quote-store.js";
@@ -352,6 +353,10 @@ export function publicOrderRoutes(db: DbClient) {
       throw new BusinessError("validation_failed", "cart is empty", 422);
     }
 
+    // Resolve once, outside the transaction, so the SAME provider is stamped
+    // on the order below and used to build the checkout handoff afterwards.
+    const activeProvider = await getActiveProvider(db);
+
     const created = await db.transaction(async (tx) => {
       const normalizedPhone = normalizeNigerianPhone(body.customer.phone);
       if (!normalizedPhone) {
@@ -522,6 +527,7 @@ export function publicOrderRoutes(db: DbClient) {
           totalNgn: total,
           paymentMethod: "card",
           paymentStatus: "pending",
+          paymentProvider: activeProvider,
           createdAtLocal: new Date(),
           idempotencyKey,
           scheduledDeliveryAt,
@@ -600,16 +606,22 @@ export function publicOrderRoutes(db: DbClient) {
     // doesn't replay the same items into a second order.
     await clearCartForCookie(db, c);
 
-    // Payaza checkout is a frontend SDK (no server redirect) — hand the customer
-    // page the SDK init config. Payment is confirmed server-side by the
-    // /v1/webhooks/payaza handler re-querying Payaza after the popup completes.
-    const payaza = buildPayazaCheckoutConfig({
+    // Hand the customer the right checkout: an OPay redirect URL, or the Payaza
+    // popup SDK config. Payment is confirmed server-side (OPay cashier/status or
+    // Payaza transaction-query) via the matching webhook / sweep / on-view verify.
+    const handoff = await createCheckout(db, {
+      provider: (created.order.paymentProvider as "opay" | "payaza" | null) ?? "payaza",
       amountNgn: created.order.totalNgn,
-      email: created.customerEmail ?? "no-email@example.com",
       reference: created.order.orderNumber,
+      email: created.customerEmail ?? "no-email@example.com",
       customerName: body.customer.name,
       customerPhone: body.customer.phone,
     });
+
+    const payment =
+      handoff.provider === "opay"
+        ? { provider: "opay" as const, reference: created.order.orderNumber, redirect_url: handoff.redirectUrl }
+        : { provider: "payaza" as const, reference: handoff.payaza.reference, payaza: handoff.payaza };
 
     return c.json(
       {
@@ -622,11 +634,7 @@ export function publicOrderRoutes(db: DbClient) {
           // gracious "made to order — we'll WhatsApp you" confirmation before
           // payment. Authoritative: same flag the order was created with.
           is_preorder: created.order.isPreorder,
-          payment: {
-            provider: "payaza" as const,
-            reference: payaza.reference,
-            payaza,
-          },
+          payment,
         },
       },
       201,
@@ -670,7 +678,7 @@ export function publicOrderRoutes(db: DbClient) {
       const reservationLive = liveResv?.expiresAt != null && liveResv.expiresAt.getTime() > Date.now();
       if (reservationLive) {
         try {
-          await verifyAndReconcile(db, o.orderNumber);
+          await verifyAndReconcile(db, o.orderNumber, (o.paymentProvider as "opay" | "payaza" | null) ?? "payaza");
         } catch (err) {
           logger.warn({ err, orderNumber: o.orderNumber }, "tracking on-view re-verify failed (non-fatal)");
         }
