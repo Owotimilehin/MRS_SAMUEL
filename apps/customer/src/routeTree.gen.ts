@@ -10,10 +10,13 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TrackRouteImport } from './routes/track'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SubscriptionRouteImport } from './routes/subscription'
 import { Route as ShopRouteImport } from './routes/shop'
+import { Route as ReturnsRouteImport } from './routes/returns'
 import { Route as QrRouteImport } from './routes/qr'
 import { Route as JuicesRouteImport } from './routes/juices'
+import { Route as DeliveryRouteImport } from './routes/delivery'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as BlogRouteImport } from './routes/blog'
@@ -30,6 +33,11 @@ const TrackRoute = TrackRouteImport.update({
   path: '/track',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SubscriptionRoute = SubscriptionRouteImport.update({
   id: '/subscription',
   path: '/subscription',
@@ -40,6 +48,11 @@ const ShopRoute = ShopRouteImport.update({
   path: '/shop',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReturnsRoute = ReturnsRouteImport.update({
+  id: '/returns',
+  path: '/returns',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const QrRoute = QrRouteImport.update({
   id: '/qr',
   path: '/qr',
@@ -48,6 +61,11 @@ const QrRoute = QrRouteImport.update({
 const JuicesRoute = JuicesRouteImport.update({
   id: '/juices',
   path: '/juices',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeliveryRoute = DeliveryRouteImport.update({
+  id: '/delivery',
+  path: '/delivery',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ContactRoute = ContactRouteImport.update({
@@ -107,10 +125,13 @@ export interface FileRoutesByFullPath {
   '/blog': typeof BlogRouteWithChildren
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
+  '/delivery': typeof DeliveryRoute
   '/juices': typeof JuicesRouteWithChildren
   '/qr': typeof QrRoute
+  '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
   '/subscription': typeof SubscriptionRoute
+  '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juices/$id': typeof JuicesIdRoute
@@ -123,9 +144,12 @@ export interface FileRoutesByTo {
   '/about': typeof AboutRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
+  '/delivery': typeof DeliveryRoute
   '/qr': typeof QrRoute
+  '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
   '/subscription': typeof SubscriptionRoute
+  '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juices/$id': typeof JuicesIdRoute
@@ -140,10 +164,13 @@ export interface FileRoutesById {
   '/blog': typeof BlogRouteWithChildren
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
+  '/delivery': typeof DeliveryRoute
   '/juices': typeof JuicesRouteWithChildren
   '/qr': typeof QrRoute
+  '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
   '/subscription': typeof SubscriptionRoute
+  '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juices/$id': typeof JuicesIdRoute
@@ -159,10 +186,13 @@ export interface FileRouteTypes {
     | '/blog'
     | '/checkout'
     | '/contact'
+    | '/delivery'
     | '/juices'
     | '/qr'
+    | '/returns'
     | '/shop'
     | '/subscription'
+    | '/terms'
     | '/track'
     | '/blog/$slug'
     | '/juices/$id'
@@ -175,9 +205,12 @@ export interface FileRouteTypes {
     | '/about'
     | '/checkout'
     | '/contact'
+    | '/delivery'
     | '/qr'
+    | '/returns'
     | '/shop'
     | '/subscription'
+    | '/terms'
     | '/track'
     | '/blog/$slug'
     | '/juices/$id'
@@ -191,10 +224,13 @@ export interface FileRouteTypes {
     | '/blog'
     | '/checkout'
     | '/contact'
+    | '/delivery'
     | '/juices'
     | '/qr'
+    | '/returns'
     | '/shop'
     | '/subscription'
+    | '/terms'
     | '/track'
     | '/blog/$slug'
     | '/juices/$id'
@@ -209,10 +245,13 @@ export interface RootRouteChildren {
   BlogRoute: typeof BlogRouteWithChildren
   CheckoutRoute: typeof CheckoutRoute
   ContactRoute: typeof ContactRoute
+  DeliveryRoute: typeof DeliveryRoute
   JuicesRoute: typeof JuicesRouteWithChildren
   QrRoute: typeof QrRoute
+  ReturnsRoute: typeof ReturnsRoute
   ShopRoute: typeof ShopRoute
   SubscriptionRoute: typeof SubscriptionRoute
+  TermsRoute: typeof TermsRoute
   TrackRoute: typeof TrackRoute
   OrderOrderNumberRoute: typeof OrderOrderNumberRoute
 }
@@ -224,6 +263,13 @@ declare module '@tanstack/react-router' {
       path: '/track'
       fullPath: '/track'
       preLoaderRoute: typeof TrackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/subscription': {
@@ -240,6 +286,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShopRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/returns': {
+      id: '/returns'
+      path: '/returns'
+      fullPath: '/returns'
+      preLoaderRoute: typeof ReturnsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/qr': {
       id: '/qr'
       path: '/qr'
@@ -252,6 +305,13 @@ declare module '@tanstack/react-router' {
       path: '/juices'
       fullPath: '/juices'
       preLoaderRoute: typeof JuicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/delivery': {
+      id: '/delivery'
+      path: '/delivery'
+      fullPath: '/delivery'
+      preLoaderRoute: typeof DeliveryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contact': {
@@ -358,10 +418,13 @@ const rootRouteChildren: RootRouteChildren = {
   BlogRoute: BlogRouteWithChildren,
   CheckoutRoute: CheckoutRoute,
   ContactRoute: ContactRoute,
+  DeliveryRoute: DeliveryRoute,
   JuicesRoute: JuicesRouteWithChildren,
   QrRoute: QrRoute,
+  ReturnsRoute: ReturnsRoute,
   ShopRoute: ShopRoute,
   SubscriptionRoute: SubscriptionRoute,
+  TermsRoute: TermsRoute,
   TrackRoute: TrackRoute,
   OrderOrderNumberRoute: OrderOrderNumberRoute,
 }
