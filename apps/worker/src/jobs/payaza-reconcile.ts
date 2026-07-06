@@ -45,6 +45,7 @@ export async function sweepStuckPayazaOrders(db: DbClient, now: Date = new Date(
     .select({
       id: saleOrder.id,
       orderNumber: saleOrder.orderNumber,
+      paymentProvider: saleOrder.paymentProvider,
     })
     .from(saleOrder)
     .where(
@@ -60,29 +61,43 @@ export async function sweepStuckPayazaOrders(db: DbClient, now: Date = new Date(
   if (candidates.length === 0) return 0;
 
   const base = process.env["INTERNAL_API_URL"] || "http://api:3001";
-  const webhookUrl = `${base}/v1/webhooks/payaza`;
 
   let posted = 0;
   for (const o of candidates) {
+    // Each order carries the provider it was created under (Task 1 stamp). Null
+    // on legacy rows → Payaza, the original provider. Re-fire the MATCHING
+    // provider's webhook so the money is re-verified against the right API.
+    const provider = o.paymentProvider === "opay" ? "opay" : "payaza";
+    const webhookUrl = `${base}/v1/webhooks/${provider}`;
+    // Both webhooks accept a minimal { reference } re-fire and verify the money
+    // server-to-server; payaza also reads transaction_reference for its callback
+    // envelope shape.
+    const body =
+      provider === "opay"
+        ? { reference: o.orderNumber }
+        : { transaction_reference: o.orderNumber, reference: o.orderNumber };
     try {
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ transaction_reference: o.orderNumber }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         logger.warn(
-          { orderId: o.id, orderNumber: o.orderNumber, status: res.status },
-          "payaza reconcile: webhook re-fire returned non-2xx",
+          { orderId: o.id, orderNumber: o.orderNumber, provider, status: res.status },
+          "reconcile: webhook re-fire returned non-2xx",
         );
         continue;
       }
-      logger.info({ orderId: o.id, orderNumber: o.orderNumber }, "payaza reconcile: webhook re-fired");
+      logger.info(
+        { orderId: o.id, orderNumber: o.orderNumber, provider },
+        "reconcile: webhook re-fired",
+      );
       posted++;
     } catch (err) {
       logger.warn(
-        { orderId: o.id, orderNumber: o.orderNumber, err },
-        "payaza reconcile: webhook re-fire failed — continuing sweep",
+        { orderId: o.id, orderNumber: o.orderNumber, provider, err },
+        "reconcile: webhook re-fire failed — continuing sweep",
       );
     }
   }

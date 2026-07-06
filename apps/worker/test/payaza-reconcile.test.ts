@@ -65,6 +65,7 @@ describe("payaza reconcile sweep", () => {
     ageSeconds: number;
     reservationExpiresInSeconds: number | null; // null = no reservation row
     isPreorder?: boolean;
+    paymentProvider?: "opay" | "payaza" | null;
   }): Promise<string> {
     const createdAt = new Date(Date.now() - opts.ageSeconds * 1000);
     const [o] = await db
@@ -79,6 +80,7 @@ describe("payaza reconcile sweep", () => {
         paymentMethod: "card",
         paymentStatus: "pending",
         isPreorder: opts.isPreorder ?? false,
+        paymentProvider: opts.paymentProvider ?? null,
         createdAtLocal: createdAt,
         createdAt,
         idempotencyKey: randomUUID(),
@@ -171,6 +173,52 @@ describe("payaza reconcile sweep", () => {
       return JSON.parse((init as RequestInit).body as string).transaction_reference;
     });
     expect(refs.sort()).toEqual(["SO-1", "SO-2", "SO-6"]);
+  });
+
+  it("re-fires each order's stamped provider webhook (opay → /opay, payaza/null → /payaza)", async () => {
+    // An OPay-stamped stuck order must be re-verified against the OPay webhook.
+    await makeOrder({
+      orderNumber: "SO-OPAY",
+      status: "confirmed",
+      channel: "online",
+      ageSeconds: 300,
+      reservationExpiresInSeconds: 600,
+      paymentProvider: "opay",
+    });
+    // A payaza-stamped one → payaza webhook.
+    await makeOrder({
+      orderNumber: "SO-PAYAZA",
+      status: "confirmed",
+      channel: "online",
+      ageSeconds: 300,
+      reservationExpiresInSeconds: 600,
+      paymentProvider: "payaza",
+    });
+    // A legacy null-provider order defaults to payaza.
+    await makeOrder({
+      orderNumber: "SO-LEGACY",
+      status: "confirmed",
+      channel: "online",
+      ageSeconds: 300,
+      reservationExpiresInSeconds: 600,
+      paymentProvider: null,
+    });
+
+    const { sweepStuckPayazaOrders } = await import("../src/jobs/payaza-reconcile.js");
+    const count = await sweepStuckPayazaOrders(db);
+    expect(count).toBe(3);
+
+    const byRef = new Map<string, { url: string; body: Record<string, unknown> }>();
+    for (const call of (fetch as ReturnType<typeof vi.fn>).mock.calls) {
+      const [url, init] = call;
+      const body = JSON.parse((init as RequestInit).body as string);
+      byRef.set(body.reference, { url: String(url), body });
+    }
+    expect(byRef.get("SO-OPAY")!.url).toMatch(/\/v1\/webhooks\/opay$/);
+    expect(byRef.get("SO-OPAY")!.body).toEqual({ reference: "SO-OPAY" });
+    expect(byRef.get("SO-PAYAZA")!.url).toMatch(/\/v1\/webhooks\/payaza$/);
+    expect(byRef.get("SO-PAYAZA")!.body.transaction_reference).toBe("SO-PAYAZA");
+    expect(byRef.get("SO-LEGACY")!.url).toMatch(/\/v1\/webhooks\/payaza$/);
   });
 
   it("a failed POST is logged and does not abort the sweep (best-effort)", async () => {
