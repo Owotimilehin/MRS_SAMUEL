@@ -130,6 +130,7 @@ export function SettingsPage(): JSX.Element {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <ReceiptStyleCard />
+          <PaymentProviderCard />
           <BannerCard />
           <section className="card">
             <h2 className="t-h2" style={{ marginBottom: 4 }}>
@@ -527,6 +528,121 @@ function BannerCard(): JSX.Element {
               </span>
             )}
           </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PaymentProviderCard(): JSX.Element {
+  const [provider, setProvider] = useState<"opay" | "payaza">("opay");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const cfg = await api<{ provider: "opay" | "payaza" }>("/settings/payment-provider");
+        if (alive) setProvider(cfg.provider === "payaza" ? "payaza" : "opay");
+      } catch {
+        /* leave default */
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function choose(next: "opay" | "payaza"): Promise<void> {
+    if (next === provider) return;
+    const prev = provider;
+    setProvider(next); // optimistic
+    setSaving(true);
+    setMsg(null);
+    try {
+      await api("/settings/payment-provider", {
+        method: "PATCH",
+        body: JSON.stringify({ provider: next }),
+      });
+      setMsg({ ok: true, text: "Saved. New orders use this immediately." });
+      window.setTimeout(() => setMsg(null), 3000);
+    } catch (err) {
+      setProvider(prev); // roll back on failure
+      setMsg({ ok: false, text: humanizeError(err) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const options: Array<{ value: "opay" | "payaza"; title: string; hint: string }> = [
+    {
+      value: "opay",
+      title: "OPay (redirect — recommended)",
+      hint: "Sends the customer to OPay's own secure payment page, then back to their order. No popup to fail.",
+    },
+    {
+      value: "payaza",
+      title: "Payaza (popup — fallback)",
+      hint: "Card payment in a popup on the checkout page. Use only if OPay is unavailable.",
+    },
+  ];
+
+  return (
+    <section className="card">
+      <h2 className="t-h2" style={{ marginBottom: 4 }}>
+        Online payment provider
+      </h2>
+      <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 14 }}>
+        Which provider new online orders use to collect payment. Switching takes effect
+        immediately for the next order — no app update needed.
+      </p>
+      {loading ? (
+        <InlineLoader />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {options.map((o) => (
+            <label
+              key={o.value}
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                padding: "12px 14px",
+                border: "1px solid var(--line, #e2e2e2)",
+                borderRadius: 8,
+                background: provider === o.value ? "var(--brand-tint, #eef6f2)" : "transparent",
+                cursor: saving ? "default" : "pointer",
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              <input
+                type="radio"
+                name="payment-provider"
+                checked={provider === o.value}
+                disabled={saving}
+                onChange={() => void choose(o.value)}
+                style={{ width: 18, height: 18, marginTop: 2 }}
+              />
+              <span>
+                <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>{o.title}</span>
+                <span style={{ display: "block", fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>
+                  {o.hint}
+                </span>
+              </span>
+            </label>
+          ))}
+          {msg && (
+            <span
+              role="status"
+              style={{ fontSize: 12, color: msg.ok ? "var(--success)" : "var(--danger)" }}
+            >
+              {msg.text}
+            </span>
+          )}
         </div>
       )}
     </section>
