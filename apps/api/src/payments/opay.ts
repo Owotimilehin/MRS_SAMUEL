@@ -22,8 +22,10 @@ export interface ConfirmedTransaction {
 }
 
 // `||` not `??`: an empty-string env should fall back to the default, not
-// produce a relative URL.
-const BASE = process.env.OPAY_API_BASE || "https://api.opaycheckout.com";
+// produce a relative URL. OPay's real hosts are liveapi.* (production) and
+// testapi.* (sandbox) — verified against OPay's cashier-create docs. Override
+// with OPAY_API_BASE=https://testapi.opaycheckout.com for sandbox.
+const BASE = process.env.OPAY_API_BASE || "https://liveapi.opaycheckout.com";
 
 /** HMAC-SHA512 hex of the request body JSON, signed with the merchant private
  *  (secret) key. Used as the Bearer token for signed server-to-server calls
