@@ -1145,5 +1145,138 @@ describe("Phase 3 customer-site online order flow", () => {
         .where(eq(payment.saleOrderId, row!.id));
       expect(pay!.processor).toBe("opay");
     });
+
+    it("resume: mints a fresh OPay cashier session for an unpaid order (correct phone)", async () => {
+      await setActiveProvider("opay");
+      vi.stubEnv("OPAY_MERCHANT_ID", "256625123456789");
+      vi.stubEnv("OPAY_PUBLIC_KEY", "OPAYPUB_TEST_itest");
+      vi.stubEnv("OPAY_SECRET_KEY", "OPAYPRV_TEST_itest");
+
+      // Stub cashier/create for BOTH the initial order and the resume regenerate.
+      const realFetch = globalThis.fetch;
+      let createCalls = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: string | URL | Request, init?: RequestInit) => {
+          if (String(url).includes("cashier/create")) {
+            createCalls++;
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  code: "00000",
+                  data: { cashierUrl: `https://sandboxcashier.opaycheckout.com/resume-${createCalls}`, orderNo: "3" },
+                }),
+                { status: 200 },
+              ),
+            );
+          }
+          return realFetch(url as Parameters<typeof realFetch>[0], init);
+        }),
+      );
+
+      const phone = "+2348025550023";
+      const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": uuid() },
+        body: JSON.stringify({
+          branch_id: branchId,
+          zone_name: "Test zone",
+          delivery_fee_ngn: 0,
+          customer: {
+            name: "Opay Resume",
+            phone,
+            email: "opayresume@example.com",
+            address: "23 Resume Street",
+          },
+          items: [{ product_id: productId, quantity: 1 }],
+        }),
+      });
+      expect(orderRes.status).toBe(201);
+      const orderNumber = ((await orderRes.json()) as { data: { order_number: string } }).data.order_number;
+
+      // Correct phone → a fresh redirect_url.
+      const ok = await fetch(
+        `${baseUrl}/v1/public/orders/${orderNumber}/opay-session?phone=${encodeURIComponent(phone)}`,
+        { method: "POST" },
+      );
+      expect(ok.status).toBe(200);
+      const okBody = (await ok.json()) as { redirect_url: string };
+      expect(okBody.redirect_url).toContain("sandboxcashier.opaycheckout.com/resume-");
+
+      // Wrong phone → 404 (no enumeration).
+      const wrong = await fetch(
+        `${baseUrl}/v1/public/orders/${orderNumber}/opay-session?phone=${encodeURIComponent("+2340000000000")}`,
+        { method: "POST" },
+      );
+      expect(wrong.status).toBe(404);
+    });
+
+    it("resume: rejects a session for an order that is not awaiting payment (400)", async () => {
+      await setActiveProvider("opay");
+      vi.stubEnv("OPAY_MERCHANT_ID", "256625123456789");
+      vi.stubEnv("OPAY_PUBLIC_KEY", "OPAYPUB_TEST_itest");
+      vi.stubEnv("OPAY_SECRET_KEY", "OPAYPRV_TEST_itest");
+
+      const realFetch = globalThis.fetch;
+      const total = 2500;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: string | URL | Request, init?: RequestInit) => {
+          if (String(url).includes("cashier/create")) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  code: "00000",
+                  data: { cashierUrl: "https://sandboxcashier.opaycheckout.com/z", orderNo: "4" },
+                }),
+                { status: 200 },
+              ),
+            );
+          }
+          if (String(url).includes("cashier/status")) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  code: "00000",
+                  data: { reference: paidRef.value, orderNo: "4", status: "SUCCESS", amount: { total: total * 100, currency: "NGN" } },
+                }),
+                { status: 200 },
+              ),
+            );
+          }
+          return realFetch(url as Parameters<typeof realFetch>[0], init);
+        }),
+      );
+      const paidRef = { value: "" };
+
+      const phone = "+2348025550024";
+      const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": uuid() },
+        body: JSON.stringify({
+          branch_id: branchId,
+          zone_name: "Test zone",
+          delivery_fee_ngn: 0,
+          customer: { name: "Opay Paid", phone, email: "opaypaid@example.com", address: "24 Paid Street" },
+          items: [{ product_id: productId, quantity: 1 }],
+        }),
+      });
+      const orderNumber = ((await orderRes.json()) as { data: { order_number: string } }).data.order_number;
+      paidRef.value = orderNumber;
+
+      // Pay it via the webhook first.
+      await fetch(`${baseUrl}/v1/webhooks/opay`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reference: orderNumber }),
+      });
+
+      // Now a resume attempt must be rejected — the order is already paid.
+      const res = await fetch(
+        `${baseUrl}/v1/public/orders/${orderNumber}/opay-session?phone=${encodeURIComponent(phone)}`,
+        { method: "POST" },
+      );
+      expect(res.status).toBe(400);
+    });
   });
 });

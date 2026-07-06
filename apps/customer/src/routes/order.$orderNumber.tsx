@@ -172,7 +172,11 @@ function OrderPage() {
             </div>
 
             {journey.special === "payment_hold" && (
-              <PaymentHoldBanner order={order} onResumed={() => phone && void load(phone)} />
+              <PaymentHoldBanner
+                order={order}
+                phone={phone}
+                onResumed={() => phone && void load(phone)}
+              />
             )}
             {journey.special === "reconcile" && (
               <div className="rounded-2xl bg-[color:var(--cream)]/70 p-5 ring-1 ring-black/5 text-sm text-[color:var(--brand)]/80">

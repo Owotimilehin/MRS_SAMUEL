@@ -750,19 +750,29 @@ export function publicOrderRoutes(db: DbClient) {
     }
 
     // Resume-payment config for an unpaid order — lets the customer relaunch
-    // the Payaza popup without re-entering their details. Phone is already
-    // verified above, so this is safe to hand back.
-    let resumePayment: { reference: string; payaza: ReturnType<typeof buildPayazaCheckoutConfig> } | null =
-      null;
+    // payment without re-entering their details. Phone is already verified
+    // above, so this is safe to hand back. Provider-aware: Payaza ships the full
+    // popup SDK config; OPay only signals `{ provider, reference }` because an
+    // OPay cashier URL expires (~30 min) — the customer clicks "Resume payment"
+    // which mints a FRESH session via POST /:orderNumber/opay-session.
+    let resumePayment:
+      | { provider: "payaza"; reference: string; payaza: ReturnType<typeof buildPayazaCheckoutConfig> }
+      | { provider: "opay"; reference: string }
+      | null = null;
     if (o.status === "confirmed") {
-      const payaza = buildPayazaCheckoutConfig({
-        amountNgn: o.totalNgn,
-        email: cust.email ?? "no-email@example.com",
-        reference: o.orderNumber,
-        ...(cust.name ? { customerName: cust.name } : {}),
-        ...(cust.phone ? { customerPhone: cust.phone } : {}),
-      });
-      resumePayment = { reference: payaza.reference, payaza };
+      const provider = (o.paymentProvider as "opay" | "payaza" | null) ?? "payaza";
+      if (provider === "opay") {
+        resumePayment = { provider: "opay", reference: o.orderNumber };
+      } else {
+        const payaza = buildPayazaCheckoutConfig({
+          amountNgn: o.totalNgn,
+          email: cust.email ?? "no-email@example.com",
+          reference: o.orderNumber,
+          ...(cust.name ? { customerName: cust.name } : {}),
+          ...(cust.phone ? { customerPhone: cust.phone } : {}),
+        });
+        resumePayment = { provider: "payaza", reference: payaza.reference, payaza };
+      }
     }
 
     // Support WhatsApp deep link (configured per deployment).
@@ -812,6 +822,44 @@ export function publicOrderRoutes(db: DbClient) {
         support_whatsapp: supportWhatsapp,
       },
     });
+  });
+
+  // Mint a FRESH OPay cashier session for an unpaid order so an abandoned
+  // redirect can be resumed (OPay cashier URLs expire ~30 min, so we can't hand
+  // back the original one). Phone-gated with the EXACT same check as the
+  // tracking GET so a drive-by can't create a payment session for someone
+  // else's order.
+  r.post("/:orderNumber/opay-session", async (c) => {
+    const orderNumber = c.req.param("orderNumber");
+    if (!orderNumber) throw new BusinessError("validation_failed", "orderNumber required", 400);
+    const url = new URL(c.req.url);
+    const q = TrackQuery.parse(Object.fromEntries(url.searchParams));
+
+    const [o] = await db.select().from(saleOrder).where(eq(saleOrder.orderNumber, orderNumber));
+    if (!o) throw new BusinessError("not_found", "order not found", 404);
+    const [cust] = o.customerId
+      ? await db.select().from(customer).where(eq(customer.id, o.customerId))
+      : [null];
+    if (!cust?.phone || !phonesMatch(cust.phone, q.phone)) {
+      // Same response as not-found so an attacker can't enumerate orders by id.
+      throw new BusinessError("not_found", "order not found", 404);
+    }
+    if (o.status !== "confirmed" && o.status !== "reconcile_needed") {
+      throw new BusinessError("validation_failed", "order is not awaiting payment", 400);
+    }
+
+    const handoff = await createCheckout(db, {
+      provider: "opay",
+      amountNgn: o.totalNgn,
+      reference: o.orderNumber,
+      email: cust.email ?? "no-email@example.com",
+      ...(cust.name ? { customerName: cust.name } : {}),
+      ...(cust.phone ? { customerPhone: cust.phone } : {}),
+    });
+    if (handoff.provider !== "opay") {
+      throw new BusinessError("internal_error", "expected opay handoff", 500);
+    }
+    return c.json({ redirect_url: handoff.redirectUrl });
   });
 
   return r;
