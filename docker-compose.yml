@@ -70,6 +70,13 @@ services:
       PAYAZA_PUBLIC_KEY: ${PAYAZA_PUBLIC_KEY:-}
       PAYAZA_API_BASE: ${PAYAZA_API_BASE:-}
       PAYAZA_AUTH_SCHEME: ${PAYAZA_AUTH_SCHEME:-}
+      # Payments — OPay Cashier (primary redirect provider; owner-toggleable in
+      # admin Settings, default OPay). Base defaults to liveapi.opaycheckout.com;
+      # set OPAY_API_BASE=https://testapi.opaycheckout.com for sandbox.
+      OPAY_MERCHANT_ID: ${OPAY_MERCHANT_ID:-}
+      OPAY_PUBLIC_KEY: ${OPAY_PUBLIC_KEY:-}
+      OPAY_SECRET_KEY: ${OPAY_SECRET_KEY:-}
+      OPAY_API_BASE: ${OPAY_API_BASE:-}
       TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
       # Delivery — Shipbubble. SHIPBUBBLE_PROVIDER=live uses the real API;
       # anything else falls back to the built-in mock (dev/CI).
@@ -141,6 +148,12 @@ services:
       PAYAZA_PUBLIC_KEY: ${PAYAZA_PUBLIC_KEY:-}
       PAYAZA_API_BASE: ${PAYAZA_API_BASE:-}
       PAYAZA_AUTH_SCHEME: ${PAYAZA_AUTH_SCHEME:-}
+      # OPay — carried for parity with the api (future OPay refunds/verify). The
+      # reconcile sweep itself only re-fires the api webhook over HTTP.
+      OPAY_MERCHANT_ID: ${OPAY_MERCHANT_ID:-}
+      OPAY_PUBLIC_KEY: ${OPAY_PUBLIC_KEY:-}
+      OPAY_SECRET_KEY: ${OPAY_SECRET_KEY:-}
+      OPAY_API_BASE: ${OPAY_API_BASE:-}
       # Payaza reconcile sweep: where the worker re-fires the api webhook
       # for online orders stuck in confirmed (compose-network api address).
       INTERNAL_API_URL: ${INTERNAL_API_URL:-http://api:3001}

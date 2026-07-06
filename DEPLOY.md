@@ -67,7 +67,8 @@ in 30 seconds.
 
 In each provider's dashboard:
 
-- **Payaza** → webhook URL: `https://api.mrssamuel.com/v1/webhooks/payaza` (Settings → API Keys & Webhooks)
+- **OPay** → callback URL: `https://api.mrssamuel.com/v1/webhooks/opay` (merchant dashboard). Primary provider; the callback is only a wake-up — payment is re-verified server-to-server via cashier/status.
+- **Payaza** → webhook URL: `https://api.mrssamuel.com/v1/webhooks/payaza` (Settings → API Keys & Webhooks) — fallback provider.
 - **Shipbubble** → webhook URL: `https://api.mrssamuel.com/v1/webhooks/shipbubble`
 
 The webhook secrets in `.env` must match what each dashboard shows.
