@@ -1,5 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { signOpayBody, parseOpayStatus, isOpaySuccess } from "../../src/payments/opay.js";
+import { signOpayBody, parseOpayStatus, isOpaySuccess, buildOpayCashierBody } from "../../src/payments/opay.js";
+
+describe("buildOpayCashierBody", () => {
+  const base = {
+    amountNgn: 4500,
+    reference: "SO-2026-01234",
+    email: "customer@example.com",
+    returnUrl: "https://www.mrssamuel.com/order/SO-2026-01234",
+    callbackUrl: "https://api.mrssamuel.com/v1/webhooks/opay",
+  };
+
+  it("includes a product (OPay rejects the request with 02001 otherwise)", () => {
+    const body = buildOpayCashierBody(base);
+    expect(body.product).toBeDefined();
+    expect(body.product.name).toBeTruthy();
+    expect(body.product.description).toContain("SO-2026-01234");
+  });
+
+  it("sends the amount in kobo (naira × 100)", () => {
+    expect(buildOpayCashierBody(base).amount.total).toBe(450000);
+  });
+});
 
 describe("signOpayBody", () => {
   it("is a stable HMAC-SHA512 hex of body+key (known vector)", () => {

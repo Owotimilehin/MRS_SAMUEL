@@ -87,9 +87,7 @@ function requireOpayEnv(): { merchantId: string; publicKey: string; secretKey: s
   return { merchantId, publicKey, secretKey };
 }
 
-/** Create an OPay cashier session and return the URL to redirect the customer
- *  to. `reference` is our order number (also the key we query status by). */
-export async function createOpayCashier(opts: {
+export interface OpayCashierOpts {
   amountNgn: number;
   reference: string;
   email: string;
@@ -97,9 +95,15 @@ export async function createOpayCashier(opts: {
   customerPhone?: string;
   returnUrl: string;
   callbackUrl: string;
-}): Promise<{ cashierUrl: string; orderNo: string | null }> {
-  const { merchantId, publicKey } = requireOpayEnv();
-  const body = {
+}
+
+/** Build the cashier/create request body. Pure + exported so the wire shape is
+ *  unit-tested without HTTP. OPay's international cashier REQUIRES a `product`
+ *  (or `productList`) field — omitting it is rejected with 02001. We send a
+ *  single `product` describing the order rather than a line-item `productList`
+ *  (which additionally demands a per-item productId we don't mint). */
+export function buildOpayCashierBody(opts: OpayCashierOpts) {
+  return {
     country: "NG",
     reference: opts.reference,
     amount: { total: opts.amountNgn * 100, currency: "NGN" }, // kobo
@@ -111,7 +115,20 @@ export async function createOpayCashier(opts: {
       userEmail: opts.email,
       userMobile: opts.customerPhone ?? "",
     },
+    product: {
+      name: "Mrs Samuel juice order",
+      description: `Order ${opts.reference}`,
+    },
   };
+}
+
+/** Create an OPay cashier session and return the URL to redirect the customer
+ *  to. `reference` is our order number (also the key we query status by). */
+export async function createOpayCashier(
+  opts: OpayCashierOpts,
+): Promise<{ cashierUrl: string; orderNo: string | null }> {
+  const { merchantId, publicKey } = requireOpayEnv();
+  const body = buildOpayCashierBody(opts);
   const res = await fetch(`${BASE}/api/v1/international/cashier/create`, {
     method: "POST",
     headers: {
