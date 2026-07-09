@@ -130,7 +130,9 @@ export interface ApiPlacedOrder {
   // True when the order is made-to-order (a line is out of stock at the branch
   // or is a preorder-only size). Drives the gracious checkout confirmation.
   is_preorder: boolean;
-  payment: { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig };
+  payment:
+    | { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig }
+    | { provider: "opay"; reference: string; redirect_url: string };
 }
 
 export interface ApiSubscribeResult {
@@ -163,7 +165,10 @@ export interface ApiOrderTracking {
   out_for_delivery_at: string | null;
   delivered_at: string | null;
   reservation_expires_at: string | null;
-  resume_payment: { reference: string; payaza: PayazaCheckoutConfig } | null;
+  resume_payment:
+    | { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig }
+    | { provider: "opay"; reference: string }
+    | null;
   support_whatsapp: { number: string; url: string } | null;
   items: ApiOrderItem[];
   delivery: {

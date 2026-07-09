@@ -144,6 +144,18 @@ export const trackOrder = createServerFn({ method: "GET" })
     }
   });
 
+// Mint a fresh OPay cashier session to resume an abandoned OPay order. The
+// order's phone gates the request (same check as tracking). Returns the URL to
+// redirect the browser to.
+export const resumeOpayOrder = createServerFn({ method: "POST" })
+  .validator((d: { orderNumber: string; phone: string }) => d)
+  .handler(async ({ data }): Promise<{ redirect_url: string }> => {
+    return await apiFetch<{ redirect_url: string }>(
+      `/v1/public/orders/${encodeURIComponent(data.orderNumber)}/opay-session?phone=${encodeURIComponent(data.phone)}`,
+      { method: "POST" },
+    );
+  });
+
 // ---------- Contact + subscription leads ----------
 export const sendContactMessage = createServerFn({ method: "POST" })
   .validator((d: { name: string; email: string; phone?: string; subject: string; message: string; turnstile_token?: string }) => d)

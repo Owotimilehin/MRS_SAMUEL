@@ -261,9 +261,21 @@ function Page() {
     } catch {
       /* ignore storage failures */
     }
-    // Payaza checkout is a client-side popup (no redirect). On success the
-    // server webhook confirms payment; we just move to the tracking page.
     const trackUrl = `/order/${order.order_number}?paid=1`;
+
+    // OPay: full-page redirect to OPay's hosted cashier page. There is no popup
+    // to fail — the customer returns to the tracking page (returnUrl), which
+    // re-verifies payment server-side on view. Clear the basket before leaving
+    // (the order owns the items now).
+    if (order.payment.provider === "opay") {
+      logStage("payment_redirect", { orderNumber: order.order_number });
+      clear();
+      window.location.href = order.payment.redirect_url;
+      return;
+    }
+
+    // Payaza (fallback) checkout is a client-side popup (no redirect). On success
+    // the server webhook confirms payment; we just move to the tracking page.
     await launchPayazaCheckout(order.payment.payaza, {
       onPaid: () => {
         // Log before navigating away so the success is recorded.
