@@ -618,7 +618,7 @@ function Page() {
               >
                 {placing ? (<><Loader2 className="h-4 w-4 animate-spin" /> Opening payment…</>) : (<>Place order — {formatNaira(total)}</>)}
               </button>
-              <p className="mt-2 text-center text-[11px] text-white/50">You'll pay securely via Payaza.</p>
+              <p className="mt-2 text-center text-[11px] text-white/50">You'll pay securely online.</p>
             </aside>
           </div>
         )}
