@@ -8,7 +8,7 @@ function fakeDb(rows: Array<{ key: string; value: unknown }>) {
         where: () => rows.filter((r) => r.key === "payment_provider"),
       }),
     }),
-  } as any;
+  } as unknown as Parameters<typeof getActiveProvider>[0];
 }
 
 describe("getActiveProvider", () => {
