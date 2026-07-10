@@ -49,7 +49,11 @@ export function parseOpayStatus(httpStatus: number, text: string): ConfirmedTran
       reference?: string;
       orderNo?: string;
       status?: string;
-      amount?: { total?: number; currency?: string };
+      // v3 cashier/status returns amount as a kobo STRING with a sibling
+      // `currency`; the older/international shape nested it as { total }.
+      // Accept both so a wire-format change can't silently null the amount.
+      amount?: string | number | { total?: number; currency?: string };
+      currency?: string;
     } | null;
   };
   try {
@@ -57,10 +61,21 @@ export function parseOpayStatus(httpStatus: number, text: string): ConfirmedTran
   } catch {
     throw new Error(`opay status failed: ${httpStatus} ${text}`);
   }
+  // A cashier/status query only succeeds with envelope code 00000. Any other
+  // code (e.g. 02000 "Authentication failed") is a hard error we MUST surface —
+  // never silently treat it as "PENDING", which masks a broken money path and
+  // leaves paid orders stuck. (This is exactly what happened in prod: an auth
+  // failure read as PENDING so no OPay order could ever auto-confirm.)
+  if (body.code && body.code !== "00000") {
+    throw new Error(`opay status error: ${body.code} ${body.message ?? text}`);
+  }
   const d = body.data ?? {};
-  const koboToNgn = (v: unknown): number | null =>
-    typeof v === "number" ? Math.round(v / 100) : null;
-  const gross = koboToNgn(d.amount?.total);
+  const koboToNgn = (v: unknown): number | null => {
+    const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
+    return Number.isFinite(n) ? Math.round(n / 100) : null;
+  };
+  const amountKobo = d.amount && typeof d.amount === "object" ? d.amount.total : d.amount;
+  const gross = koboToNgn(amountKobo);
   return {
     status: d.status ?? "PENDING",
     amountNgn: gross,
@@ -157,8 +172,12 @@ export async function createOpayCashier(
  *  loudly, never fabricate a confirmation. */
 export async function verifyOpayTransaction(reference: string): Promise<ConfirmedTransaction> {
   const { merchantId, secretKey } = requireOpayEnv();
-  const bodyJson = JSON.stringify({ reference, country: "NG" });
-  const res = await fetch(`${BASE}/api/v1/international/cashier/status`, {
+  // OPay's cashier status lives at /api/v3/cashier/status and the signed body
+  // must contain ONLY { reference }. Any extra field (we previously sent
+  // `country`) changes the payload OPay re-signs on its side, so the HMAC no
+  // longer matches and every call fails with 02000 "Authentication failed".
+  const bodyJson = JSON.stringify({ reference });
+  const res = await fetch(`${BASE}/api/v3/cashier/status`, {
     method: "POST",
     headers: {
       "content-type": "application/json",

@@ -33,28 +33,45 @@ describe("signOpayBody", () => {
 });
 
 describe("parseOpayStatus", () => {
-  it("maps a SUCCESS response, converting kobo amount to naira", () => {
+  it("maps a real v3 SUCCESS response (amount is a kobo STRING sibling)", () => {
+    // This is the exact wire shape OPay's /api/v3/cashier/status returns.
     const body = JSON.stringify({
       code: "00000",
       message: "SUCCESSFUL",
-      data: { reference: "SO-1", orderNo: "2110", status: "SUCCESS", amount: { total: 700000, currency: "NGN" } },
+      data: { reference: "SO-1", orderNo: "2110", status: "SUCCESS", amount: "700000", currency: "NGN" },
     });
     const r = parseOpayStatus(200, body);
     expect(r.status).toBe("SUCCESS");
-    expect(r.amountNgn).toBe(7000); // 700000 kobo -> 7000 naira
+    expect(r.amountNgn).toBe(7000); // "700000" kobo -> 7000 naira
     expect(r.feeNgn).toBeNull(); // OPay status exposes no per-txn fee
     expect(r.netNgn).toBe(7000); // net falls back to gross
     expect(r.processorReference).toBe("2110");
   });
 
+  it("still maps the nested { total } amount shape (backward compat)", () => {
+    const body = JSON.stringify({
+      code: "00000",
+      data: { reference: "SO-1", orderNo: "2110", status: "SUCCESS", amount: { total: 700000, currency: "NGN" } },
+    });
+    expect(parseOpayStatus(200, body).amountNgn).toBe(7000);
+  });
+
   it("maps a FAIL response", () => {
     const body = JSON.stringify({
       code: "00000",
-      data: { reference: "SO-2", orderNo: "9", status: "FAIL", amount: { total: 0, currency: "NGN" }, failureReason: "declined" },
+      data: { reference: "SO-2", orderNo: "9", status: "FAIL", amount: "0", currency: "NGN", failureReason: "declined" },
     });
     const r = parseOpayStatus(200, body);
     expect(r.status).toBe("FAIL");
     expect(isOpaySuccess(r.status)).toBe(false);
+  });
+
+  it("THROWS on an auth-failure envelope (02000) instead of masking it as PENDING", () => {
+    // The prod bug: an auth failure returned HTTP 200 + code 02000 with no
+    // `data`, so the old code defaulted status to "PENDING" and paid orders
+    // silently never confirmed. A non-00000 envelope must be a hard error.
+    const body = JSON.stringify({ code: "02000", message: "Authentication failed" });
+    expect(() => parseOpayStatus(200, body)).toThrow(/02000/);
   });
 
   it("throws on a 401/5xx so a caller (webhook) retries", () => {
