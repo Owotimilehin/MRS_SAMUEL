@@ -491,8 +491,8 @@ export function InventoryPage(): JSX.Element {
         loading={loading}
         chips={[
           { label: "Cans on hand", value: invStats.cans.toLocaleString() },
-          { label: "SKUs in stock", value: invStats.inStock },
-          { label: "Low-stock SKUs", value: invStats.low, tone: invStats.low > 0 ? "danger" : "good" },
+          { label: "Sizes in stock", value: invStats.inStock },
+          { label: "Low-stock sizes", value: invStats.low, tone: invStats.low > 0 ? "danger" : "good" },
           view === "branch"
             ? { label: "Branches", value: branches.length }
             : { label: "Factories", value: factories.length },
