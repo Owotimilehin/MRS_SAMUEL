@@ -195,6 +195,35 @@ describe("GET /v1/reports/daily", () => {
       },
     ]);
 
+    // --- Second sale order on 2026-06-20 (10 more 650ml bottles) so a range
+    // query spanning 06-19..06-20 pools both days and pushes FIFO deeper into
+    // the ₦60 lot. ---
+    const [order2] = await db
+      .insert(saleOrder)
+      .values({
+        orderNumber: "ORD-TEST-002",
+        branchId: branchRow.id,
+        channel: "walkup",
+        status: "paid",
+        subtotalNgn: 15000,
+        totalNgn: 15000,
+        paymentMethod: "transfer",
+        paymentStatus: "paid",
+        createdAtLocal: new Date("2026-06-20T10:00:00+01:00"),
+        idempotencyKey: "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+      })
+      .returning();
+    if (!order2) throw new Error("sale order 2 seed failed");
+    await db.insert(saleOrderItem).values({
+      saleOrderId: order2.id,
+      productId: productRow.id,
+      variantId: variantRow.id,
+      productPriceId: priceRow.id,
+      quantity: 10,
+      unitPriceNgn: 1500,
+      lineTotalNgn: 15000,
+    });
+
     const { buildApp } = await import("../../src/test-app.js");
     server = serve({ fetch: buildApp().fetch, port: 0 });
     await new Promise<void>((resolve) => server.once("listening", () => resolve()));
@@ -246,6 +275,45 @@ describe("GET /v1/reports/daily", () => {
     expect(data.daily_profit_ngn).toBe(
       data.net_revenue_ngn - data.packaging_cost_ngn - data.expenses_ngn,
     );
+  });
+
+  it("pools a from/to range: revenue, units, and FIFO bottle cost across both days", async () => {
+    const res = await fetch(`${baseUrl}/v1/reports/daily?from=2026-06-19&to=2026-06-20`, {
+      headers: { cookie: ownerCookies },
+    });
+    expect(res.status).toBe(200);
+    const { data } = (await res.json()) as {
+      data: {
+        from: string;
+        to: string;
+        revenue_ngn: number;
+        total_units: number;
+        units_by_size: Array<{ size_ml: number; units: number }>;
+        packaging_cost_bottles_ngn: number;
+      };
+    };
+    expect(data.from).toBe("2026-06-19");
+    expect(data.to).toBe("2026-06-20");
+    // Pooled revenue: 45000 (06-19) + 15000 (06-20).
+    expect(data.revenue_ngn).toBe(60000);
+    // Pooled units: 30 + 10 = 40 bottles.
+    expect(data.total_units).toBe(40);
+    expect(data.units_by_size).toEqual([{ size_ml: 650, units: 40 }]);
+    // FIFO over the whole window from an empty prior: 20 @₦40 + 20 @₦60 = 2000.
+    expect(data.packaging_cost_bottles_ngn).toBe(2000);
+  });
+
+  it("measures the FIFO prior offset before `from`: 06-20 alone draws only the ₦60 lot", async () => {
+    const res = await fetch(`${baseUrl}/v1/reports/daily?from=2026-06-20&to=2026-06-20`, {
+      headers: { cookie: ownerCookies },
+    });
+    const { data } = (await res.json()) as {
+      data: { packaging_cost_bottles_ngn: number; total_units: number };
+    };
+    // 30 bottles sold before 06-20 consume the 20 @₦40 lot + 10 @₦60; the 10
+    // bottles on 06-20 fall wholly in the ₦60 lot: 10 × 60 = 600.
+    expect(data.total_units).toBe(10);
+    expect(data.packaging_cost_bottles_ngn).toBe(600);
   });
 
   it("returns 200 with expenses_ngn=0 when the selected category set is empty after stripping packaging", async () => {

@@ -81,7 +81,8 @@ interface PackagingLine {
   cost_ngn: number;
 }
 interface DailyFinancials {
-  date: string;
+  from: string;
+  to: string;
   revenue_ngn: number;
   refunds_ngn: number;
   net_revenue_ngn: number;
@@ -113,6 +114,29 @@ function today(): string {
 }
 function nDaysAgo(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+}
+// Monday of the current week (ISO week start), as YYYY-MM-DD.
+function startOfWeek(): string {
+  const d = new Date();
+  const dow = (d.getUTCDay() + 6) % 7; // 0 = Monday
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+// First day of the current month, as YYYY-MM-DD.
+function startOfMonth(): string {
+  return `${new Date().toISOString().slice(0, 7)}-01`;
+}
+type DashPeriod = "today" | "week" | "month" | "custom";
+// Human range label, e.g. "1 Jul – 11 Jul 2026" (single day collapses to one).
+function rangeLabel(from: string, to: string): string {
+  const fmt = (s: string): string =>
+    new Date(`${s}T00:00:00Z`).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  return from === to ? fmt(from) : `${fmt(from)} – ${fmt(to)}`;
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -149,7 +173,8 @@ function ReconLine({
 }
 
 export function DashboardPage(): JSX.Element {
-  const [from, setFrom] = useState(nDaysAgo(7));
+  const [period, setPeriod] = useState<DashPeriod>("week");
+  const [from, setFrom] = useState(startOfWeek());
   const [to, setTo] = useState(today());
   const [revenue, setRevenue] = useState<RevenueRow[]>([]);
   const [topProducts, setTopProducts] = useState<TopProductRow[]>([]);
@@ -160,16 +185,24 @@ export function DashboardPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const can = useCan();
   const showFinance = can("finance.view");
-  const [finDate, setFinDate] = useState(today());
   const [includedCats, setIncludedCats] = useState<DailyExpenseCategory[]>(getIncludedExpenseCategories());
   const [daily, setDaily] = useState<DailyFinancials | null>(null);
+
+  // Apply a preset to the shared date range; "custom" leaves from/to for the
+  // user to edit directly. Editing either field flips the toggle to Custom.
+  function applyPeriod(p: DashPeriod): void {
+    setPeriod(p);
+    if (p === "today") { setFrom(today()); setTo(today()); }
+    else if (p === "week") { setFrom(startOfWeek()); setTo(today()); }
+    else if (p === "month") { setFrom(startOfMonth()); setTo(today()); }
+  }
 
   useEffect(() => {
     if (!showFinance) return;
     let cancelled = false;
     void (async () => {
       try {
-        const qs = `date=${finDate}&expense_categories=${includedCats.join(",")}`;
+        const qs = `from=${from}&to=${to}&expense_categories=${includedCats.join(",")}`;
         const res = await api<{ data: DailyFinancials }>(`/reports/daily?${qs}`);
         if (!cancelled) setDaily(res.data);
       } catch (err) {
@@ -177,7 +210,7 @@ export function DashboardPage(): JSX.Element {
       }
     })();
     return () => { cancelled = true; };
-  }, [showFinance, finDate, includedCats]);
+  }, [showFinance, from, to, includedCats]);
 
   function toggleCat(code: DailyExpenseCategory): void {
     setIncludedCats((prev) => {
@@ -274,29 +307,53 @@ export function DashboardPage(): JSX.Element {
       title="Dashboard"
       crumb="Owner"
       actions={
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <label className="t-eyebrow" htmlFor="dash-from" style={{ color: "var(--ink-soft)" }}>
-            From
-          </label>
-          <input
-            id="dash-from"
-            type="date"
-            className="input"
-            style={{ width: 150, height: 36 }}
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
-          <label className="t-eyebrow" htmlFor="dash-to" style={{ color: "var(--ink-soft)" }}>
-            To
-          </label>
-          <input
-            id="dash-to"
-            type="date"
-            className="input"
-            style={{ width: 150, height: 36 }}
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 4 }}>
+            {([
+              ["today", "Today"],
+              ["week", "This week"],
+              ["month", "This month"],
+              ["custom", "Custom"],
+            ] as Array<[DashPeriod, string]>).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={period === key ? "btn btn--sm" : "btn btn--sm btn--ghost"}
+                onClick={() => applyPeriod(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {period === "custom" && (
+            <>
+              <label className="t-eyebrow" htmlFor="dash-from" style={{ color: "var(--ink-soft)" }}>
+                From
+              </label>
+              <input
+                id="dash-from"
+                type="date"
+                className="input"
+                style={{ width: 150, height: 36 }}
+                value={from}
+                max={to}
+                onChange={(e) => { setPeriod("custom"); setFrom(e.target.value); }}
+              />
+              <label className="t-eyebrow" htmlFor="dash-to" style={{ color: "var(--ink-soft)" }}>
+                To
+              </label>
+              <input
+                id="dash-to"
+                type="date"
+                className="input"
+                style={{ width: 150, height: 36 }}
+                value={to}
+                min={from}
+                max={today()}
+                onChange={(e) => { setPeriod("custom"); setTo(e.target.value); }}
+              />
+            </>
+          )}
         </div>
       }
     >
@@ -310,15 +367,10 @@ export function DashboardPage(): JSX.Element {
       {showFinance && (
         <section className="card" style={{ marginBottom: 26 }}>
           <header className="card__head">
-            <h2 className="t-h2">Daily financials</h2>
-            <input
-              type="date"
-              className="input"
-              style={{ width: 160, height: 36 }}
-              value={finDate}
-              max={today()}
-              onChange={(e) => setFinDate(e.target.value)}
-            />
+            <h2 className="t-h2">Financials</h2>
+            <span className="t-eyebrow" style={{ color: "var(--ink-soft)" }}>
+              {daily ? rangeLabel(daily.from, daily.to) : rangeLabel(from, to)}
+            </span>
           </header>
 
           <div
@@ -429,7 +481,7 @@ export function DashboardPage(): JSX.Element {
             {/* ── Card 3: Profit (waterfall + margin %) ── */}
             <div className="card card--soft" style={{ padding: 16 }}>
               <Stat
-                label="Daily profit"
+                label="Profit"
                 value={ngn(daily?.daily_profit_ngn ?? 0)}
                 tone={(daily?.daily_profit_ngn ?? 0) >= 0 ? "good" : "bad"}
               />

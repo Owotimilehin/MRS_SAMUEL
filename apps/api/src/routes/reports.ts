@@ -458,10 +458,23 @@ export function reportRoutes(db: DbClient) {
   });
 
   r.get("/daily", requireCapability("finance.view"), async (c) => {
-    const date = c.req.query("date") ?? new Date().toISOString().slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    // Single day (legacy `date`) OR a pooled range (`from`/`to`). A bare `date`
+    // sets both ends; explicit `from`/`to` win. Range lets the dashboard pool a
+    // week or month through this same breakdown — the FIFO packaging offset is
+    // measured against everything sold strictly before `from`.
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const from = c.req.query("from") ?? c.req.query("date") ?? todayStr;
+    const to = c.req.query("to") ?? c.req.query("date") ?? todayStr;
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+    if (!DATE_RE.test(from) || !DATE_RE.test(to)) {
       return c.json(
-        { error: { code: "validation_failed", message: "date must be YYYY-MM-DD" } },
+        { error: { code: "validation_failed", message: "from/to must be YYYY-MM-DD" } },
+        400,
+      );
+    }
+    if (from > to) {
+      return c.json(
+        { error: { code: "validation_failed", message: "from must be on or before to" } },
         400,
       );
     }
@@ -487,9 +500,9 @@ export function reportRoutes(db: DbClient) {
       SELECT
         COALESCE((SELECT SUM(total_ngn) FROM sale_order
           WHERE status IN ('paid','handed_over','delivered')
-            AND created_at_local::date = ${date}::date), 0)::int AS revenue_ngn,
+            AND created_at_local::date BETWEEN ${from}::date AND ${to}::date), 0)::int AS revenue_ngn,
         COALESCE((SELECT SUM(refund_amount_ngn) FROM sale_return
-          WHERE status = 'completed' AND created_at::date = ${date}::date), 0)::int AS refunds_ngn
+          WHERE status = 'completed' AND created_at::date BETWEEN ${from}::date AND ${to}::date), 0)::int AS refunds_ngn
     `);
     const revenue = Number(revRow[0]?.revenue_ngn ?? 0);
     const refunds = Number(revRow[0]?.refunds_ngn ?? 0);
@@ -501,7 +514,7 @@ export function reportRoutes(db: DbClient) {
       JOIN sale_order o ON o.id = i.sale_order_id
       JOIN product_variant pv ON pv.id = i.variant_id
       WHERE o.status IN ('paid','handed_over','delivered')
-        AND o.created_at_local::date = ${date}::date
+        AND o.created_at_local::date BETWEEN ${from}::date AND ${to}::date
         AND pv.bottle_material_id IS NOT NULL
       GROUP BY pv.bottle_material_id
     `);
@@ -511,7 +524,7 @@ export function reportRoutes(db: DbClient) {
       JOIN sale_order o ON o.id = i.sale_order_id
       JOIN product_variant pv ON pv.id = i.variant_id
       WHERE o.status IN ('paid','handed_over','delivered')
-        AND o.created_at_local::date < ${date}::date
+        AND o.created_at_local::date < ${from}::date
         AND pv.bottle_material_id IS NOT NULL
       GROUP BY pv.bottle_material_id
     `);
@@ -522,7 +535,7 @@ export function reportRoutes(db: DbClient) {
       FROM sale_order_packaging sop
       JOIN sale_order o ON o.id = sop.sale_order_id
       WHERE o.status IN ('paid','handed_over','delivered')
-        AND o.created_at_local::date = ${date}::date
+        AND o.created_at_local::date BETWEEN ${from}::date AND ${to}::date
       GROUP BY sop.packaging_material_id
     `);
     const bagPrior = await db.execute<{ material_id: string; units: number }>(sql`
@@ -530,7 +543,7 @@ export function reportRoutes(db: DbClient) {
       FROM sale_order_packaging sop
       JOIN sale_order o ON o.id = sop.sale_order_id
       WHERE o.status IN ('paid','handed_over','delivered')
-        AND o.created_at_local::date < ${date}::date
+        AND o.created_at_local::date < ${from}::date
       GROUP BY sop.packaging_material_id
     `);
 
@@ -615,7 +628,7 @@ export function reportRoutes(db: DbClient) {
         SELECT category_code, COALESCE(SUM(amount_ngn), 0)::int AS amount_ngn
         FROM business_expense
         WHERE deleted_at IS NULL
-          AND expense_date = ${date}::date
+          AND expense_date BETWEEN ${from}::date AND ${to}::date
           AND category_code = ANY(${sql.raw(`ARRAY[${selected.map((s) => `'${s}'`).join(",")}]::business_expense_category[]`)})
         GROUP BY category_code
       `);
@@ -634,7 +647,7 @@ export function reportRoutes(db: DbClient) {
       JOIN sale_order o ON o.id = i.sale_order_id
       JOIN product_variant pv ON pv.id = i.variant_id
       WHERE o.status IN ('paid','handed_over','delivered')
-        AND o.created_at_local::date = ${date}::date
+        AND o.created_at_local::date BETWEEN ${from}::date AND ${to}::date
       GROUP BY pv.size_ml
       ORDER BY pv.size_ml
     `);
@@ -656,7 +669,7 @@ export function reportRoutes(db: DbClient) {
       JOIN product_variant pv ON pv.id = i.variant_id
       JOIN product p ON p.id = i.product_id
       WHERE o.status IN ('paid','handed_over','delivered')
-        AND o.created_at_local::date = ${date}::date
+        AND o.created_at_local::date BETWEEN ${from}::date AND ${to}::date
       GROUP BY pv.size_ml, p.category
       ORDER BY pv.size_ml, p.category
     `);
@@ -700,7 +713,7 @@ export function reportRoutes(db: DbClient) {
       SELECT COALESCE(SUM(delivery_fee_ngn), 0)::int AS fees
       FROM sale_order
       WHERE status IN ('paid','handed_over','delivered')
-        AND created_at_local::date = ${date}::date
+        AND created_at_local::date BETWEEN ${from}::date AND ${to}::date
     `);
     const deliveryFees = Number(delivRow[0]?.fees ?? 0);
 
@@ -716,7 +729,8 @@ export function reportRoutes(db: DbClient) {
 
     return c.json({
       data: {
-        date,
+        from,
+        to,
         revenue_ngn: revenue,
         refunds_ngn: refunds,
         net_revenue_ngn: netRevenue,
