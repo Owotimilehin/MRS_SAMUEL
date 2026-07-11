@@ -70,6 +70,13 @@ export function parseOpayStatus(httpStatus: number, text: string): ConfirmedTran
     throw new Error(`opay status error: ${body.code} ${body.message ?? text}`);
   }
   const d = body.data ?? {};
+  // We only ever create NGN orders. A non-NGN currency in a status response
+  // means the amount is not in kobo we can trust — surface it loudly rather
+  // than silently mis-booking a foreign-currency figure as naira.
+  const currency = typeof d.amount === "object" ? d.amount?.currency : d.currency;
+  if (currency && currency !== "NGN") {
+    throw new Error(`opay status unexpected currency: ${currency}`);
+  }
   const koboToNgn = (v: unknown): number | null => {
     const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
     return Number.isFinite(n) ? Math.round(n / 100) : null;

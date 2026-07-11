@@ -12,7 +12,7 @@ vi.mock("../../src/payments/payaza.js", () => ({
 }));
 
 import { applyPayazaConfirmation, verifyAndReconcile, applyOfflinePayment } from "../../src/payments/reconcile.js";
-import { saleOrder, saleOrderItem, stockLedger, stockReservation, payment } from "@ms/db";
+import { saleOrder, saleOrderItem, stockLedger, stockReservation, payment, outboxEvent } from "@ms/db";
 
 // Minimal fake tx: records inserts/updates and returns a seeded order. select()
 // is table-aware so the item-loop in applyPayazaConfirmation gets one fake item
@@ -23,18 +23,29 @@ import { saleOrder, saleOrderItem, stockLedger, stockReservation, payment } from
 // defaulting to a winning CAS (`[{ id: "o1" }]`) so existing happy-path tests
 // don't need to change. Pass `casWins: false` to simulate a concurrent caller
 // having already won the race (`.returning()` -> `[]`).
-function fakeTx(order: any, opts?: { casWins?: boolean }) {
+function fakeTx(order: any, opts?: { casWins?: boolean; existingCancelAlert?: boolean }) {
   const casWins = opts?.casWins ?? true;
   const calls: any = { inserts: [], updates: [], deletes: [] };
   const tx = {
     select: () => ({
       from: (t: any) => ({
         where: () => {
-          if (t === saleOrder) return Promise.resolve(order ? [order] : []);
-          if (t === saleOrderItem) {
-            return Promise.resolve([{ productId: "p1", variantId: null, quantity: 1 }]);
-          }
-          return Promise.resolve([]);
+          const rows =
+            t === saleOrder
+              ? order
+                ? [order]
+                : []
+              : t === saleOrderItem
+                ? [{ productId: "p1", variantId: null, quantity: 1 }]
+                : t === outboxEvent
+                  ? opts?.existingCancelAlert
+                    ? [{ id: "existing-alert" }]
+                    : []
+                  : [];
+          // Promise-like so both `await where()` and `where().limit(n)` work.
+          const p: any = Promise.resolve(rows);
+          p.limit = () => Promise.resolve(rows);
+          return p;
         },
       }),
     }),
@@ -94,6 +105,28 @@ describe("applyPayazaConfirmation", () => {
     );
     expect(r).toEqual({ kind: "already_processed", status: "paid" });
     expect(calls.updates).toHaveLength(0);
+  });
+
+  it("alerts the owner when a SUCCESS payment lands on a CANCELLED order", async () => {
+    const { tx, calls } = fakeTx(null);
+    const r = await applyPayazaConfirmation(
+      tx as any, { ...baseOrder, status: "cancelled" } as any,
+      status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
+    );
+    expect(r).toEqual({ kind: "already_processed", status: "cancelled" });
+    // Emits a refund-alert outbox event, and never moves money/stock.
+    expect(calls.inserts.some((i: any) => i.v.eventType === "sale.paid_after_cancel")).toBe(true);
+    expect(calls.updates).toHaveLength(0);
+  });
+
+  it("does NOT re-alert when a paid-after-cancel event already exists (dedupe)", async () => {
+    const { tx, calls } = fakeTx(null, { existingCancelAlert: true });
+    const r = await applyPayazaConfirmation(
+      tx as any, { ...baseOrder, status: "cancelled" } as any,
+      status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
+    );
+    expect(r).toEqual({ kind: "already_processed", status: "cancelled" });
+    expect(calls.inserts.some((i: any) => i.v.eventType === "sale.paid_after_cancel")).toBe(false);
   });
 
   it("parks underpaid when NET is below the product total", async () => {

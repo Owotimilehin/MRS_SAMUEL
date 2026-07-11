@@ -17,6 +17,10 @@ import {
 } from "@ms/db";
 import { expireUnpaidOrders } from "../src/jobs/expire-unpaid-orders.js";
 
+/** No-op re-verify: the default hits the api over HTTP, unavailable in unit
+ *  tests. Existing cases assert cancellation behaviour, not reconciliation. */
+const noRefire = async () => {};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, "../../../packages/db/migrations");
 
@@ -131,7 +135,7 @@ describe("expireUnpaidOrders", () => {
       createdAt: old,
     });
 
-    const n = await expireUnpaidOrders(db, now);
+    const n = await expireUnpaidOrders(db, now, noRefire);
     expect(n).toBe(1);
 
     const [row] = await db.select().from(saleOrder).where(eq(saleOrder.id, oldUnpaidId));
@@ -156,11 +160,11 @@ describe("expireUnpaidOrders", () => {
       createdAt: old,
     });
 
-    const first = await expireUnpaidOrders(db);
+    const first = await expireUnpaidOrders(db, new Date(), noRefire);
     expect(first).toBe(1);
 
     // Second run: already cancelled, so status != 'confirmed' → not matched again.
-    const second = await expireUnpaidOrders(db);
+    const second = await expireUnpaidOrders(db, new Date(), noRefire);
     expect(second).toBe(0);
   });
 
@@ -173,10 +177,59 @@ describe("expireUnpaidOrders", () => {
       createdAt: old,
     });
 
-    const n = await expireUnpaidOrders(db);
+    const n = await expireUnpaidOrders(db, new Date(), noRefire);
     expect(n).toBe(0);
 
     const [row] = await db.select().from(saleOrder).where(eq(saleOrder.id, paidId));
     expect(row!.status).toBe("paid");
+  });
+
+  it("does NOT cancel an order the re-verify reconciles to paid (lost-webhook rescue)", async () => {
+    const now = new Date();
+    const old = new Date(now.getTime() - 61 * 60_000);
+
+    // Two stale unpaid orders. The re-verify stub will "confirm" only the first
+    // (simulating an OPay transfer that settled but whose webhook was lost),
+    // flipping it to paid exactly as the real webhook would.
+    const rescuedId = await makeOrder({
+      channel: "online",
+      status: "confirmed",
+      paymentStatus: "pending",
+      createdAt: old,
+      withReservation: true,
+    });
+    const abandonedId = await makeOrder({
+      channel: "online",
+      status: "confirmed",
+      paymentStatus: "pending",
+      createdAt: old,
+    });
+
+    const [rescued] = await db.select().from(saleOrder).where(eq(saleOrder.id, rescuedId));
+    const refire = async (orderNumber: string) => {
+      if (orderNumber === rescued!.orderNumber) {
+        await db
+          .update(saleOrder)
+          .set({ status: "paid", paymentStatus: "paid" })
+          .where(eq(saleOrder.id, rescuedId));
+      }
+    };
+
+    const n = await expireUnpaidOrders(db, now, refire);
+    expect(n).toBe(1); // only the abandoned one is cancelled
+
+    const [rescuedRow] = await db.select().from(saleOrder).where(eq(saleOrder.id, rescuedId));
+    expect(rescuedRow!.status).toBe("paid"); // reconciled, NOT cancelled
+
+    const [abandonedRow] = await db.select().from(saleOrder).where(eq(saleOrder.id, abandonedId));
+    expect(abandonedRow!.status).toBe("cancelled");
+
+    // The rescued order keeps its reservation (it's a real paid order now);
+    // only the cancelled order's reservation is released.
+    const resv = await db
+      .select()
+      .from(stockReservation)
+      .where(eq(stockReservation.saleOrderId, rescuedId));
+    expect(resv).toHaveLength(1);
   });
 });

@@ -387,6 +387,15 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Order parked for reconciliation.\n` +
           `👉 ${ADMIN_URL}/branch/sales/${p["sale_order_id"]}`,
       };
+    case "sale.paid_after_cancel":
+      return {
+        chatIds: [owner],
+        text:
+          `🚨 *Payment on a CANCELLED order*\n` +
+          `${p["order_number"]} — customer paid ₦${p["total_ngn"]} after the order was cancelled.\n` +
+          `Refund needed (ref ${p["processor_reference"] ?? "—"}).\n` +
+          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
+      };
     case "sale.refund_owed":
       return {
         chatIds: [owner],

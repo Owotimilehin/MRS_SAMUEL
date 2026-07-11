@@ -74,6 +74,14 @@ describe("parseOpayStatus", () => {
     expect(() => parseOpayStatus(200, body)).toThrow(/02000/);
   });
 
+  it("throws on a non-NGN currency instead of mis-booking it as naira", () => {
+    const body = JSON.stringify({
+      code: "00000",
+      data: { reference: "SO-9", orderNo: "1", status: "SUCCESS", amount: "1000", currency: "USD" },
+    });
+    expect(() => parseOpayStatus(200, body)).toThrow(/currency/i);
+  });
+
   it("throws on a 401/5xx so a caller (webhook) retries", () => {
     expect(() => parseOpayStatus(500, "boom")).toThrow(/opay/i);
     expect(() => parseOpayStatus(401, "no")).toThrow(/opay/i);

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   saleOrder,
   saleOrderItem,
@@ -37,7 +37,40 @@ export async function applyPaymentConfirmation(
   opts?: { acceptReportedAmount?: boolean; processor?: string },
 ): Promise<ReconcileOutcome> {
   const o = order;
-  if (o.status !== "confirmed") return { kind: "already_processed", status: o.status };
+  if (o.status !== "confirmed") {
+    // Callers only reach applyPaymentConfirmation once the provider reports
+    // SUCCESS, so a CANCELLED order here means the customer paid for an order we
+    // already voided — typically an OPay transfer/USSD that settled after the
+    // 60-minute expiry cancelled it. Alert the owner to refund, exactly once
+    // (the reconcile sweep re-fires this every couple of minutes; the guard
+    // below dedupes on the order id so we don't spam a fresh alert each pass).
+    if (o.status === "cancelled") {
+      const [existing] = await tx
+        .select({ id: outboxEvent.id })
+        .from(outboxEvent)
+        .where(
+          and(
+            eq(outboxEvent.eventType, "sale.paid_after_cancel"),
+            sql`${outboxEvent.payload}->>'sale_order_id' = ${o.id}`,
+          ),
+        )
+        .limit(1);
+      if (!existing) {
+        await tx.insert(outboxEvent).values({
+          eventType: "sale.paid_after_cancel",
+          payload: {
+            sale_order_id: o.id,
+            order_number: o.orderNumber,
+            total_ngn: o.totalNgn,
+            gross_ngn: confirmed.amountNgn,
+            processor: opts?.processor ?? null,
+            processor_reference: confirmed.processorReference ?? null,
+          },
+        });
+      }
+    }
+    return { kind: "already_processed", status: o.status };
+  }
 
   // What actually settles to the business = net (customer-paid minus Payaza's
   // fee). Payaza always deducts its fee, so the order is "paid in full" only

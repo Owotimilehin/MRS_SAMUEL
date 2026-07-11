@@ -1,6 +1,7 @@
 import { eq, and, lt, gt } from "drizzle-orm";
 import { saleOrder, type DbClient } from "@ms/db";
 import pino from "pino";
+import { refireProviderWebhook, providerOf } from "./refire-webhook.js";
 
 const logger = pino({ base: { service: "ms-worker", part: "payaza-reconcile" } });
 
@@ -60,31 +61,17 @@ export async function sweepStuckPayazaOrders(db: DbClient, now: Date = new Date(
 
   if (candidates.length === 0) return 0;
 
-  const base = process.env["INTERNAL_API_URL"] || "http://api:3001";
-
   let posted = 0;
   for (const o of candidates) {
     // Each order carries the provider it was created under (Task 1 stamp). Null
     // on legacy rows → Payaza, the original provider. Re-fire the MATCHING
     // provider's webhook so the money is re-verified against the right API.
-    const provider = o.paymentProvider === "opay" ? "opay" : "payaza";
-    const webhookUrl = `${base}/v1/webhooks/${provider}`;
-    // Both webhooks accept a minimal { reference } re-fire and verify the money
-    // server-to-server; payaza also reads transaction_reference for its callback
-    // envelope shape.
-    const body =
-      provider === "opay"
-        ? { reference: o.orderNumber }
-        : { transaction_reference: o.orderNumber, reference: o.orderNumber };
+    const provider = providerOf(o.paymentProvider);
     try {
-      const res = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
+      const ok = await refireProviderWebhook(o.orderNumber, provider);
+      if (!ok) {
         logger.warn(
-          { orderId: o.id, orderNumber: o.orderNumber, provider, status: res.status },
+          { orderId: o.id, orderNumber: o.orderNumber, provider },
           "reconcile: webhook re-fire returned non-2xx",
         );
         continue;
