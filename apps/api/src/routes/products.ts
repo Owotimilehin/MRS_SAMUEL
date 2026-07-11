@@ -372,19 +372,47 @@ export function productRoutes(db: DbClient) {
     if (!existing) throw new BusinessError("not_found", "product not found", 404);
 
     const created = await db.transaction(async (tx) => {
-      // Reject any pre-existing row for this (product, size) — including a
-      // retired/soft-deleted one — since the unique constraint spans them.
+      // The (product, size) pair is uniquely constrained across deleted rows,
+      // so a clash can be in one of three states:
+      //   • active            → genuine duplicate, reject.
+      //   • retired           → visible in the admin list with a Restore button, reject with that hint.
+      //   • soft-deleted      → hidden from the admin list AND rejected by the Restore
+      //                         endpoint (both filter deleted_at IS NULL). Sending the
+      //                         owner to Restore is a dead end, so resurrect it here.
       const [clash] = await tx
         .select({ id: productVariant.id, isActive: productVariant.isActive, deletedAt: productVariant.deletedAt })
         .from(productVariant)
         .where(and(eq(productVariant.productId, id), eq(productVariant.sizeMl, body.size_ml)));
-      if (clash) {
-        const hint = clash.deletedAt || !clash.isActive ? " — it's retired; use Restore instead" : "";
+      if (clash && !clash.deletedAt) {
+        const hint = clash.isActive ? "" : " — it's retired; use Restore instead";
         throw new BusinessError(
           "validation_failed",
           `${existing.name} already has a ${body.size_ml}ml size${hint}`,
           422,
         );
+      }
+
+      if (clash) {
+        // Resurrect the soft-deleted size: clear deleted_at, reactivate, and
+        // republish the price the owner just entered. Any stale open price row
+        // is closed first so the variant keeps exactly one live price.
+        const [vRow] = await tx
+          .update(productVariant)
+          .set({ deletedAt: null, isActive: true, updatedAt: new Date() })
+          .where(eq(productVariant.id, clash.id))
+          .returning();
+        if (!vRow) throw new BusinessError("internal_error", "variant resurrect failed", 500);
+        await tx
+          .update(productPrice)
+          .set({ validTo: new Date() })
+          .where(and(eq(productPrice.variantId, clash.id), isNull(productPrice.validTo)));
+        await tx.insert(productPrice).values({
+          productId: id,
+          variantId: clash.id,
+          priceNgn: body.price_ngn,
+          createdByUserId: auth.userId,
+        });
+        return { id: vRow.id, size_ml: vRow.sizeMl, price_ngn: body.price_ngn, is_active: vRow.isActive };
       }
 
       const sku = body.sku ?? `${existing.slug}-${body.size_ml}ml`;

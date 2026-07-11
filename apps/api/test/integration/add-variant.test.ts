@@ -109,6 +109,42 @@ describe("add a size to an existing flavour", () => {
     expect(await catalogVariantSizes(productId)).toEqual([330, 650]);
   });
 
+  it("resurrects a soft-deleted size (deleted_at set) instead of dead-ending on Restore", async () => {
+    // Simulate the state left by a direct-DB catalog cleanup: a size whose
+    // deleted_at is set. Such a row is hidden from the admin list AND rejected
+    // by the Restore endpoint, so "Add a size" must bring it back rather than
+    // sending the owner to an impossible Restore.
+    const [gone] = await db
+      .insert(productVariant)
+      .values({ productId, sizeMl: 1000, sku: `ASJ1000-${Date.now()}`, isActive: false, deletedAt: new Date() })
+      .returning();
+    if (!gone) throw new Error("variant insert failed");
+    // A stale price row survives the soft-delete, as it does in production.
+    await db.insert(productPrice).values({ productId, variantId: gone.id, priceNgn: 4500 });
+
+    const res = await addVariant(productId, { size_ml: 1000, price_ngn: 5000 });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      data: { id: string; size_ml: number; price_ngn: number; is_active: boolean };
+    };
+    expect(body.data.size_ml).toBe(1000);
+    expect(body.data.price_ngn).toBe(5000);
+    expect(body.data.is_active).toBe(true);
+    // The resurrected row is the same variant, not a duplicate.
+    expect(body.data.id).toBe(gone.id);
+
+    // Exactly one live price row, at the newly-entered price.
+    const openPrices = await db
+      .select()
+      .from(productPrice)
+      .where(and(eq(productPrice.variantId, gone.id), isNull(productPrice.validTo)));
+    expect(openPrices).toHaveLength(1);
+    expect(openPrices[0]?.priceNgn).toBe(5000);
+
+    // It comes back in the public catalog.
+    expect(await catalogVariantSizes(productId)).toContain(1000);
+  });
+
   it("rejects an unknown product (404)", async () => {
     const res = await addVariant("00000000-0000-0000-0000-000000000000", {
       size_ml: 500,
