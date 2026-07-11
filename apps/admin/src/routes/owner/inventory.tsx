@@ -138,12 +138,16 @@ export function InventoryPage(): JSX.Element {
     };
   }, []);
 
+  // Summary cards reflect the currently-selected view so the numbers on top
+  // match the grid below — branch totals under "Branches", factory totals
+  // under "Factories". Aggregating factory stock flattens every factory's rows.
   const invStats = useMemo(() => {
+    const rows: StockRow[] = view === "branch" ? branchStock : Object.values(factoryStock).flat();
     let cans = 0;
     let low = 0;
     let inStock = 0;
     const perSku = new Map<string, number>();
-    for (const r of branchStock) {
+    for (const r of rows) {
       const k = `${r.product_id}|${r.variant_id ?? "null"}`;
       perSku.set(k, (perSku.get(k) ?? 0) + r.balance);
     }
@@ -155,7 +159,7 @@ export function InventoryPage(): JSX.Element {
       }
     }
     return { cans, low, inStock };
-  }, [branchStock]);
+  }, [branchStock, factoryStock, view]);
 
   // Balance lookup keyed by (location, product, variant).
   const branchHeat = useMemo(() => {
@@ -489,7 +493,9 @@ export function InventoryPage(): JSX.Element {
           { label: "Cans on hand", value: invStats.cans.toLocaleString() },
           { label: "SKUs in stock", value: invStats.inStock },
           { label: "Low-stock SKUs", value: invStats.low, tone: invStats.low > 0 ? "danger" : "good" },
-          { label: "Branches", value: branches.length },
+          view === "branch"
+            ? { label: "Branches", value: branches.length }
+            : { label: "Factories", value: factories.length },
         ]}
       />
 
