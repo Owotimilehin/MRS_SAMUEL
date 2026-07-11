@@ -19,6 +19,7 @@ import { buildReceiptFromCart, type ReceiptData } from "../../lib/receipt-data.j
 import { getReceiptStyle } from "../../lib/receipt-settings.js";
 import { getFlavourVisual } from "../../lib/flavour-visuals.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
+import { buildSellables, type Sellable } from "../../lib/sellables.js";
 
 interface BagMaterial {
   id: string;
@@ -46,13 +47,6 @@ interface CartLine {
   // This size is sold as a made-to-order preorder: payment is taken now, stock
   // is not checked or consumed, and the order waits for manual fulfilment.
   is_preorder: boolean;
-}
-
-// A single sellable line on the till: one can size of one flavour, priced.
-interface Sellable {
-  product: ProductRow;
-  variant: VariantRow;
-  price: number;
 }
 
 // One flavour grouping its sellable sizes — the unit the POS grid now shows.
@@ -187,37 +181,13 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     });
   }
 
-  // Price for an exact can size: most recent open price for that variant,
-  // falling back to a product-level (variant-less) price for legacy rows.
-  const priceForVariant = (productId: string, variantId: string): number => {
-    const open = prices.filter((p) => !p.valid_to);
-    const byNewest = (a: PriceRow, b: PriceRow): number =>
-      a.valid_from > b.valid_from ? -1 : 1;
-    const exact = open.filter((p) => p.variant_id === variantId).sort(byNewest);
-    if (exact[0]) return exact[0].price_ngn;
-    const fallback = open
-      .filter((p) => p.product_id === productId && p.variant_id == null)
-      .sort(byNewest);
-    return fallback[0]?.price_ngn ?? 0;
-  };
-
-  // Expand the catalog into one sellable per (active flavour × active size).
-  const sellables = useMemo<Sellable[]>(() => {
-    const byProduct = new Map(products.map((p) => [p.id, p]));
-    return variants
-      .filter((v) => v.is_active)
-      .map((v) => {
-        const product = byProduct.get(v.product_id);
-        if (!product || !product.is_active) return null;
-        return { product, variant: v, price: priceForVariant(product.id, v.id) };
-      })
-      .filter((s): s is Sellable => s !== null)
-      .sort(
-        (a, b) =>
-          a.product.name.localeCompare(b.product.name) || a.variant.size_ml - b.variant.size_ml,
-      );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, variants, prices]);
+  // Expand the catalog into one sellable per (flavour × size). Retired sizes
+  // are intentionally INCLUDED — retire is a storefront-only rule; the till
+  // still sells them (see buildSellables).
+  const sellables = useMemo<Sellable[]>(
+    () => buildSellables(products, variants, prices),
+    [products, variants, prices],
+  );
 
   // Collapse sellables into one entry per flavour, each carrying its sizes
   // (sorted small→large, the way priceForVariant already ordered them).
