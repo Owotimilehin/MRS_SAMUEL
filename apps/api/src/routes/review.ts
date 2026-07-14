@@ -1,6 +1,15 @@
 import { Hono } from "hono";
 import { eq, or, isNotNull, desc, and, inArray } from "drizzle-orm";
-import { stockTransfer, saleReturn, saleOrder, payment, type DbClient } from "@ms/db";
+import {
+  stockTransfer,
+  saleReturn,
+  saleOrder,
+  payment,
+  dailyClose,
+  shiftOpen,
+  branch,
+  type DbClient,
+} from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 
 /**
@@ -9,6 +18,8 @@ import { requireAuth, requireCapability } from "../middleware/auth.js";
  *   - stock transfers in received_with_variance
  *   - sale returns pending_approval
  *   - online sale orders needing payment attention (reconcile_needed OR refund_owed)
+ *   - submitted (unapproved) shift closes — the cash/transfer reconciliation the
+ *     owner must approve or dispute; previously invisible here, so backlogs piled up
  */
 export function reviewRoutes(db: DbClient) {
   const r = new Hono();
@@ -89,8 +100,30 @@ export function reviewRoutes(db: DbClient) {
       shortfall_ngn: o.feeShortfallNgn ?? null,
     }));
 
+    // Submitted (unapproved) shift closes — surfaced so the owner can approve or
+    // dispute them instead of the backlog silently growing on /owner/closes.
+    const pendingCloses = await db
+      .select({
+        id: dailyClose.id,
+        branch_id: dailyClose.branchId,
+        branch_name: branch.name,
+        business_date: dailyClose.businessDate,
+        variance_ngn: dailyClose.varianceNgn,
+        cash_counted_ngn: dailyClose.cashCountedNgn,
+        transfers_counted_ngn: dailyClose.transfersCountedNgn,
+        system_cash_total_ngn: dailyClose.systemCashTotalNgn,
+        submitted_at: dailyClose.submittedAt,
+        shift_number: shiftOpen.shiftNumber,
+      })
+      .from(dailyClose)
+      .leftJoin(branch, eq(branch.id, dailyClose.branchId))
+      .leftJoin(shiftOpen, eq(shiftOpen.id, dailyClose.shiftId))
+      .where(eq(dailyClose.status, "submitted"))
+      .orderBy(desc(dailyClose.submittedAt));
+
     return c.json({
       data: {
+        pending_closes: pendingCloses,
         transfer_variances: transferVariances,
         return_approvals: returnApprovals.map((r) => ({
           ...r.ret,

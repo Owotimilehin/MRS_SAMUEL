@@ -2,10 +2,9 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
-import { eq } from "drizzle-orm";
 import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { saleOrder, payment, type DbClient } from "@ms/db";
+import { saleOrder, payment, dailyClose, type DbClient } from "@ms/db";
 
 /**
  * Needs-review inbox: payment_attention bucket
@@ -178,5 +177,61 @@ describe("GET /v1/review – payment_attention bucket", () => {
       (a) => a.order_number.startsWith("TEST-WLK"),
     );
     expect(walkupInAttention.length).toBe(0);
+  });
+
+  it("surfaces a submitted shift close in pending_closes; an approved one does not", async () => {
+    const [submitted] = await db
+      .insert(dailyClose)
+      .values({
+        branchId,
+        businessDate: "2026-07-01",
+        status: "submitted",
+        cashCountedNgn: 0,
+        transfersCountedNgn: 500000,
+        systemCashTotalNgn: 620000,
+        varianceNgn: -120000,
+        submittedAt: new Date(),
+      })
+      .returning();
+    if (!submitted) throw new Error("Failed to seed submitted close");
+
+    const [approved] = await db
+      .insert(dailyClose)
+      .values({
+        branchId,
+        businessDate: "2026-07-02",
+        status: "approved",
+        cashCountedNgn: 0,
+        transfersCountedNgn: 300000,
+        systemCashTotalNgn: 300000,
+        varianceNgn: 0,
+        submittedAt: new Date(),
+      })
+      .returning();
+    if (!approved) throw new Error("Failed to seed approved close");
+
+    const review = await call<{
+      data: {
+        pending_closes: Array<{
+          id: string;
+          branch_id: string;
+          branch_name: string | null;
+          variance_ngn: number;
+          transfers_counted_ngn: number;
+          system_cash_total_ngn: number;
+        }>;
+      };
+    }>("GET", "/v1/review");
+
+    expect(review.status).toBe(200);
+    const closes = review.body.data.pending_closes;
+    expect(Array.isArray(closes)).toBe(true);
+    const item = closes.find((c) => c.id === submitted.id);
+    expect(item).toBeDefined();
+    expect(item!.variance_ngn).toBe(-120000);
+    expect(item!.transfers_counted_ngn).toBe(500000);
+    expect(item!.branch_name).toBe("Review Test Branch");
+    // The approved close must NOT be surfaced.
+    expect(closes.some((c) => c.id === approved.id)).toBe(false);
   });
 });

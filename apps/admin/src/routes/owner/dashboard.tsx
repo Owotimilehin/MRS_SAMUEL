@@ -44,6 +44,7 @@ interface BranchRow {
 }
 interface ReviewBody {
   data: {
+    pending_closes?: Array<{ id: string }>;
     transfer_variances: Array<{ id: string }>;
     return_approvals: Array<{ id: string }>;
   };
@@ -262,7 +263,11 @@ export function DashboardPage(): JSX.Element {
           setBranches([]);
         }
         setReviewCount(
-          rev2 ? rev2.data.transfer_variances.length + rev2.data.return_approvals.length : 0,
+          rev2
+            ? (rev2.data.pending_closes?.length ?? 0) +
+                rev2.data.transfer_variances.length +
+                rev2.data.return_approvals.length
+            : 0,
         );
         setOverview(ov.data);
       } catch (err) {

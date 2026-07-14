@@ -34,8 +34,21 @@ interface PaymentAttentionItem {
   net_ngn: number | null;
   shortfall_ngn: number | null;
 }
+interface PendingClose {
+  id: string;
+  branch_id: string;
+  branch_name: string | null;
+  business_date: string;
+  variance_ngn: number;
+  cash_counted_ngn: number;
+  transfers_counted_ngn: number;
+  system_cash_total_ngn: number;
+  submitted_at: string | null;
+  shift_number: number | null;
+}
 interface ReviewResp {
   data: {
+    pending_closes?: PendingClose[];
     transfer_variances: TransferVariance[];
     return_approvals: ReturnApproval[];
     payment_attention?: PaymentAttentionItem[];
@@ -104,10 +117,12 @@ export function ReviewPage(): JSX.Element {
     }
   }
 
+  const pendingCloseCount = data?.pending_closes?.length ?? 0;
   const paymentAttentionCount = data?.payment_attention?.length ?? 0;
   const transferVarianceCount = data?.transfer_variances.length ?? 0;
   const returnApprovalCount = data?.return_approvals.length ?? 0;
-  const total = transferVarianceCount + returnApprovalCount + paymentAttentionCount;
+  const total =
+    pendingCloseCount + transferVarianceCount + returnApprovalCount + paymentAttentionCount;
 
   return (
     <Shell
@@ -125,11 +140,73 @@ export function ReviewPage(): JSX.Element {
         loading={loading}
         chips={[
           { label: "Items to review", value: total, tone: total > 0 ? "danger" : "good" },
+          { label: "Shift closes", value: pendingCloseCount, tone: pendingCloseCount > 0 ? "danger" : "good" },
           { label: "Payment attention", value: paymentAttentionCount, tone: paymentAttentionCount > 0 ? "danger" : "good" },
           { label: "Transfer variances", value: transferVarianceCount, tone: transferVarianceCount > 0 ? "warn" : "good" },
           { label: "Return approvals", value: returnApprovalCount, tone: returnApprovalCount > 0 ? "warn" : "good" },
         ]}
       />
+
+      {/* Shift closes awaiting approval — first, because unreviewed cash/transfer
+          reconciliations are the highest-value backlog. */}
+      <section style={{ marginBottom: 24 }}>
+        <header style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
+          <h2 className="t-h2">Shift closes awaiting approval</h2>
+          <span className={pendingCloseCount > 0 ? "pill pill--danger" : "pill pill--ink"}>{pendingCloseCount}</span>
+        </header>
+        {loading ? (
+          <InlineLoader />
+        ) : pendingCloseCount === 0 ? (
+          <div className="empty">
+            <div className="empty__title">No shift closes waiting</div>
+            Submitted end-of-shift reconciliations will appear here to approve or dispute.
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Branch</th>
+                  <th>Shift</th>
+                  <th className="table__num">Counted</th>
+                  <th className="table__num">Expected</th>
+                  <th className="table__num">Variance</th>
+                  <th>Submitted</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.pending_closes ?? []).map((cl) => {
+                  const counted = cl.cash_counted_ngn + cl.transfers_counted_ngn;
+                  return (
+                    <tr key={cl.id}>
+                      <td style={{ fontWeight: 600 }}>{cl.business_date}</td>
+                      <td>{cl.branch_name ?? cl.branch_id.slice(0, 8)}</td>
+                      <td>{cl.shift_number != null ? `#${cl.shift_number}` : "—"}</td>
+                      <td className="table__num">{ngn(counted)}</td>
+                      <td className="table__num">{ngn(cl.system_cash_total_ngn)}</td>
+                      <td className="table__num" style={{ fontWeight: 700, color: cl.variance_ngn === 0 ? undefined : "var(--danger)" }}>
+                        {cl.variance_ngn > 0 ? `+${ngn(cl.variance_ngn)}` : ngn(cl.variance_ngn)}
+                      </td>
+                      <td>{cl.submitted_at ? formatDateTime(cl.submitted_at) : "—"}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <Link
+                          to="/closes/$branchId/$closeId"
+                          params={{ branchId: cl.branch_id, closeId: cl.id }}
+                          className="pill pill--ink"
+                        >
+                          Review →
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
 
       {/* Payment attention bucket */}
