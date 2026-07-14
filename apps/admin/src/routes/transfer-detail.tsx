@@ -182,10 +182,14 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
       (i) => i.packaging_material_id == null && i.quantity_received != null && i.quantity_received !== i.quantity_sent,
     );
     const body = {
-      settlements: lines.map((i) => ({
-        item_id: i.id,
-        settle: all ?? settlements[i.id] ?? "factory",
-      })),
+      settlements: lines.map((i) => {
+        const overReceive = i.quantity_sent - (i.quantity_received ?? 0) < 0;
+        const choice = all ?? settlements[i.id] ?? (overReceive ? "branch" : "factory");
+        // "loss" is invalid for an over-receive (extra stock, nothing lost) —
+        // land it at the branch where the bottles physically arrived.
+        const settle = choice === "loss" && overReceive ? "branch" : choice;
+        return { item_id: i.id, settle };
+      }),
     };
     await action(`/transfers/${transferId}/approve`, body);
   }
@@ -484,7 +488,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                                   <td>
                                     <select
                                       className="input"
-                                      value={settlements[i.id] ?? "factory"}
+                                      value={settlements[i.id] ?? (gap > 0 ? "factory" : "branch")}
                                       onChange={(e) =>
                                         setSettlements((prev) => ({
                                           ...prev,
@@ -494,7 +498,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                                     >
                                       <option value="factory">Factory (still at factory)</option>
                                       <option value="branch">Branch (miscounted)</option>
-                                      <option value="loss">Loss (write off)</option>
+                                      {gap > 0 && <option value="loss">Loss (write off)</option>}
                                     </select>
                                   </td>
                                 </tr>

@@ -516,8 +516,10 @@ export function transferRoutes(db: DbClient) {
   // For each varianced line the owner decides where the gap (sent - received)
   // settles: "factory"/"branch" relocate the gap onto that location's stock
   // (nothing lost); "loss" writes it off to variance_loss at retail value.
-  // A request with no settlements completes the transfer with the variance
-  // written off (today's "loss" behaviour) — keeps a stale UI working.
+  // EVERY varianced line must carry an explicit decision — an approval that
+  // leaves any line unsettled is rejected (422) and the transfer stays in
+  // received_with_variance (still in the owner review inbox) for correction.
+  // No silent default-to-loss: writing off stock as lost money is deliberate.
   const SettleBody = z.object({
     settlements: z
       .array(
@@ -546,11 +548,47 @@ export function transferRoutes(db: DbClient) {
         .from(stockTransferItem)
         .where(eq(stockTransferItem.stockTransferId, id));
 
+      // Every varianced product line needs an explicit settlement. Validate the
+      // whole request up front and reject before mutating anything, so a partial
+      // approval never writes some lines and errors on others.
+      const variancedItems = items.filter(
+        (it) =>
+          it.productId != null &&
+          it.quantityReceived != null &&
+          it.quantitySent - it.quantityReceived !== 0,
+      );
+      const unsettled = variancedItems
+        .filter((it) => !settleByItem.has(it.id))
+        .map((it) => it.id);
+      if (unsettled.length > 0) {
+        throw new BusinessError(
+          "validation_failed",
+          "every varianced line needs a settlement (factory, branch, or loss)",
+          422,
+          { unsettled_item_ids: unsettled },
+        );
+      }
+      // An over-receive (received > sent) has extra stock to place, not a loss
+      // to write off — "loss" is meaningless there.
+      const badLoss = variancedItems
+        .filter(
+          (it) => it.quantitySent - it.quantityReceived! < 0 && settleByItem.get(it.id) === "loss",
+        )
+        .map((it) => it.id);
+      if (badLoss.length > 0) {
+        throw new BusinessError(
+          "validation_failed",
+          "over-received lines cannot be written off as loss — choose factory or branch",
+          422,
+          { over_receive_item_ids: badLoss },
+        );
+      }
+
       for (const it of items) {
         if (it.productId == null || it.quantityReceived == null) continue; // packaging / unreceived
         const gap = it.quantitySent - it.quantityReceived;
         if (gap === 0) continue;
-        const settle = settleByItem.get(it.id) ?? "loss";
+        const settle = settleByItem.get(it.id)!; // validated present above
         if (settle === "loss") {
           if (gap <= 0) continue; // can't write off an over-receive
           await recordVarianceLoss(tx, {

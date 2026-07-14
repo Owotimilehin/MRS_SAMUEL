@@ -159,6 +159,37 @@ describe("transfer variance settlement", () => {
     expect(losses[0]!.source).toBe("transfer");
   });
 
+  it("rejects an approval that leaves a varianced line unsettled (no silent loss)", async () => {
+    const { id } = await variancedTransfer(100, 95); // gap = 5, unsettled
+    const factoryBefore = await factoryQty();
+    const branchBefore = await branchQty();
+    const res = await call<{ error: { code: string; details?: { unsettled_item_ids: string[] } } }>(
+      "PATCH",
+      `/v1/transfers/${id}/approve`,
+      { settlements: [] },
+    );
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe("validation_failed");
+    // Nothing moved, nothing written off, and the transfer stays in review.
+    expect(await factoryQty()).toBe(factoryBefore);
+    expect(await branchQty()).toBe(branchBefore);
+    const losses = await db.select().from(varianceLoss).where(eq(varianceLoss.sourceId, id));
+    expect(losses).toHaveLength(0);
+    const detail = await call<{ data: { status: string } }>("GET", `/v1/transfers/${id}`);
+    expect(detail.body.data.status).toBe("received_with_variance");
+  });
+
+  it("rejects writing off an over-receive as loss", async () => {
+    const { id, itemId } = await variancedTransfer(100, 110); // gap = -10 (over-receive)
+    const res = await call<{ error: { code: string } }>("PATCH", `/v1/transfers/${id}/approve`, {
+      settlements: [{ item_id: itemId, settle: "loss" }],
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe("validation_failed");
+    const detail = await call<{ data: { status: string } }>("GET", `/v1/transfers/${id}`);
+    expect(detail.body.data.status).toBe("received_with_variance");
+  });
+
   it("rejects a non-owner (manager)", async () => {
     const { id, itemId } = await variancedTransfer(100, 95);
     await seedUser(db, { email: "manager@example.com", role: "manager", password: "managerpass123" });
