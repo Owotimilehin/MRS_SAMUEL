@@ -1,11 +1,10 @@
 ﻿import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
-import { Stat } from "../../components/Stat.js";
 import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
-import { ngn, formatDateTime } from "../../lib/format.js";
+import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import { BranchTabs } from "../../components/BranchTabs.js";
@@ -90,18 +89,12 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
   const completed = todaysSales.filter((s) =>
     ["paid", "handed_over", "delivered"].includes(s.status),
   );
-  const revenue = completed.reduce((sum, s) => sum + s.totalNgn, 0);
-  const cash = completed.filter((s) => s.paymentMethod === "cash").reduce((sum, s) => sum + s.totalNgn, 0);
-  const transfer = completed.filter((s) => s.paymentMethod === "transfer").reduce((sum, s) => sum + s.totalNgn, 0);
-  const card = completed.filter((s) => s.paymentMethod === "card").reduce((sum, s) => sum + s.totalNgn, 0);
-
-  const avgTicket = completed.length > 0 ? Math.round(revenue / completed.length) : 0;
   const pendingCount = todaysSales.filter((s) => s.status === "confirmed").length;
 
+  // Money is intentionally omitted from the branch/till view — the page shows
+  // counts only. Takings are reconciled and shown in the end-of-shift close.
   const chips: StatChip[] = [
-    { label: "Revenue today", value: ngn(revenue) },
     { label: "Orders", value: completed.length ?? 0 },
-    { label: "Avg ticket", value: ngn(avgTicket) },
   ];
   if (pendingCount > 0) {
     chips.push({ label: "Pending pay", value: pendingCount, tone: "danger" });
@@ -127,20 +120,6 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
         { to: "/branch", label: "Overview", cap: "sales.view" },
         { to: "/branch/sales", label: "Today's sales", cap: "sales.view" },
       ]} />
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 14,
-          marginBottom: 20,
-        }}
-      >
-        <Stat label="Revenue today" value={ngn(revenue)} hint={`${completed.length} orders`} tone="accent" />
-        <Stat label="Cash" value={ngn(cash)} />
-        <Stat label="Transfer" value={ngn(transfer)} />
-        <Stat label="Card" value={ngn(card)} />
-      </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
         <button
@@ -186,7 +165,6 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
                 <th>Channel</th>
                 <th>Payment</th>
                 <th>Status</th>
-                <th className="table__num">Total</th>
                 <th>Time</th>
               </tr>
             </thead>
@@ -220,9 +198,6 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
                   <td style={{ textTransform: "capitalize" }}>{s.channel.replace(/_/g, " ")}</td>
                   <td style={{ textTransform: "capitalize" }}>{s.paymentMethod}</td>
                   <td>{statusPill(s.status)}</td>
-                  <td className="table__num" style={{ fontWeight: 700 }}>
-                    {ngn(s.totalNgn)}
-                  </td>
                   <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
                     {formatDateTime(s.createdAtLocal)}
                   </td>

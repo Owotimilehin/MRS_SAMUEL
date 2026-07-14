@@ -4,7 +4,7 @@ import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
-import { ngn, formatDateTime } from "../../lib/format.js";
+import { formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useSyncState } from "../../sync/state.js";
 import { BranchTabs } from "../../components/BranchTabs.js";
@@ -58,12 +58,12 @@ export function BranchHomePage({ branchId }: { branchId: string }): JSX.Element 
 
   const today = todayISO();
   const salesToday = sales.filter((s) => s.createdAtLocal.startsWith(today));
-  const todaysTotal = salesToday.reduce((acc, s) => acc + s.totalNgn, 0);
   const recent = sales.slice(0, 5);
 
+  // Money figures are deliberately kept off the branch/till view — takings are
+  // only reconciled and shown inside the end-of-shift close. Staff see counts.
   const chips: StatChip[] = [
     { label: "Today's orders", value: salesToday.length ?? 0 },
-    { label: "Revenue today", value: ngn(todaysTotal ?? 0) },
   ];
   if (sync.queued > 0) {
     chips.push({ label: "Sync queue", value: sync.queued, tone: "warn" });
@@ -141,7 +141,7 @@ export function BranchHomePage({ branchId }: { branchId: string }): JSX.Element 
                     params={{ saleId: s.id }}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr auto auto",
+                      gridTemplateColumns: "1fr auto",
                       gap: 12,
                       padding: "10px 12px",
                       borderRadius: 12,
@@ -157,9 +157,6 @@ export function BranchHomePage({ branchId }: { branchId: string }): JSX.Element 
                         {formatDateTime(s.createdAtLocal)} · {s.channel}
                       </div>
                     </div>
-                    <span className="tabular-nums" style={{ fontWeight: 700 }}>
-                      {ngn(s.totalNgn)}
-                    </span>
                     <span className="pill">{s.status}</span>
                   </Link>
                 </li>
