@@ -463,6 +463,13 @@
       "when": 1783340000000,
       "tag": "0066_payment_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1783370000000,
+      "tag": "0067_variance_loss_shift_open",
+      "breakpoints": true
     }
   ]
 }

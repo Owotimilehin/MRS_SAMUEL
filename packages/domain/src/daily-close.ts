@@ -192,18 +192,38 @@ export async function expectedStockForDay(
       FROM stock_ledger
       WHERE location_type = 'branch' AND location_id = ${branchId}
       GROUP BY product_id, variant_id
+    ),
+    -- Online orders deduct stock at payment, but the bottles physically remain
+    -- on the branch shelf until they're handed over / dispatched. Add those
+    -- paid-but-unfulfilled quantities back so expected on-hand matches what a
+    -- physical count will actually find — no phantom "found stock" overage at
+    -- close. Preorders are excluded (they deduct at fulfilment, not payment).
+    pending AS (
+      SELECT i.product_id, i.variant_id, COALESCE(SUM(i.quantity), 0)::int AS balance
+      FROM sale_order_item i
+      JOIN sale_order o ON o.id = i.sale_order_id
+      WHERE o.branch_id = ${branchId}
+        AND o.channel = 'online'
+        AND o.is_preorder = false
+        AND o.status = 'paid'
+      GROUP BY i.product_id, i.variant_id
+    ),
+    onhand AS (
+      SELECT product_id, variant_id, SUM(balance)::int AS balance
+      FROM (SELECT * FROM bal UNION ALL SELECT * FROM pending) u
+      GROUP BY product_id, variant_id
     )
     SELECT pv.product_id::text AS product_id,
            pv.id::text         AS variant_id,
            pv.size_ml          AS size_ml,
            COALESCE(b.balance, 0)::int AS balance
     FROM product_variant pv
-    JOIN (SELECT DISTINCT product_id FROM bal) ap ON ap.product_id = pv.product_id
-    LEFT JOIN bal b ON b.product_id = pv.product_id AND b.variant_id = pv.id
+    JOIN (SELECT DISTINCT product_id FROM onhand) ap ON ap.product_id = pv.product_id
+    LEFT JOIN onhand b ON b.product_id = pv.product_id AND b.variant_id = pv.id
     WHERE pv.is_active = true AND pv.deleted_at IS NULL
     UNION ALL
     SELECT b.product_id::text, NULL::text AS variant_id, NULL::int AS size_ml, b.balance
-    FROM bal b
+    FROM onhand b
     WHERE b.variant_id IS NULL AND b.balance <> 0
     ORDER BY product_id, size_ml NULLS LAST
   `);

@@ -2,8 +2,10 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { createDbClient, varianceLoss } from "@ms/db";
+import { and, eq } from "drizzle-orm";
 
 interface Branch { id: string; name: string }
 interface ProductRow { id: string; name: string; variants: Array<{ id: string; size_ml: number }> }
@@ -493,5 +495,90 @@ describe("Phase 5 daily close flow", () => {
     if (target.shiftId) {
       expect(detailRes.body.data.shift_open).not.toBeNull();
     }
+  });
+
+  it("reopen reverses a close's stock correction + loss and puts the shift back to open", async () => {
+    // Fresh branch/product so this cycle is isolated from the shared fixtures.
+    const b = await call<{ data: Branch }>("POST", "/v1/branches", {
+      name: "Reopen Branch",
+      code: "RBR",
+      delivery_zones: [],
+    });
+    const rBranch = b.body.data;
+    const p = await call<{ data: ProductRow }>("POST", "/v1/products", {
+      name: "Reopen Sunrise",
+      slug: "reopen-sunrise",
+      category: "regular",
+      ingredients: ["Carrot"],
+      initial_price_ngn: 2500,
+    });
+    const rProduct = p.body.data;
+    const rVariantId = rProduct.variants[0]!.id;
+    await call("POST", "/v1/inventory/adjust", {
+      location_type: "branch",
+      location_id: rBranch.id,
+      reason_code: "opening_balance",
+      items: [{ product_id: rProduct.id, variant_id: rVariantId, new_quantity: 20 }],
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    // Open with a matching count (no opening correction), then close 2 short.
+    await call("POST", `/v1/branches/${rBranch.id}/shift-open`, {
+      business_date: today,
+      stock_counts: [{ product_id: rProduct.id, variant_id: rVariantId, counted_quantity: 20 }],
+    });
+    const close = await call<{ data: { id: string; shiftId: string | null } }>(
+      "POST",
+      `/v1/branches/${rBranch.id}/daily-close`,
+      {
+        business_date: today,
+        cash_counted_ngn: 0,
+        transfers_counted_ngn: 0,
+        stock_counts: [
+          { product_id: rProduct.id, variant_id: rVariantId, counted_quantity: 18, variance_reason: "spillage" },
+        ],
+      },
+    );
+    expect(close.status).toBe(201);
+    const closeId = close.body.data.id;
+
+    const stockOf = async (): Promise<number> => {
+      const s = await call<{
+        data: Array<{ branch_id: string; product_id: string; variant_id: string | null; balance: number }>;
+      }>("GET", "/v1/reports/branch-stock");
+      return stockBalance(s.body.data.filter((r) => r.branch_id === rBranch.id), rProduct.id);
+    };
+    // Close reconciled on-hand down to the physical 18 and booked a loss.
+    expect(await stockOf()).toBe(18);
+    const tmpDb = createDbClient(process.env.DATABASE_URL!);
+    const lossesBefore = await tmpDb
+      .select()
+      .from(varianceLoss)
+      .where(and(eq(varianceLoss.sourceId, closeId), eq(varianceLoss.source, "shift_close")));
+    expect(lossesBefore).toHaveLength(1);
+
+    // Reopen: reverse the correction (18 → 20), drop the loss, reopen the shift,
+    // and delete the close.
+    const reopen = await call<{ data: { reopened: boolean } }>(
+      "PATCH",
+      `/v1/branches/${rBranch.id}/daily-close/${closeId}/reopen`,
+    );
+    expect(reopen.status).toBe(200);
+    expect(reopen.body.data.reopened).toBe(true);
+
+    expect(await stockOf()).toBe(20);
+    const lossesAfter = await tmpDb
+      .select()
+      .from(varianceLoss)
+      .where(and(eq(varianceLoss.sourceId, closeId), eq(varianceLoss.source, "shift_close")));
+    expect(lossesAfter).toHaveLength(0);
+    // Close is gone; the shift is open again.
+    const gone = await call("GET", `/v1/branches/${rBranch.id}/daily-close/${closeId}`);
+    expect(gone.status).toBe(404);
+    const openShiftRow = await call<{ data: { status: string } | null }>(
+      "GET",
+      `/v1/branches/${rBranch.id}/shift-open?date=${today}`,
+    );
+    expect(openShiftRow.body.data?.status).toBe("open");
   });
 });

@@ -135,6 +135,25 @@ export function CloseDetailPage({
     }
   }
 
+  async function reopen(): Promise<void> {
+    if (
+      !window.confirm(
+        "Reopen this shift? This reverses the close's stock corrections and any losses it booked, and puts the shift back to open so it can be re-counted and filed again.",
+      )
+    )
+      return;
+    setActing(true);
+    try {
+      await api(`/branches/${branchId}/daily-close/${closeId}/reopen`, { method: "PATCH" });
+      toast.success("Shift reopened — re-count and file again");
+      // The close no longer exists, so return to the list rather than reload it.
+      window.location.assign("/owner/closes");
+    } catch (err) {
+      toast.error(humanizeError(err));
+      setActing(false);
+    }
+  }
+
   const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);
   const branchName = (id: string): string => branches.find((b) => b.id === id)?.name ?? id.slice(0, 8);
 
@@ -245,11 +264,21 @@ export function CloseDetailPage({
 
             {data.status === "submitted" && (
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+                <button type="button" className="btn btn--subtle" disabled={acting} onClick={() => void reopen()}>
+                  Reopen
+                </button>
                 <button type="button" className="btn btn--subtle" disabled={acting} onClick={() => void dispute()}>
                   Dispute
                 </button>
                 <button type="button" className="btn btn--primary" disabled={acting} onClick={() => void approve()}>
                   {acting ? "…" : "Approve close"}
+                </button>
+              </div>
+            )}
+            {data.status === "disputed" && (
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+                <button type="button" className="btn btn--primary" disabled={acting} onClick={() => void reopen()}>
+                  {acting ? "…" : "Reopen & re-file"}
                 </button>
               </div>
             )}

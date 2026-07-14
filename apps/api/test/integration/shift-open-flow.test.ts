@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { v4 as uuid } from "uuid";
 import { setupTestDb, seedOwner, loginAs, stockBalance } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { createDbClient, shiftOpen } from "@ms/db";
+import { type createDbClient, shiftOpen, varianceLoss } from "@ms/db";
 import { eq, and } from "drizzle-orm";
 
 let testDb: ReturnType<typeof createDbClient>;
@@ -97,7 +97,7 @@ describe("shift-open flow", () => {
     await container.stop();
   });
 
-  it("records an opening count without writing any stock ledger row", async () => {
+  it("reconciles branch on-hand to the opening count and books the shortfall as loss", async () => {
     const { branch, product } = await seedBranch(10);
     const productId = product!.id;
     const branchId = branch.id;
@@ -126,7 +126,8 @@ describe("shift-open flow", () => {
     expect(res.status).toBe(201);
     expect(res.body.data.id).toBeTruthy();
 
-    // On-hand must be unchanged — record-only, no stock_ledger write
+    // On-hand is now reconciled to the physical count (10 → 8): a freshly-opened
+    // shift writes a count_correction so the till sells against the truth.
     const afterStock = await call<{
       data: Array<{ branch_id: string; product_id: string; variant_id: string | null; balance: number }>;
     }>("GET", "/v1/reports/branch-stock");
@@ -134,7 +135,15 @@ describe("shift-open flow", () => {
       afterStock.body.data.filter((r) => r.branch_id === branchId),
       productId,
     );
-    expect(afterOnHand).toBe(beforeOnHand);
+    expect(afterOnHand).toBe(8);
+
+    // The 2-bottle shortfall is booked as a loss sourced to the opening count.
+    const losses = await testDb
+      .select()
+      .from(varianceLoss)
+      .where(and(eq(varianceLoss.sourceId, res.body.data.id), eq(varianceLoss.source, "shift_open")));
+    expect(losses).toHaveLength(1);
+    expect(losses[0]!.quantity).toBe(2);
 
     // GET the shift-open record and verify computed variance
     const getRes = await call<{

@@ -7,7 +7,7 @@ export function computeLossValue(quantity: number, unitPriceNgn: number): number
 }
 
 export interface RecordVarianceLossInput {
-  source: "transfer" | "shift_close";
+  source: "transfer" | "shift_close" | "shift_open";
   sourceId: string;
   branchId: string;
   productId: string;

@@ -1,8 +1,13 @@
 import { Hono } from "hono";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { shiftOpen, shiftOpenStockCount, adminUser, product, type DbClient } from "@ms/db";
-import { expectedStockForDay, expectedStockKey, expectedStockMap } from "@ms/domain";
+import { shiftOpen, shiftOpenStockCount, stockLedger, adminUser, product, type DbClient } from "@ms/db";
+import {
+  expectedStockForDay,
+  expectedStockKey,
+  expectedStockMap,
+  recordVarianceLoss,
+} from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
@@ -44,6 +49,9 @@ export function shiftOpenRoutes(db: DbClient) {
     // Server-side guard: a varianced line must carry a reason.
     const expectedLines = await expectedStockForDay(db, branchId);
     const expectedByKey = expectedStockMap(expectedLines);
+    const sizeByKey = new Map(
+      expectedLines.map((l) => [expectedStockKey(l.product_id, l.variant_id), l.size_ml]),
+    );
     for (const sc of body.stock_counts) {
       const exp = expectedByKey.get(expectedStockKey(sc.product_id, sc.variant_id ?? null)) ?? 0;
       if (sc.counted_quantity - exp !== 0 && !sc.variance_reason) {
@@ -61,6 +69,7 @@ export function shiftOpenRoutes(db: DbClient) {
           .where(and(eq(shiftOpen.branchId, branchId), eq(shiftOpen.status, "open")));
 
         let open: typeof shiftOpen.$inferSelect;
+        const isNewShift = !existing;
 
         if (existing) {
           // Re-count the existing open shift — do not create a second one.
@@ -108,6 +117,38 @@ export function shiftOpenRoutes(db: DbClient) {
             variance,
             varianceReason: sc.variance_reason ?? null,
           });
+
+          // Reconcile branch on-hand to the physical opening count so the till
+          // stops selling against a stale expected balance for the rest of the
+          // shift. Only on a freshly-opened shift — a re-count of an already-open
+          // shift stays display-only to avoid stacking corrections; the close
+          // still reconciles any remaining gap. A shortfall is a real loss.
+          if (isNewShift && variance !== 0) {
+            await tx.insert(stockLedger).values({
+              locationType: "branch",
+              locationId: branchId,
+              productId: sc.product_id,
+              variantId,
+              delta: variance,
+              sourceType: "count_correction",
+              sourceId: open.id,
+              recordedByUserId: auth.userId,
+              note: sc.variance_reason ?? "shift open count",
+            });
+            if (variance < 0) {
+              await recordVarianceLoss(tx, {
+                source: "shift_open",
+                sourceId: open.id,
+                branchId,
+                productId: sc.product_id,
+                variantId,
+                sizeMl: sizeByKey.get(expectedStockKey(sc.product_id, variantId)) ?? null,
+                quantity: -variance,
+                reason: sc.variance_reason ?? null,
+                recordedByUserId: auth.userId,
+              });
+            }
+          }
         }
 
         const [filer] = await tx

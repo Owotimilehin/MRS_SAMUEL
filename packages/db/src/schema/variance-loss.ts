@@ -4,7 +4,7 @@ import { productVariant } from "./product-variant.js";
 import { branch } from "./branch.js";
 import { adminUser } from "./admin-user.js";
 
-export const varianceLossSource = pgEnum("variance_loss_source", ["transfer", "shift_close"]);
+export const varianceLossSource = pgEnum("variance_loss_source", ["transfer", "shift_close", "shift_open"]);
 
 /**
  * One durable record per genuine stock loss (write-off), valued at retail.

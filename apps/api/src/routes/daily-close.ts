@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   dailyClose,
@@ -7,10 +7,12 @@ import {
   shiftOpen,
   shiftOpenStockCount,
   stockLedger,
+  varianceLoss,
   adminUser,
   product,
   productVariant,
   type DbClient,
+  type DbExecutor,
 } from "@ms/db";
 import {
   cashSalesForDay,
@@ -45,6 +47,32 @@ const Submit = z.object({
     .min(1),
 });
 
+// The start of a shift's money window. Rather than reconcile only what was sold
+// between this shift's own open and close, cover everything since the PREVIOUS
+// shift closed — so sales that land in a gap (between shifts, or owner-sells-
+// without-a-shift) are attributed to the next close instead of falling through
+// the cracks. Shift closes then form a continuous, non-overlapping partition of
+// time. Falls back to this shift's own open for the very first shift at a branch.
+async function shiftWindowStart(
+  db: DbExecutor,
+  branchId: string,
+  openedAt: Date,
+): Promise<Date> {
+  const [prev] = await db
+    .select({ closedAt: shiftOpen.closedAt })
+    .from(shiftOpen)
+    .where(
+      and(
+        eq(shiftOpen.branchId, branchId),
+        isNotNull(shiftOpen.closedAt),
+        lt(shiftOpen.closedAt, openedAt), // strictly before this shift opened → excludes itself
+      ),
+    )
+    .orderBy(desc(shiftOpen.closedAt))
+    .limit(1);
+  return prev?.closedAt ?? openedAt;
+}
+
 export function dailyCloseRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth(), requireBranchScope());
@@ -67,8 +95,11 @@ export function dailyCloseRoutes(db: DbClient) {
 
       const now = new Date();
       const openedAt = openShift.openedAt ?? new Date(0);
-      // Expected money is scoped to the shift window; expected stock is per (product, variant).
-      const expectedCash = await expectedCashForShift(tx, branchId, openedAt, now);
+      // Expected money covers everything since the previous close (so between-
+      // shift / no-shift sales are captured, not lost in a gap); expected stock
+      // is per (product, variant).
+      const windowStart = await shiftWindowStart(tx, branchId, openedAt);
+      const expectedCash = await expectedCashForShift(tx, branchId, windowStart, now);
       const expectedLines = await expectedStockForDay(tx, branchId);
       const expectedByKey = expectedStockMap(expectedLines);
       const sizeByKey = new Map(
@@ -261,6 +292,93 @@ export function dailyCloseRoutes(db: DbClient) {
     return c.json({ data: u });
   });
 
+  // Reopen a submitted/disputed close: cleanly reverse everything it wrote (stock
+  // count-corrections + the losses it booked), reopen the shift, and delete the
+  // close so it can be re-counted and re-filed. Recovers a disputed close without
+  // manual DB surgery. Owner-only; blocked if another shift is already open.
+  r.patch("/:id/reopen", requireCapability("close.approve"), async (c) => {
+    const branchId = c.req.param("branchId");
+    const id = c.req.param("id");
+    if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
+    if (!id) throw new BusinessError("validation_failed", "id required", 400);
+    const auth = c.get("auth");
+
+    const before = await db
+      .transaction(async (tx) => {
+        const [close] = await tx.select().from(dailyClose).where(eq(dailyClose.id, id));
+        if (!close || close.branchId !== branchId) {
+          throw new BusinessError("not_found", "daily close not found", 404);
+        }
+        if (close.status !== "submitted" && close.status !== "disputed") {
+          throw new BusinessError("conflict", `cannot reopen from ${close.status}`, 409);
+        }
+        // Reopening restores this shift to "open"; the one-open-per-branch rule
+        // means we can't do that while another shift is already open.
+        const [openNow] = await tx
+          .select()
+          .from(shiftOpen)
+          .where(and(eq(shiftOpen.branchId, branchId), eq(shiftOpen.status, "open")));
+        if (openNow) {
+          throw new BusinessError(
+            "conflict",
+            "another shift is already open for this branch — close it before reopening",
+            409,
+          );
+        }
+
+        // Reverse the stock reconciliation this close wrote (delta = -variance).
+        const counts = await tx
+          .select()
+          .from(dailyCloseStockCount)
+          .where(eq(dailyCloseStockCount.dailyCloseId, id));
+        for (const cnt of counts) {
+          if (cnt.variance !== 0) {
+            await tx.insert(stockLedger).values({
+              locationType: "branch",
+              locationId: branchId,
+              productId: cnt.productId,
+              variantId: cnt.variantId,
+              delta: -cnt.variance,
+              sourceType: "count_correction",
+              sourceId: id,
+              recordedByUserId: auth.userId,
+              note: "shift close reopened — reversal",
+            });
+          }
+        }
+        // Drop the losses this close booked.
+        await tx
+          .delete(varianceLoss)
+          .where(and(eq(varianceLoss.sourceId, id), eq(varianceLoss.source, "shift_close")));
+        // Reopen the shift so it can be re-counted and re-filed.
+        if (close.shiftId) {
+          await tx
+            .update(shiftOpen)
+            .set({ status: "open", closedAt: null, closedByUserId: null, updatedAt: new Date() })
+            .where(eq(shiftOpen.id, close.shiftId));
+        }
+        // Remove the close (cascade drops its stock counts).
+        await tx.delete(dailyClose).where(eq(dailyClose.id, id));
+        return close;
+      })
+      .catch((err: unknown) => {
+        // Append-only ledger trigger: reversing an overage after that stock was
+        // sold would drive the balance negative.
+        if (err && typeof err === "object" && (err as { code?: string }).code === "23514") {
+          throw new BusinessError("conflict", "reversal would make stock negative", 409);
+        }
+        throw err;
+      });
+
+    await writeAudit(db, c, {
+      action: "daily_close.reopen",
+      entityType: "daily_close",
+      entityId: id,
+      before,
+    });
+    return c.json({ data: { reopened: true, shift_id: before.shiftId } });
+  });
+
   r.get("/preview", async (c) => {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
@@ -277,8 +395,9 @@ export function dailyCloseRoutes(db: DbClient) {
     let cashSales;
     if (openShift?.openedAt) {
       const now = new Date();
-      cash = await expectedCashForShift(db, branchId, openShift.openedAt, now);
-      cashSales = await cashSalesForShift(db, branchId, openShift.openedAt, now);
+      const windowStart = await shiftWindowStart(db, branchId, openShift.openedAt);
+      cash = await expectedCashForShift(db, branchId, windowStart, now);
+      cashSales = await cashSalesForShift(db, branchId, windowStart, now);
     } else {
       cash = await expectedCashForDay(db, branchId, new Date(date));
       cashSales = await cashSalesForDay(db, branchId, new Date(date));
@@ -346,7 +465,8 @@ export function dailyCloseRoutes(db: DbClient) {
       // Fetch the linked shift to get its window.
       const [linkedShift] = await db.select().from(shiftOpen).where(eq(shiftOpen.id, close.shiftId));
       if (linkedShift?.openedAt && linkedShift.closedAt) {
-        cashSales = await cashSalesForShift(db, close.branchId, linkedShift.openedAt, linkedShift.closedAt);
+        const windowStart = await shiftWindowStart(db, close.branchId, linkedShift.openedAt);
+        cashSales = await cashSalesForShift(db, close.branchId, windowStart, linkedShift.closedAt);
       } else {
         cashSales = await cashSalesForDay(db, close.branchId, new Date(close.businessDate));
       }
