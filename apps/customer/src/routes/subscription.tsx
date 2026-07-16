@@ -220,7 +220,7 @@ function SubscribeModal({ plan, onClose }: { plan: ApiSubscriptionPlan; onClose:
               )}
             </button>
             <p className="text-center text-[11px] text-[color:var(--brand)]/50">
-              You'll pay securely via Payaza. Cancel anytime.
+              You'll pay securely online. Cancel anytime.
             </p>
           </div>
         )}

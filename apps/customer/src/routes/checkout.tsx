@@ -5,6 +5,7 @@ import {
   ArrowLeft, Check, Lock, Truck, ShoppingBag, AlertCircle, Loader2, CalendarClock,
 } from "lucide-react";
 import { SiteShell } from "@/components/SiteShell";
+import { RedirectingOverlay } from "@/components/RedirectingOverlay";
 import { useCart, formatNaira } from "@/lib/cart";
 import { fetchBranches, requestQuote, placeOrder as placeOrderFn, logCheckoutAttempt } from "@/lib/api/server-fns";
 import { buildCheckoutLogPayload, type CheckoutStage } from "@/lib/checkout-log";
@@ -21,7 +22,7 @@ export const Route = createFileRoute("/checkout")({
   head: () => ({
     meta: [
       { title: "Checkout — Mrs. Samuel Fruit Juice" },
-      { name: "description", content: "Complete your Mrs. Samuel juice order. Lagos delivery now or scheduled; nationwide arranged separately. Pay securely with Payaza." },
+      { name: "description", content: "Complete your Mrs. Samuel juice order. Lagos delivery now or scheduled; nationwide arranged separately. Pay securely online." },
     ],
     // Warm DNS + TLS to Payaza's checkout host the moment the page loads, so the
     // SDK/iframe fetches at pay-time aren't paying a cold-connection tax. Pairs
@@ -189,6 +190,9 @@ function Page() {
   // --- placing the order ---
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
+  // When set, we're handing off to OPay's hosted cashier — mounts the full-screen
+  // redirect overlay (with a flaky-network manual link) while navigation happens.
+  const [redirectTo, setRedirectTo] = useState<{ url: string; trackUrl: string } | null>(null);
   const idemRef = useRef<string>("");
 
   // Schedule is always valid — orderSchedule already rolls forward off-hours/past windows.
@@ -266,11 +270,16 @@ function Page() {
     // OPay: full-page redirect to OPay's hosted cashier page. There is no popup
     // to fail — the customer returns to the tracking page (returnUrl), which
     // re-verifies payment server-side on view. Clear the basket before leaving
-    // (the order owns the items now).
+    // (the order owns the items now). Mount the redirect overlay FIRST so the tap
+    // gets instant feedback and — if navigation stalls on a flaky network — a
+    // manual "Continue to payment" link appears; assign location.href on the next
+    // tick so the overlay paints before the navigation freezes the page.
     if (order.payment.provider === "opay") {
+      const url = order.payment.redirect_url;
       logStage("payment_redirect", { orderNumber: order.order_number });
       clear();
-      window.location.href = order.payment.redirect_url;
+      setRedirectTo({ url, trackUrl });
+      setTimeout(() => { window.location.href = url; }, 50);
       return;
     }
 
@@ -393,7 +402,9 @@ function Page() {
   }
 
   // ---------- render ----------
-  if (items.length === 0) {
+  // While redirecting to OPay we call clear(), which empties the basket — stay on
+  // the checkout render (not the empty-basket screen) so the overlay covers it.
+  if (items.length === 0 && !redirectTo) {
     return (
       <SiteShell>
         <div className="px-5 max-w-3xl mx-auto pt-40 pb-32 text-center">
@@ -411,6 +422,7 @@ function Page() {
 
   return (
     <SiteShell>
+      <RedirectingOverlay url={redirectTo?.url ?? null} trackUrl={redirectTo?.trackUrl} />
       <CheckoutErrorModal message={placeError} onDismiss={() => setPlaceError(null)} />
       <div className="px-5 sm:px-10 max-w-6xl mx-auto pt-32 sm:pt-36 pb-24">
         <Link to="/juices" className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--brand)]/70 hover:text-[color:var(--brand-orange)]">

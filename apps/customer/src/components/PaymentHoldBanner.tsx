@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Clock, Loader2 } from "lucide-react";
 import { formatNaira } from "@/lib/cart";
 import { launchPayazaCheckout } from "@/lib/payaza";
+import { RedirectingOverlay } from "@/components/RedirectingOverlay";
 import { resumeOpayOrder } from "@/lib/api/server-fns";
 import { useCountdown } from "@/hooks/useCountdown";
 import type { ApiOrderTracking } from "@/lib/api/types";
@@ -18,6 +19,9 @@ export function PaymentHoldBanner({
 }) {
   const { mmss, expired } = useCountdown(order.reservation_expires_at);
   const [busy, setBusy] = useState(false);
+  // Set when redirecting to OPay's cashier — mounts the redirect overlay with a
+  // flaky-network manual link, same as the checkout page.
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
 
   // Preorders carry no reservation; the hold concept ("bottles held") doesn't
   // apply, but they still need to pay — so show a resume button without a timer.
@@ -56,7 +60,10 @@ export function PaymentHoldBanner({
         const { redirect_url } = await resumeOpayOrder({
           data: { orderNumber: order.order_number, phone },
         });
-        window.location.href = redirect_url;
+        // Show the overlay first (instant feedback + flaky-network manual link),
+        // then navigate on the next tick so it paints before the page freezes.
+        setRedirectUrl(redirect_url);
+        setTimeout(() => { window.location.href = redirect_url; }, 50);
       } catch {
         setBusy(false);
       }
@@ -71,6 +78,8 @@ export function PaymentHoldBanner({
   }
 
   return (
+    <>
+    <RedirectingOverlay url={redirectUrl} />
     <div className="rounded-2xl bg-[color:var(--brand-orange)]/10 p-5 ring-1 ring-[color:var(--brand-orange)]/20">
       <div className="flex items-center gap-2 text-[color:var(--brand-orange)] font-semibold">
         <Clock className="h-4 w-4" />{" "}
@@ -96,5 +105,6 @@ export function PaymentHoldBanner({
         )}
       </button>
     </div>
+    </>
   );
 }
