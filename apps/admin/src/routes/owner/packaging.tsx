@@ -90,6 +90,7 @@ export function PackagingPage(): JSX.Element {
   const [showAddPurchase, setShowAddPurchase] = useState(false);
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [editMaterial, setEditMaterial] = useState<Material | null>(null);
+  const [editPurchase, setEditPurchase] = useState<Purchase | null>(null);
   const [adjustRow, setAdjustRow] = useState<StockRow | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
 
@@ -306,11 +307,12 @@ export function PackagingPage(): JSX.Element {
                 <th className="table__num">Total</th>
                 <th>Supplier</th>
                 <th>Linked expense</th>
+                {canWrite && <th />}
               </tr>
             </thead>
             <tbody>
               {purchases.length === 0 ? (
-                <tr><td colSpan={7} style={{ color: "var(--ink-soft)", padding: 18 }}>No purchases in range.</td></tr>
+                <tr><td colSpan={canWrite ? 8 : 7} style={{ color: "var(--ink-soft)", padding: 18 }}>No purchases in range.</td></tr>
               ) : (
                 purchases.map((p) => (
                   <tr key={p.id}>
@@ -321,6 +323,13 @@ export function PackagingPage(): JSX.Element {
                     <td className="table__num" style={{ fontWeight: 700 }}>{ngn(p.totalCostNgn)}</td>
                     <td>{p.supplierName ?? "—"}</td>
                     <td>{p.businessExpenseId ? <span className="pill pill--success">📒</span> : <span style={{ color: "var(--ink-soft)" }}>—</span>}</td>
+                    {canWrite && (
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEditPurchase(p)}>
+                          Edit
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -387,6 +396,20 @@ export function PackagingPage(): JSX.Element {
         />
       )}
 
+      {editPurchase && (
+        <PurchaseEditModal
+          purchase={editPurchase}
+          materialName={materialById.get(editPurchase.packagingMaterialId)?.name ?? "material"}
+          onClose={() => setEditPurchase(null)}
+          onSaved={async () => {
+            setEditPurchase(null);
+            setFlash("Purchase updated");
+            setTimeout(() => setFlash(null), 2500);
+            await loadAll();
+          }}
+        />
+      )}
+
       {showAddMaterial && (
         <MaterialModal
           onClose={() => setShowAddMaterial(false)}
@@ -427,6 +450,105 @@ export function PackagingPage(): JSX.Element {
         />
       )}
     </Shell>
+  );
+}
+
+function PurchaseEditModal({
+  purchase,
+  materialName,
+  onClose,
+  onSaved,
+}: {
+  purchase: Purchase;
+  materialName: string;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}): JSX.Element {
+  const [quantity, setQuantity] = useState<number>(purchase.quantity);
+  const [unitCost, setUnitCost] = useState<number>(purchase.unitCostNgn);
+  const [supplier, setSupplier] = useState(purchase.supplierName ?? "");
+  const [purchaseDate, setPurchaseDate] = useState(purchase.purchaseDate.slice(0, 10));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const total = Math.round(quantity * unitCost);
+
+  async function handleSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (quantity <= 0 || unitCost < 0) {
+      setError("Quantity must be > 0 and unit cost ≥ 0");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api(`/packaging/purchases/${purchase.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          quantity: Math.round(quantity),
+          unit_cost_ngn: Math.round(unitCost),
+          supplier_name: supplier.trim() || null,
+          purchase_date: purchaseDate,
+        }),
+      });
+      await onSaved();
+    } catch (err) {
+      setError(humanizeError(err));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal
+      style={{ position: "fixed", inset: 0, background: "rgba(20,24,31,0.45)", display: "grid", placeItems: "center", zIndex: 50, padding: 16 }}
+      onClick={onClose}
+    >
+      <div
+        className="card"
+        style={{ width: "100%", maxWidth: 480, maxHeight: "calc(100vh - 32px)", overflow: "auto", background: "var(--shell)", boxShadow: "var(--shadow-float)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header style={{ marginBottom: 6 }}>
+          <h2 className="t-h2">Edit purchase</h2>
+          <div style={{ color: "var(--ink-soft)", fontSize: 13 }}>{materialName}</div>
+        </header>
+        <p style={{ color: "var(--ink-soft)", fontSize: 12, marginBottom: 12 }}>
+          Corrects the FIFO cost, factory stock, and the linked bookkeeping expense together.
+        </p>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <div className="field">
+              <label className="field__label" htmlFor="pe-qty">Quantity</label>
+              <input id="pe-qty" className="input" type="number" min={1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} style={{ textAlign: "right" }} required />
+            </div>
+            <div className="field">
+              <label className="field__label" htmlFor="pe-unit">Unit cost (₦)</label>
+              <input id="pe-unit" className="input" type="number" min={0} value={unitCost} onChange={(e) => setUnitCost(Number(e.target.value))} style={{ textAlign: "right" }} required />
+            </div>
+            <div className="field">
+              <label className="field__label" htmlFor="pe-total">Total (₦)</label>
+              <input id="pe-total" className="input" type="number" value={total} readOnly style={{ textAlign: "right", opacity: 0.7 }} />
+            </div>
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="pe-supplier">Supplier (optional)</label>
+            <input id="pe-supplier" className="input" value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="pe-date">Purchase date</label>
+            <input id="pe-date" className="input" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} required />
+          </div>
+          {error && <div style={{ color: "var(--danger)", fontSize: 13 }}>{error}</div>}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" className="btn btn--subtle" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn--primary" disabled={submitting}>
+              {submitting ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

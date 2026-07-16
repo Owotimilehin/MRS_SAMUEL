@@ -370,6 +370,125 @@ export function packagingRoutes(db: DbClient) {
   });
 
   // ─── Ledger history ───
+  // Edit a purchase lot's unit cost and/or quantity (bottle prices change often,
+  // and typos happen). Keeps all three side effects of a purchase consistent:
+  // the FIFO lot (unit cost + qty), the factory stock ledger (a compensating
+  // delta when qty changes), and the linked bookkeeping expense (new total).
+  const PurchaseEdit = z
+    .object({
+      quantity: z.number().int().positive().optional(),
+      unit_cost_ngn: z.number().int().nonnegative().optional(),
+      supplier_name: z.string().max(200).nullish(),
+      purchase_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    })
+    .refine(
+      (v) =>
+        v.quantity !== undefined ||
+        v.unit_cost_ngn !== undefined ||
+        v.supplier_name !== undefined ||
+        v.purchase_date !== undefined,
+      { message: "nothing to update" },
+    );
+
+  r.patch("/purchases/:id", requireCapability("packaging.write"), async (c) => {
+    const id = c.req.param("id");
+    const body = PurchaseEdit.parse(await c.req.json());
+    const auth = c.get("auth");
+
+    const result = await db
+      .transaction(async (tx) => {
+        const [purchase] = await tx
+          .select()
+          .from(packagingPurchase)
+          .where(eq(packagingPurchase.id, id));
+        if (!purchase) throw new BusinessError("not_found", "purchase not found", 404);
+
+        const oldQty = purchase.quantity;
+        const newQty = body.quantity ?? purchase.quantity;
+        const newUnit = body.unit_cost_ngn ?? purchase.unitCostNgn;
+        const newTotal = newQty * newUnit;
+        const newDate = body.purchase_date ?? purchase.purchaseDate;
+        const newSupplier =
+          body.supplier_name === undefined
+            ? purchase.supplierName
+            : body.supplier_name?.trim() || null;
+
+        const [updated] = await tx
+          .update(packagingPurchase)
+          .set({
+            quantity: newQty,
+            unitCostNgn: newUnit,
+            totalCostNgn: newTotal,
+            supplierName: newSupplier,
+            purchaseDate: newDate,
+          })
+          .where(eq(packagingPurchase.id, id))
+          .returning();
+        if (!updated) throw new BusinessError("internal_error", "purchase update returned no rows", 500);
+
+        // Quantity change → keep factory on-hand right with a compensating delta
+        // (the ledger is append-only, so we add a row, never edit the original).
+        if (newQty !== oldQty) {
+          await tx.insert(packagingStockLedger).values({
+            factoryId: purchase.factoryId,
+            locationType: "factory",
+            locationId: purchase.factoryId,
+            packagingMaterialId: purchase.packagingMaterialId,
+            delta: newQty - oldQty,
+            sourceType: "purchase",
+            sourceId: purchase.id,
+            recordedByUserId: auth.userId,
+            note: "purchase quantity corrected",
+          });
+        }
+
+        // Keep the linked bookkeeping expense in step with the corrected total.
+        if (purchase.businessExpenseId) {
+          await tx
+            .update(businessExpense)
+            .set({ amountNgn: newTotal, expenseDate: newDate, vendorName: newSupplier })
+            .where(eq(businessExpense.id, purchase.businessExpenseId));
+        }
+
+        return { before: purchase, after: updated };
+      })
+      .catch((err: unknown) => {
+        if (err && typeof err === "object" && (err as { code?: string }).code === "23514") {
+          throw new BusinessError(
+            "conflict",
+            "reducing the quantity would make packaging stock negative",
+            409,
+          );
+        }
+        throw err;
+      });
+
+    await writeAudit(db, c, {
+      action: "packaging_purchase.update",
+      entityType: "packaging_purchase",
+      entityId: id,
+      before: {
+        quantity: result.before.quantity,
+        unit_cost_ngn: result.before.unitCostNgn,
+        total_cost_ngn: result.before.totalCostNgn,
+      },
+      after: {
+        quantity: result.after.quantity,
+        unit_cost_ngn: result.after.unitCostNgn,
+        total_cost_ngn: result.after.totalCostNgn,
+      },
+    });
+
+    return c.json({
+      data: {
+        id,
+        quantity: result.after.quantity,
+        unit_cost_ngn: result.after.unitCostNgn,
+        total_cost_ngn: result.after.totalCostNgn,
+      },
+    });
+  });
+
   r.get("/ledger", requireCapability("packaging.view"), async (c) => {
     const url = new URL(c.req.url);
     const factoryId = url.searchParams.get("factory_id");

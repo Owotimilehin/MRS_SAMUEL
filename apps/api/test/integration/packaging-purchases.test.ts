@@ -140,6 +140,52 @@ describe("packaging purchases + materials", () => {
     expect(res.body.data.name).toContain("clear");
   });
 
+  it("edits a purchase's unit cost + quantity, keeping stock and total in step", async () => {
+    // Fresh material so this doesn't disturb the shared-balance assertions above.
+    const mat = await call<{ data: { id: string } }>("POST", "/v1/packaging/materials", {
+      name: "650ml edit bottle",
+      unit_label: "bottle",
+      size_ml: 650,
+    });
+    const editMatId = mat.body.data.id;
+    // Enter it wrong (100 @ ₦15), like the real ₦15 typo.
+    const created = await call<{ data: { id: string } }>("POST", "/v1/packaging/purchases", {
+      factory_id: factory.id,
+      packaging_material_id: editMatId,
+      quantity: 100,
+      unit_cost_ngn: 15,
+      total_cost_ngn: 1500,
+      purchase_date: "2026-07-06",
+      feed_bookkeeping: true,
+    });
+    const purchaseId = created.body.data.id;
+
+    const before = await call<{ data: Array<{ material_id: string; balance: number }> }>(
+      "GET",
+      `/v1/packaging/stock?factory_id=${factory.id}`,
+    );
+    expect(before.body.data.find((d) => d.material_id === editMatId)?.balance).toBe(100);
+
+    // Correct it: 120 @ ₦550.
+    const edit = await call<{ data: { quantity: number; unit_cost_ngn: number; total_cost_ngn: number } }>(
+      "PATCH",
+      `/v1/packaging/purchases/${purchaseId}`,
+      { quantity: 120, unit_cost_ngn: 550 },
+    );
+    expect(edit.status).toBe(200);
+    expect(edit.body.data.quantity).toBe(120);
+    expect(edit.body.data.unit_cost_ngn).toBe(550);
+    expect(edit.body.data.total_cost_ngn).toBe(66000);
+
+    // Factory stock reflects the +20 correction and the latest unit cost.
+    const after = await call<{
+      data: Array<{ material_id: string; balance: number; recent_unit_cost_ngn: number | null }>;
+    }>("GET", `/v1/packaging/stock?factory_id=${factory.id}`);
+    const row = after.body.data.find((d) => d.material_id === editMatId);
+    expect(row?.balance).toBe(120);
+    expect(row?.recent_unit_cost_ngn).toBe(550);
+  });
+
   it("unauthenticated caller cannot read or write", async () => {
     const list = await fetch(`${baseUrl}/v1/packaging/materials`);
     expect([401, 403]).toContain(list.status);
