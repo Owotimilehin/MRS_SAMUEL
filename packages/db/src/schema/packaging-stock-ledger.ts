@@ -13,6 +13,8 @@ export const packagingLedgerSourceType = pgEnum("packaging_ledger_source_type", 
   "transfer_dispatch",
   "transfer_receive",
   "transfer_reject_reverse",
+  // Owner relocates a bag transfer variance back to factory/branch stock.
+  "transfer_variance_settlement",
 ]);
 
 /**

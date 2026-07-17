@@ -141,10 +141,10 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
           sent: i.quantity_sent,
         })),
       );
-      // Default every varianced product line to settle on the factory.
+      // Default every varianced line (juice or bag) to settle on the factory.
       const defaults: Record<string, "factory" | "branch" | "loss"> = {};
       for (const i of t.data.items) {
-        if (i.packaging_material_id == null && i.quantity_received != null && i.quantity_received !== i.quantity_sent) {
+        if (i.quantity_received != null && i.quantity_received !== i.quantity_sent) {
           defaults[i.id] = "factory";
         }
       }
@@ -179,7 +179,7 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
   /** Settle the variance per owner choice and approve the transfer. */
   async function settleAndApprove(all?: "factory" | "loss"): Promise<void> {
     const lines = (data?.items ?? []).filter(
-      (i) => i.packaging_material_id == null && i.quantity_received != null && i.quantity_received !== i.quantity_sent,
+      (i) => i.quantity_received != null && i.quantity_received !== i.quantity_sent,
     );
     const body = {
       settlements: lines.map((i) => {
@@ -470,7 +470,6 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                           {(data?.items ?? [])
                             .filter(
                               (i) =>
-                                i.packaging_material_id == null &&
                                 i.quantity_received != null &&
                                 i.quantity_received !== i.quantity_sent,
                             )
@@ -479,7 +478,9 @@ export function TransferDetailPage({ transferId }: { transferId: string }): JSX.
                               return (
                                 <tr key={i.id}>
                                   <td>
-                                    {productName(i.product_id)}
+                                    {i.material_name
+                                      ? `🛍 ${i.material_name}`
+                                      : productName(i.product_id)}
                                     {i.size_ml ? ` ${i.size_ml}ml` : ""}
                                   </td>
                                   <td>{i.quantity_sent}</td>

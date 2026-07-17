@@ -470,6 +470,13 @@
       "when": 1783370000000,
       "tag": "0067_variance_loss_shift_open",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1783400000000,
+      "tag": "0068_packaging_variance_settlement_source",
+      "breakpoints": true
     }
   ]
 }

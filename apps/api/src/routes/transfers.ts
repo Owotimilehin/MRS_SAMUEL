@@ -412,6 +412,21 @@ export function transferRoutes(db: DbClient) {
         .where(eq(stockTransferItem.stockTransferId, id));
       const byId = new Map(items.map((i) => [i.id, i]));
 
+      // A receipt must cover EVERY line. A line dispatched but omitted here would
+      // keep quantityReceived = null: debited from the factory at dispatch but
+      // credited nowhere and never settled — a silent stock leak. Reject the
+      // whole receipt so the branch resubmits a complete count.
+      const submittedIds = new Set(body.items.map((i) => i.item_id));
+      const missing = items.filter((it) => !submittedIds.has(it.id)).map((it) => it.id);
+      if (missing.length > 0) {
+        throw new BusinessError(
+          "validation_failed",
+          "every transfer line must be received — resubmit with all lines",
+          422,
+          { missing_item_ids: missing },
+        );
+      }
+
       let hasVariance = false;
       for (const inp of body.items) {
         const it = byId.get(inp.item_id);
@@ -548,12 +563,13 @@ export function transferRoutes(db: DbClient) {
         .from(stockTransferItem)
         .where(eq(stockTransferItem.stockTransferId, id));
 
-      // Every varianced product line needs an explicit settlement. Validate the
-      // whole request up front and reject before mutating anything, so a partial
-      // approval never writes some lines and errors on others.
+      // Every varianced line — juice OR bag — needs an explicit settlement.
+      // Validate the whole request up front and reject before mutating anything,
+      // so a partial approval never writes some lines and errors on others. Bag
+      // lines are included so a short/over-shipped bag is no longer silently
+      // dropped: the owner must place it (factory/branch) or write it off (loss).
       const variancedItems = items.filter(
         (it) =>
-          it.productId != null &&
           it.quantityReceived != null &&
           it.quantitySent - it.quantityReceived !== 0,
       );
@@ -585,10 +601,34 @@ export function transferRoutes(db: DbClient) {
       }
 
       for (const it of items) {
-        if (it.productId == null || it.quantityReceived == null) continue; // packaging / unreceived
+        if (it.quantityReceived == null) continue; // unreceived line
         const gap = it.quantitySent - it.quantityReceived;
         if (gap === 0) continue;
         const settle = settleByItem.get(it.id)!; // validated present above
+
+        // Bag (packaging) line: relocate the gap in the packaging ledger for
+        // factory/branch. "loss" writes no ledger row and no variance_loss —
+        // bags are tracked-only, so a write-off carries no money value; the
+        // deliberate choice is captured in the audit payload below.
+        if (it.packagingMaterialId) {
+          if (settle === "loss") continue;
+          const locationId = settle === "factory" ? t.factoryId : t.branchId;
+          await tx.insert(packagingStockLedger).values({
+            locationType: settle,
+            locationId,
+            factoryId: settle === "factory" ? t.factoryId : null,
+            packagingMaterialId: it.packagingMaterialId,
+            delta: gap,
+            sourceType: "transfer_variance_settlement",
+            sourceId: id,
+            recordedByUserId: auth.userId,
+            note: `Variance settle ${t.transferNumber} (${settle})`,
+          });
+          continue;
+        }
+
+        // Product (juice) line.
+        if (it.productId == null) continue; // defensive: neither product nor bag
         if (settle === "loss") {
           if (gap <= 0) continue; // can't write off an over-receive
           await recordVarianceLoss(tx, {
@@ -643,7 +683,9 @@ export function transferRoutes(db: DbClient) {
       action: "stock_transfer.settle_variance",
       entityType: "stock_transfer",
       entityId: id,
-      after: updated,
+      // Capture the per-line decisions so an unvalued bag write-off ("loss",
+      // which leaves no ledger trace) is still a durable, audited choice.
+      after: { ...updated, settlements: body.settlements },
     });
     return c.json({ data: updated });
   });

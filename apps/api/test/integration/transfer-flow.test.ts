@@ -179,8 +179,11 @@ describe("Phase 1 transfer flow — happy path + variance", () => {
     );
     expect(review.body.data.transfer_variances.some((t) => t.id === id)).toBe(true);
 
-    // Owner approves variance
-    const approve = await call<{ data: Transfer }>("PATCH", `/v1/transfers/${id}/approve`);
+    // Owner settles the variance and approves. Damaged-in-transit → write the
+    // 2-bottle gap off as loss; the branch keeps the 8 it physically received.
+    const approve = await call<{ data: Transfer }>("PATCH", `/v1/transfers/${id}/approve`, {
+      settlements: [{ item_id: lineId, settle: "loss" }],
+    });
     expect(approve.body.data.status).toBe("completed");
 
     // Branch stock is 20 (clean) + 8 (variance) = 28
