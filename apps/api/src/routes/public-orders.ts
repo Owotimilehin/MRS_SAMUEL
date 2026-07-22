@@ -662,32 +662,28 @@ export function publicOrderRoutes(db: DbClient) {
     }
 
     // On-view re-verify: a returning customer looking at an unpaid order is a
-    // free chance to catch a webhook that never fired. Only worth asking
-    // Payaza while the order is still unpaid (`confirmed`) AND its stock hold
-    // is still live — once the reservation has expired the sweep/cron path
-    // owns reconciliation, and paid/terminal/walk-up orders never reach here
-    // with `confirmed`+a reservation anyway. Best-effort: a Payaza outage here
-    // must not break the tracking page.
-    if (o.channel === "online" && o.status === "confirmed" && !o.isPreorder) {
-      const [liveResv] = await db
-        .select({ expiresAt: stockReservation.expiresAt })
-        .from(stockReservation)
-        .where(eq(stockReservation.saleOrderId, o.id))
-        .orderBy(asc(stockReservation.expiresAt))
-        .limit(1);
-      const reservationLive = liveResv?.expiresAt != null && liveResv.expiresAt.getTime() > Date.now();
-      if (reservationLive) {
-        try {
-          await verifyAndReconcile(db, o.orderNumber, (o.paymentProvider as "opay" | "payaza" | null) ?? "payaza");
-        } catch (err) {
-          logger.warn({ err, orderNumber: o.orderNumber }, "tracking on-view re-verify failed (non-fatal)");
-        }
-        // Re-read so the response reflects any flip the reconcile just made.
-        // The row can't have disappeared between the two reads (no delete
-        // path for sale orders) — re-assert non-null for TS.
-        [o] = await db.select().from(saleOrder).where(eq(saleOrder.orderNumber, orderNumber));
-        if (!o) throw new BusinessError("not_found", "order not found", 404);
+    // free chance to catch a webhook that never fired. We re-verify for ANY
+    // unpaid online order (`confirmed` or `reconcile_needed`) — regardless of
+    // preorder status or whether the stock hold is still live. The old gate
+    // (`!isPreorder` + a live reservation) was too narrow: it left preorders
+    // (which never reserve stock) and orders whose 30-min hold had lapsed showing
+    // "unpaid" on return until the 2-min background sweep caught up — the source
+    // of the "sometimes it confirms, sometimes it doesn't" inconsistency.
+    // verifyAndReconcile is idempotent + CAS-guarded (and only acts when the
+    // provider actually reports success), so a redundant call is a safe no-op;
+    // once the order is paid it no longer matches this guard, so paid orders
+    // never re-query. Best-effort: a provider outage here must not break the page.
+    if (o.channel === "online" && (o.status === "confirmed" || o.status === "reconcile_needed")) {
+      try {
+        await verifyAndReconcile(db, o.orderNumber, (o.paymentProvider as "opay" | "payaza" | null) ?? "payaza");
+      } catch (err) {
+        logger.warn({ err, orderNumber: o.orderNumber }, "tracking on-view re-verify failed (non-fatal)");
       }
+      // Re-read so the response reflects any flip the reconcile just made.
+      // The row can't have disappeared between the two reads (no delete
+      // path for sale orders) — re-assert non-null for TS.
+      [o] = await db.select().from(saleOrder).where(eq(saleOrder.orderNumber, orderNumber));
+      if (!o) throw new BusinessError("not_found", "order not found", 404);
     }
 
     const { deliveryOrder } = await import("@ms/db");

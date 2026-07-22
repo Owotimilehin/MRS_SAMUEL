@@ -9,6 +9,7 @@ import { RedirectingOverlay } from "@/components/RedirectingOverlay";
 import { useCart, formatNaira } from "@/lib/cart";
 import { fetchBranches, requestQuote, placeOrder as placeOrderFn, logCheckoutAttempt } from "@/lib/api/server-fns";
 import { buildCheckoutLogPayload, type CheckoutStage } from "@/lib/checkout-log";
+import { safeRandomUuid } from "@/lib/uuid";
 import { asApiError } from "@/lib/api/client";
 import type { ApiDeliveryOption, ApiPlacedOrder } from "@/lib/api/types";
 import { launchPayazaCheckout, prewarmPayaza } from "@/lib/payaza";
@@ -195,6 +196,16 @@ function Page() {
   const [redirectTo, setRedirectTo] = useState<{ url: string; trackUrl: string } | null>(null);
   const idemRef = useRef<string>("");
 
+  // Hydration guard. This page is server-rendered, so the button's onClick is
+  // NOT wired until React hydrates. A tap before that does nothing, with no
+  // feedback — the "pre-hydration dead tap". We flip this true on mount (after
+  // hydration) and gate the button on it, so an early tap sees a clear
+  // "Loading…" state instead of silently doing nothing.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
   // Schedule is always valid — orderSchedule already rolls forward off-hours/past windows.
   const scheduleValid = true;
   const orderItems = useMemo(
@@ -211,11 +222,12 @@ function Page() {
     return missing;
   }
 
-  // The button stays clickable whenever an order *could* be attempted, so a tap
-  // always responds — either it opens payment or it tells the customer what's
-  // missing. Only a busy/blocked state disables it.
+  // The button is clickable once hydrated and an order *could* be attempted, so a
+  // tap always responds — either it opens payment or it tells the customer what's
+  // missing. Before hydration (dead onClick) and during a busy/blocked state it is
+  // disabled and shows why, so a tap is never silently swallowed.
   const canPlace =
-    items.length > 0 && !!branchId && scheduleValid && !placing && !quoting;
+    hydrated && items.length > 0 && !!branchId && scheduleValid && !placing && !quoting;
 
   // Fire-and-forget diagnostic log of each checkout stage (delivery details,
   // error, response). Wrapped so logging can never break the order.
@@ -329,12 +341,12 @@ function Page() {
           : `${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}`;
       const message = `Please add ${list} before placing your order.`;
       // Generate an attempt id even for a rejected press so it's logged distinctly.
-      if (!idemRef.current) idemRef.current = crypto.randomUUID();
+      if (!idemRef.current) idemRef.current = safeRandomUuid();
       logStage("validation_failed", { errorMessage: message });
       setPlaceError(message);
       return;
     }
-    if (!retry) idemRef.current = crypto.randomUUID();
+    if (!retry) idemRef.current = safeRandomUuid();
     setPlacing(true);
     setPlaceError(null);
     logStage("pressed");
@@ -625,10 +637,16 @@ function Page() {
               <button
                 disabled={!canPlace}
                 onClick={() => submit(false)}
-                aria-busy={placing}
+                aria-busy={placing || !hydrated}
                 className="mt-5 w-full rounded-full bg-[color:var(--brand-orange)] text-white px-6 py-4 text-sm font-bold disabled:opacity-40 hover:opacity-90 transition flex items-center justify-center gap-2"
               >
-                {placing ? (<><Loader2 className="h-4 w-4 animate-spin" /> Opening payment…</>) : (<>Place order — {formatNaira(total)}</>)}
+                {!hydrated ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Loading…</>
+                ) : placing ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Opening payment…</>
+                ) : (
+                  <>Place order — {formatNaira(total)}</>
+                )}
               </button>
               <p className="mt-2 text-center text-[11px] text-white/50">You'll pay securely online.</p>
             </aside>

@@ -27,6 +27,13 @@ export interface ConfirmedTransaction {
 // with OPAY_API_BASE=https://testapi.opaycheckout.com for sandbox.
 const BASE = process.env.OPAY_API_BASE || "https://liveapi.opaycheckout.com";
 
+// Hard ceiling on any single OPay HTTP call. Without it, a slow/hung OPay
+// response holds a checkout-create (blocking the customer) or a status-verify
+// (blocking the webhook/sweep) open indefinitely. On timeout the fetch throws,
+// which is the desired outcome: the create surfaces an error the customer can
+// retry, and a status-verify lets the next confirmation path re-try shortly.
+const OPAY_TIMEOUT_MS = 8000;
+
 /** HMAC-SHA512 hex of the request body JSON, signed with the merchant private
  *  (secret) key. Used as the Bearer token for signed server-to-server calls
  *  (cashier/status). Pure + synchronous so it is unit-tested without HTTP. */
@@ -159,6 +166,7 @@ export async function createOpayCashier(
       MerchantId: merchantId,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(OPAY_TIMEOUT_MS),
   });
   const text = await res.text();
   let parsed: { code?: string; message?: string; data?: { cashierUrl?: string; orderNo?: string } };
@@ -192,6 +200,7 @@ export async function verifyOpayTransaction(reference: string): Promise<Confirme
       MerchantId: merchantId,
     },
     body: bodyJson,
+    signal: AbortSignal.timeout(OPAY_TIMEOUT_MS),
   });
   const text = await res.text();
   return parseOpayStatus(res.status, text);

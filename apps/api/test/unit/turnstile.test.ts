@@ -13,8 +13,11 @@ describe("verifyTurnstileToken", () => {
     expect(await verifyTurnstileToken(undefined, "anything")).toBe(true);
   });
 
-  it("rejects when a secret is set but no token is sent", async () => {
-    expect(await verifyTurnstileToken("secret", undefined)).toBe(false);
+  it("passes when a secret is set but no token is sent (widget not wired — never block orders)", async () => {
+    // The customer checkout renders no Turnstile widget, so it sends no token.
+    // Blocking here would reject every order the moment a secret is set; we
+    // fail open so the secret alone can never take checkout down.
+    expect(await verifyTurnstileToken("secret", undefined)).toBe(true);
   });
 
   it("passes on a successful Cloudflare verification", async () => {

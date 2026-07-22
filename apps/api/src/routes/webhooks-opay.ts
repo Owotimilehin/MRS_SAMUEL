@@ -16,6 +16,31 @@ import { logger } from "../logger.js";
  *
  * This endpoint also accepts the worker sweep's re-fire body `{ reference }`.
  */
+/**
+ * Pull our merchant reference (order number) out of an OPay callback. OPay's
+ * envelope shape isn't contractually fixed, so we look under the known nests
+ * first, then fall back to a depth-bounded search for an EXACT `reference` key
+ * anywhere in the body. We match the exact key (not any `*_reference`) so we
+ * never grab OPay's own `transaction_reference`/`orderNo` by mistake — the same
+ * class of bug that once silently no-op'd the Payaza webhook. The reference is
+ * only ever used to re-query status server-to-server, so even a wrong guess can
+ * at most trigger a status read of a real order (a safe no-op), never a money
+ * decision. Also accepts the worker re-fire's top-level `{ reference }`.
+ */
+export function extractOpayReference(body: unknown, depth = 0): string | undefined {
+  if (depth > 5 || body == null || typeof body !== "object") return undefined;
+  const obj = body as Record<string, unknown>;
+  const direct = obj.reference;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  for (const v of Object.values(obj)) {
+    if (v && typeof v === "object") {
+      const found = extractOpayReference(v, depth + 1);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
 export function opayWebhookRoutes(db: DbClient) {
   const r = new Hono();
 
@@ -31,16 +56,15 @@ export function opayWebhookRoutes(db: DbClient) {
       logger.warn({ requestId }, "opay webhook: non-JSON body — ignored");
       return c.json({ ok: true });
     }
-    // OPay nests the merchant reference under a few envelope shapes; also accept
-    // the worker re-fire's top-level { reference }.
-    const p = parsed as {
-      reference?: string;
-      data?: { reference?: string };
-      payload?: { reference?: string };
-    };
-    const reference = p.reference ?? p.data?.reference ?? p.payload?.reference;
-    if (!reference || typeof reference !== "string") {
-      logger.warn({ requestId }, "opay webhook: no reference in body — ignored");
+    const reference = extractOpayReference(parsed);
+    if (!reference) {
+      // Log the raw body (truncated) so we can learn OPay's ACTUAL callback
+      // shape from production instead of guessing — the sweep still recovers
+      // the payment regardless, so this is a diagnostic, not a failure.
+      logger.warn(
+        { requestId, rawSample: raw.slice(0, 2000) },
+        "opay webhook: no reference in body — ignored (sweep will still reconcile)",
+      );
       return c.json({ ok: true });
     }
 
