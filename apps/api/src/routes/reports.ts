@@ -14,6 +14,11 @@ export function reportRoutes(db: DbClient) {
       c.req.query("from") ??
       new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
     const to = c.req.query("to") ?? new Date().toISOString().slice(0, 10);
+    // Sales and refunds are aggregated to (branch, channel) separately and
+    // FULL OUTER JOINed, so a refund whose channel has no counted sale in the
+    // window still appears (net negative, 0 orders) instead of being dropped —
+    // keeping the summed net in step with /pnl and /daily. `out_for_delivery`
+    // is a fully-paid, dispatched state and counts as revenue like the others.
     const rows = await db.execute<{
       branch_id: string;
       channel: string;
@@ -23,29 +28,31 @@ export function reportRoutes(db: DbClient) {
       orders: number;
     }>(sql`
       WITH sales AS (
-        SELECT branch_id, channel, total_ngn, id
+        SELECT branch_id, channel::text AS channel,
+               SUM(total_ngn)::int AS gross, COUNT(*)::int AS orders
         FROM sale_order
-        WHERE status IN ('paid','handed_over','delivered')
+        WHERE status IN ('paid','handed_over','out_for_delivery','delivered')
           AND created_at_local::date BETWEEN ${from}::date AND ${to}::date
+        GROUP BY branch_id, channel
       ),
       refunds AS (
-        SELECT branch_id, refund_amount_ngn,
-               (SELECT channel FROM sale_order WHERE id = original_sale_order_id) AS channel
+        SELECT branch_id, channel::text AS channel,
+               SUM(refund_amount_ngn)::int AS refunds
         FROM sale_return
         WHERE status = 'completed'
           AND created_at::date BETWEEN ${from}::date AND ${to}::date
+        GROUP BY branch_id, channel
       )
       SELECT
-        s.branch_id,
-        s.channel,
-        SUM(s.total_ngn)::int AS gross_ngn,
-        COALESCE((SELECT SUM(r.refund_amount_ngn) FROM refunds r
-                  WHERE r.branch_id = s.branch_id AND r.channel = s.channel), 0)::int AS refunds_ngn,
-        (SUM(s.total_ngn) - COALESCE((SELECT SUM(r.refund_amount_ngn) FROM refunds r
-                  WHERE r.branch_id = s.branch_id AND r.channel = s.channel), 0))::int AS net_ngn,
-        COUNT(*)::int AS orders
+        COALESCE(s.branch_id, r.branch_id) AS branch_id,
+        COALESCE(s.channel, r.channel) AS channel,
+        COALESCE(s.gross, 0)::int AS gross_ngn,
+        COALESCE(r.refunds, 0)::int AS refunds_ngn,
+        (COALESCE(s.gross, 0) - COALESCE(r.refunds, 0))::int AS net_ngn,
+        COALESCE(s.orders, 0)::int AS orders
       FROM sales s
-      GROUP BY s.branch_id, s.channel
+      FULL OUTER JOIN refunds r
+        ON r.branch_id = s.branch_id AND r.channel = s.channel
       ORDER BY net_ngn DESC
     `);
     return c.json({ data: rows });
@@ -69,7 +76,7 @@ export function reportRoutes(db: DbClient) {
       FROM sale_order_item i
       JOIN sale_order o ON o.id = i.sale_order_id
       JOIN product p ON p.id = i.product_id
-      WHERE o.status IN ('paid','handed_over','delivered')
+      WHERE o.status IN ('paid','handed_over','out_for_delivery','delivered')
         AND o.created_at_local::date BETWEEN ${from}::date AND ${to}::date
       GROUP BY i.product_id, p.name
       ORDER BY revenue_ngn DESC
@@ -114,7 +121,7 @@ export function reportRoutes(db: DbClient) {
       sales AS (
         SELECT ${saleBucket} AS d, SUM(total_ngn)::int AS gross, COUNT(*)::int AS orders
         FROM sale_order
-        WHERE status IN ('paid','handed_over','delivered')
+        WHERE status IN ('paid','handed_over','out_for_delivery','delivered')
           AND created_at_local::date BETWEEN ${from}::date AND ${to}::date
         GROUP BY 1
       ),
@@ -249,7 +256,7 @@ export function reportRoutes(db: DbClient) {
     const revRow = await db.execute<{ revenue_ngn: number; refunds_ngn: number }>(sql`
       WITH sales AS (
         SELECT total_ngn FROM sale_order
-        WHERE status IN ('paid','handed_over','delivered')
+        WHERE status IN ('paid','handed_over','out_for_delivery','delivered')
           AND created_at_local::date >= ${from}::date
           AND created_at_local::date <  ${nextMonth}::date
       ),
@@ -335,6 +342,12 @@ export function reportRoutes(db: DbClient) {
         expenses_by_category: byCat,
         expense_count: totalCnt,
         net_ngn: net,
+        // This monthly P&L is an accounting view: net is revenue minus logged
+        // business expenses only. It deliberately does NOT subtract per-unit
+        // bottle/bag cost of goods — see the daily report for COGS-inclusive
+        // (operational) profit. The two figures will not reconcile.
+        cost_basis_note:
+          "Accounting P&L: net is revenue minus logged expenses. Excludes bottle/bag packaging cost (COGS) — see the daily report for COGS-inclusive profit.",
       },
     });
   });
@@ -443,7 +456,7 @@ export function reportRoutes(db: DbClient) {
           FROM sale_order_item i
           JOIN sale_order o ON o.id = i.sale_order_id
           JOIN product_variant pv ON pv.id = i.variant_id
-          WHERE o.status IN ('paid','handed_over','delivered')
+          WHERE o.status IN ('paid','handed_over','out_for_delivery','delivered')
             AND o.created_at_local::date = CURRENT_DATE
           GROUP BY pv.size_ml ORDER BY pv.size_ml
         `);
@@ -499,7 +512,7 @@ export function reportRoutes(db: DbClient) {
     const revRow = await db.execute<{ revenue_ngn: number; refunds_ngn: number }>(sql`
       SELECT
         COALESCE((SELECT SUM(total_ngn) FROM sale_order
-          WHERE status IN ('paid','handed_over','delivered')
+          WHERE status IN ('paid','handed_over','out_for_delivery','delivered')
             AND created_at_local::date BETWEEN ${from}::date AND ${to}::date), 0)::int AS revenue_ngn,
         COALESCE((SELECT SUM(refund_amount_ngn) FROM sale_return
           WHERE status = 'completed' AND created_at::date BETWEEN ${from}::date AND ${to}::date), 0)::int AS refunds_ngn
@@ -513,7 +526,7 @@ export function reportRoutes(db: DbClient) {
       FROM sale_order_item i
       JOIN sale_order o ON o.id = i.sale_order_id
       JOIN product_variant pv ON pv.id = i.variant_id
-      WHERE o.status IN ('paid','handed_over','delivered')
+      WHERE o.status IN ('paid','handed_over','out_for_delivery','delivered')
         AND o.created_at_local::date BETWEEN ${from}::date AND ${to}::date
         AND pv.bottle_material_id IS NOT NULL
       GROUP BY pv.bottle_material_id
@@ -523,7 +536,7 @@ export function reportRoutes(db: DbClient) {
       FROM sale_order_item i
       JOIN sale_order o ON o.id = i.sale_order_id
       JOIN product_variant pv ON pv.id = i.variant_id
-      WHERE o.status IN ('paid','handed_over','delivered')
+      WHERE o.status IN ('paid','handed_over','out_for_delivery','delivered')
         AND o.created_at_local::date < ${from}::date
         AND pv.bottle_material_id IS NOT NULL
       GROUP BY pv.bottle_material_id
@@ -534,7 +547,7 @@ export function reportRoutes(db: DbClient) {
       SELECT sop.packaging_material_id AS material_id, SUM(sop.quantity)::int AS units
       FROM sale_order_packaging sop
       JOIN sale_order o ON o.id = sop.sale_order_id
-      WHERE o.status IN ('paid','handed_over','delivered')
+      WHERE o.status IN ('paid','handed_over','out_for_delivery','delivered')
         AND o.created_at_local::date BETWEEN ${from}::date AND ${to}::date
       GROUP BY sop.packaging_material_id
     `);
@@ -542,7 +555,7 @@ export function reportRoutes(db: DbClient) {
       SELECT sop.packaging_material_id AS material_id, SUM(sop.quantity)::int AS units
       FROM sale_order_packaging sop
       JOIN sale_order o ON o.id = sop.sale_order_id
-      WHERE o.status IN ('paid','handed_over','delivered')
+      WHERE o.status IN ('paid','handed_over','out_for_delivery','delivered')
         AND o.created_at_local::date < ${from}::date
       GROUP BY sop.packaging_material_id
     `);
@@ -646,7 +659,7 @@ export function reportRoutes(db: DbClient) {
       FROM sale_order_item i
       JOIN sale_order o ON o.id = i.sale_order_id
       JOIN product_variant pv ON pv.id = i.variant_id
-      WHERE o.status IN ('paid','handed_over','delivered')
+      WHERE o.status IN ('paid','handed_over','out_for_delivery','delivered')
         AND o.created_at_local::date BETWEEN ${from}::date AND ${to}::date
       GROUP BY pv.size_ml
       ORDER BY pv.size_ml
@@ -668,7 +681,7 @@ export function reportRoutes(db: DbClient) {
       JOIN sale_order o ON o.id = i.sale_order_id
       JOIN product_variant pv ON pv.id = i.variant_id
       JOIN product p ON p.id = i.product_id
-      WHERE o.status IN ('paid','handed_over','delivered')
+      WHERE o.status IN ('paid','handed_over','out_for_delivery','delivered')
         AND o.created_at_local::date BETWEEN ${from}::date AND ${to}::date
       GROUP BY pv.size_ml, p.category
       ORDER BY pv.size_ml, p.category
@@ -712,7 +725,7 @@ export function reportRoutes(db: DbClient) {
     const delivRow = await db.execute<{ fees: number }>(sql`
       SELECT COALESCE(SUM(delivery_fee_ngn), 0)::int AS fees
       FROM sale_order
-      WHERE status IN ('paid','handed_over','delivered')
+      WHERE status IN ('paid','handed_over','out_for_delivery','delivered')
         AND created_at_local::date BETWEEN ${from}::date AND ${to}::date
     `);
     const deliveryFees = Number(delivRow[0]?.fees ?? 0);

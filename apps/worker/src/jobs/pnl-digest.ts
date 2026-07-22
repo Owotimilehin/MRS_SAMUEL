@@ -36,7 +36,7 @@ export async function fireMonthlyPnlDigest(db: DbClient, month: string): Promise
   const revRow = await db.execute<{ revenue_ngn: number; refunds_ngn: number }>(sql`
     WITH sales AS (
       SELECT total_ngn FROM sale_order
-      WHERE status IN ('paid','handed_over','delivered')
+      WHERE status IN ('paid','handed_over','out_for_delivery','delivered')
         AND created_at_local::date >= ${from}::date
         AND created_at_local::date <  ${nextMonth}::date
     ),
@@ -82,6 +82,7 @@ export async function fireMonthlyPnlDigest(db: DbClient, month: string): Promise
     `Expenses:  ${fmt(totalExp)}\n` +
     `Net:       *${fmt(net)}* (${sign})\n` +
     (top ? `Top: ${top}\n` : "") +
+    `_Excl. bottle/bag COGS_\n` +
     `👉 ${ADMIN_URL}/owner/bookkeeping`;
 
   const owner = channels.owner();
