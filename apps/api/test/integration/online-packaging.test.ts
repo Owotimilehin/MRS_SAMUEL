@@ -156,4 +156,17 @@ describe("online order fulfil packaging (straw + bag)", () => {
     expect(res.status).toBe(200);
     expect(await branchBal(bagId)).toBeLessThan(0);
   });
+
+  it("GET /:id returns the saved packaging array", async () => {
+    // Reset to a known state: 2 straws only.
+    await call(`PUT`, `/v1/branches/${branchId}/sales/${orderId}/packaging`, {
+      packaging: [{ packaging_material_id: strawId, quantity: 2 }],
+    });
+    const res = await call<{ data: { packaging: Array<{ packaging_material_id: string; quantity: number }> } }>(
+      "GET",
+      `/v1/branches/${branchId}/sales/${orderId}`,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.packaging).toEqual([{ packaging_material_id: strawId, quantity: 2 }]);
+  });
 });

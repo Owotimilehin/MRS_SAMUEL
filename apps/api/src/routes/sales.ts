@@ -950,10 +950,20 @@ export function saleRoutes(db: DbClient) {
       .where(eq(payment.saleOrderId, id))
       .orderBy(descFn(payment.createdAt))
       .limit(1);
+    // Straws + bags the fulfiller recorded on this order (tracked-only), so the
+    // detail page can show + edit what was packed.
+    const packagingRows = await db
+      .select({
+        packaging_material_id: saleOrderPackaging.packagingMaterialId,
+        quantity: saleOrderPackaging.quantity,
+      })
+      .from(saleOrderPackaging)
+      .where(eq(saleOrderPackaging.saleOrderId, id));
     return c.json({
       data: {
         ...o,
         items,
+        packaging: packagingRows,
         customerName,
         customerPhone,
         customerEmail,
