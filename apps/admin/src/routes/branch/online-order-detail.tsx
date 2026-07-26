@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
 import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
+import { PackagingCard, type PackagingCardHandle } from "../../components/PackagingCard.js";
 import { OrderJourney } from "../../components/OrderJourney.js";
 import { deriveOrderJourney } from "../../lib/order-journey.js";
 import { deriveOrderActions, type OrderActionId } from "../../lib/order-actions.js";
@@ -70,6 +71,7 @@ interface Sale {
   customerEmail?: string | null;
   customerAddress?: string | null;
   items: SaleItem[];
+  packaging?: Array<{ packaging_material_id: string; quantity: number }>;
   delivery?: DeliveryRow | null;
   grossNgn?: number | null;
   feeNgn?: number | null;
@@ -93,6 +95,9 @@ export function BranchOnlineOrderDetailPage({
   const [advanceBusy, setAdvanceBusy] = useState(false);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
+  // Packaging card imperative handle — the produce/advance CTA flushes any
+  // unsaved straw/bag change before it transitions the order.
+  const packagingRef = useRef<PackagingCardHandle>(null);
 
   // Payment follow-up (awaiting-payment orders): re-check Payaza, record an
   // offline transfer/cash payment, or cancel as unpaid.
@@ -154,6 +159,11 @@ export function BranchOnlineOrderDetailPage({
 
   async function advance(): Promise<void> {
     if (!data) return;
+    try {
+      await packagingRef.current?.saveIfDirty();
+    } catch {
+      return; // packaging save failed — do not advance
+    }
     setAdvanceBusy(true);
     setDeliveryError(null);
     try {
@@ -168,6 +178,11 @@ export function BranchOnlineOrderDetailPage({
 
   async function produce(): Promise<void> {
     if (!data) return;
+    try {
+      await packagingRef.current?.saveIfDirty();
+    } catch {
+      return; // packaging save failed — do not produce
+    }
     setAdvanceBusy(true);
     setDeliveryError(null);
     try {
@@ -539,6 +554,20 @@ export function BranchOnlineOrderDetailPage({
                 </>
               )}
             </div>
+
+            {["online", "phone"].includes(data.channel) && (
+              <div style={{ marginTop: 18 }}>
+                <PackagingCard
+                  ref={packagingRef}
+                  branchId={branchId}
+                  orderId={orderId}
+                  items={data.items.map((it) => ({ sizeMl: it.sizeMl ?? null, quantity: it.quantity }))}
+                  savedPackaging={data.packaging ?? []}
+                  readOnly={data.status === "delivered" || data.status === "cancelled"}
+                  onSaved={() => void loadOrder()}
+                />
+              </div>
+            )}
 
             {data.notes && (
               <div style={{ marginTop: 18 }}>

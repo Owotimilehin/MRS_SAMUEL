@@ -107,6 +107,19 @@ const EditDeliveryAddressBody = z.object({
   state: z.string().trim().max(100).nullable().optional(),
 });
 
+// Fulfiller-set packaging (straw + bag) on an online order. quantity 0 means
+// "remove this material". Replace semantics: the whole set is the desired state.
+const SetPackaging = z.object({
+  packaging: z
+    .array(
+      z.object({
+        packaging_material_id: z.string().uuid(),
+        quantity: z.number().int().min(0),
+      }),
+    )
+    .max(50),
+});
+
 const RESERVATION_TIMEOUT_MS: Record<string, number> = {
   walkup: 5 * 60_000,
   whatsapp: 30 * 60_000,
@@ -624,6 +637,109 @@ export function saleRoutes(db: DbClient) {
     return c.json({ data: updated });
   });
 
+  // ============ Set packaging on an online order (fulfiller-added straw/bag) ============
+  // Records the straws + bags used to pack an online/phone order and decrements the
+  // branch packaging ledger by the DIFFERENCE vs what was previously recorded, so the
+  // fulfiller can edit/correct until the order is delivered. Warn-but-allow: the branch
+  // ledger may go negative; packaging never blocks fulfilment. Never touches juice stock.
+  r.put(
+    "/:id/packaging",
+    requireBranchScope(),
+    requireAnyCapability("pos.sell", "orders.manage"),
+    async (c) => {
+      const branchId = c.req.param("branchId");
+      const id = c.req.param("id");
+      if (!branchId || !id) throw new BusinessError("validation_failed", "branchId and id required", 400);
+      const body = SetPackaging.parse(await c.req.json());
+      const auth = c.get("auth");
+
+      await db.transaction(async (tx) => {
+        const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
+        if (!o || o.branchId !== branchId) throw new BusinessError("not_found", "sale not found", 404);
+        if (!["online", "phone"].includes(o.channel)) {
+          throw new BusinessError("conflict", `not an online order: ${o.channel}`, 409);
+        }
+        if (o.status === "delivered" || o.status === "cancelled") {
+          throw new BusinessError("conflict", `cannot change packaging on a ${o.status} order`, 409);
+        }
+
+        // Every requested material must be an active bag/straw consumable.
+        const wantIds = body.packaging.map((p) => p.packaging_material_id);
+        if (wantIds.length > 0) {
+          const mats = await tx
+            .select({ id: packagingMaterial.id })
+            .from(packagingMaterial)
+            .where(
+              and(
+                inArray(packagingMaterial.id, wantIds),
+                inArray(packagingMaterial.kind, ["bag", "straw"]),
+                eq(packagingMaterial.isActive, true),
+              ),
+            );
+          const okIds = new Set(mats.map((m) => m.id));
+          for (const wid of wantIds) {
+            if (!okIds.has(wid)) {
+              throw new BusinessError("validation_failed", "not an active bag/straw material", 422);
+            }
+          }
+        }
+
+        // Desired quantities (merge dupes).
+        const wantQty = new Map<string, number>();
+        for (const p of body.packaging) {
+          wantQty.set(p.packaging_material_id, (wantQty.get(p.packaging_material_id) ?? 0) + p.quantity);
+        }
+        // Previously-recorded quantities.
+        const prevRows = await tx
+          .select()
+          .from(saleOrderPackaging)
+          .where(eq(saleOrderPackaging.saleOrderId, id));
+        const prevQty = new Map<string, number>();
+        for (const r of prevRows) prevQty.set(r.packagingMaterialId, r.quantity);
+
+        // Diff → one compensating ledger row per changed material + reconcile rows.
+        const allIds = new Set<string>([...prevQty.keys(), ...wantQty.keys()]);
+        for (const mid of allIds) {
+          const prev = prevQty.get(mid) ?? 0;
+          const next = wantQty.get(mid) ?? 0;
+          const delta = next - prev;
+          if (delta !== 0) {
+            await tx.insert(packagingStockLedger).values({
+              locationType: "branch",
+              locationId: o.branchId,
+              packagingMaterialId: mid,
+              delta: -delta, // consuming more decrements; reducing count returns stock
+              sourceType: "consumption",
+              sourceId: id,
+              recordedByUserId: auth.userId,
+              note: `Online packaging ${o.orderNumber}`,
+            });
+          }
+          if (next <= 0 && prev > 0) {
+            await tx
+              .delete(saleOrderPackaging)
+              .where(and(eq(saleOrderPackaging.saleOrderId, id), eq(saleOrderPackaging.packagingMaterialId, mid)));
+          } else if (next > 0 && prev === 0) {
+            await tx.insert(saleOrderPackaging).values({ saleOrderId: id, packagingMaterialId: mid, quantity: next });
+          } else if (next > 0 && prev > 0 && next !== prev) {
+            await tx
+              .update(saleOrderPackaging)
+              .set({ quantity: next })
+              .where(and(eq(saleOrderPackaging.saleOrderId, id), eq(saleOrderPackaging.packagingMaterialId, mid)));
+          }
+        }
+      });
+
+      await writeAudit(db, c, {
+        action: "sale.packaging_set",
+        entityType: "sale_order",
+        entityId: id,
+        after: { packaging: body.packaging },
+      });
+      return c.json({ data: { ok: true } });
+    },
+  );
+
   // ============ Edit delivery address ============
   // Lets the owner/branch clean up the drop-off address (and state) before
   // booking a rider. The delivery-options/book flow already reads
@@ -834,10 +950,20 @@ export function saleRoutes(db: DbClient) {
       .where(eq(payment.saleOrderId, id))
       .orderBy(descFn(payment.createdAt))
       .limit(1);
+    // Straws + bags the fulfiller recorded on this order (tracked-only), so the
+    // detail page can show + edit what was packed.
+    const packagingRows = await db
+      .select({
+        packaging_material_id: saleOrderPackaging.packagingMaterialId,
+        quantity: saleOrderPackaging.quantity,
+      })
+      .from(saleOrderPackaging)
+      .where(eq(saleOrderPackaging.saleOrderId, id));
     return c.json({
       data: {
         ...o,
         items,
+        packaging: packagingRows,
         customerName,
         customerPhone,
         customerEmail,
