@@ -797,21 +797,25 @@ export function saleRoutes(db: DbClient) {
   );
 
   // ============ Cancel (any non-terminal→CANCELLED) ============
-  r.patch("/:id/cancel", requireCapability("pos.sell"), async (c) => {
+  // Gated on orders.manage OR pos.sell so branch managers (orders.manage,
+  // no pos.sell) can cancel order-ops issues without needing till access,
+  // while branch_staff/owner keep their existing access via pos.sell.
+  r.patch("/:id/cancel", requireAnyCapability("orders.manage", "pos.sell"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const auth = c.get("auth");
     const { reason } = CancelBody.parse(await c.req.json());
 
-    const updated = await db.transaction(async (tx) => {
+    const { row: updated, wasPaid } = await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
       if (!o) throw new BusinessError("not_found", "sale not found", 404);
       if (["handed_over", "delivered", "cancelled", "failed"].includes(o.status)) {
         throw new BusinessError("conflict", `cannot cancel from ${o.status}`, 409);
       }
+      const wasPaid = o.status === "paid";
 
       // Compensating ledger if already paid
-      if (o.status === "paid") {
+      if (wasPaid) {
         const items = await tx
           .select()
           .from(saleOrderItem)
@@ -848,7 +852,7 @@ export function saleRoutes(db: DbClient) {
         .where(eq(saleOrder.id, id))
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
-      return u;
+      return { row: u, wasPaid };
     });
     await writeAudit(db, c, {
       action: "sale.cancel",
@@ -856,7 +860,14 @@ export function saleRoutes(db: DbClient) {
       entityId: id,
       after: updated,
     });
-    return c.json({ data: updated });
+    // The order was already paid — stock is restored and the order marked
+    // cancelled above, but NO refund is issued automatically. Flag it in the
+    // response so the UI can prompt a human to action a manual refund (via
+    // Returns) rather than silently leaving money owed with no signal.
+    return c.json({
+      data: updated,
+      ...(wasPaid ? { refundOwed: true, paidAmountNgn: updated.totalNgn } : {}),
+    });
   });
 
   // ============ List / Get (read-only) ============

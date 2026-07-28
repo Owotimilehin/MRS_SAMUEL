@@ -167,7 +167,26 @@ export function SaleDetailPage({ branchId, saleId }: { branchId: string; saleId:
     if (!picked) {
       return;
     }
-    await action(`/branches/${branchId}/sales/${saleId}/cancel`, { reason: picked.value }, "Order cancelled");
+    setActing(true);
+    try {
+      // Cancelling a paid order restores stock but never moves money
+      // automatically — the API flags refundOwed so we can say so plainly
+      // instead of leaving the operator to guess whether a refund went out.
+      const res = await api<{ data: { status: string }; refundOwed?: boolean }>(
+        `/branches/${branchId}/sales/${saleId}/cancel`,
+        { method: "PATCH", body: JSON.stringify({ reason: picked.value }) },
+      );
+      toast.success(
+        res.refundOwed
+          ? "Order cancelled. Stock restored — no refund issued. If a refund is due, raise it via Returns."
+          : "Order cancelled.",
+      );
+      await load();
+    } catch (err) {
+      toast.error(humanizeError(err));
+    } finally {
+      setActing(false);
+    }
   }
 
   const productName = (id: string): string => products.find((p) => p.id === id)?.name ?? id.slice(0, 8);

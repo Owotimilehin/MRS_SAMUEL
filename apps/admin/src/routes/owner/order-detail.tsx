@@ -12,6 +12,7 @@ import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
 import { useAuthUser, useCan } from "../../lib/auth.js";
+import { toast } from "../../lib/toast.js";
 import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
 import { getReceiptStyle } from "../../lib/receipt-settings.js";
 import { fetchBranchInfo, printAndToast } from "../../lib/reprint.js";
@@ -286,7 +287,13 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   }
 
   async function cancelAndRefund(): Promise<void> {
-    if (!cancelReason.trim()) return;
+    if (!cancelReason.trim() || !data) return;
+    // Cancelling never moves money automatically — it only restores stock and
+    // flags a refund as owed (a data marker for the owner to action). Capture
+    // whether the order was paid BEFORE the call so we can say plainly what
+    // just happened instead of leaving "mark refund owed" to imply a refund
+    // was actually sent.
+    const wasPaid = data.status === "paid";
     setCancelBusy(true);
     try {
       await api(`/online-orders/${saleId}/cancel-refund`, {
@@ -296,6 +303,11 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
       setShowCancelModal(false);
       setCancelReason("");
       await reloadOrder();
+      toast.success(
+        wasPaid
+          ? "Order cancelled. Stock restored — no refund issued. If a refund is due, raise it via Returns."
+          : "Order cancelled.",
+      );
     } finally {
       setCancelBusy(false);
     }
@@ -1027,8 +1039,15 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
           onConfirm={() => void cancelAndRefund()}
         >
           <p style={{ fontSize: 14, marginBottom: 12 }}>
-            This will cancel order <strong>{data.orderNumber}</strong> and mark a refund
-            owed to the customer. Provide a reason:
+            This will cancel order <strong>{data.orderNumber}</strong> and restore stock.
+            {data.status === "paid" && (
+              <>
+                {" "}
+                <strong>No refund is issued automatically</strong> — the order is flagged
+                as refund-owed so you can process it manually (e.g. via Returns).
+              </>
+            )}{" "}
+            Provide a reason:
           </p>
           <textarea
             className="input"
