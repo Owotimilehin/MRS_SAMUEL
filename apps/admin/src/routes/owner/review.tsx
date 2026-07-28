@@ -76,18 +76,6 @@ export function ReviewPage(): JSX.Element {
     void load();
   }, []);
 
-  async function approveTransfer(id: string): Promise<void> {
-    setActing(id);
-    try {
-      await api(`/transfers/${id}/approve`, { method: "PATCH" });
-      await load();
-    } catch (err) {
-      toast.error(humanizeError(err));
-    } finally {
-      setActing(null);
-    }
-  }
-
   async function approveReturn(id: string): Promise<void> {
     setActing(id);
     try {
@@ -326,14 +314,13 @@ export function ReviewPage(): JSX.Element {
                     <td>{t.branchId.slice(0, 8)}</td>
                     <td>{formatDateTime(t.updatedAt)}</td>
                     <td style={{ textAlign: "right" }}>
-                      <button
-                        type="button"
-                        className="btn btn--primary btn--sm"
-                        disabled={acting === t.id}
-                        onClick={() => void approveTransfer(t.id)}
+                      <Link
+                        to="/transfers/$transferId"
+                        params={{ transferId: t.id }}
+                        className="pill pill--ink"
                       >
-                        {acting === t.id ? "Approving…" : "Approve variance"}
-                      </button>
+                        Review →
+                      </Link>
                     </td>
                   </tr>
                 ))}
