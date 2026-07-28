@@ -995,7 +995,8 @@ export function saleRoutes(db: DbClient) {
         // A preorder only deducts at production, so a paid-but-unproduced
         // preorder has NO stock to move — its edit just re-bases what the
         // production step will later deduct from the (new) line rows.
-        const reservationsApply = o.status === "confirmed" && !o.isPreorder;
+        const reservationsApply =
+          (o.status === "confirmed" || o.status === "reconcile_needed") && !o.isPreorder;
         const stockDeducted = o.status === "paid" && (!o.isPreorder || o.producedAt != null);
         const expiresAt = new Date(Date.now() + (RESERVATION_TIMEOUT_MS[o.channel] ?? 30 * 60_000));
         const allVariants = new Set<string>([...existingByVariant.keys(), ...priced.keys()]);
@@ -1023,7 +1024,21 @@ export function saleRoutes(db: DbClient) {
             }
           } else if (stockDeducted) {
             // ledgerDelta = prev - next: positive restores (reduced qty),
-            // negative deducts more (increased qty).
+            // negative deducts more (increased qty). Increasing qty posts a
+            // negative delta that the non-negative-balance DB trigger would
+            // reject as a raw 500; check availability first and surface the
+            // same friendly 422 order creation uses.
+            if (next > prev) {
+              const available = await availableAtBranch(tx, { branchId: o.branchId, productId });
+              if (available < next - prev) {
+                throw new BusinessError("conflict", "insufficient stock", 422, {
+                  product_id: productId,
+                  variant_id: variantId,
+                  available,
+                  requested: next - prev,
+                });
+              }
+            }
             const ledgerDelta = prev - next;
             await tx.insert(stockLedger).values({
               locationType: "branch",
@@ -1084,8 +1099,9 @@ export function saleRoutes(db: DbClient) {
     requireBranchScope(),
     requireAnyCapability("orders.manage", "pos.sell"),
     async (c) => {
+      const branchId = c.req.param("branchId");
       const id = c.req.param("id");
-      if (!id) throw new BusinessError("validation_failed", "id required", 400);
+      if (!branchId || !id) throw new BusinessError("validation_failed", "branchId and id required", 400);
       const body = EditDeliveryDateBody.parse(await c.req.json());
 
       const scheduledMs = Date.parse(body.scheduledDeliveryAt);
@@ -1101,7 +1117,10 @@ export function saleRoutes(db: DbClient) {
 
       const { before, after } = await db.transaction(async (tx) => {
         const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
-        if (!o) throw new BusinessError("not_found", "sale not found", 404);
+        if (!o || o.branchId !== branchId) throw new BusinessError("not_found", "sale not found", 404);
+        if (!["online", "phone"].includes(o.channel)) {
+          throw new BusinessError("conflict", `not an online order: ${o.channel}`, 409);
+        }
         if (["delivered", "cancelled"].includes(o.status)) {
           throw new BusinessError("conflict", `cannot edit a ${o.status} order`, 409);
         }

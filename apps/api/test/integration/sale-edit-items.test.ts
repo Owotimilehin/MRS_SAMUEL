@@ -217,6 +217,40 @@ describe("edit order items + delivery date", () => {
     expect(resv.length).toBe(2);
   });
 
+  it("reconcile_needed order: editing qty updates the live reservation", async () => {
+    // A reconcile_needed order still holds live reservations (set at confirmed,
+    // deducted only at paid), so an edit must re-base them.
+    const order = await createPhoneOrder(variantA, productA.id, 2); // confirmed, reserves 2
+    await db.update(saleOrder).set({ status: "reconcile_needed" }).where(eq(saleOrder.id, order.id));
+
+    const res = await call<{ data: { totalNgn: number } }>(
+      "PATCH",
+      `/v1/branches/${branch.id}/sales/${order.id}/items`,
+      { items: [{ productId: productA.id, variantId: variantA, quantity: 4 }] },
+    );
+    expect(res.status).toBe(200);
+
+    const resv = await db.select().from(stockReservation).where(eq(stockReservation.saleOrderId, order.id));
+    const totalReserved = resv.reduce((s, r) => s + r.quantity, 0);
+    expect(totalReserved).toBe(4);
+  });
+
+  it("paid order: increasing qty beyond branch stock → 422 (not a raw 500)", async () => {
+    const order = await createPhoneOrder(variantA, productA.id, 2); // deducts 2
+    await call("PATCH", `/v1/branches/${branch.id}/sales/${order.id}/pay`);
+
+    // Increase far past anything the branch could hold. reconciled:true clears
+    // the money gate, so the failure can ONLY come from the stock pre-check.
+    const res = await call<{ error: { code: string; details: Record<string, unknown> } }>(
+      "PATCH",
+      `/v1/branches/${branch.id}/sales/${order.id}/items`,
+      { items: [{ productId: productA.id, variantId: variantA, quantity: 10000 }], reconciled: true },
+    );
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe("conflict");
+    expect(res.body.error.details.available).toBeDefined();
+  });
+
   it("paid order without reconciled → 409 reconcile_required with the delta", async () => {
     const order = await createPhoneOrder(variantA, productA.id, 2); // 5000
     await call("PATCH", `/v1/branches/${branch.id}/sales/${order.id}/pay`);
@@ -335,6 +369,17 @@ describe("edit order items + delivery date", () => {
       { scheduledDeliveryAt: tooFar },
     );
     expect(res.status).toBe(422);
+  });
+
+  it("rejects a delivery-date edit when the path branchId does not own the order with 404", async () => {
+    const order = await createPhoneOrder(variantA, productA.id, 1);
+    const when = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const res = await call(
+      "PATCH",
+      `/v1/branches/${uuid()}/sales/${order.id}/delivery-date`, // mismatched branch in path
+      { scheduledDeliveryAt: when },
+    );
+    expect(res.status).toBe(404);
   });
 
   it("rejects a delivery-date edit on a delivered order with 409", async () => {
