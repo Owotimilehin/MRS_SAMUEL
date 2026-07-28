@@ -106,8 +106,11 @@ async function loadCatalog(): Promise<CatalogEntry[]> {
  * inputs, a remove button per line, and an add-line picker (flavour + size,
  * priced from the CURRENT catalog — the server reprices every line the same
  * way). Saving PATCHes the full desired line set; a paid order whose total
- * changes is gated behind a delta-confirm + manual-reconcile note, either
- * pre-empted locally or triggered by the server's 409 reconcile_required.
+ * changes is gated behind a delta-confirm + manual-reconcile note. The
+ * confirm dialog is always populated from the server's 409
+ * reconcile_required response (previous/new/delta), never from the client's
+ * local preview math, so the amount an operator acknowledges is guaranteed
+ * to match what gets recomputed and audited on the resend.
  */
 export function EditItemsCard({
   branchId,
@@ -124,8 +127,12 @@ export function EditItemsCard({
   children,
 }: EditItemsCardProps): JSX.Element {
   const legacyMissingVariant = items.some((it) => !it.variantId);
-  const editable =
-    canEdit && !UNEDITABLE_STATUSES.has(status) && ["online", "phone"].includes(channel) && !legacyMissingVariant;
+  const editableAsideFromLegacy =
+    canEdit && !UNEDITABLE_STATUSES.has(status) && ["online", "phone"].includes(channel);
+  const editable = editableAsideFromLegacy && !legacyMissingVariant;
+  // Editing is otherwise allowed but blocked solely by pre-variant legacy
+  // rows — surface why, rather than silently showing no "Edit items" button.
+  const blockedByLegacyItems = editableAsideFromLegacy && legacyMissingVariant;
 
   const [editing, setEditing] = useState(false);
   const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
@@ -253,13 +260,12 @@ export function EditItemsCard({
       setSaveError("One or more items are no longer available — remove them to save.");
       return;
     }
-    // Belt-and-suspenders: pre-empt the server's reconcile gate for a paid
-    // order whose total is about to change, so the operator sees the delta
-    // dialog immediately instead of after a round trip.
-    if (status === "paid" && previewTotal !== totalNgn) {
-      setPendingReconcile({ previousTotal: totalNgn, newTotal: previewTotal, delta: previewTotal - totalNgn });
-      return;
-    }
+    // Always attempt the save unreconciled first. For an unpaid order, or a
+    // paid order whose total doesn't actually change, this just succeeds. For
+    // a paid order whose total changes, the server rejects with 409
+    // reconcile_required and the catch in doSave() populates the confirm
+    // dialog from ITS response — never from local previewTotal math — so the
+    // amount the operator acknowledges matches what the server will audit.
     void doSave();
   }
 
@@ -285,6 +291,9 @@ export function EditItemsCard({
           <button type="button" className="btn btn--ghost btn--sm" onClick={startEdit} style={{ fontSize: 12 }}>
             ✎ Edit items
           </button>
+        )}
+        {!editing && blockedByLegacyItems && (
+          <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Editing unavailable for legacy items</span>
         )}
       </header>
 
