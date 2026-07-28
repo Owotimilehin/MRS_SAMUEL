@@ -413,7 +413,7 @@ describe("admin payment reconciliation endpoints", () => {
         cookie: ownerCookies,
         "idempotency-key": uuid(),
       },
-      body: JSON.stringify({ reason: "Customer request" }),
+      body: JSON.stringify({ reason: "Customer request", refundOwed: true }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -446,7 +446,7 @@ describe("admin payment reconciliation endpoints", () => {
         cookie: ownerCookies,
         "idempotency-key": uuid(),
       },
-      body: JSON.stringify({ reason: "Out of stock" }),
+      body: JSON.stringify({ reason: "Out of stock", refundOwed: true }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -454,6 +454,105 @@ describe("admin payment reconciliation endpoints", () => {
     };
     expect(body.data.status).toBe("cancelled");
     expect(body.data.refund_owed_ngn).toBe(totalNgn);
+  });
+
+  it("POST /cancel-refund on a paid order with refundOwed:true clamps a refundAmountNgn above the order total and emits sale.refund_owed", async () => {
+    const { id, orderNumber, totalNgn } = await placeOrder("+2348091111016");
+    await sendWebhook(orderNumber);
+
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/cancel-refund`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: ownerCookies,
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({
+        reason: "Partial refund requested but capped at total",
+        refundOwed: true,
+        refundAmountNgn: totalNgn + 5000,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { status: string; refund_owed_ngn: number };
+    };
+    expect(body.data.status).toBe("cancelled");
+    expect(body.data.refund_owed_ngn).toBe(totalNgn);
+
+    const { saleOrder, outboxEvent } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const [after] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
+    expect(after!.refundOwedNgn).toBe(totalNgn);
+
+    const events = await db.select().from(outboxEvent);
+    const refundEvent = events.find(
+      (e) =>
+        e.eventType === "sale.refund_owed" &&
+        (e.payload as Record<string, unknown>)["sale_order_id"] === id,
+    );
+    expect(refundEvent).toBeDefined();
+  });
+
+  it("POST /cancel-refund on a paid order with refundOwed:false cancels without flagging a refund or emitting sale.refund_owed", async () => {
+    const { id, orderNumber } = await placeOrder("+2348091111017");
+    await sendWebhook(orderNumber);
+
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/cancel-refund`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: ownerCookies,
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({ reason: "No refund owed — store credit given instead", refundOwed: false }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { status: string; refund_owed_ngn: number | null };
+    };
+    expect(body.data.status).toBe("cancelled");
+    expect(body.data.refund_owed_ngn ?? null).toBeNull();
+
+    const { saleOrder, outboxEvent } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const [after] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
+    expect(after!.status).toBe("cancelled");
+    expect(after!.refundOwedNgn).toBeNull();
+
+    const events = await db.select().from(outboxEvent);
+    const refundEvent = events.find(
+      (e) =>
+        e.eventType === "sale.refund_owed" &&
+        (e.payload as Record<string, unknown>)["sale_order_id"] === id,
+    );
+    expect(refundEvent).toBeUndefined();
+  });
+
+  it("POST /cancel-refund on an unpaid (confirmed) order with refundOwed:false cancels cleanly with no refund flag (regression for old unconditional-set bug)", async () => {
+    const { id } = await placeOrder("+2348091111018");
+
+    const res = await fetch(`${baseUrl}/v1/online-orders/${id}/cancel-refund`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: ownerCookies,
+        "idempotency-key": uuid(),
+      },
+      body: JSON.stringify({ reason: "Customer changed mind before paying", refundOwed: false }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { status: string; refund_owed_ngn: number | null };
+    };
+    expect(body.data.status).toBe("cancelled");
+    expect(body.data.refund_owed_ngn ?? null).toBeNull();
+
+    const { saleOrder } = await import("@ms/db");
+    const { eq } = await import("drizzle-orm");
+    const [after] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
+    expect(after!.status).toBe("cancelled");
+    expect(after!.refundOwedNgn).toBeNull();
   });
 
   it("POST /cancel-refund rejects terminal status (delivered)", async () => {
@@ -472,7 +571,7 @@ describe("admin payment reconciliation endpoints", () => {
         cookie: ownerCookies,
         "idempotency-key": uuid(),
       },
-      body: JSON.stringify({ reason: "Delivered — wrong test" }),
+      body: JSON.stringify({ reason: "Delivered — wrong test", refundOwed: false }),
     });
     expect(res.status).toBe(409);
   });
@@ -493,7 +592,7 @@ describe("admin payment reconciliation endpoints", () => {
         cookie: ownerCookies,
         "idempotency-key": uuid(),
       },
-      body: JSON.stringify({ reason: "Already cancelled" }),
+      body: JSON.stringify({ reason: "Already cancelled", refundOwed: false }),
     });
     expect(res.status).toBe(409);
   });
@@ -508,7 +607,7 @@ describe("admin payment reconciliation endpoints", () => {
         cookie: ownerCookies,
         "idempotency-key": uuid(),
       },
-      body: JSON.stringify({ reason: "Refund owed test" }),
+      body: JSON.stringify({ reason: "Refund owed test", refundOwed: true }),
     });
 
     const { outboxEvent } = await import("@ms/db");
@@ -550,7 +649,7 @@ describe("admin payment reconciliation endpoints", () => {
         cookie: ownerCookies,
         "idempotency-key": uuid(),
       },
-      body: JSON.stringify({ reason: "Cancelled for mark-refunded test" }),
+      body: JSON.stringify({ reason: "Cancelled for mark-refunded test", refundOwed: true }),
     });
 
     const { saleOrder } = await import("@ms/db");

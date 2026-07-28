@@ -102,6 +102,8 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [cancelRefundOwed, setCancelRefundOwed] = useState(false);
+  const [cancelRefundAmount, setCancelRefundAmount] = useState("");
   const [showMarkRefundedModal, setShowMarkRefundedModal] = useState(false);
   const [markRefundedBusy, setMarkRefundedBusy] = useState(false);
 
@@ -156,7 +158,12 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
       case "book_rider": bookRide(); break;
       case "rebook_rider": bookRide(); break;
       case "mark_refunded": setShowMarkRefundedModal(true); break;
-      case "cancel_refund": setCancelReason(""); setShowCancelModal(true); break;
+      case "cancel_refund":
+        setCancelReason("");
+        setCancelRefundOwed(data?.status === "paid");
+        setCancelRefundAmount(data ? String(data.totalNgn) : "");
+        setShowCancelModal(true);
+        break;
     }
   }
 
@@ -288,25 +295,37 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
 
   async function cancelAndRefund(): Promise<void> {
     if (!cancelReason.trim() || !data) return;
-    // Cancelling never moves money automatically — it only restores stock and
-    // flags a refund as owed (a data marker for the owner to action). Capture
-    // whether the order was paid BEFORE the call so we can say plainly what
-    // just happened instead of leaving "mark refund owed" to imply a refund
-    // was actually sent.
+    // Cancelling never moves money automatically — it only restores stock and,
+    // when the operator says a refund is owed, flags it (a data marker for the
+    // owner to action manually, e.g. via Returns). Capture whether the order
+    // was paid + the refund choice BEFORE the call so the toast says plainly
+    // what just happened.
     const wasPaid = data.status === "paid";
+    const refundOwed = cancelRefundOwed;
+    const parsedAmount = Number(cancelRefundAmount);
+    const refundAmountNgn =
+      refundOwed && Number.isFinite(parsedAmount) && parsedAmount > 0
+        ? Math.round(parsedAmount)
+        : undefined;
     setCancelBusy(true);
     try {
       await api(`/online-orders/${saleId}/cancel-refund`, {
         method: "POST",
-        body: JSON.stringify({ reason: cancelReason.trim() }),
+        body: JSON.stringify({
+          reason: cancelReason.trim(),
+          refundOwed,
+          ...(refundAmountNgn != null ? { refundAmountNgn } : {}),
+        }),
       });
       setShowCancelModal(false);
       setCancelReason("");
       await reloadOrder();
       toast.success(
-        wasPaid
-          ? "Order cancelled. Stock restored — no refund issued. If a refund is due, raise it via Returns."
-          : "Order cancelled.",
+        refundOwed
+          ? "Order cancelled. Stock restored — flagged as refund-owed. No refund was sent automatically."
+          : wasPaid
+            ? "Order cancelled. Stock restored — no refund issued."
+            : "Order cancelled.",
       );
     } finally {
       setCancelBusy(false);
@@ -1029,25 +1048,22 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
 
       {showCancelModal && data && (
         <ConfirmModal
-          title="Cancel order & mark refund owed?"
-          confirmLabel="Cancel & mark refund"
+          title="Cancel this order?"
+          confirmLabel={cancelRefundOwed ? "Cancel & mark refund owed" : "Cancel order"}
           busyLabel="Cancelling…"
           busy={cancelBusy}
-          confirmDisabled={cancelReason.trim() === ""}
+          confirmDisabled={
+            cancelReason.trim() === "" ||
+            (cancelRefundOwed && !(Number(cancelRefundAmount) > 0))
+          }
           tone="danger"
           onCancel={() => setShowCancelModal(false)}
           onConfirm={() => void cancelAndRefund()}
         >
           <p style={{ fontSize: 14, marginBottom: 12 }}>
-            This will cancel order <strong>{data.orderNumber}</strong> and restore stock.
-            {data.status === "paid" && (
-              <>
-                {" "}
-                <strong>No refund is issued automatically</strong> — the order is flagged
-                as refund-owed so you can process it manually (e.g. via Returns).
-              </>
-            )}{" "}
-            Provide a reason:
+            This will cancel order <strong>{data.orderNumber}</strong> and restore stock.{" "}
+            <strong>No refund is ever issued automatically</strong> — cancelling only flags
+            the order so you can process a manual refund (e.g. via Returns) if one is due.
           </p>
           <textarea
             className="input"
@@ -1057,6 +1073,52 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
             onChange={(e) => setCancelReason(e.target.value)}
             style={{ width: "100%", resize: "vertical", fontSize: 14 }}
           />
+
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+              Is a refund owed to the customer?
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className={cancelRefundOwed ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+                onClick={() => {
+                  setCancelRefundOwed(true);
+                  if (!cancelRefundAmount) setCancelRefundAmount(String(data.totalNgn));
+                }}
+                style={{ flex: 1, justifyContent: "center" }}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                className={!cancelRefundOwed ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+                onClick={() => setCancelRefundOwed(false)}
+                style={{ flex: 1, justifyContent: "center" }}
+              >
+                No
+              </button>
+            </div>
+            {cancelRefundOwed && (
+              <div style={{ marginTop: 10 }}>
+                <label style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+                  Refund amount (₦)
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={data.totalNgn}
+                  value={cancelRefundAmount}
+                  onChange={(e) => setCancelRefundAmount(e.target.value)}
+                  style={{ width: "100%", fontSize: 14, marginTop: 4 }}
+                />
+                <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>
+                  Defaults to the order total ({ngn(data.totalNgn)}); capped at the total.
+                </p>
+              </div>
+            )}
+          </div>
         </ConfirmModal>
       )}
 

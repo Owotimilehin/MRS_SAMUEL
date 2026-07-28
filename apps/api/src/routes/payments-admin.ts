@@ -25,6 +25,8 @@ const TERMINAL_STATUSES = [
 
 const CancelRefundBody = z.object({
   reason: z.string().min(1, "reason is required"),
+  refundOwed: z.boolean(),
+  refundAmountNgn: z.number().int().positive().optional(),
 });
 
 /**
@@ -259,7 +261,7 @@ export function paymentsAdminRoutes(db: DbClient) {
     } catch {
       throw new BusinessError("validation_failed", "reason is required", 400);
     }
-    const { reason } = body;
+    const { reason, refundOwed, refundAmountNgn } = body;
 
     const o = await loadOnlineOrder(id);
 
@@ -300,6 +302,13 @@ export function paymentsAdminRoutes(db: DbClient) {
       // Delete the stock reservation (idempotent if already cleared by payment).
       await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, id));
 
+      // Only flag a refund as owed when the operator was explicitly asked and
+      // said yes — cancelling an unpaid order (or a paid one with no refund
+      // due, e.g. store credit given instead) must NOT set refundOwedNgn.
+      const refundOwedNgn = refundOwed
+        ? Math.min(refundAmountNgn ?? fresh.totalNgn, fresh.totalNgn)
+        : null;
+
       const [u] = await tx
         .update(saleOrder)
         .set({
@@ -307,23 +316,26 @@ export function paymentsAdminRoutes(db: DbClient) {
           cancelReason: reason,
           cancelledByUserId: auth.userId,
           cancelledAt: new Date(),
-          refundOwedNgn: fresh.totalNgn,
+          refundOwedNgn,
           updatedAt: new Date(),
         })
         .where(eq(saleOrder.id, id))
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
 
-      // Emit outbox event so the worker can notify the owner about the refund.
-      await tx.insert(outboxEvent).values({
-        eventType: "sale.refund_owed",
-        payload: {
-          sale_order_id: id,
-          order_number: fresh.orderNumber,
-          refund_owed_ngn: fresh.totalNgn,
-          cancel_reason: reason,
-        },
-      });
+      // Emit outbox event so the worker can notify the owner about the refund —
+      // only when a refund is actually owed.
+      if (refundOwedNgn != null) {
+        await tx.insert(outboxEvent).values({
+          eventType: "sale.refund_owed",
+          payload: {
+            sale_order_id: id,
+            order_number: fresh.orderNumber,
+            refund_owed_ngn: refundOwedNgn,
+            cancel_reason: reason,
+          },
+        });
+      }
 
       return u;
     });
