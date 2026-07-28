@@ -65,40 +65,57 @@ for admin routes. Verify by: `pnpm lint` clean, `pnpm typecheck` clean, and conf
 
 ---
 
-## Task 2: Branch manager can cancel an order; cancel never auto-refunds
+## Task 2: Managers cancel orders; cancel asks whether a refund is owed (no auto-refund)
 
-**Goal:** Let the `manager` role cancel orders, and make explicit in the admin UI that cancelling
-does not issue a refund.
+**Corrected scope note:** the admin order-detail "Cancel" for ONLINE orders calls
+`payments-admin.ts /online-orders/:id/cancel-refund`, NOT `sales.ts /:id/cancel` (that's the
+POS/till path). The real item-④ fix lives in the online-order path. Sub-part (A) below is **already
+committed** (`ec4aef7`) and kept per owner decision; sub-parts (B)(C)(D) are the remaining work.
 
-**Files:**
-- `apps/api/src/routes/sales.ts` — the `PATCH /:id/cancel` handler (around line 800).
-- The admin order-detail cancel UI (`apps/admin/src/routes/owner/order-detail.tsx`; find the
-  existing cancel action there).
-- `apps/api/src/routes/sales.*.test.ts` (or the existing sales test file) for the gate + response.
+**Owner decisions baked in:**
+- On a PAID-order cancel, the operator is ASKED "is a refund owed?" (yes/no + amount). Only then is
+  `refundOwedNgn` set. Refund itself stays a separate manual/Returns action; owner-only
+  `mark-refunded` unchanged.
+- Managers (and branch_staff — both hold `orders.manage`) can cancel paid orders from the BRANCH
+  view too; owner view keeps it.
 
-**Change (API):**
-1. Change the cancel route gate from `requireCapability("pos.sell")` to
-   `requireAnyCapability("orders.manage", "pos.sell")` so `manager`/`admin` can cancel while
-   `branch_staff`/`owner` keep their access. (`requireAnyCapability` is already imported in this file.)
-2. The handler already restores stock and marks `cancelled` with **no refund** — keep that. When
-   the cancelled order's status was `paid`, include `refundOwed: true` and `paidAmountNgn` (the
-   order total that was paid) in the JSON response `data` (or a sibling field) so the UI can message
-   it. Do not create any refund/return record automatically.
-3. Confirm no other caller depends on cancel being `pos.sell`-only (grep for `/cancel` usages).
+### (A) POS sales cancel gate — DONE (`ec4aef7`), do not redo
+`sales.ts PATCH /:id/cancel` gate widened to `requireAnyCapability("orders.manage","pos.sell")`;
+paid cancels return `refundOwed`/`paidAmountNgn`; integration test `sale-cancel-capability.test.ts`.
 
-**Change (admin UI):**
-- On a successful cancel of a `paid` order, surface a clear note: "Stock restored — **no refund
-  issued**. If a refund is due, raise it via Returns." (toast or inline; match existing patterns).
+### (B) API — `payments-admin.ts` `POST /:id/cancel-refund` (~line 250, gate stays `orders.manage`)
+1. Extend `CancelRefundBody` (line 26) with `refundOwed: boolean` and optional
+   `refundAmountNgn: number` (positive int).
+2. In the handler: keep the stock restore for `paid` orders and the `cancelled` status write. But
+   set `refundOwedNgn` **only when `refundOwed === true`** — amount = `refundAmountNgn ?? fresh.totalNgn`,
+   clamped to `≤ fresh.totalNgn`; when `false`, leave `refundOwedNgn` null and do NOT emit the
+   `sale.refund_owed` outbox event. This also fixes the latent bug where `refundOwedNgn` was set
+   unconditionally even for unpaid cancels.
+3. Audit `after` reflects the actual `refundOwedNgn` written.
 
-**Tests:** add/extend a targeted test in the sales route test file:
-- a `manager`-capability actor can cancel a cancellable order (was previously forbidden);
-- cancelling a `paid` order returns `refundOwed: true` and does not create a return/refund row;
-- `branch_staff` can still cancel (no regression).
+### (C) Admin owner view — `owner/order-detail.tsx` cancel modal
+The `cancelAndRefund` toast copy is already updated. Update the cancel MODAL to also ask "Is a
+refund owed?" (yes/no) and, when yes, an amount (default = order total, for paid orders). Pass
+`refundOwed` + `refundAmountNgn` in the `cancel-refund` body. Toast reflects the choice.
+
+### (D) Admin branch view — `branch/online-order-detail.tsx` expose paid-cancel to managers
+1. `actionAllowed` (line ~265) currently returns `false` for `cancel_refund`. Allow it when
+   `can("orders.manage")` (both branch_staff and manager have it); keep `accept_paid`/
+   `mark_refunded`/`recheck_payment` owner-only.
+2. Wire a cancel flow for paid orders in the branch view mirroring the owner modal (reason +
+   "refund owed?" + amount) → `POST /online-orders/:id/cancel-refund`. Reuse existing modal/toast
+   patterns already in this file (it already has a `cancelUnpaid` flow + `confirmCancelUnpaid`).
+
+**Tests (targeted):** extend the integration suite for `cancel-refund`:
+- paid order + `refundOwed:true` → `refundOwedNgn = amount` (clamped), emits `sale.refund_owed`;
+- paid order + `refundOwed:false` → cancelled, `refundOwedNgn` stays null, NO refund event;
+- unpaid (`confirmed`) order + `refundOwed:false` → cancelled cleanly, no refund flag (regression
+  for the old unconditional-set bug).
 Run only that test file.
 
-**Acceptance:**
-- `manager` can cancel; response flags refund-owed for paid cancels; no auto-refund; tests pass;
-  lint + typecheck clean.
+**Acceptance:** cancel-refund honours the refund-owed choice (no auto-flag); managers can cancel
+paid orders from branch + owner views; owner-only mark-refunded unchanged; tests pass; lint +
+typecheck clean.
 
 ---
 
