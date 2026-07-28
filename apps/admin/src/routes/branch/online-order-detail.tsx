@@ -7,12 +7,13 @@ import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
 import { PackagingCard, type PackagingCardHandle } from "../../components/PackagingCard.js";
 import { OrderJourney } from "../../components/OrderJourney.js";
+import { EditItemsCard } from "../../components/EditItemsCard.js";
+import { DeliveryDateEditor } from "../../components/DeliveryDateEditor.js";
 import { deriveOrderJourney } from "../../lib/order-journey.js";
 import { deriveOrderActions, type OrderActionId } from "../../lib/order-actions.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
-import { FlavourMedia } from "../../components/FlavourMedia.js";
 import { useCan, useAuthUser } from "../../lib/auth.js";
 import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
 import { getReceiptStyle } from "../../lib/receipt-settings.js";
@@ -22,6 +23,7 @@ import { toast } from "../../lib/toast.js";
 interface SaleItem {
   id: string;
   productId: string;
+  variantId?: string | null;
   quantity: number;
   unitPriceNgn: number;
   lineTotalNgn: number;
@@ -520,69 +522,19 @@ export function BranchOnlineOrderDetailPage({
               )}
             </header>
 
-            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "16px 0 8px" }}>Items</h3>
-            <div className="table-wrap" style={{ border: 0 }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>Size</th>
-                    <th className="table__num">Qty</th>
-                    <th className="table__num">Unit</th>
-                    <th className="table__num">Line</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((it) => {
-                    const p = products[it.productId];
-                    return (
-                      <tr key={it.id}>
-                        <td>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                            <FlavourMedia size="chip" product={{ slug: p?.slug }} />
-                            <span style={{ fontWeight: 600 }}>
-                              {p?.name ?? `${it.productId.slice(0, 8)}…`}
-                            </span>
-                          </span>
-                        </td>
-                        <td>{it.sizeMl ? `${it.sizeMl}ml` : "—"}</td>
-                        <td className="table__num">{it.quantity}</td>
-                        <td className="table__num">{ngn(it.unitPriceNgn)}</td>
-                        <td className="table__num" style={{ fontWeight: 700 }}>
-                          {ngn(it.lineTotalNgn)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div
-              style={{
-                marginTop: 18,
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-                maxWidth: 320,
-                marginLeft: "auto",
-              }}
+            <EditItemsCard
+              branchId={branchId}
+              saleId={orderId}
+              status={data.status}
+              channel={data.channel}
+              items={data.items}
+              subtotalNgn={data.subtotalNgn}
+              deliveryFeeNgn={data.deliveryFeeNgn}
+              totalNgn={data.totalNgn}
+              productsById={products}
+              canEdit={can("orders.manage")}
+              onSaved={() => void loadOrder()}
             >
-              <span style={{ color: "var(--ink-soft)" }}>Subtotal</span>
-              <span className="tabular-nums" style={{ textAlign: "right" }}>
-                {ngn(data.subtotalNgn)}
-              </span>
-              <span style={{ color: "var(--ink-soft)" }}>Delivery</span>
-              <span className="tabular-nums" style={{ textAlign: "right" }}>
-                {ngn(data.deliveryFeeNgn)}
-              </span>
-              <span style={{ fontWeight: 700 }}>Total</span>
-              <span
-                className="tabular-nums"
-                style={{ textAlign: "right", fontWeight: 800, fontSize: 18 }}
-              >
-                {ngn(data.totalNgn)}
-              </span>
               {data.paymentMethod === "card" && data.grossNgn != null && (
                 <>
                   <span style={{ color: "var(--ink-soft)" }}>Payaza fee</span>
@@ -607,7 +559,7 @@ export function BranchOnlineOrderDetailPage({
                   )}
                 </>
               )}
-            </div>
+            </EditItemsCard>
 
             {["online", "phone"].includes(data.channel) && (
               <div style={{ marginTop: 18 }}>
@@ -908,6 +860,18 @@ export function BranchOnlineOrderDetailPage({
                         </div>
                       )}
                     </>
+                  )}
+
+                  {!editingAddress && (
+                    <DeliveryDateEditor
+                      branchId={branchId}
+                      saleId={orderId}
+                      scheduledDeliveryAt={data.scheduledDeliveryAt}
+                      status={data.status}
+                      channel={data.channel}
+                      canEdit={can("orders.manage")}
+                      onSaved={() => void loadOrder()}
+                    />
                   )}
 
                   {!editingAddress && can("pos.sell") && (data.delivery && data.delivery.status !== "cancelled" ? (
