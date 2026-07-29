@@ -120,6 +120,31 @@ const SetPackaging = z.object({
     .max(50),
 });
 
+// Edit an order's full line set after confirmation. `items` is the DESIRED
+// state (not a delta): each line is repriced from the variant's CURRENT price.
+// A paid order whose recomputed total no longer matches what was paid needs an
+// explicit reconciled:true (the UI prompts a human) — we never auto-charge or
+// auto-refund.
+const EditItemsBody = z.object({
+  items: z
+    .array(
+      z.object({
+        productId: z.string().uuid(),
+        variantId: z.string().uuid(),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .min(1),
+  reconciled: z.boolean().optional(),
+  reconcileNote: z.string().trim().max(500).optional(),
+});
+
+// Change the scheduled delivery day on a confirmed order. Validated against the
+// same future / ≤ 3-month window the storefront checkout enforces.
+const EditDeliveryDateBody = z.object({
+  scheduledDeliveryAt: z.string(),
+});
+
 const RESERVATION_TIMEOUT_MS: Record<string, number> = {
   walkup: 5 * 60_000,
   whatsapp: 30 * 60_000,
@@ -127,6 +152,40 @@ const RESERVATION_TIMEOUT_MS: Record<string, number> = {
   phone: 30 * 60_000,
   online: 30 * 60_000,
 };
+
+const LAGOS_OFFSET_MS = 3_600_000; // UTC+1, no DST
+
+/** Lagos (UTC+1) calendar date (YYYY-MM-DD) for an epoch-ms instant. */
+function lagosDateStr(ms: number): string {
+  const l = new Date(ms + LAGOS_OFFSET_MS);
+  return [
+    l.getUTCFullYear(),
+    String(l.getUTCMonth() + 1).padStart(2, "0"),
+    String(l.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+/** Lagos calendar date three months from `ms` — the furthest anyone may schedule. */
+function maxScheduleDateStr(ms: number): string {
+  const l = new Date(ms + LAGOS_OFFSET_MS);
+  const capped = new Date(Date.UTC(l.getUTCFullYear(), l.getUTCMonth() + 3, l.getUTCDate()));
+  return [
+    capped.getUTCFullYear(),
+    String(capped.getUTCMonth() + 1).padStart(2, "0"),
+    String(capped.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+// Statuses past the point where an order's line set / delivery day may change:
+// the goods are gone (handed over / delivered / out for delivery) or the order
+// is dead (failed / cancelled).
+const UNEDITABLE_ITEM_STATUSES = new Set<string>([
+  "handed_over",
+  "out_for_delivery",
+  "delivered",
+  "failed",
+  "cancelled",
+]);
 
 export function saleRoutes(db: DbClient) {
   const r = new Hono();
@@ -796,22 +855,318 @@ export function saleRoutes(db: DbClient) {
     },
   );
 
+  // ============ Edit items (recompute totals from current prices) ============
+  // Lets a manager/admin correct an order's line set (add/remove/change qty)
+  // after confirmation. Every line is REPRICED from the variant's current
+  // price — the caller never supplies a price. Stock follows the change:
+  // reservations move for an unpaid order; a paid order (stock already
+  // deducted) gets a compensating ledger row per changed variant. Money is
+  // NEVER moved automatically: if the recomputed total no longer matches what
+  // the customer paid, the caller must pass reconciled:true (the UI prompts a
+  // human to settle the difference via Returns / a follow-up charge).
+  r.patch(
+    "/:id/items",
+    requireBranchScope(),
+    requireAnyCapability("orders.manage", "pos.sell"),
+    async (c) => {
+      const branchId = c.req.param("branchId");
+      const id = c.req.param("id");
+      if (!branchId || !id) throw new BusinessError("validation_failed", "branchId and id required", 400);
+      const body = EditItemsBody.parse(await c.req.json());
+      const auth = c.get("auth");
+
+      const result = await db.transaction(async (tx) => {
+        const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
+        if (!o || o.branchId !== branchId) throw new BusinessError("not_found", "sale not found", 404);
+        if (!["online", "phone"].includes(o.channel)) {
+          throw new BusinessError("conflict", `not an online order: ${o.channel}`, 409);
+        }
+        if (UNEDITABLE_ITEM_STATUSES.has(o.status)) {
+          throw new BusinessError("conflict", `cannot edit items on a ${o.status} order`, 409);
+        }
+
+        // Desired lines, merged by variant (the request is the full set).
+        const desired = new Map<string, { productId: string; quantity: number }>();
+        for (const it of body.items) {
+          const cur = desired.get(it.variantId);
+          if (cur) {
+            if (cur.productId !== it.productId) {
+              throw new BusinessError("validation_failed", "variant_id sent with two product_ids", 422);
+            }
+            cur.quantity += it.quantity;
+          } else {
+            desired.set(it.variantId, { productId: it.productId, quantity: it.quantity });
+          }
+        }
+
+        // Resolve + reprice every desired line from the CURRENT variant price.
+        const priced = new Map<
+          string,
+          { productId: string; priceId: string; unitPriceNgn: number; quantity: number; lineTotalNgn: number }
+        >();
+        let newSubtotal = 0;
+        for (const [variantId, { productId, quantity }] of desired) {
+          const [v] = await tx
+            .select()
+            .from(productVariant)
+            .where(and(eq(productVariant.id, variantId), isNull(productVariant.deletedAt)));
+          if (!v || !v.isActive) {
+            throw new BusinessError("validation_failed", `variant ${variantId} is not sellable`, 422);
+          }
+          if (v.productId !== productId) {
+            throw new BusinessError("validation_failed", "variant_id does not belong to product_id", 422);
+          }
+          const [price] = await tx
+            .select()
+            .from(productPrice)
+            .where(and(eq(productPrice.variantId, variantId), isNull(productPrice.validTo)))
+            .orderBy(desc(productPrice.validFrom))
+            .limit(1);
+          if (!price) {
+            throw new BusinessError("validation_failed", `no price for variant ${variantId}`, 422);
+          }
+          const lineTotalNgn = price.priceNgn * quantity;
+          priced.set(variantId, {
+            productId,
+            priceId: price.id,
+            unitPriceNgn: price.priceNgn,
+            quantity,
+            lineTotalNgn,
+          });
+          newSubtotal += lineTotalNgn;
+        }
+        const newTotal = newSubtotal + o.deliveryFeeNgn;
+
+        // Manual-reconcile gate. A paid order's "amount paid" is its current
+        // totalNgn; if the recompute changes that, a human must acknowledge the
+        // difference before we touch the order. We NEVER move money here.
+        const wasPaid = o.status === "paid";
+        const delta = newTotal - o.totalNgn;
+        if (wasPaid && delta !== 0 && body.reconciled !== true) {
+          const dir = delta > 0 ? "owes ₦" : "is owed ₦";
+          throw new BusinessError(
+            "reconcile_required",
+            `Total changes from ₦${o.totalNgn} to ₦${newTotal}; customer ${dir}${Math.abs(delta)}. Re-submit with reconciled:true to proceed (no automatic charge or refund).`,
+            409,
+            { previous_total_ngn: o.totalNgn, new_total_ngn: newTotal, delta_ngn: delta },
+          );
+        }
+
+        // Snapshot the existing line set (for the audit + stock diff), keyed by
+        // variant. Any legacy duplicate rows for the same variant are collapsed.
+        const existingRows = await tx
+          .select()
+          .from(saleOrderItem)
+          .where(eq(saleOrderItem.saleOrderId, id));
+        const beforeLines = existingRows.map((r) => ({
+          productId: r.productId,
+          variantId: r.variantId,
+          quantity: r.quantity,
+          unitPriceNgn: r.unitPriceNgn,
+          lineTotalNgn: r.lineTotalNgn,
+        }));
+        const existingByVariant = new Map<string, number>();
+        for (const r of existingRows) {
+          if (!r.variantId) continue;
+          existingByVariant.set(r.variantId, (existingByVariant.get(r.variantId) ?? 0) + r.quantity);
+        }
+
+        // Replace the line set cleanly (delete then insert the desired set) so
+        // totals are always exact even if legacy duplicate rows existed.
+        await tx.delete(saleOrderItem).where(eq(saleOrderItem.saleOrderId, id));
+        for (const [variantId, p] of priced) {
+          await tx.insert(saleOrderItem).values({
+            saleOrderId: id,
+            productId: p.productId,
+            variantId,
+            productPriceId: p.priceId,
+            quantity: p.quantity,
+            unitPriceNgn: p.unitPriceNgn,
+            lineTotalNgn: p.lineTotalNgn,
+          });
+        }
+
+        // Stock: apply the per-variant quantity delta.
+        //  - `confirmed` non-preorder → soft holds exist; move the reservations.
+        //  - Stock already deducted → post a compensating ledger row per changed
+        //    variant into the SAME variant bucket (positive when reducing qty =
+        //    restore; negative when increasing = further deduct), mirroring the
+        //    cancel handler's restore.
+        // A preorder only deducts at production, so a paid-but-unproduced
+        // preorder has NO stock to move — its edit just re-bases what the
+        // production step will later deduct from the (new) line rows.
+        const reservationsApply =
+          (o.status === "confirmed" || o.status === "reconcile_needed") && !o.isPreorder;
+        const stockDeducted = o.status === "paid" && (!o.isPreorder || o.producedAt != null);
+        const expiresAt = new Date(Date.now() + (RESERVATION_TIMEOUT_MS[o.channel] ?? 30 * 60_000));
+        const allVariants = new Set<string>([...existingByVariant.keys(), ...priced.keys()]);
+        for (const variantId of allVariants) {
+          const prev = existingByVariant.get(variantId) ?? 0;
+          const next = priced.get(variantId)?.quantity ?? 0;
+          if (prev === next) continue;
+          const productId = priced.get(variantId)?.productId
+            ?? existingRows.find((r) => r.variantId === variantId)!.productId;
+
+          if (reservationsApply) {
+            // Recompute the reservation for this variant to `next`.
+            await tx
+              .delete(stockReservation)
+              .where(and(eq(stockReservation.saleOrderId, id), eq(stockReservation.variantId, variantId)));
+            if (next > 0) {
+              await tx.insert(stockReservation).values({
+                saleOrderId: id,
+                branchId: o.branchId,
+                productId,
+                variantId,
+                quantity: next,
+                expiresAt,
+              });
+            }
+          } else if (stockDeducted) {
+            // ledgerDelta = prev - next: positive restores (reduced qty),
+            // negative deducts more (increased qty). Increasing qty posts a
+            // negative delta that the non-negative-balance DB trigger would
+            // reject as a raw 500; check availability first and surface the
+            // same friendly 422 order creation uses.
+            if (next > prev) {
+              const available = await availableAtBranch(tx, { branchId: o.branchId, productId });
+              if (available < next - prev) {
+                throw new BusinessError("conflict", "insufficient stock", 422, {
+                  product_id: productId,
+                  variant_id: variantId,
+                  available,
+                  requested: next - prev,
+                });
+              }
+            }
+            const ledgerDelta = prev - next;
+            await tx.insert(stockLedger).values({
+              locationType: "branch",
+              locationId: o.branchId,
+              productId,
+              variantId,
+              delta: ledgerDelta,
+              sourceType: ledgerDelta > 0 ? "sale_cancelled" : "sale",
+              sourceId: id,
+              recordedByUserId: auth.userId,
+              note: `Edit ${o.orderNumber}: qty ${prev}→${next}`,
+            });
+          }
+        }
+
+        const [u] = await tx
+          .update(saleOrder)
+          .set({ subtotalNgn: newSubtotal, totalNgn: newTotal, updatedAt: new Date() })
+          .where(eq(saleOrder.id, id))
+          .returning();
+        if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
+
+        const items = await tx.select().from(saleOrderItem).where(eq(saleOrderItem.saleOrderId, id));
+        return { order: u, items, beforeLines, delta };
+      });
+
+      await writeAudit(db, c, {
+        action: "sale.items_edit",
+        entityType: "sale_order",
+        entityId: id,
+        before: { orderNumber: result.order.orderNumber, lines: result.beforeLines },
+        after: {
+          orderNumber: result.order.orderNumber,
+          lines: result.items.map((i) => ({
+            productId: i.productId,
+            variantId: i.variantId,
+            quantity: i.quantity,
+            unitPriceNgn: i.unitPriceNgn,
+            lineTotalNgn: i.lineTotalNgn,
+          })),
+          subtotalNgn: result.order.subtotalNgn,
+          totalNgn: result.order.totalNgn,
+          deltaNgn: result.delta,
+          ...(body.reconciled ? { reconciled: true, reconcileNote: body.reconcileNote ?? null } : {}),
+        },
+      });
+      return c.json({ data: { ...result.order, items: result.items } });
+    },
+  );
+
+  // ============ Edit delivery date ============
+  // Change the scheduled delivery day on a confirmed online/phone order. The
+  // date is validated against the same window as the storefront checkout: it
+  // must be a valid ISO datetime, in the future, and no more than three months
+  // out. Terminal orders (delivered/cancelled) are frozen.
+  r.patch(
+    "/:id/delivery-date",
+    requireBranchScope(),
+    requireAnyCapability("orders.manage", "pos.sell"),
+    async (c) => {
+      const branchId = c.req.param("branchId");
+      const id = c.req.param("id");
+      if (!branchId || !id) throw new BusinessError("validation_failed", "branchId and id required", 400);
+      const body = EditDeliveryDateBody.parse(await c.req.json());
+
+      const scheduledMs = Date.parse(body.scheduledDeliveryAt);
+      if (isNaN(scheduledMs)) {
+        throw new BusinessError("validation_failed", "scheduledDeliveryAt must be a valid ISO datetime", 422);
+      }
+      if (scheduledMs <= Date.now()) {
+        throw new BusinessError("validation_failed", "scheduledDeliveryAt must be in the future", 422);
+      }
+      if (lagosDateStr(scheduledMs) > maxScheduleDateStr(Date.now())) {
+        throw new BusinessError("validation_failed", "scheduledDeliveryAt is too far in the future", 422);
+      }
+
+      const { before, after } = await db.transaction(async (tx) => {
+        const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
+        if (!o || o.branchId !== branchId) throw new BusinessError("not_found", "sale not found", 404);
+        if (!["online", "phone"].includes(o.channel)) {
+          throw new BusinessError("conflict", `not an online order: ${o.channel}`, 409);
+        }
+        if (["delivered", "cancelled"].includes(o.status)) {
+          throw new BusinessError("conflict", `cannot edit a ${o.status} order`, 409);
+        }
+        const [u] = await tx
+          .update(saleOrder)
+          .set({ scheduledDeliveryAt: new Date(scheduledMs), updatedAt: new Date() })
+          .where(eq(saleOrder.id, id))
+          .returning();
+        if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
+        return {
+          before: { scheduledDeliveryAt: o.scheduledDeliveryAt },
+          after: { scheduledDeliveryAt: u.scheduledDeliveryAt },
+        };
+      });
+
+      await writeAudit(db, c, {
+        action: "sale.delivery_date_edit",
+        entityType: "sale_order",
+        entityId: id,
+        before,
+        after,
+      });
+      return c.json({ data: after });
+    },
+  );
+
   // ============ Cancel (any non-terminal→CANCELLED) ============
-  r.patch("/:id/cancel", requireCapability("pos.sell"), async (c) => {
+  // Gated on orders.manage OR pos.sell so branch managers (orders.manage,
+  // no pos.sell) can cancel order-ops issues without needing till access,
+  // while branch_staff/owner keep their existing access via pos.sell.
+  r.patch("/:id/cancel", requireAnyCapability("orders.manage", "pos.sell"), async (c) => {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const auth = c.get("auth");
     const { reason } = CancelBody.parse(await c.req.json());
 
-    const updated = await db.transaction(async (tx) => {
+    const { row: updated, wasPaid } = await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
       if (!o) throw new BusinessError("not_found", "sale not found", 404);
       if (["handed_over", "delivered", "cancelled", "failed"].includes(o.status)) {
         throw new BusinessError("conflict", `cannot cancel from ${o.status}`, 409);
       }
+      const wasPaid = o.status === "paid";
 
       // Compensating ledger if already paid
-      if (o.status === "paid") {
+      if (wasPaid) {
         const items = await tx
           .select()
           .from(saleOrderItem)
@@ -848,7 +1203,7 @@ export function saleRoutes(db: DbClient) {
         .where(eq(saleOrder.id, id))
         .returning();
       if (!u) throw new BusinessError("internal_error", "update returned no rows", 500);
-      return u;
+      return { row: u, wasPaid };
     });
     await writeAudit(db, c, {
       action: "sale.cancel",
@@ -856,7 +1211,14 @@ export function saleRoutes(db: DbClient) {
       entityId: id,
       after: updated,
     });
-    return c.json({ data: updated });
+    // The order was already paid — stock is restored and the order marked
+    // cancelled above, but NO refund is issued automatically. Flag it in the
+    // response so the UI can prompt a human to action a manual refund (via
+    // Returns) rather than silently leaving money owed with no signal.
+    return c.json({
+      data: updated,
+      ...(wasPaid ? { refundOwed: true, paidAmountNgn: updated.totalNgn } : {}),
+    });
   });
 
   // ============ List / Get (read-only) ============

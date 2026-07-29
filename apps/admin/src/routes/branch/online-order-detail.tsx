@@ -7,12 +7,13 @@ import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
 import { PackagingCard, type PackagingCardHandle } from "../../components/PackagingCard.js";
 import { OrderJourney } from "../../components/OrderJourney.js";
+import { EditItemsCard } from "../../components/EditItemsCard.js";
+import { DeliveryDateEditor } from "../../components/DeliveryDateEditor.js";
 import { deriveOrderJourney } from "../../lib/order-journey.js";
 import { deriveOrderActions, type OrderActionId } from "../../lib/order-actions.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
-import { FlavourMedia } from "../../components/FlavourMedia.js";
 import { useCan, useAuthUser } from "../../lib/auth.js";
 import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
 import { getReceiptStyle } from "../../lib/receipt-settings.js";
@@ -22,6 +23,7 @@ import { toast } from "../../lib/toast.js";
 interface SaleItem {
   id: string;
   productId: string;
+  variantId?: string | null;
   quantity: number;
   unitPriceNgn: number;
   lineTotalNgn: number;
@@ -105,6 +107,14 @@ export function BranchOnlineOrderDetailPage({
   const [payError, setPayError] = useState<string | null>(null);
   const [payNote, setPayNote] = useState<string | null>(null);
   const [confirmCancelUnpaid, setConfirmCancelUnpaid] = useState(false);
+
+  // Cancel a paid/unsettled order + ask whether a refund is owed (never
+  // auto-refunds — mirrors the owner order-detail cancel modal).
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelRefundOwed, setCancelRefundOwed] = useState(false);
+  const [cancelRefundAmount, setCancelRefundAmount] = useState("");
 
   // Inline delivery-address editor
   const [editingAddress, setEditingAddress] = useState(false);
@@ -251,6 +261,42 @@ export function BranchOnlineOrderDetailPage({
     }
   }
 
+  async function cancelAndRefund(): Promise<void> {
+    if (!cancelReason.trim() || !data) return;
+    // Cancelling never moves money automatically — it only restores stock and,
+    // when the operator says a refund is owed, flags it as a data marker for
+    // the owner to action manually (e.g. via Returns).
+    const refundOwed = cancelRefundOwed;
+    const parsedAmount = Number(cancelRefundAmount);
+    const refundAmountNgn =
+      refundOwed && Number.isFinite(parsedAmount) && parsedAmount > 0
+        ? Math.round(parsedAmount)
+        : undefined;
+    setCancelBusy(true);
+    try {
+      await api(`/online-orders/${orderId}/cancel-refund`, {
+        method: "POST",
+        body: JSON.stringify({
+          reason: cancelReason.trim(),
+          refundOwed,
+          ...(refundAmountNgn != null ? { refundAmountNgn } : {}),
+        }),
+      });
+      setShowCancelModal(false);
+      setCancelReason("");
+      await loadOrder();
+      toast.success(
+        refundOwed
+          ? "Order cancelled. Stock restored — flagged as refund-owed. No refund was sent automatically."
+          : "Order cancelled. Stock restored — no refund issued.",
+      );
+    } catch (err) {
+      toast.error(humanizeError(err));
+    } finally {
+      setCancelBusy(false);
+    }
+  }
+
   function runAction(id: OrderActionId): void {
     switch (id) {
       case "produce": void produce(); break;
@@ -258,11 +304,21 @@ export function BranchOnlineOrderDetailPage({
       case "force_delivered": void advance(); break;
       case "book_rider":
       case "rebook_rider": bookRide(); break;
-      default: break; // payment/refund/cancel: owner-only, not shown here
+      case "cancel_refund":
+        setCancelReason("");
+        setCancelRefundOwed(data?.status === "paid");
+        setCancelRefundAmount(data ? String(data.totalNgn) : "");
+        setShowCancelModal(true);
+        break;
+      default: break; // accept_paid/mark_refunded/recheck_payment: owner-only, not shown here
     }
   }
   function actionAllowed(id: OrderActionId): boolean {
-    if (id === "accept_paid" || id === "mark_refunded" || id === "cancel_refund" || id === "recheck_payment") return false;
+    if (id === "accept_paid" || id === "mark_refunded" || id === "recheck_payment") return false;
+    // Cancelling (incl. paid orders) is available to anyone holding
+    // orders.manage — branch_staff and manager both have it — not gated on
+    // pos.sell like the fulfilment actions below.
+    if (id === "cancel_refund") return can("orders.manage");
     return can("pos.sell");
   }
 
@@ -466,69 +522,19 @@ export function BranchOnlineOrderDetailPage({
               )}
             </header>
 
-            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "16px 0 8px" }}>Items</h3>
-            <div className="table-wrap" style={{ border: 0 }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>Size</th>
-                    <th className="table__num">Qty</th>
-                    <th className="table__num">Unit</th>
-                    <th className="table__num">Line</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((it) => {
-                    const p = products[it.productId];
-                    return (
-                      <tr key={it.id}>
-                        <td>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                            <FlavourMedia size="chip" product={{ slug: p?.slug }} />
-                            <span style={{ fontWeight: 600 }}>
-                              {p?.name ?? `${it.productId.slice(0, 8)}…`}
-                            </span>
-                          </span>
-                        </td>
-                        <td>{it.sizeMl ? `${it.sizeMl}ml` : "—"}</td>
-                        <td className="table__num">{it.quantity}</td>
-                        <td className="table__num">{ngn(it.unitPriceNgn)}</td>
-                        <td className="table__num" style={{ fontWeight: 700 }}>
-                          {ngn(it.lineTotalNgn)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div
-              style={{
-                marginTop: 18,
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-                maxWidth: 320,
-                marginLeft: "auto",
-              }}
+            <EditItemsCard
+              branchId={branchId}
+              saleId={orderId}
+              status={data.status}
+              channel={data.channel}
+              items={data.items}
+              subtotalNgn={data.subtotalNgn}
+              deliveryFeeNgn={data.deliveryFeeNgn}
+              totalNgn={data.totalNgn}
+              productsById={products}
+              canEdit={can("orders.manage")}
+              onSaved={() => void loadOrder()}
             >
-              <span style={{ color: "var(--ink-soft)" }}>Subtotal</span>
-              <span className="tabular-nums" style={{ textAlign: "right" }}>
-                {ngn(data.subtotalNgn)}
-              </span>
-              <span style={{ color: "var(--ink-soft)" }}>Delivery</span>
-              <span className="tabular-nums" style={{ textAlign: "right" }}>
-                {ngn(data.deliveryFeeNgn)}
-              </span>
-              <span style={{ fontWeight: 700 }}>Total</span>
-              <span
-                className="tabular-nums"
-                style={{ textAlign: "right", fontWeight: 800, fontSize: 18 }}
-              >
-                {ngn(data.totalNgn)}
-              </span>
               {data.paymentMethod === "card" && data.grossNgn != null && (
                 <>
                   <span style={{ color: "var(--ink-soft)" }}>Payaza fee</span>
@@ -553,7 +559,7 @@ export function BranchOnlineOrderDetailPage({
                   )}
                 </>
               )}
-            </div>
+            </EditItemsCard>
 
             {["online", "phone"].includes(data.channel) && (
               <div style={{ marginTop: 18 }}>
@@ -856,6 +862,18 @@ export function BranchOnlineOrderDetailPage({
                     </>
                   )}
 
+                  {!editingAddress && (
+                    <DeliveryDateEditor
+                      branchId={branchId}
+                      saleId={orderId}
+                      scheduledDeliveryAt={data.scheduledDeliveryAt}
+                      status={data.status}
+                      channel={data.channel}
+                      canEdit={can("orders.manage")}
+                      onSaved={() => void loadOrder()}
+                    />
+                  )}
+
                   {!editingAddress && can("pos.sell") && (data.delivery && data.delivery.status !== "cancelled" ? (
                     <div style={{ marginTop: 10, fontSize: 13 }}>
                       <div style={{ color: "var(--ink-soft)" }}>
@@ -928,6 +946,28 @@ export function BranchOnlineOrderDetailPage({
                   ))}
                 </section>
               )}
+
+            {/* 5. Danger zone — cancel/refund, pre-dispatch only */}
+            {actions && actions.danger.some((b) => actionAllowed(b.id)) && (
+              <section className="card" style={{ border: "1.5px solid var(--danger)" }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "var(--danger)" }}>
+                  Danger zone
+                </h3>
+                {actions.danger
+                  .filter((b) => actionAllowed(b.id))
+                  .map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => runAction(b.id)}
+                      style={{ justifyContent: "center", color: "var(--danger)", width: "100%" }}
+                    >
+                      ✕ {b.label}
+                    </button>
+                  ))}
+              </section>
+            )}
           </aside>
         </div>
       )}
@@ -962,6 +1002,82 @@ export function BranchOnlineOrderDetailPage({
             transfer. This cancels the order and owes the customer nothing. If they actually paid
             by transfer, use “Paid by transfer” instead.
           </p>
+        </ConfirmModal>
+      )}
+
+      {showCancelModal && data && (
+        <ConfirmModal
+          title="Cancel this order?"
+          confirmLabel={cancelRefundOwed ? "Cancel & mark refund owed" : "Cancel order"}
+          busyLabel="Cancelling…"
+          busy={cancelBusy}
+          confirmDisabled={
+            cancelReason.trim() === "" ||
+            (cancelRefundOwed && !(Number(cancelRefundAmount) > 0))
+          }
+          tone="danger"
+          onCancel={() => setShowCancelModal(false)}
+          onConfirm={() => void cancelAndRefund()}
+        >
+          <p style={{ fontSize: 14, marginBottom: 12 }}>
+            This will cancel order <strong>{data.orderNumber}</strong> and restore stock.{" "}
+            <strong>No refund is ever issued automatically</strong> — cancelling only flags
+            the order so the owner can process a manual refund (e.g. via Returns) if one is due.
+          </p>
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="e.g. Payment received but product unavailable"
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            style={{ width: "100%", resize: "vertical", fontSize: 14 }}
+          />
+
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+              Is a refund owed to the customer?
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className={cancelRefundOwed ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+                onClick={() => {
+                  setCancelRefundOwed(true);
+                  if (!cancelRefundAmount) setCancelRefundAmount(String(data.totalNgn));
+                }}
+                style={{ flex: 1, justifyContent: "center" }}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                className={!cancelRefundOwed ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+                onClick={() => setCancelRefundOwed(false)}
+                style={{ flex: 1, justifyContent: "center" }}
+              >
+                No
+              </button>
+            </div>
+            {cancelRefundOwed && (
+              <div style={{ marginTop: 10 }}>
+                <label style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+                  Refund amount (₦)
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={data.totalNgn}
+                  value={cancelRefundAmount}
+                  onChange={(e) => setCancelRefundAmount(e.target.value)}
+                  style={{ width: "100%", fontSize: 14, marginTop: 4 }}
+                />
+                <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>
+                  Defaults to the order total ({ngn(data.totalNgn)}); capped at the total.
+                </p>
+              </div>
+            )}
+          </div>
         </ConfirmModal>
       )}
     </BranchShell>

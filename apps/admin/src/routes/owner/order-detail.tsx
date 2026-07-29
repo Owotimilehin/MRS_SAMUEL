@@ -5,13 +5,15 @@ import { StatHero } from "../../components/StatHero.js";
 import { ConfirmModal } from "../../components/ConfirmModal.js";
 import { DeliveryStatusPanel } from "../../components/DeliveryStatusPanel.js";
 import { OrderJourney } from "../../components/OrderJourney.js";
+import { EditItemsCard } from "../../components/EditItemsCard.js";
+import { DeliveryDateEditor } from "../../components/DeliveryDateEditor.js";
 import { deriveOrderJourney } from "../../lib/order-journey.js";
 import { deriveOrderActions, type OrderActionId } from "../../lib/order-actions.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
-import { FlavourMedia } from "../../components/FlavourMedia.js";
 import { useAuthUser, useCan } from "../../lib/auth.js";
+import { toast } from "../../lib/toast.js";
 import { buildReceiptFromOrder } from "../../lib/receipt-data.js";
 import { getReceiptStyle } from "../../lib/receipt-settings.js";
 import { fetchBranchInfo, printAndToast } from "../../lib/reprint.js";
@@ -21,6 +23,7 @@ const STALE_DELIVERY_HOURS = 2;
 interface SaleItem {
   id: string;
   productId: string;
+  variantId?: string | null;
   quantity: number;
   unitPriceNgn: number;
   lineTotalNgn: number;
@@ -101,6 +104,8 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [cancelRefundOwed, setCancelRefundOwed] = useState(false);
+  const [cancelRefundAmount, setCancelRefundAmount] = useState("");
   const [showMarkRefundedModal, setShowMarkRefundedModal] = useState(false);
   const [markRefundedBusy, setMarkRefundedBusy] = useState(false);
 
@@ -155,7 +160,12 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
       case "book_rider": bookRide(); break;
       case "rebook_rider": bookRide(); break;
       case "mark_refunded": setShowMarkRefundedModal(true); break;
-      case "cancel_refund": setCancelReason(""); setShowCancelModal(true); break;
+      case "cancel_refund":
+        setCancelReason("");
+        setCancelRefundOwed(data?.status === "paid");
+        setCancelRefundAmount(data ? String(data.totalNgn) : "");
+        setShowCancelModal(true);
+        break;
     }
   }
 
@@ -286,16 +296,39 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
   }
 
   async function cancelAndRefund(): Promise<void> {
-    if (!cancelReason.trim()) return;
+    if (!cancelReason.trim() || !data) return;
+    // Cancelling never moves money automatically — it only restores stock and,
+    // when the operator says a refund is owed, flags it (a data marker for the
+    // owner to action manually, e.g. via Returns). Capture whether the order
+    // was paid + the refund choice BEFORE the call so the toast says plainly
+    // what just happened.
+    const wasPaid = data.status === "paid";
+    const refundOwed = cancelRefundOwed;
+    const parsedAmount = Number(cancelRefundAmount);
+    const refundAmountNgn =
+      refundOwed && Number.isFinite(parsedAmount) && parsedAmount > 0
+        ? Math.round(parsedAmount)
+        : undefined;
     setCancelBusy(true);
     try {
       await api(`/online-orders/${saleId}/cancel-refund`, {
         method: "POST",
-        body: JSON.stringify({ reason: cancelReason.trim() }),
+        body: JSON.stringify({
+          reason: cancelReason.trim(),
+          refundOwed,
+          ...(refundAmountNgn != null ? { refundAmountNgn } : {}),
+        }),
       });
       setShowCancelModal(false);
       setCancelReason("");
       await reloadOrder();
+      toast.success(
+        refundOwed
+          ? "Order cancelled. Stock restored — flagged as refund-owed. No refund was sent automatically."
+          : wasPaid
+            ? "Order cancelled. Stock restored — no refund issued."
+            : "Order cancelled.",
+      );
     } finally {
       setCancelBusy(false);
     }
@@ -491,69 +524,19 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
               )}
             </header>
 
-            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "16px 0 8px" }}>Items</h3>
-            <div className="table-wrap" style={{ border: 0 }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>Size</th>
-                    <th className="table__num">Qty</th>
-                    <th className="table__num">Unit</th>
-                    <th className="table__num">Line</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((it) => {
-                    const p = products[it.productId];
-                    return (
-                    <tr key={it.id}>
-                      <td>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                          <FlavourMedia size="chip" product={{ slug: p?.slug }} />
-                          <span style={{ fontWeight: 600 }}>
-                            {p?.name ?? `${it.productId.slice(0, 8)}…`}
-                          </span>
-                        </span>
-                      </td>
-                      <td>{it.sizeMl ? `${it.sizeMl}ml` : "—"}</td>
-                      <td className="table__num">{it.quantity}</td>
-                      <td className="table__num">{ngn(it.unitPriceNgn)}</td>
-                      <td className="table__num" style={{ fontWeight: 700 }}>
-                        {ngn(it.lineTotalNgn)}
-                      </td>
-                    </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div
-              style={{
-                marginTop: 18,
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-                maxWidth: 320,
-                marginLeft: "auto",
-              }}
+            <EditItemsCard
+              branchId={branchId}
+              saleId={saleId}
+              status={data.status}
+              channel={data.channel}
+              items={data.items}
+              subtotalNgn={data.subtotalNgn}
+              deliveryFeeNgn={data.deliveryFeeNgn}
+              totalNgn={data.totalNgn}
+              productsById={products}
+              canEdit={can("orders.manage")}
+              onSaved={() => void reloadOrder()}
             >
-              <span style={{ color: "var(--ink-soft)" }}>Subtotal</span>
-              <span className="tabular-nums" style={{ textAlign: "right" }}>
-                {ngn(data.subtotalNgn)}
-              </span>
-              <span style={{ color: "var(--ink-soft)" }}>Delivery</span>
-              <span className="tabular-nums" style={{ textAlign: "right" }}>
-                {ngn(data.deliveryFeeNgn)}
-              </span>
-              <span style={{ fontWeight: 700 }}>Total</span>
-              <span
-                className="tabular-nums"
-                style={{ textAlign: "right", fontWeight: 800, fontSize: 18 }}
-              >
-                {ngn(data.totalNgn)}
-              </span>
               {data.paymentMethod === "card" && data.grossNgn != null && (
                 <>
                   <span style={{ color: "var(--ink-soft)" }}>Payaza fee</span>
@@ -578,7 +561,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                   )}
                 </>
               )}
-            </div>
+            </EditItemsCard>
 
             {data.notes && (
               <div style={{ marginTop: 18 }}>
@@ -902,6 +885,18 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                   </>
                 )}
 
+                {!editingAddress && (
+                  <DeliveryDateEditor
+                    branchId={branchId}
+                    saleId={saleId}
+                    scheduledDeliveryAt={data.scheduledDeliveryAt}
+                    status={data.status}
+                    channel={data.channel}
+                    canEdit={can("orders.manage")}
+                    onSaved={() => void reloadOrder()}
+                  />
+                )}
+
                 {/* Booked delivery */}
                 {!editingAddress && (data.delivery && data.delivery.status !== "cancelled" ? (
                   <div style={{ marginTop: 10, fontSize: 13 }}>
@@ -1017,18 +1012,22 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
 
       {showCancelModal && data && (
         <ConfirmModal
-          title="Cancel order & mark refund owed?"
-          confirmLabel="Cancel & mark refund"
+          title="Cancel this order?"
+          confirmLabel={cancelRefundOwed ? "Cancel & mark refund owed" : "Cancel order"}
           busyLabel="Cancelling…"
           busy={cancelBusy}
-          confirmDisabled={cancelReason.trim() === ""}
+          confirmDisabled={
+            cancelReason.trim() === "" ||
+            (cancelRefundOwed && !(Number(cancelRefundAmount) > 0))
+          }
           tone="danger"
           onCancel={() => setShowCancelModal(false)}
           onConfirm={() => void cancelAndRefund()}
         >
           <p style={{ fontSize: 14, marginBottom: 12 }}>
-            This will cancel order <strong>{data.orderNumber}</strong> and mark a refund
-            owed to the customer. Provide a reason:
+            This will cancel order <strong>{data.orderNumber}</strong> and restore stock.{" "}
+            <strong>No refund is ever issued automatically</strong> — cancelling only flags
+            the order so you can process a manual refund (e.g. via Returns) if one is due.
           </p>
           <textarea
             className="input"
@@ -1038,6 +1037,52 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
             onChange={(e) => setCancelReason(e.target.value)}
             style={{ width: "100%", resize: "vertical", fontSize: 14 }}
           />
+
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+              Is a refund owed to the customer?
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className={cancelRefundOwed ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+                onClick={() => {
+                  setCancelRefundOwed(true);
+                  if (!cancelRefundAmount) setCancelRefundAmount(String(data.totalNgn));
+                }}
+                style={{ flex: 1, justifyContent: "center" }}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                className={!cancelRefundOwed ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+                onClick={() => setCancelRefundOwed(false)}
+                style={{ flex: 1, justifyContent: "center" }}
+              >
+                No
+              </button>
+            </div>
+            {cancelRefundOwed && (
+              <div style={{ marginTop: 10 }}>
+                <label style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+                  Refund amount (₦)
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={data.totalNgn}
+                  value={cancelRefundAmount}
+                  onChange={(e) => setCancelRefundAmount(e.target.value)}
+                  style={{ width: "100%", fontSize: 14, marginTop: 4 }}
+                />
+                <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>
+                  Defaults to the order total ({ngn(data.totalNgn)}); capped at the total.
+                </p>
+              </div>
+            )}
+          </div>
         </ConfirmModal>
       )}
 

@@ -14,6 +14,10 @@ export const ErrorCode = {
   // Generic
   NotFound: "not_found",
   Conflict: "conflict",
+  // Edited order's recomputed total differs from what the customer already
+  // paid — the client must re-submit with reconciled:true to proceed. Never
+  // triggers an automatic charge or refund.
+  ReconcileRequired: "reconcile_required",
   Internal: "internal_error",
   ServiceUnavailable: "service_unavailable"
 } as const;
