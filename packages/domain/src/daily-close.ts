@@ -5,6 +5,21 @@ import type { DbExecutor } from "@ms/db";
 // Private window-core helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Order statuses whose money is already in the account.
+ *
+ * `out_for_delivery` belongs here: the customer has paid and the bottles are
+ * with the rider, so the transfer has landed even though the order is not
+ * closed out. Leaving it off understated the branch's expected take and hid the
+ * sale from the itemised close list, handing staff a phantom overage variance
+ * for money they genuinely collected.
+ *
+ * Declared once and shared by every query below so the two lists cannot drift
+ * apart again — the original bug was exactly that drift (`reports.ts` was
+ * corrected in 90ece6e; this module was missed).
+ */
+const MONEY_IN_STATUSES = sql.raw(`'paid','handed_over','out_for_delivery','delivered'`);
+
 /** Raw sum of paid transfer sales minus completed transfer refunds in [start, end). */
 async function _expectedCashForWindow(
   db: DbExecutor,
@@ -15,7 +30,7 @@ async function _expectedCashForWindow(
   const salesRows = await db.execute<{ total: number | string | null }>(sql`
     SELECT COALESCE(SUM(total_ngn), 0)::int AS total FROM sale_order
     WHERE branch_id = ${branchId} AND payment_method = 'transfer'
-      AND status IN ('paid','handed_over','delivered')
+      AND status IN (${MONEY_IN_STATUSES})
       AND created_at_local >= ${start.toISOString()}
       AND created_at_local <  ${end.toISOString()}
   `);
@@ -49,7 +64,7 @@ async function _cashSalesForWindow(
            created_at_local::text AS created_at_local
     FROM sale_order
     WHERE branch_id = ${branchId} AND payment_method = 'transfer'
-      AND status IN ('paid','handed_over','delivered')
+      AND status IN (${MONEY_IN_STATUSES})
       AND created_at_local >= ${start.toISOString()}
       AND created_at_local <  ${end.toISOString()}
     ORDER BY created_at_local
