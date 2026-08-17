@@ -185,7 +185,10 @@ export function DashboardPage(): JSX.Element {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const can = useCan();
-  const showFinance = can("finance.view");
+  // finance.daily gates this card (owner, admin, manager) — the day's takings,
+  // including the online orders branch staff fulfil. Deeper finance views
+  // (P&L, variance losses) stay behind finance.view.
+  const showFinance = can("finance.daily");
   const [includedCats, setIncludedCats] = useState<DailyExpenseCategory[]>(getIncludedExpenseCategories());
   const [daily, setDaily] = useState<DailyFinancials | null>(null);
 

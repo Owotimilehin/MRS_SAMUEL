@@ -22,6 +22,7 @@ describe("GET /v1/reports/daily", () => {
   let baseUrl: string;
   let ownerCookies: string;
   let adminCookies: string;
+  let managerCookies: string;
   let server: ReturnType<typeof serve>;
   const DATE = "2026-06-19";
 
@@ -31,6 +32,7 @@ describe("GET /v1/reports/daily", () => {
     const db = tdb.db;
     await seedOwner(db);
     await seedUser(db, { email: "admin@example.com", role: "admin" });
+    await seedUser(db, { email: "manager@example.com", role: "manager" });
 
     // --- Factory ---
     const [factoryRow] = await db
@@ -231,6 +233,7 @@ describe("GET /v1/reports/daily", () => {
     baseUrl = `http://localhost:${addr.port}`;
     ownerCookies = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
     adminCookies = await loginAs(baseUrl, "admin@example.com", "userpassword123");
+    managerCookies = await loginAs(baseUrl, "manager@example.com", "userpassword123");
   }, 120_000);
 
   afterAll(async () => {
@@ -238,9 +241,26 @@ describe("GET /v1/reports/daily", () => {
     await container.stop();
   });
 
-  it("forbids admin (no finance.view)", async () => {
+  it("forbids admin (no finance.daily)", async () => {
     const res = await fetch(`${baseUrl}/v1/reports/daily?date=${DATE}`, {
       headers: { cookie: adminCookies },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  // Managers fulfil the online orders that make up the day's revenue, so they
+  // hold finance.daily and can read this breakdown.
+  it("allows manager (has finance.daily)", async () => {
+    const res = await fetch(`${baseUrl}/v1/reports/daily?date=${DATE}`, {
+      headers: { cookie: managerCookies },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  // …but finance.daily must not open the deep financial views.
+  it("still forbids manager on the monthly P&L", async () => {
+    const res = await fetch(`${baseUrl}/v1/reports/pnl?month=${DATE.slice(0, 7)}`, {
+      headers: { cookie: managerCookies },
     });
     expect(res.status).toBe(403);
   });

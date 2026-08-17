@@ -15,10 +15,20 @@ export const CAPABILITIES = [
   "blog.manage",
   "marketing.manage",
   "reports.view",
-  // Owner-only by default: the daily-profit financial view (revenue, packaging
-  // cost, profit). Deliberately NOT in ADMIN_CAPS/MANAGER_CAPS — admins/managers
-  // see operational signals only. Grantable per-user via overrides.
+  // Owner-only by default: the deep financial views — monthly P&L (GET
+  // /reports/pnl) and settled variance losses. Deliberately NOT in
+  // ADMIN_CAPS/MANAGER_CAPS. Grantable per-user via overrides.
   "finance.view",
+  // The day/range financial breakdown (GET /reports/daily). Split out of
+  // finance.view so managers can see what a trading day earned — including the
+  // online orders they fulfil — without unlocking company P&L, cost structure
+  // or variance-loss settlements.
+  //
+  // Owner and manager only. Admins are deliberately excluded, preserving the
+  // existing policy asserted in reports-daily.test.ts: daily takings are a
+  // branch-operations concern (managers run the close), while the admin role
+  // covers catalog, config and content. Grantable per-user via overrides.
+  "finance.daily",
   "audit.view",
   "devices.view",
   "customers.view",
@@ -86,6 +96,7 @@ const ADMIN_CAPS: Capability[] = [
 
 const MANAGER_CAPS: Capability[] = [
   "reports.view",
+  "finance.daily",
   "audit.view",
   "devices.view",
   "customers.view",

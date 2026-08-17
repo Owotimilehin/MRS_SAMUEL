@@ -7,6 +7,7 @@ import { api, humanizeError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
 import { toast } from "../../lib/toast.js";
 import { channelLabel } from "../../lib/analytics-theme.js";
+import { useAuthUser } from "../../lib/auth.js";
 import {
   deriveKpis,
   deriveChannelMix,
@@ -47,6 +48,7 @@ const PRESETS = [
 ];
 
 export function AnalyticsPage(): JSX.Element {
+  const canFinance = useAuthUser().capabilities.includes("finance.view");
   const [from, setFrom] = useState(nDaysAgo(30));
   const [to, setTo] = useState(iso(new Date()));
   const [month, setMonth] = useState(thisMonth());
@@ -97,6 +99,9 @@ export function AnalyticsPage(): JSX.Element {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      // /reports/pnl is finance.view-gated (owner). Skip the call for everyone
+      // else rather than firing a request that can only 403 and toast.
+      if (!canFinance) return;
       try {
         const res = await api<{ data: Pnl }>(`/reports/pnl?month=${month}`);
         if (!cancelled) setPnl(res.data);
@@ -107,7 +112,7 @@ export function AnalyticsPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [month]);
+  }, [month, canFinance]);
 
   const kpis = useMemo(() => deriveKpis(revenue), [revenue]);
   const channelMix = useMemo(() => deriveChannelMix(revenue, channelLabel), [revenue]);

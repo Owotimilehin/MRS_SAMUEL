@@ -240,7 +240,12 @@ export function reportRoutes(db: DbClient) {
   // Monthly P&L. Revenue from sale_order (paid/handed_over/delivered) and
   // sale_return (completed) within the month, net of refunds; expenses from
   // business_expense (excludes soft-deleted). All in NGN.
-  r.get("/pnl", async (c) => {
+  // Monthly P&L exposes cost structure and profit, which finance.view exists to
+  // keep owner-only — but the route was gated only by the router-level
+  // reports.view, which admins and managers hold. The admin UI already assumed
+  // otherwise (bookkeeping.tsx guards this call behind canFinance); the server
+  // now enforces it.
+  r.get("/pnl", requireCapability("finance.view"), async (c) => {
     const month = c.req.query("month") ?? new Date().toISOString().slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(month)) {
       return c.json(
@@ -470,7 +475,10 @@ export function reportRoutes(db: DbClient) {
     });
   });
 
-  r.get("/daily", requireCapability("finance.view"), async (c) => {
+  // finance.daily, not finance.view: managers fulfil the online orders that make
+  // up a trading day's revenue, so they can see what the day earned without
+  // unlocking company P&L or variance-loss settlements.
+  r.get("/daily", requireCapability("finance.daily"), async (c) => {
     // Single day (legacy `date`) OR a pooled range (`from`/`to`). A bare `date`
     // sets both ends; explicit `from`/`to` win. Range lets the dashboard pool a
     // week or month through this same breakdown — the FIFO packaging offset is
