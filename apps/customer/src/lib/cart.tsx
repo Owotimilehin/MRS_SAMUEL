@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
 import { serializeCartCookie } from "@/lib/cart-cookie";
+import { CART_CLEARED_COOKIE } from "@/lib/checkout-post";
 
 /** A line is a preorder when the wanted qty exceeds the online-default
  *  branch's available stock for that size. Whole line flips (spec). */
@@ -58,6 +59,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // Hydrate from localStorage on mount (client-only; SSR starts empty).
   useEffect(() => {
     try {
+      // A no-JS order was placed and paid for in this browser: the server
+      // cleared the cart COOKIE on the redirect, but it cannot reach
+      // localStorage. Without this the customer returns from payment and React
+      // faithfully restores a basket of juice they have already bought — and
+      // rewrites the cart cookie from it, so the next checkout starts dirty.
+      // Consume the one-shot flag and start empty instead.
+      if (document.cookie.split(";").some((c) => c.trim().startsWith(`${CART_CLEARED_COOKIE}=`))) {
+        localStorage.removeItem(STORAGE_KEY);
+        document.cookie = `${CART_CLEARED_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+        return;
+      }
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as CartItem[];

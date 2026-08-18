@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   parseCheckoutForm,
+  parseCartItemsFromForm,
   checkoutFormErrors,
   buildPlaceOrderBody,
+  stableIdempotencyKey,
   validNgPhone,
 } from "./checkout-post";
 
@@ -32,9 +34,89 @@ describe("parseCheckoutForm", () => {
   it("defaults state to Lagos when absent", () => {
     expect(parseCheckoutForm(new URLSearchParams()).state).toBe("Lagos");
   });
-  it("reads from a plain record too", () => {
-    const v = parseCheckoutForm({ name: "Ada", phone: "08012345678", address: "12 Allen" });
-    expect(v.name).toBe("Ada");
+});
+
+describe("parseCartItemsFromForm", () => {
+  const form = (...items: string[]): URLSearchParams => {
+    const p = new URLSearchParams();
+    for (const i of items) p.append("item", i);
+    return p;
+  };
+
+  it("reads the basket from repeated hidden inputs", () => {
+    expect(parseCartItemsFromForm(form("v-1:2", "v-2:1"))).toEqual([
+      { variantId: "v-1", qty: 2 },
+      { variantId: "v-2", qty: 1 },
+    ]);
+  });
+
+  it("keeps uuids intact by splitting on the LAST colon", () => {
+    const id = "3f1a-9c2b:odd";
+    expect(parseCartItemsFromForm(form(`${id}:4`))).toEqual([{ variantId: id, qty: 4 }]);
+  });
+
+  it("drops malformed, zero and negative quantities", () => {
+    expect(parseCartItemsFromForm(form("v-1:0", "v-2:-3", "v-3:abc", "nocolon", ":5"))).toEqual([]);
+  });
+
+  it("clamps an absurd quantity", () => {
+    expect(parseCartItemsFromForm(form("v-1:100000"))[0]?.qty).toBe(99);
+  });
+
+  it("returns empty when the form carries no items", () => {
+    expect(parseCartItemsFromForm(new URLSearchParams())).toEqual([]);
+  });
+});
+
+/**
+ * The whole point: a double-tap on a slow connection must not create a second
+ * order. Same content ⇒ same key ⇒ the API collapses the retry.
+ */
+describe("stableIdempotencyKey", () => {
+  const values = {
+    name: "Ada", phone: "0801 234 5678", email: "", altPhone: "",
+    address: "12 Allen Ave", state: "Lagos", notes: "",
+  };
+  const cart = [{ variantId: "v-1", qty: 2 }];
+  const at = new Date("2026-08-18T10:00:00Z");
+
+  it("is identical for a repeated submit of the same order", () => {
+    expect(stableIdempotencyKey(values, cart, at)).toBe(stableIdempotencyKey(values, cart, at));
+  });
+
+  it("ignores basket ordering and phone formatting", () => {
+    const a = stableIdempotencyKey(values, [{ variantId: "a", qty: 1 }, { variantId: "b", qty: 2 }], at);
+    const b = stableIdempotencyKey(
+      { ...values, phone: "08012345678" },
+      [{ variantId: "b", qty: 2 }, { variantId: "a", qty: 1 }],
+      at,
+    );
+    expect(a).toBe(b);
+  });
+
+  it("differs when the basket changes", () => {
+    expect(stableIdempotencyKey(values, cart, at)).not.toBe(
+      stableIdempotencyKey(values, [{ variantId: "v-1", qty: 3 }], at),
+    );
+  });
+
+  it("differs for a different customer", () => {
+    expect(stableIdempotencyKey(values, cart, at)).not.toBe(
+      stableIdempotencyKey({ ...values, phone: "08099999999" }, cart, at),
+    );
+  });
+
+  it("lets the same basket be ordered again in a later hour", () => {
+    const later = new Date("2026-08-18T12:00:00Z");
+    expect(stableIdempotencyKey(values, cart, at)).not.toBe(
+      stableIdempotencyKey(values, cart, later),
+    );
+  });
+
+  it("is uuid-shaped", () => {
+    expect(stableIdempotencyKey(values, cart, at)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
   });
 });
 

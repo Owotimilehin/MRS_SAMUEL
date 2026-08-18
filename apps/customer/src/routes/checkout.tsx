@@ -8,7 +8,12 @@ import { SiteShell } from "@/components/SiteShell";
 import { RedirectingOverlay } from "@/components/RedirectingOverlay";
 import { useCart, formatNaira } from "@/lib/cart";
 import { fetchBranches, fetchCheckoutCart, requestQuote, placeOrder as placeOrderFn, logCheckoutAttempt } from "@/lib/api/server-fns";
-import { CHECKOUT_POST_PATH } from "@/lib/checkout-server";
+import {
+  CHECKOUT_POST_PATH,
+  CART_ITEM_FIELD,
+  BRANCH_FIELD,
+  validNgPhone,
+} from "@/lib/checkout-post";
 import { buildCheckoutLogPayload, type CheckoutStage } from "@/lib/checkout-log";
 import { safeRandomUuid } from "@/lib/uuid";
 import { asApiError } from "@/lib/api/client";
@@ -41,17 +46,18 @@ export const Route = createFileRoute("/checkout")({
     const [branches, cart] = await Promise.all([fetchBranches(), fetchCheckoutCart()]);
     return { branches, cart };
   },
-  // `e`/`m` carry the outcome of a no-JS POST that bounced back (missing
-  // fields, stock conflict, …) so the page can show why.
-  validateSearch: (s: Record<string, unknown>): { e?: string; m?: string } => ({
+  // `e` carries the outcome of a no-JS POST that bounced back (missing fields,
+  // stock conflict, …) so the page can show why. A CODE only, never a message:
+  // echoing server text from the query string let anyone hand a customer a link
+  // that rendered words of their choosing inside our branding.
+  validateSearch: (s: Record<string, unknown>): { e?: string } => ({
     e: typeof s.e === "string" ? s.e : undefined,
-    m: typeof s.m === "string" ? s.m : undefined,
   }),
   component: Page,
 });
 
-/** Map a no-JS bounce-back code to a friendly message. */
-function postErrorMessage(code: string | undefined, detail: string | undefined): string | null {
+/** Map a no-JS bounce-back code to a fixed, first-party message. */
+function postErrorMessage(code: string | undefined): string | null {
   switch (code) {
     case undefined:
       return null;
@@ -60,20 +66,12 @@ function postErrorMessage(code: string | undefined, detail: string | undefined):
     case "fields":
       return "Please add your full name, a valid phone number and delivery address, then place your order again.";
     case "stock":
-      return detail ? `${detail} Adjust your basket and try again.` : "A juice in your basket just went out of stock. Adjust your basket and try again.";
+      return "A juice in your basket just went out of stock. Adjust your basket and try again.";
     case "branch":
       return "Online ordering is temporarily unavailable. Please try again shortly or order on WhatsApp.";
-    case "order":
-      return detail ?? "Something went wrong placing your order. Please try again.";
     default:
       return "Something went wrong placing your order. Please try again.";
   }
-}
-
-// Light client-side Nigerian-phone check; the API is the authority.
-function validNgPhone(raw: string): boolean {
-  const s = raw.replace(/[\s-]/g, "");
-  return /^(\+?234|0)\d{9,10}$/.test(s);
 }
 
 function todayLagos(): string {
@@ -271,7 +269,10 @@ function Page() {
   const lines = hydrated ? clientLines : serverLines;
   const subtotalDisplay = hydrated ? subtotal : cart.subtotalNgn;
   const totalDisplay = subtotalDisplay + deliveryFee;
-  const postError = postErrorMessage(search.e, search.m);
+  const postError = postErrorMessage(search.e);
+  // Lines whose variant is no longer sellable were dropped when the server
+  // rebuilt the basket. Say so — otherwise the basket just silently shrinks.
+  const droppedCount = hydrated ? 0 : cart.droppedVariantIds.length;
 
   // Schedule is always valid — orderSchedule already rolls forward off-hours/past windows.
   const scheduleValid = true;
@@ -513,6 +514,17 @@ function Page() {
           <div className="hidden sm:flex items-center gap-2 text-xs text-[color:var(--brand)]/60"><Lock className="h-3.5 w-3.5" /> Secure order</div>
         </div>
 
+        {droppedCount > 0 && (
+          <div className="mt-6 flex items-start gap-3 rounded-2xl bg-[color:var(--brand-orange)]/10 ring-1 ring-[color:var(--brand-orange)]/30 p-4 text-sm text-[color:var(--brand)]" role="status">
+            <AlertCircle className="h-5 w-5 shrink-0 text-[color:var(--brand-orange)]" />
+            <span>
+              {droppedCount === 1 ? "One juice" : `${droppedCount} juices`} in your basket{" "}
+              {droppedCount === 1 ? "is" : "are"} no longer available and{" "}
+              {droppedCount === 1 ? "has" : "have"} been removed. The total below is what you'll pay.
+            </span>
+          </div>
+        )}
+
         {postError && (
           <div className="mt-6 flex items-start gap-3 rounded-2xl bg-[color:var(--brand-orange)]/10 ring-1 ring-[color:var(--brand-orange)]/30 p-4 text-sm text-[color:var(--brand)]" role="alert">
             <AlertCircle className="h-5 w-5 shrink-0 text-[color:var(--brand-orange)]" />
@@ -536,6 +548,14 @@ function Page() {
             onSubmit={(e) => { e.preventDefault(); void submit(false); }}
             className="mt-8 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-8"
           >
+            {/* The POST carries its own basket and branch, so it no longer
+                depends on the ms_cart cookie surviving the round trip — a
+                blocked or expired cookie used to mean "full basket, empty
+                submit". Also keeps a branch lookup out of the money path. */}
+            <input type="hidden" name={BRANCH_FIELD} value={branchId} />
+            {lines.map((l) => (
+              <input key={`f-${l.key}`} type="hidden" name={CART_ITEM_FIELD} value={`${l.key}:${l.qty}`} />
+            ))}
             {/* LEFT: form */}
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-[1.5rem] bg-white ring-1 ring-black/5 p-6 sm:p-8 space-y-8">
               {/* Contact */}
