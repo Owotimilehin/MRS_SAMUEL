@@ -6,11 +6,11 @@ import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import { StatHero } from "../../components/StatHero.js";
 
-interface SubLead {
+interface EnquiryLead {
   id: string;
   name: string;
   phone: string;
-  planSlug: string;
+  enquiryType: string;
   createdAt: string;
 }
 interface ContactMsg {
@@ -23,11 +23,18 @@ interface ContactMsg {
   createdAt: string;
 }
 
-type Tab = "subscriptions" | "contact";
+/** Friendly names for the enquiry_type slugs the storefront writes. */
+const ENQUIRY_LABEL: Record<string, string> = {
+  white_label: "White label",
+  bulk_order: "Bulk order",
+  legacy_subscription: "Subscription (retired)",
+};
+
+type Tab = "enquiries" | "contact";
 
 export function LeadsPage(): JSX.Element {
-  const [tab, setTab] = useState<Tab>("subscriptions");
-  const [subs, setSubs] = useState<SubLead[]>([]);
+  const [tab, setTab] = useState<Tab>("enquiries");
+  const [subs, setSubs] = useState<EnquiryLead[]>([]);
   const [contacts, setContacts] = useState<ContactMsg[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +42,7 @@ export function LeadsPage(): JSX.Element {
     setLoading(true);
     try {
       const [s, c] = await Promise.all([
-        api<{ data: SubLead[] }>(`/marketing/leads/subscriptions`),
+        api<{ data: EnquiryLead[] }>(`/marketing/leads/enquiries`),
         api<{ data: ContactMsg[] }>(`/marketing/leads/contact`),
       ]);
       setSubs(s.data);
@@ -56,7 +63,7 @@ export function LeadsPage(): JSX.Element {
       <StatHero
         eyebrow="Marketing"
         title="Leads"
-        sub="Subscription enquiries and contact messages from the storefront."
+        sub="White-label and bulk-order enquiries, plus contact messages from the storefront."
         loading={loading}
         chips={[
           {
@@ -82,10 +89,10 @@ export function LeadsPage(): JSX.Element {
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button
           type="button"
-          className={tab === "subscriptions" ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
-          onClick={() => setTab("subscriptions")}
+          className={tab === "enquiries" ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+          onClick={() => setTab("enquiries")}
         >
-          Subscription enquiries ({subs.length})
+          Business enquiries ({subs.length})
         </button>
         <button
           type="button"
@@ -100,11 +107,11 @@ export function LeadsPage(): JSX.Element {
 
       {loading ? (
         <InlineLoader />
-      ) : tab === "subscriptions" ? (
+      ) : tab === "enquiries" ? (
         subs.length === 0 ? (
           <div className="empty">
-            <div className="empty__title">No subscription enquiries yet</div>
-            Leads appear here when a visitor submits interest in a plan.
+            <div className="empty__title">No business enquiries yet</div>
+            Leads appear here when a visitor asks about white labelling or a bulk order.
           </div>
         ) : (
           <div className="table-wrap">
@@ -114,7 +121,7 @@ export function LeadsPage(): JSX.Element {
                   <th>When</th>
                   <th>Name</th>
                   <th>Phone</th>
-                  <th>Plan</th>
+                  <th>Enquiry</th>
                 </tr>
               </thead>
               <tbody>
@@ -125,7 +132,7 @@ export function LeadsPage(): JSX.Element {
                     <td>
                       <a href={`tel:${l.phone}`} style={{ color: "var(--brand)" }}>{l.phone}</a>
                     </td>
-                    <td style={{ fontFamily: "monospace", fontSize: 12 }}>{l.planSlug}</td>
+                    <td style={{ fontFamily: "monospace", fontSize: 12 }}>{ENQUIRY_LABEL[l.enquiryType] ?? l.enquiryType}</td>
                   </tr>
                 ))}
               </tbody>

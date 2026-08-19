@@ -81,17 +81,6 @@ export interface ApiBundle {
   image_url: string | null;
 }
 
-export interface ApiSubscriptionPlan {
-  id: string;
-  slug: string;
-  name: string;
-  price_ngn: number;
-  period: string;
-  bottles_label: string | null;
-  description: string | null;
-  perks: string[];
-  popular: boolean;
-}
 
 export interface ApiDeliveryOption {
   id: string;
@@ -135,10 +124,6 @@ export interface ApiPlacedOrder {
     | { provider: "opay"; reference: string; redirect_url: string };
 }
 
-export interface ApiSubscribeResult {
-  subscription_id: string;
-  payment: { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig };
-}
 
 export interface ApiOrderItem {
   name: string;

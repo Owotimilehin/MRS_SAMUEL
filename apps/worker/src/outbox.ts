@@ -433,54 +433,20 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `${p["name"]} · ${p["subject"]}\n` +
           `${p["email"]}${p["phone"] ? ` · ${p["phone"]}` : ""}`,
       };
-    case "subscription.requested":
+    case "enquiry.received": {
+      const kind = p["enquiry_type"] === "white_label" ? "White label" : "Bulk order";
       return {
         chatIds: [owner],
         text:
-          `🔔 *Subscription enquiry*\n` +
-          `${p["name"]} · ${p["phone"]}\n` +
-          `Plan: ${p["plan_slug"]}`,
+          `🤝 *New ${kind} enquiry*
+` +
+          `${p["name"]} · ${p["phone"]}
+` +
+          `They were sent to WhatsApp — reply there.
+` +
+          `👉 ${ADMIN_URL}/owner/leads`,
       };
-    case "subscription.created":
-      return {
-        chatIds: [owner],
-        text:
-          `🆕 *New subscription started*\n` +
-          `${p["plan_name"]} · ₦${p["price_ngn"]}/${p["period"]}\n` +
-          `Awaiting first payment.`,
-      };
-    case "subscription.activated":
-      return {
-        chatIds: [owner],
-        text:
-          `✅ *Subscription active*\n` +
-          `First payment ₦${p["amount_ngn"]} received.\n` +
-          `Cycle order queued for fulfilment.\n` +
-          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
-      };
-    case "subscription.charged":
-      return {
-        chatIds: [owner],
-        text:
-          `🔁 *Subscription renewed*\n` +
-          `₦${p["amount_ngn"]} charged · cycle order queued.\n` +
-          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
-      };
-    case "subscription.payment_failed":
-      return {
-        chatIds: [owner],
-        text:
-          `⚠️ *Subscription charge failed*\n` +
-          `₦${p["amount_ngn"]} · attempt ${p["attempt"]}\n` +
-          `Reason: ${p["reason"] ?? "unknown"} — now past due.`,
-      };
-    case "subscription.cancelled":
-      return {
-        chatIds: [owner],
-        text:
-          `🚫 *Subscription cancelled*\n` +
-          `Reason: ${p["reason"] ?? "manual"}.`,
-      };
+    }
     case "sale.preorder_fulfilled": {
       const preorderWindow = lagosDeliveryWindow(event.payload["scheduled_delivery_at"]);
       return {

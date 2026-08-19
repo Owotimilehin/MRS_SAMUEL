@@ -1,5 +1,5 @@
 // apps/customer/src/lib/api/mappers.ts
-import type { ApiProduct, ApiBlogSummary, ApiBlogPost, ApiBundle, ApiSubscriptionPlan } from "./types";
+import type { ApiProduct, ApiBlogSummary, ApiBlogPost, ApiBundle } from "./types";
 import { CLUSTERS, clusterForSlug, DEFAULT_BOTTLE, type Cluster, type Size } from "@/lib/visuals";
 
 const isCluster = (s: string | null): s is Cluster =>
@@ -136,26 +136,4 @@ export function toUiBundle(api: ApiBundle): Bundle {
   };
 }
 
-export interface SubscriptionPlan {
-  slug: string;
-  name: string;
-  price: number;
-  period: string;
-  bottles: string;
-  desc: string;
-  perks: string[];
-  popular: boolean;
-}
 
-export function toUiPlan(api: ApiSubscriptionPlan): SubscriptionPlan {
-  return {
-    slug: api.slug,
-    name: api.name,
-    price: api.price_ngn,
-    period: api.period,
-    bottles: api.bottles_label ?? "",
-    desc: api.description ?? "",
-    perks: api.perks ?? [],
-    popular: api.popular,
-  };
-}

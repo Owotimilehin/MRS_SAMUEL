@@ -2,10 +2,10 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { setupTestDb, seedOwner } from "./helpers.js";
-import { bundle, subscriptionPlan } from "@ms/db";
+import { bundle } from "@ms/db";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
-describe("public bundles + subscription plans", () => {
+describe("public bundles", () => {
   let container: StartedPostgreSqlContainer;
   let baseUrl: string;
   let server: ReturnType<typeof serve>;
@@ -20,15 +20,6 @@ describe("public bundles + subscription plans", () => {
       priceNgn: 14000,
       contentsLabel: "6 × 330ml",
       badge: "Most loved",
-      displayOrder: 1,
-    });
-    await tdb.db.insert(subscriptionPlan).values({
-      slug: "weekly",
-      name: "Weekly",
-      priceNgn: 12500,
-      period: "/week",
-      perks: ["a", "b"],
-      popular: false,
       displayOrder: 1,
     });
     const { buildApp } = await import("../../src/test-app.js");
@@ -50,10 +41,4 @@ describe("public bundles + subscription plans", () => {
     expect(data[0]!.price_ngn).toBe(14000);
   });
 
-  it("GET /v1/public/catalog/subscription-plans returns active plans with perks", async () => {
-    const res = await fetch(`${baseUrl}/v1/public/catalog/subscription-plans`);
-    const { data } = (await res.json()) as { data: Array<{ slug: string; perks: string[] }> };
-    expect(data[0]!.slug).toBe("weekly");
-    expect(data[0]!.perks).toEqual(["a", "b"]);
-  });
 });

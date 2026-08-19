@@ -198,12 +198,6 @@ export function humanizeAction(row: AuditRow, branches: BranchLookup[]): string 
     }
 
     // ── Marketing ──
-    case "subscription_plan.create":
-      return `Created subscription plan ${s(pick(after, "name"))}`;
-    case "subscription_plan.update":
-      return `Updated subscription plan ${s(pick(after, "name") ?? pick(before, "name"))}`;
-    case "subscription_plan.delete":
-      return `Deleted subscription plan ${s(pick(before, "name") ?? pick(after, "name"))}`;
     case "bundle.create":
       return `Created bundle ${s(pick(after, "name"))}`;
     case "bundle.update":
@@ -335,7 +329,6 @@ export function humanizeEntity(row: AuditRow): string {
     case "product":
     case "packaging_material":
     case "vendor":
-    case "subscription_plan":
     case "bundle":
       return str("name") ?? id8;
     case "sale_order":
@@ -381,7 +374,6 @@ export function entityTypeLabel(entityType: string): string {
     packaging_purchase: "Packaging purchase",
     business_expense: "Expense",
     recurring_expense: "Recurring expense",
-    subscription_plan: "Subscription plan",
     bundle: "Bundle",
     media_asset: "Image",
   };

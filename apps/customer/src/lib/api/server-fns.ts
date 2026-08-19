@@ -4,10 +4,10 @@ import { notFound } from "@tanstack/react-router";
 import { apiFetch, ApiError } from "./client";
 import {
   toUiProduct, toUiPostSummary, toUiPost, toUiBundle, toUiPlan,
-  type Product, type BlogPostSummary, type BlogPost, type Bundle, type SubscriptionPlan,
+  type Product, type BlogPostSummary, type BlogPost, type Bundle,
 } from "./mappers";
 import type {
-  ApiProduct, ApiBranch, ApiBlogSummary, ApiBlogPost, ApiBundle, ApiSubscriptionPlan,
+  ApiProduct, ApiBranch, ApiBlogSummary, ApiBlogPost, ApiBundle,
   ApiQuote, ApiPlacedOrder, ApiOrderTracking, ApiSubscribeResult,
 } from "./types";
 import type { CheckoutLogPayload } from "@/lib/checkout-log";
@@ -53,16 +53,12 @@ export const fetchBlogPost = createServerFn({ method: "GET" })
     }
   });
 
-// ---------- Bundles + subscription plans ----------
+// ---------- Bundles ----------
 export const fetchBundles = createServerFn({ method: "GET" }).handler(async (): Promise<Bundle[]> => {
   const rows = await apiFetch<ApiBundle[]>("/v1/public/catalog/bundles");
   return rows.map(toUiBundle);
 });
 
-export const fetchSubscriptionPlans = createServerFn({ method: "GET" }).handler(async (): Promise<SubscriptionPlan[]> => {
-  const rows = await apiFetch<ApiSubscriptionPlan[]>("/v1/public/catalog/subscription-plans");
-  return rows.map(toUiPlan);
-});
 
 // ---------- Banner ----------
 export const fetchBanner = createServerFn({ method: "GET" }).handler(async (): Promise<BannerConfig> => {
@@ -156,7 +152,7 @@ export const resumeOpayOrder = createServerFn({ method: "POST" })
     );
   });
 
-// ---------- Contact + subscription leads ----------
+// ---------- Contact + enquiry leads ----------
 export const sendContactMessage = createServerFn({ method: "POST" })
   .validator((d: { name: string; email: string; phone?: string; subject: string; message: string; turnstile_token?: string }) => d)
   .handler(async ({ data }): Promise<{ ok: true }> => {
@@ -186,18 +182,24 @@ export const logCheckoutAttempt = createServerFn({ method: "POST" })
     return null;
   });
 
-export const subscribe = createServerFn({ method: "POST" })
-  .validator(
-    (d: {
-      plan_slug: string;
-      customer: { name: string; phone: string; email?: string; address?: string };
-      turnstile_token?: string;
-    }) => d,
-  )
-  .handler(async ({ data }): Promise<ApiSubscribeResult> => {
-    return await apiFetch<ApiSubscribeResult>("/v1/public/subscriptions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(data),
-    });
+/**
+ * Record a white-label / bulk-order enquiry.
+ *
+ * The page sends the visitor to WhatsApp regardless; this only writes the row so
+ * the owner's inbox has a record. Swallows errors for the same reason the
+ * checkout log does — a failed write must never block the hand-off.
+ */
+export const submitEnquiry = createServerFn({ method: "POST" })
+  .validator((d: { name: string; phone: string; enquiry_type: "white_label" | "bulk_order" }) => d)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    try {
+      await apiFetch("/v1/public/enquiries", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    } catch {
+      /* the WhatsApp hand-off is the real path; never block it */
+    }
+    return { ok: true };
   });

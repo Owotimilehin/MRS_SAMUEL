@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { sql, eq, and, asc, isNull } from "drizzle-orm";
-import { branch, bundle, subscriptionPlan, type DbClient } from "@ms/db";
+import { branch, bundle, type DbClient } from "@ms/db";
 import { availableAtBranch, availableVariantAtBranch } from "@ms/domain";
 import { BusinessError } from "../lib/errors.js";
 
@@ -268,29 +268,6 @@ export function publicCatalogRoutes(db: DbClient) {
         contents_label: b.contentsLabel,
         badge: b.badge,
         image_url: b.imageUrl,
-      })),
-    });
-  });
-
-  // Subscription plans shown on the subscription page (read-only; CTA is WhatsApp
-  // plus a lead POST to /v1/public/subscriptions).
-  r.get("/subscription-plans", async (c) => {
-    const rows = await db
-      .select()
-      .from(subscriptionPlan)
-      .where(eq(subscriptionPlan.isActive, true))
-      .orderBy(asc(subscriptionPlan.displayOrder));
-    return c.json({
-      data: rows.map((p) => ({
-        id: p.id,
-        slug: p.slug,
-        name: p.name,
-        price_ngn: p.priceNgn,
-        period: p.period,
-        bottles_label: p.bottlesLabel,
-        description: p.description,
-        perks: p.perks,
-        popular: p.popular,
       })),
     });
   });

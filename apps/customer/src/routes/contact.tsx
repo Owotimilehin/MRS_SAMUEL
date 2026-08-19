@@ -88,7 +88,8 @@ function Page() {
                   <select required value={form.subject} onChange={(e) => set("subject", e.target.value)} className={inputCls + " bg-white"}>
                     <option value="" disabled>Choose...</option>
                     <option>Order enquiry</option>
-                    <option>Subscription</option>
+                    <option>White label</option>
+                    <option>Bulk order</option>
                     <option>Wholesale / B2B</option>
                     <option>Press / partnership</option>
                     <option>Just saying hi</option>

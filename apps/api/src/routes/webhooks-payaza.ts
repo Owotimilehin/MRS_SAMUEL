@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { saleOrder, type DbClient } from "@ms/db";
 import { verifyPayazaTransaction, isPayazaSuccess } from "../payments/payaza.js";
-import { activateSubscriptionFromPayment } from "../lib/subscriptions.js";
 import { applyPayazaConfirmation } from "../payments/reconcile.js";
 import { logger } from "../logger.js";
 
@@ -97,14 +96,11 @@ export function payazaWebhookRoutes(db: DbClient) {
       return c.json({ ok: true });
     }
 
-    // Subscription first-payment references are SUB_<subscriptionId>; route them
-    // to activation (capture token, first cycle order, schedule next charge).
+    // Subscriptions are retired: SUB_* references can only be stragglers from
+    // the removed recurring-billing flow. Acknowledge so the provider stops
+    // retrying, but do nothing — there is no subscription left to activate.
     if (reference.startsWith("SUB_")) {
-      const subscriptionId = reference.slice("SUB_".length);
-      await db.transaction(async (tx) => {
-        await activateSubscriptionFromPayment(tx, subscriptionId, confirmed);
-      });
-      logger.info({ requestId, reference, subscriptionId }, "payaza webhook: subscription activated");
+      logger.warn({ requestId, reference }, "payaza webhook: ignoring retired subscription reference");
       return c.json({ ok: true });
     }
 
