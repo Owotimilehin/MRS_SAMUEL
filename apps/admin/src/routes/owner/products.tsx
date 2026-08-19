@@ -64,7 +64,7 @@ export function ProductsPage(): JSX.Element {
   async function load(): Promise<void> {
     setLoading(true);
     try {
-      const list = await api<{ data: ProductRow[] }>(`/products`);
+      const list = await api<{ data: ProductRow[] }>(`/products?include_deleted=1`);
       const detailed = await Promise.all(
         list.data.map((p) =>
           api<{ data: ProductRow }>(`/products/${p.id}`).then((r) => r.data).catch(() => p),
@@ -131,10 +131,21 @@ export function ProductsPage(): JSX.Element {
         <div className="flav-grid ed-rise">
           {rows.map((p) => {
             const accent = getFlavourVisual({ slug: p.slug }).accent;
+            const isDeactivated = !!p.deletedAt;
+            // "Not selling" means every size is retired on a flavour that is
+            // otherwise live — a different (and more surprising) state than a
+            // deliberate deactivation, so never show both badges at once.
             const allRetired =
-              !!p.variants && p.variants.length > 0 && p.variants.every((v) => !v.is_active);
+              !isDeactivated &&
+              !!p.variants &&
+              p.variants.length > 0 &&
+              p.variants.every((v) => !v.is_active);
             return (
-              <article key={p.id} className="flav-card">
+              <article
+                key={p.id}
+                className="flav-card"
+                style={isDeactivated ? { opacity: 0.6 } : undefined}
+              >
                 <FlavourMedia
                   size="card"
                   product={{ slug: p.slug }}
@@ -142,6 +153,18 @@ export function ProductsPage(): JSX.Element {
                 <span className="flav-tag flav-card__cat" style={{ ["--fl-accent" as string]: accent } as CSSProperties}>
                   {p.category}
                 </span>
+                {isDeactivated && (
+                  <span
+                    className="flav-tag flav-card__cat"
+                    style={{
+                      ["--fl-accent" as string]: "var(--danger)",
+                      right: "auto",
+                      left: 12,
+                    } as CSSProperties}
+                  >
+                    Deactivated
+                  </span>
+                )}
                 {allRetired && (
                   <span
                     className="flav-tag flav-card__cat"
