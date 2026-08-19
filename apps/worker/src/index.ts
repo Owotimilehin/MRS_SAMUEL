@@ -7,7 +7,7 @@ import { exportAuditLog, isAuditExportWindow } from "./jobs/audit-export.js";
 import { queuePaymentReminders } from "./jobs/unpaid-reminder.js";
 import { runDeliveryWatchdog } from "./jobs/delivery-watchdog.js";
 import { runDueCronJobs } from "./jobs/cron.js";
-import { sweepStuckPayazaOrders } from "./jobs/payaza-reconcile.js";
+import { sweepStuckPaymentOrders } from "./jobs/payment-reconcile.js";
 import { expireUnpaidOrders } from "./jobs/expire-unpaid-orders.js";
 import { pruneCheckoutLog } from "./jobs/prune-checkout-log.js";
 import { runJob } from "./jobs/run-job.js";
@@ -24,7 +24,7 @@ const LATE_CLOSE_INTERVAL_MS = 60 * 60 * 1000; // check hourly
 const REMINDER_INTERVAL_MS = 5 * 60_000; // check for unpaid orders every 5 minutes
 const DELIVERY_WATCHDOG_MS = 60_000; // delivery retry/escalation every minute
 const CRON_CHECK_INTERVAL_MS = 15 * 60_000; // cron poll every 15 minutes
-const PAYAZA_RECONCILE_INTERVAL_MS = 120_000; // re-fire stuck Payaza webhooks every 2 minutes
+const PAYMENT_RECONCILE_INTERVAL_MS = 120_000; // re-fire stuck payment webhooks every 2 minutes
 const EXPIRE_UNPAID_INTERVAL_MS = 5 * 60_000; // auto-cancel abandoned online orders every 5 minutes
 const PRUNE_CHECKOUT_LOG_INTERVAL_MS = 6 * 60 * 60_000; // prune old checkout-log rows every 6h
 
@@ -42,7 +42,7 @@ let lastLateCheckAt = 0;
 let lastReminderAt = 0;
 let lastDeliveryWatchdogAt = 0;
 let lastCronCheckAt = 0;
-let lastPayazaReconcileAt = 0;
+let lastPaymentReconcileAt = 0;
 let lastExpireUnpaidAt = 0;
 let lastPruneCheckoutLogAt = 0;
 let lastAuditExportDate: string | null = null;
@@ -86,13 +86,13 @@ async function loop(): Promise<void> {
         lastDeliveryWatchdogAt = now;
       }
 
-      // Payaza reconcile sweep: re-fire the api webhook for online orders
+      // Payment reconcile sweep: re-fire the api webhook for online orders
       // stuck in confirmed with a live reservation, every 2 minutes, so a
       // completed payment is never lost if the webhook didn't fire.
-      if (now - lastPayazaReconcileAt > PAYAZA_RECONCILE_INTERVAL_MS) {
-        const n = await runJob(logger, "payaza_reconcile", () => sweepStuckPayazaOrders(db));
-        if (n && n > 0) logger.info({ reconciled: n }, "payaza reconcile sweep recovered orders");
-        lastPayazaReconcileAt = now;
+      if (now - lastPaymentReconcileAt > PAYMENT_RECONCILE_INTERVAL_MS) {
+        const n = await runJob(logger, "payment_reconcile", () => sweepStuckPaymentOrders(db));
+        if (n && n > 0) logger.info({ reconciled: n }, "payment reconcile sweep recovered orders");
+        lastPaymentReconcileAt = now;
       }
 
       // Auto-cancel abandoned unpaid online orders older than 60 minutes and

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Clock, Loader2 } from "lucide-react";
 import { formatNaira } from "@/lib/cart";
-import { launchPayazaCheckout } from "@/lib/payaza";
 import { RedirectingOverlay } from "@/components/RedirectingOverlay";
 import { resumeOpayOrder } from "@/lib/api/server-fns";
 import { useCountdown } from "@/hooks/useCountdown";
@@ -49,13 +48,12 @@ export function PaymentHoldBanner({
     if (!rp) return;
     setBusy(true);
 
-    // OPay: mint a fresh cashier session (the original URL has expired) and do a
+    // Mint a fresh cashier session (the original URL has expired) and do a
     // full-page redirect. Returning to this tracking page re-verifies on view.
-    if (rp.provider === "opay") {
-      if (!phone) {
-        setBusy(false);
-        return;
-      }
+    if (!phone) {
+      setBusy(false);
+      return;
+    }
       try {
         const { redirect_url } = await resumeOpayOrder({
           data: { orderNumber: order.order_number, phone },
@@ -67,14 +65,6 @@ export function PaymentHoldBanner({
       } catch {
         setBusy(false);
       }
-      return;
-    }
-
-    // Payaza (fallback): relaunch the popup.
-    await launchPayazaCheckout(rp.payaza, {
-      onPaid: () => onResumed(),
-      onClose: () => setBusy(false),
-    });
   }
 
   return (

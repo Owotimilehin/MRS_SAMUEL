@@ -9,25 +9,24 @@ import {
   type DbClient,
 } from "@ms/db";
 import { isOutsideLagos } from "@ms/shared";
-import { verifyPayazaTransaction, isPayazaSuccess } from "./payaza.js";
 import { verifyOpayTransaction, isOpaySuccess, type ConfirmedTransaction } from "./opay.js";
 import { autoDispatchEnabled } from "../lib/delivery-flags.js";
 
 export type ReconcileOutcome =
   | { kind: "order_not_found" }
   | { kind: "already_processed"; status: string }
-  | { kind: "not_completed"; payazaStatus: string }
+  | { kind: "not_completed"; providerStatus: string }
   | { kind: "underpaid"; totalNgn: number; netNgn: number; shortfallNgn: number }
   | { kind: "paid"; orderNumber: string; amountNgn: number; isPreorder: boolean };
 
 /**
- * Shared "mark order paid" money-logic, extracted verbatim from the Payaza
+ * Shared "mark order paid" money-logic, extracted verbatim from the original
  * webhook so the webhook, cron sweeper, on-view re-verify, and admin actions
  * all go through one tested path. Idempotent: replaying against an
  * already-paid order is a no-op (`already_processed`).
  *
  * `opts.acceptReportedAmount` lets a deliberate reconciliation action (cron /
- * admin) accept whatever Payaza reports as the truth instead of rejecting on
+ * admin) accept whatever the provider reports as the truth instead of rejecting on
  * mismatch — the webhook never sets this.
  */
 export async function applyPaymentConfirmation(
@@ -72,11 +71,11 @@ export async function applyPaymentConfirmation(
     return { kind: "already_processed", status: o.status };
   }
 
-  // What actually settles to the business = net (customer-paid minus Payaza's
-  // fee). Payaza always deducts its fee, so the order is "paid in full" only
-  // when net >= product total. Fall back to gross when Payaza reports no fee
+  // What actually settles to the business = net (customer-paid minus the
+  // provider's fee), so the order is "paid in full" only when net >= product
+  // total. Fall back to gross when the provider reports no fee
   // field (still kills false positives; loses exact underpayment detection).
-  const TOLERANCE = 1; // naira, absorbs Payaza's kobo rounding
+  const TOLERANCE = 1; // naira, absorbs the provider's kobo rounding
   const effectiveNet = confirmed.netNgn ?? confirmed.amountNgn ?? o.totalNgn;
   if (!opts?.acceptReportedAmount && effectiveNet < o.totalNgn - TOLERANCE) {
     const shortfallNgn = o.totalNgn - effectiveNet;
@@ -96,7 +95,7 @@ export async function applyPaymentConfirmation(
         fee_ngn: confirmed.feeNgn,
         net_ngn: effectiveNet,
         shortfall_ngn: shortfallNgn,
-        payaza_reference: confirmed.processorReference ?? null,
+        processor_reference: confirmed.processorReference ?? null,
       },
     });
     return { kind: "underpaid", totalNgn: o.totalNgn, netNgn: effectiveNet, shortfallNgn };
@@ -134,7 +133,7 @@ export async function applyPaymentConfirmation(
     await tx.delete(stockReservation).where(eq(stockReservation.saleOrderId, o.id));
   }
   // amount_ngn stays the product total (the business's money) so revenue
-  // reports that SUM(payment.amount_ngn) never include Payaza's fee.
+  // reports that SUM(payment.amount_ngn) never include the provider's fee.
   await tx.insert(payment).values({
     saleOrderId: o.id,
     method: "card",
@@ -144,7 +143,7 @@ export async function applyPaymentConfirmation(
     netNgn: confirmed.netNgn ?? (confirmed.amountNgn != null && confirmed.feeNgn != null ? confirmed.amountNgn - confirmed.feeNgn : null),
     rawBreakdown: confirmed.raw ?? null,
     status: "paid",
-    processor: opts?.processor ?? "payaza",
+    processor: opts?.processor ?? "opay",
     processorReference: confirmed.processorReference ?? null,
     paidAt: new Date(),
   });
@@ -186,27 +185,19 @@ export async function applyPaymentConfirmation(
   };
 }
 
-/** Back-compat alias: existing Payaza call sites import this name. */
-export const applyPayazaConfirmation = applyPaymentConfirmation;
 
 /**
- * Re-verify a single order against a provider and reconcile if it reports
+ * Re-verify a single order against OPay and reconcile if it reports
  * success. Used by the cron sweeper and on-view re-verify — not the webhook
  * (which already has its own `confirmed` from the callback wake-up).
  */
 export async function verifyAndReconcile(
   db: DbClient,
   orderNumber: string,
-  provider: "opay" | "payaza" = "payaza",
 ): Promise<ReconcileOutcome> {
-  const confirmed =
-    provider === "opay"
-      ? await verifyOpayTransaction(orderNumber)
-      : await verifyPayazaTransaction(orderNumber);
-  const success =
-    provider === "opay" ? isOpaySuccess(confirmed.status) : isPayazaSuccess(confirmed.status);
-  if (!success) {
-    return { kind: "not_completed", payazaStatus: confirmed.status };
+  const confirmed = await verifyOpayTransaction(orderNumber);
+  if (!isOpaySuccess(confirmed.status)) {
+    return { kind: "not_completed", providerStatus: confirmed.status };
   }
   return db.transaction(async (tx) => {
     const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.orderNumber, orderNumber));
@@ -235,7 +226,7 @@ export async function verifyAndReconcile(
       }
     }
 
-    return applyPaymentConfirmation(tx, orderForConfirmation, confirmed, { processor: provider });
+    return applyPaymentConfirmation(tx, orderForConfirmation, confirmed, { processor: "opay" });
   });
 }
 
@@ -246,9 +237,9 @@ export interface OfflinePaymentInput {
 }
 
 /**
- * Record a payment received OUTSIDE Payaza (bank transfer / cash) and mark the
+ * Record a payment received OUTSIDE the online provider (bank transfer / cash) and mark the
  * order paid. Used when the customer paid the whole amount, or topped up a
- * shortfall, by a non-Payaza means. Mirrors applyPayazaConfirmation's paid
+ * shortfall, by an offline means. Mirrors applyPaymentConfirmation's paid
  * branch: CAS flip, one payment row (processor 'manual'), stock for a non-
  * preorder, preorder-paid/paid-online outbox event. Idempotent.
  */

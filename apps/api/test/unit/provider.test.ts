@@ -1,24 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { getActiveProvider } from "../../src/payments/provider.js";
 
-function fakeDb(rows: Array<{ key: string; value: unknown }>) {
-  return {
-    select: () => ({
-      from: () => ({
-        where: () => rows.filter((r) => r.key === "payment_provider"),
-      }),
-    }),
-  } as unknown as Parameters<typeof getActiveProvider>[0];
-}
-
+/**
+ * OPay is the only provider. The owner-facing toggle and the Payaza fallback
+ * were removed once OPay was proven in production, but the seam is kept so a
+ * second provider could be reintroduced without reshaping call sites.
+ */
 describe("getActiveProvider", () => {
-  it("defaults to opay when no setting row exists", async () => {
-    expect(await getActiveProvider(fakeDb([]))).toBe("opay");
-  });
-  it("returns payaza when the setting says so", async () => {
-    expect(await getActiveProvider(fakeDb([{ key: "payment_provider", value: { provider: "payaza" } }]))).toBe("payaza");
-  });
-  it("falls back to opay on a malformed value", async () => {
-    expect(await getActiveProvider(fakeDb([{ key: "payment_provider", value: { provider: "nonsense" } }]))).toBe("opay");
+  it("always resolves to opay", async () => {
+    const db = {} as Parameters<typeof getActiveProvider>[0];
+    expect(await getActiveProvider(db)).toBe("opay");
   });
 });

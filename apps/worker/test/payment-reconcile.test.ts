@@ -18,7 +18,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, "../../../packages/db/migrations");
 
-describe("payaza reconcile sweep", () => {
+describe("payment reconcile sweep", () => {
   let container: StartedPostgreSqlContainer;
   let db: DbClient;
   let branchId: string;
@@ -162,20 +162,23 @@ describe("payaza reconcile sweep", () => {
       reservationExpiresInSeconds: null,
     });
 
-    const { sweepStuckPayazaOrders } = await import("../src/jobs/payaza-reconcile.js");
-    const count = await sweepStuckPayazaOrders(db);
+    const { sweepStuckPaymentOrders } = await import("../src/jobs/payment-reconcile.js");
+    const count = await sweepStuckPaymentOrders(db);
 
     expect(count).toBe(3);
     expect(fetch).toHaveBeenCalledTimes(3);
     const refs = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((call) => {
       const [url, init] = call;
-      expect(String(url)).toMatch(/\/v1\/webhooks\/payaza$/);
-      return JSON.parse((init as RequestInit).body as string).transaction_reference;
+      expect(String(url)).toMatch(/\/v1\/webhooks\/opay$/);
+      return JSON.parse((init as RequestInit).body as string).reference;
     });
     expect(refs.sort()).toEqual(["SO-1", "SO-2", "SO-6"]);
   });
 
-  it("re-fires each order's stamped provider webhook (opay → /opay, payaza/null → /payaza)", async () => {
+  // OPay is the only provider now. Orders stamped "payaza" or left null are
+  // legacy rows from before the switch; they must still route to the OPay
+  // webhook rather than a route that no longer exists.
+  it("re-fires the OPay webhook for every order, whatever provider is stamped", async () => {
     // An OPay-stamped stuck order must be re-verified against the OPay webhook.
     await makeOrder({
       orderNumber: "SO-OPAY",
@@ -185,7 +188,7 @@ describe("payaza reconcile sweep", () => {
       reservationExpiresInSeconds: 600,
       paymentProvider: "opay",
     });
-    // A payaza-stamped one → payaza webhook.
+    // A legacy payaza-stamped order → still the OPay webhook.
     await makeOrder({
       orderNumber: "SO-PAYAZA",
       status: "confirmed",
@@ -194,7 +197,7 @@ describe("payaza reconcile sweep", () => {
       reservationExpiresInSeconds: 600,
       paymentProvider: "payaza",
     });
-    // A legacy null-provider order defaults to payaza.
+    // A legacy null-provider order → likewise.
     await makeOrder({
       orderNumber: "SO-LEGACY",
       status: "confirmed",
@@ -204,8 +207,8 @@ describe("payaza reconcile sweep", () => {
       paymentProvider: null,
     });
 
-    const { sweepStuckPayazaOrders } = await import("../src/jobs/payaza-reconcile.js");
-    const count = await sweepStuckPayazaOrders(db);
+    const { sweepStuckPaymentOrders } = await import("../src/jobs/payment-reconcile.js");
+    const count = await sweepStuckPaymentOrders(db);
     expect(count).toBe(3);
 
     const byRef = new Map<string, { url: string; body: Record<string, unknown> }>();
@@ -216,9 +219,9 @@ describe("payaza reconcile sweep", () => {
     }
     expect(byRef.get("SO-OPAY")!.url).toMatch(/\/v1\/webhooks\/opay$/);
     expect(byRef.get("SO-OPAY")!.body).toEqual({ reference: "SO-OPAY" });
-    expect(byRef.get("SO-PAYAZA")!.url).toMatch(/\/v1\/webhooks\/payaza$/);
-    expect(byRef.get("SO-PAYAZA")!.body.transaction_reference).toBe("SO-PAYAZA");
-    expect(byRef.get("SO-LEGACY")!.url).toMatch(/\/v1\/webhooks\/payaza$/);
+    expect(byRef.get("SO-PAYAZA")!.url).toMatch(/\/v1\/webhooks\/opay$/);
+    expect(byRef.get("SO-PAYAZA")!.body).toEqual({ reference: "SO-PAYAZA" });
+    expect(byRef.get("SO-LEGACY")!.url).toMatch(/\/v1\/webhooks\/opay$/);
   });
 
   it("a failed POST is logged and does not abort the sweep (best-effort)", async () => {
@@ -241,8 +244,8 @@ describe("payaza reconcile sweep", () => {
       vi.fn().mockRejectedValueOnce(new Error("network down")).mockResolvedValueOnce({ ok: true, status: 200 }),
     );
 
-    const { sweepStuckPayazaOrders } = await import("../src/jobs/payaza-reconcile.js");
-    const count = await sweepStuckPayazaOrders(db);
+    const { sweepStuckPaymentOrders } = await import("../src/jobs/payment-reconcile.js");
+    const count = await sweepStuckPaymentOrders(db);
 
     // SO-7's POST throws and is swallowed; SO-8's POST succeeds. The loop
     // must not abort after SO-7's failure, so both get attempted and only

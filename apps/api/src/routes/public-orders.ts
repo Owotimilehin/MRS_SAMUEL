@@ -25,7 +25,6 @@ import {
 } from "@ms/shared";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { BusinessError } from "../lib/errors.js";
-import { buildPayazaCheckoutConfig } from "../payments/payaza.js";
 import { getActiveProvider, createCheckout } from "../payments/provider.js";
 import { resolveCustomer } from "../lib/customers.js";
 import { getDeliveryProvider } from "../delivery/index.js";
@@ -248,7 +247,7 @@ export function publicOrderRoutes(db: DbClient) {
 
   /**
    * Create an online order — anonymous (no session). Reserves stock, returns
-   * the new order id + a Payaza checkout URL. If the device drops out before
+   * the new order id + an OPay checkout URL. If the device drops out before
    * paying, the reservation expires and the bottles return to inventory.
    */
   r.post("/", async (c) => {
@@ -606,11 +605,10 @@ export function publicOrderRoutes(db: DbClient) {
     // doesn't replay the same items into a second order.
     await clearCartForCookie(db, c);
 
-    // Hand the customer the right checkout: an OPay redirect URL, or the Payaza
-    // popup SDK config. Payment is confirmed server-side (OPay cashier/status or
-    // Payaza transaction-query) via the matching webhook / sweep / on-view verify.
+    // Hand the customer OPay's hosted cashier URL. Payment is confirmed
+    // server-side (OPay cashier/status) via the webhook / sweep / on-view verify.
     const handoff = await createCheckout(db, {
-      provider: (created.order.paymentProvider as "opay" | "payaza" | null) ?? "payaza",
+      provider: "opay",
       amountNgn: created.order.totalNgn,
       reference: created.order.orderNumber,
       email: created.customerEmail ?? "no-email@example.com",
@@ -618,10 +616,11 @@ export function publicOrderRoutes(db: DbClient) {
       customerPhone: body.customer.phone,
     });
 
-    const payment =
-      handoff.provider === "opay"
-        ? { provider: "opay" as const, reference: created.order.orderNumber, redirect_url: handoff.redirectUrl }
-        : { provider: "payaza" as const, reference: handoff.payaza.reference, payaza: handoff.payaza };
+    const payment = {
+      provider: "opay" as const,
+      reference: created.order.orderNumber,
+      redirect_url: handoff.redirectUrl,
+    };
 
     return c.json(
       {
@@ -675,7 +674,7 @@ export function publicOrderRoutes(db: DbClient) {
     // never re-query. Best-effort: a provider outage here must not break the page.
     if (o.channel === "online" && (o.status === "confirmed" || o.status === "reconcile_needed")) {
       try {
-        await verifyAndReconcile(db, o.orderNumber, (o.paymentProvider as "opay" | "payaza" | null) ?? "payaza");
+        await verifyAndReconcile(db, o.orderNumber);
       } catch (err) {
         logger.warn({ err, orderNumber: o.orderNumber }, "tracking on-view re-verify failed (non-fatal)");
       }
@@ -747,28 +746,13 @@ export function publicOrderRoutes(db: DbClient) {
 
     // Resume-payment config for an unpaid order — lets the customer relaunch
     // payment without re-entering their details. Phone is already verified
-    // above, so this is safe to hand back. Provider-aware: Payaza ships the full
-    // popup SDK config; OPay only signals `{ provider, reference }` because an
-    // OPay cashier URL expires (~30 min) — the customer clicks "Resume payment"
-    // which mints a FRESH session via POST /:orderNumber/opay-session.
-    let resumePayment:
-      | { provider: "payaza"; reference: string; payaza: ReturnType<typeof buildPayazaCheckoutConfig> }
-      | { provider: "opay"; reference: string }
-      | null = null;
+    // above, so this is safe to hand back. Only `{ provider, reference }` is
+    // signalled because an OPay cashier URL expires (~30 min) — the customer
+    // clicks "Resume payment", which mints a FRESH session via
+    // POST /:orderNumber/opay-session.
+    let resumePayment: { provider: "opay"; reference: string } | null = null;
     if (o.status === "confirmed") {
-      const provider = (o.paymentProvider as "opay" | "payaza" | null) ?? "payaza";
-      if (provider === "opay") {
-        resumePayment = { provider: "opay", reference: o.orderNumber };
-      } else {
-        const payaza = buildPayazaCheckoutConfig({
-          amountNgn: o.totalNgn,
-          email: cust.email ?? "no-email@example.com",
-          reference: o.orderNumber,
-          ...(cust.name ? { customerName: cust.name } : {}),
-          ...(cust.phone ? { customerPhone: cust.phone } : {}),
-        });
-        resumePayment = { provider: "payaza", reference: payaza.reference, payaza };
-      }
+      resumePayment = { provider: "opay", reference: o.orderNumber };
     }
 
     // Support WhatsApp deep link (configured per deployment).

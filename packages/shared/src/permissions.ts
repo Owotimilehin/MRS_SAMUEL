@@ -112,8 +112,8 @@ const BRANCH_STAFF_CAPS: Capability[] = [
   "transfers.receive",
   // The till attends to online orders directly, so it needs the same order
   // visibility + follow-up powers admins/managers hold: see every order state
-  // and re-check Payaza / record an offline (transfer/cash) payment. Force-
-  // accepting a MISMATCHED Payaza amount stays owner-only (orders.accept_payment).
+  // and re-check OPay / record an offline (transfer/cash) payment. Force-
+  // accepting a MISMATCHED OPay amount stays owner-only (orders.accept_payment).
   "orders.view",
   "orders.manage",
 ];

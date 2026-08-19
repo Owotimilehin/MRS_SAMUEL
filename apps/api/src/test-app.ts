@@ -28,7 +28,6 @@ import { publicCatalogRoutes } from "./routes/public-catalog.js";
 import { publicOrderRoutes } from "./routes/public-orders.js";
 import { publicCartRoutes } from "./routes/public-cart.js";
 import { publicInstagramRoutes } from "./routes/public-instagram.js";
-import { payazaWebhookRoutes } from "./routes/webhooks-payaza.js";
 import { opayWebhookRoutes } from "./routes/webhooks-opay.js";
 import { returnRoutes } from "./routes/returns.js";
 import { dailyCloseRoutes } from "./routes/daily-close.js";
@@ -71,7 +70,7 @@ export function buildApp(): Hono {
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'", "https://api.payaza.africa"],
+        connectSrc: ["'self'"],
         frameAncestors: ["'none'"],
       },
       xFrameOptions: "DENY",
@@ -132,7 +131,6 @@ export function buildApp(): Hono {
   app.route("/v1/public/enquiries", publicEnquiryRoutes(db));
   app.route("/v1/public/settings", publicSettingsRoutes(db));
   app.route("/v1/public/telemetry", telemetryRoutes(db));
-  app.route("/v1/webhooks/payaza", payazaWebhookRoutes(db));
   app.route("/v1/webhooks/opay", opayWebhookRoutes(db));
   app.route("/v1/webhooks/shipbubble", shipbubbleWebhookRoutes(db));
   app.route("/v1/webhooks/delivery-reconcile", deliveryReconcileRoutes(db));
