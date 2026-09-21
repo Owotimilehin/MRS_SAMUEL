@@ -32,13 +32,42 @@ export async function setupTestDb(): Promise<{
   process.env.PUBLIC_ADMIN_URL ??= "http://localhost";
   process.env.REDIS_URL ??= "redis://localhost:6379";
   process.env.RATE_LIMIT_DISABLED = "1";
-  // A PKTEST key so online-order/subscription checkout config builds in "Test"
-  // mode. There is no mock-confirm fallback anymore — without a key,
-  // buildPayazaCheckoutConfig throws — so every integration test that creates an
-  // online order needs one. Confirmation itself still requires a real Payaza
-  // "Completed" (tests that assert a flip-to-paid stub the transaction-query).
-  process.env.PAYAZA_PUBLIC_KEY ??= "PZ78-PKTEST-itest";
+  // OPay is the only provider, and placing an online order calls OPay's
+  // cashier/create — without keys it throws and the order POST 500s. Give every
+  // suite test keys plus a fake cashier/create so order placement works offline.
+  // Confirmation still requires a real cashier/status "SUCCESS" (tests that
+  // assert a flip-to-paid stub that call themselves, layered over this one).
+  process.env.OPAY_MERCHANT_ID ??= "256625123456789";
+  process.env.OPAY_PUBLIC_KEY ??= "OPAYPUB_TEST_itest";
+  process.env.OPAY_SECRET_KEY ??= "OPAYPRV_TEST_itest";
+  installOpayCashierStub();
   return { container, url, db: createDbClient(url) };
+}
+
+const OPAY_STUBBED = Symbol.for("ms.itest.opayCashierStub");
+
+/** Intercept only OPay cashier/create; everything else hits the real fetch.
+ *  Installed once per process — setupTestDb runs in every suite. */
+function installOpayCashierStub(): void {
+  const g = globalThis as typeof globalThis & { [OPAY_STUBBED]?: true };
+  if (g[OPAY_STUBBED]) return;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = ((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (url.includes("/cashier/create")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            code: "00000",
+            data: { cashierUrl: "https://sandboxcashier.opaycheckout.com/itest", orderNo: "itest" },
+          }),
+          { status: 200 },
+        ),
+      );
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  g[OPAY_STUBBED] = true;
 }
 
 export async function seedOwner(db: ReturnType<typeof createDbClient>): Promise<{ id: string }> {
