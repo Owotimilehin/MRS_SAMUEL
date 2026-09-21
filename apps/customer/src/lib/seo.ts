@@ -15,7 +15,8 @@ export const SITE_URL = "https://mrssamuel.com";
 export const SITE_NAME = "Mrs. Samuel Fruit Juice";
 export const DEFAULT_DESCRIPTION =
   "100% natural, cold-pressed Nigerian fruit juice, pressed fresh every morning in Lagos. No added sugar, no preservatives — just real fruit.";
-export const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`;
+/** 1200x630 capture of the landing hero. Bump ?v= when replacing the file — WhatsApp/FB cache by URL. */
+export const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png?v=2`;
 export const TWITTER_HANDLE = "@Mrs_samuelfruitjuice";
 export const PHONE = "+2349019512246";
 /** Business contact inbox (Cloudflare Email Routing → owner's mailbox). */
@@ -93,7 +94,7 @@ export function organizationLd(): object {
     "@id": `${SITE_URL}/#organization`,
     name: SITE_NAME,
     url: SITE_URL,
-    logo: `${SITE_URL}/og-image.png`,
+    logo: `${SITE_URL}/favicon.png`,
     image: DEFAULT_OG_IMAGE,
     description: DEFAULT_DESCRIPTION,
     telephone: PHONE,
