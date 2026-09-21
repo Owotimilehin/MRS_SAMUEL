@@ -1,7 +1,10 @@
 // apps/customer/src/lib/api/server-fns.ts
 import { createServerFn } from "@tanstack/react-start";
+import { getCookie } from "@tanstack/react-start/server";
 import { notFound } from "@tanstack/react-router";
 import { apiFetch, ApiError } from "./client";
+import { CART_COOKIE_NAME, decodeCartCookie } from "@/lib/cart-cookie";
+import { resolveCart, EMPTY_CART, type ResolvedCart } from "@/lib/checkout-cart";
 import {
   toUiProduct, toUiPostSummary, toUiPost, toUiBundle, toUiPlan,
   type Product, type BlogPostSummary, type BlogPost, type Bundle,
@@ -34,6 +37,19 @@ export const fetchProductBySlug = createServerFn({ method: "GET" })
 export const fetchBranches = createServerFn({ method: "GET" }).handler(async (): Promise<ApiBranch[]> => {
   return apiFetch<ApiBranch[]>("/v1/public/catalog/branches");
 });
+
+// Rebuild the customer's basket on the SERVER from the ms_cart cookie, so
+// /checkout can render a real form + summary in its SSR HTML instead of the
+// "Your basket is empty" screen it used to emit for everyone. This is what
+// lets the Place order button work before (and without) React hydrating.
+export const fetchCheckoutCart = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ResolvedCart> => {
+    const lines = decodeCartCookie(getCookie(CART_COOKIE_NAME));
+    if (lines.length === 0) return EMPTY_CART;
+    const products = await apiFetch<ApiProduct[]>("/v1/public/catalog/products");
+    return resolveCart(lines, products);
+  },
+);
 
 // ---------- Blog ----------
 export const fetchBlogPosts = createServerFn({ method: "GET" }).handler(async (): Promise<BlogPostSummary[]> => {

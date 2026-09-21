@@ -7,7 +7,13 @@ import {
 import { SiteShell } from "@/components/SiteShell";
 import { RedirectingOverlay } from "@/components/RedirectingOverlay";
 import { useCart, formatNaira } from "@/lib/cart";
-import { fetchBranches, requestQuote, placeOrder as placeOrderFn, logCheckoutAttempt } from "@/lib/api/server-fns";
+import { fetchBranches, fetchCheckoutCart, requestQuote, placeOrder as placeOrderFn, logCheckoutAttempt } from "@/lib/api/server-fns";
+import {
+  CHECKOUT_POST_PATH,
+  CART_ITEM_FIELD,
+  BRANCH_FIELD,
+  validNgPhone,
+} from "@/lib/checkout-post";
 import { buildCheckoutLogPayload, type CheckoutStage } from "@/lib/checkout-log";
 import { safeRandomUuid } from "@/lib/uuid";
 import { asApiError } from "@/lib/api/client";
@@ -25,14 +31,39 @@ export const Route = createFileRoute("/checkout")({
       { name: "description", content: "Complete your Mrs. Samuel juice order. Lagos delivery now or scheduled; nationwide arranged separately. Pay securely online." },
     ],
   }),
-  loader: async () => ({ branches: await fetchBranches() }),
+  // Rebuild the basket on the server (from the ms_cart cookie) alongside
+  // branches, so the checkout SSRs a real form + summary instead of the
+  // empty-basket screen — the button works before React hydrates.
+  loader: async () => {
+    const [branches, cart] = await Promise.all([fetchBranches(), fetchCheckoutCart()]);
+    return { branches, cart };
+  },
+  // `e` carries the outcome of a no-JS POST that bounced back (missing fields,
+  // stock conflict, …) so the page can show why. A CODE only, never a message:
+  // echoing server text from the query string let anyone hand a customer a link
+  // that rendered words of their choosing inside our branding.
+  validateSearch: (s: Record<string, unknown>): { e?: string } => ({
+    e: typeof s.e === "string" ? s.e : undefined,
+  }),
   component: Page,
 });
 
-// Light client-side Nigerian-phone check; the API is the authority.
-function validNgPhone(raw: string): boolean {
-  const s = raw.replace(/[\s-]/g, "");
-  return /^(\+?234|0)\d{9,10}$/.test(s);
+/** Map a no-JS bounce-back code to a fixed, first-party message. */
+function postErrorMessage(code: string | undefined): string | null {
+  switch (code) {
+    case undefined:
+      return null;
+    case "empty":
+      return "Your basket is empty. Add a juice and try again.";
+    case "fields":
+      return "Please add your full name, a valid phone number and delivery address, then place your order again.";
+    case "stock":
+      return "A juice in your basket just went out of stock. Adjust your basket and try again.";
+    case "branch":
+      return "Online ordering is temporarily unavailable. Please try again shortly or order on WhatsApp.";
+    default:
+      return "Something went wrong placing your order. Please try again.";
+  }
 }
 
 function todayLagos(): string {
@@ -56,11 +87,36 @@ function formatDeliveryDate(dateStr: string): string {
 }
 
 function Page() {
-  const { branches } = Route.useLoaderData();
+  const { branches, cart } = Route.useLoaderData();
+  const search = Route.useSearch();
   const { items, subtotal, clear } = useCart();
   // Route to the owner-selected online-fulfilment branch; fall back to the first
   // active branch when none is flagged (preserves prior behaviour).
   const branchId = (branches.find((b) => b.is_online_default) ?? branches[0])?.id ?? null;
+
+  // Unified basket view for rendering. Before React hydrates (and with JS off
+  // entirely) the client cart is empty, so we render from the SERVER cart the
+  // loader rebuilt from the cookie; once hydrated we use the client cart, which
+  // mirrors the same cookie so the two agree and there is no flash. This is
+  // what lets the summary + form SSR with real content.
+  const serverLines = cart.lines.map((l) => ({
+    key: l.variantId,
+    name: l.name,
+    size: l.size,
+    qty: l.qty,
+    image: l.image,
+    unitPrice: l.unitPriceNgn,
+    stock: l.available,
+  }));
+  const clientLines = items.map((it) => ({
+    key: it.id,
+    name: it.product.name,
+    size: it.size,
+    qty: it.qty,
+    image: it.product.image,
+    unitPrice: it.unitPrice,
+    stock: it.product.availableBySize[it.size] ?? 0,
+  }));
 
   // --- form ---
   const [form, setForm] = useState({
@@ -181,15 +237,27 @@ function Page() {
   const [redirectTo, setRedirectTo] = useState<{ url: string; trackUrl: string } | null>(null);
   const idemRef = useRef<string>("");
 
-  // Hydration guard. This page is server-rendered, so the button's onClick is
-  // NOT wired until React hydrates. A tap before that does nothing, with no
-  // feedback — the "pre-hydration dead tap". We flip this true on mount (after
-  // hydration) and gate the button on it, so an early tap sees a clear
-  // "Loading…" state instead of silently doing nothing.
+  // Tracks whether React has taken over. The checkout button is a REAL
+  // <button type="submit"> inside a <form method="POST" action="/checkout/place">,
+  // so a tap works before this ever flips true (and with JS disabled entirely):
+  // the browser posts to the server, which creates the order and redirects to
+  // payment. There is no pre-hydration dead tap to guard against any more. We
+  // still track hydration so the JS path can take over the submit for the richer
+  // flow (Payaza popup, redirect overlay, scheduling, inline validation).
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     setHydrated(true);
   }, []);
+
+  // The basket we render + validate against: server cart until hydrated, client
+  // cart after. Both derive from the same cookie so they match.
+  const lines = hydrated ? clientLines : serverLines;
+  const subtotalDisplay = hydrated ? subtotal : cart.subtotalNgn;
+  const totalDisplay = subtotalDisplay + deliveryFee;
+  const postError = postErrorMessage(search.e);
+  // Lines whose variant is no longer sellable were dropped when the server
+  // rebuilt the basket. Say so — otherwise the basket just silently shrinks.
+  const droppedCount = hydrated ? 0 : cart.droppedVariantIds.length;
 
   // Schedule is always valid — orderSchedule already rolls forward off-hours/past windows.
   const scheduleValid = true;
@@ -207,12 +275,11 @@ function Page() {
     return missing;
   }
 
-  // The button is clickable once hydrated and an order *could* be attempted, so a
-  // tap always responds — either it opens payment or it tells the customer what's
-  // missing. Before hydration (dead onClick) and during a busy/blocked state it is
-  // disabled and shows why, so a tap is never silently swallowed.
+  // The submit button is live whenever an order could be attempted — no
+  // hydration requirement, because it is a native form submit that the server
+  // handles. Only a genuinely busy/blocked state disables it.
   const canPlace =
-    hydrated && items.length > 0 && !!branchId && scheduleValid && !placing && !quoting;
+    lines.length > 0 && !!branchId && scheduleValid && !placing && !quoting;
 
   // Fire-and-forget diagnostic log of each checkout stage (delivery details,
   // error, response). Wrapped so logging can never break the order.
@@ -369,7 +436,9 @@ function Page() {
   // ---------- render ----------
   // While redirecting to OPay we call clear(), which empties the basket — stay on
   // the checkout render (not the empty-basket screen) so the overlay covers it.
-  if (items.length === 0 && !redirectTo) {
+  // Uses the effective basket (server cart pre-hydration) so a real basket never
+  // flashes the empty screen during SSR.
+  if (lines.length === 0 && !redirectTo) {
     return (
       <SiteShell>
         <div className="px-5 max-w-3xl mx-auto pt-40 pb-32 text-center">
@@ -398,6 +467,24 @@ function Page() {
           <div className="hidden sm:flex items-center gap-2 text-xs text-[color:var(--brand)]/60"><Lock className="h-3.5 w-3.5" /> Secure order</div>
         </div>
 
+        {droppedCount > 0 && (
+          <div className="mt-6 flex items-start gap-3 rounded-2xl bg-[color:var(--brand-orange)]/10 ring-1 ring-[color:var(--brand-orange)]/30 p-4 text-sm text-[color:var(--brand)]" role="status">
+            <AlertCircle className="h-5 w-5 shrink-0 text-[color:var(--brand-orange)]" />
+            <span>
+              {droppedCount === 1 ? "One juice" : `${droppedCount} juices`} in your basket{" "}
+              {droppedCount === 1 ? "is" : "are"} no longer available and{" "}
+              {droppedCount === 1 ? "has" : "have"} been removed. The total below is what you'll pay.
+            </span>
+          </div>
+        )}
+
+        {postError && (
+          <div className="mt-6 flex items-start gap-3 rounded-2xl bg-[color:var(--brand-orange)]/10 ring-1 ring-[color:var(--brand-orange)]/30 p-4 text-sm text-[color:var(--brand)]" role="alert">
+            <AlertCircle className="h-5 w-5 shrink-0 text-[color:var(--brand-orange)]" />
+            <span>{postError}</span>
+          </div>
+        )}
+
         {!branchId && (
           <div className="mt-10 rounded-2xl bg-white ring-1 ring-black/5 p-8 text-center text-[color:var(--brand)]/80">
             Online ordering is temporarily unavailable. Please try again later or order on WhatsApp.
@@ -405,25 +492,41 @@ function Page() {
         )}
 
         {branchId && (
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-8">
+          // Native POST is the floor: with JS off, the browser submits straight
+          // to the server which creates the order and redirects to payment. When
+          // JS is present, onSubmit takes over for the richer flow.
+          <form
+            method="POST"
+            action={CHECKOUT_POST_PATH}
+            onSubmit={(e) => { e.preventDefault(); void submit(false); }}
+            className="mt-8 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-8"
+          >
+            {/* The POST carries its own basket and branch, so it no longer
+                depends on the ms_cart cookie surviving the round trip — a
+                blocked or expired cookie used to mean "full basket, empty
+                submit". Also keeps a branch lookup out of the money path. */}
+            <input type="hidden" name={BRANCH_FIELD} value={branchId} />
+            {lines.map((l) => (
+              <input key={`f-${l.key}`} type="hidden" name={CART_ITEM_FIELD} value={`${l.key}:${l.qty}`} />
+            ))}
             {/* LEFT: form */}
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-[1.5rem] bg-white ring-1 ring-black/5 p-6 sm:p-8 space-y-8">
               {/* Contact */}
               <section>
                 <h2 className="font-display text-2xl text-[color:var(--brand)]">Delivery details</h2>
                 <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Full name" value={form.name} onChange={(v) => set("name", v)} placeholder="Adaeze Okeke" />
-                  <Field label="Phone" value={form.phone} onChange={(v) => set("phone", v)} placeholder="0800 000 0000" invalid={form.phone !== "" && !validNgPhone(form.phone)} hint="Enter a valid Nigerian number" />
-                  <Field label="Email (optional)" value={form.email} onChange={(v) => set("email", v)} placeholder="you@email.com" className="sm:col-span-2" />
-                  <Field label="Delivery address" value={form.address} onChange={(v) => set("address", v)} placeholder="House no, street, area" className="sm:col-span-2" />
+                  <Field name="name" label="Full name" value={form.name} onChange={(v) => set("name", v)} placeholder="Adaeze Okeke" autoComplete="name" />
+                  <Field name="phone" label="Phone" value={form.phone} onChange={(v) => set("phone", v)} placeholder="0800 000 0000" invalid={form.phone !== "" && !validNgPhone(form.phone)} hint="Enter a valid Nigerian number" autoComplete="tel" inputMode="tel" />
+                  <Field name="email" label="Email (optional)" value={form.email} onChange={(v) => set("email", v)} placeholder="you@email.com" className="sm:col-span-2" autoComplete="email" inputMode="email" />
+                  <Field name="address" label="Delivery address" value={form.address} onChange={(v) => set("address", v)} placeholder="House no, street, area" className="sm:col-span-2" autoComplete="street-address" />
                   <label className="block sm:col-span-2">
                     <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">Delivery state</span>
-                    <select value={form.state} onChange={(e) => set("state", e.target.value)} className="w-full rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm text-[color:var(--brand)] ring-1 ring-black/5 focus:ring-2 focus:ring-[color:var(--brand-orange)] focus:outline-none">
+                    <select name="state" value={form.state} onChange={(e) => set("state", e.target.value)} className="w-full rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm text-[color:var(--brand)] ring-1 ring-black/5 focus:ring-2 focus:ring-[color:var(--brand-orange)] focus:outline-none">
                       {NIGERIA_STATES.map((s) => (<option key={s} value={s}>{s}</option>))}
                     </select>
                   </label>
-                  <Field label="Alternate phone (optional)" value={form.altPhone} onChange={(v) => set("altPhone", v)} placeholder="Second number to reach you" className="sm:col-span-2" />
-                  <Field label="Notes (optional)" value={form.notes} onChange={(v) => set("notes", v)} placeholder="Gate code, landmark…" className="sm:col-span-2" />
+                  <Field name="altPhone" label="Alternate phone (optional)" value={form.altPhone} onChange={(v) => set("altPhone", v)} placeholder="Second number to reach you" className="sm:col-span-2" autoComplete="tel" inputMode="tel" />
+                  <Field name="notes" label="Notes (optional)" value={form.notes} onChange={(v) => set("notes", v)} placeholder="Gate code, landmark…" className="sm:col-span-2" />
                 </div>
               </section>
 
@@ -535,7 +638,7 @@ function Page() {
                       {options.map((o) => {
                         const active = o.id === selectedId;
                         return (
-                          <button key={o.id} onClick={() => setSelectedId(o.id)} className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left ring-2 transition ${active ? "ring-[color:var(--brand-orange)] bg-[color:var(--brand-orange)]/5" : "ring-black/5 hover:ring-black/15"}`}>
+                          <button key={o.id} type="button" onClick={() => setSelectedId(o.id)} className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left ring-2 transition ${active ? "ring-[color:var(--brand-orange)] bg-[color:var(--brand-orange)]/5" : "ring-black/5 hover:ring-black/15"}`}>
                             <div>
                               <div className="font-semibold text-[color:var(--brand)]">{o.courier_name}</div>
                               <div className="text-xs text-[color:var(--brand)]/60">{o.eta_minutes != null ? `~${o.eta_minutes} min` : "ETA on dispatch"}{o.on_demand ? " · on-demand" : ""}</div>
@@ -561,49 +664,44 @@ function Page() {
             <aside className="rounded-[1.5rem] bg-[color:var(--brand)] text-white p-6 sm:p-7 h-fit lg:sticky lg:top-28">
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-white/60"><ShoppingBag className="h-3.5 w-3.5" /> Order summary</div>
               <div className="mt-5 space-y-3">
-                {items.map((it) => {
-                  const stock = it.product.availableBySize[it.size] ?? 0;
-                  return (
-                    <div key={it.id} className="flex items-start gap-3 text-sm">
-                      <div className="grid h-12 w-12 place-items-center rounded-lg shrink-0 bg-white/10"><img src={it.product.image} alt="" className="h-10 w-10 object-contain" /></div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold truncate">{it.product.name}</div>
-                        <div className="text-xs text-white/60">{it.size} · ×{it.qty}</div>
-                        <div className={`mt-0.5 text-[11px] ${stock > 0 ? "text-white/50" : "text-[color:var(--brand-orange)] font-medium"}`}>
-                          {stock > 0 ? `${stock} in stock` : deliveryPromise(it.size, 0)}
-                        </div>
+                {lines.map((it) => (
+                  <div key={it.key} className="flex items-start gap-3 text-sm">
+                    <div className="grid h-12 w-12 place-items-center rounded-lg shrink-0 bg-white/10">{it.image ? <img src={it.image} alt="" className="h-10 w-10 object-contain" /> : <span aria-hidden>🧃</span>}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">{it.name}</div>
+                      <div className="text-xs text-white/60">{it.size} · ×{it.qty}</div>
+                      <div className={`mt-0.5 text-[11px] ${it.stock > 0 ? "text-white/50" : "text-[color:var(--brand-orange)] font-medium"}`}>
+                        {it.stock > 0 ? `${it.stock} in stock` : deliveryPromise(it.size as Size, 0)}
                       </div>
-                      <div className="font-semibold shrink-0">{formatNaira(it.unitPrice * it.qty)}</div>
                     </div>
-                  );
-                })}
+                    <div className="font-semibold shrink-0">{formatNaira(it.unitPrice * it.qty)}</div>
+                  </div>
+                ))}
               </div>
               <div className="mt-5 pt-5 border-t border-white/10 space-y-2 text-sm">
-                <Row label="Subtotal" value={formatNaira(subtotal)} />
+                <Row label="Subtotal" value={formatNaira(subtotalDisplay)} />
                 <Row label="Delivery" value={!LIVE_COURIER_QUOTES || outsideLagos ? "₦0" : selectedOption ? formatNaira(deliveryFee) : "—"} />
                 <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
                   <span className="text-xs uppercase tracking-[0.2em] text-white/60">Total</span>
-                  <span className="font-display text-2xl font-semibold">{formatNaira(total)}</span>
+                  <span className="font-display text-2xl font-semibold">{formatNaira(totalDisplay)}</span>
                 </div>
               </div>
 
               <button
+                type="submit"
                 disabled={!canPlace}
-                onClick={() => submit(false)}
-                aria-busy={placing || !hydrated}
+                aria-busy={placing}
                 className="mt-5 w-full rounded-full bg-[color:var(--brand-orange)] text-white px-6 py-4 text-sm font-bold disabled:opacity-40 hover:opacity-90 transition flex items-center justify-center gap-2"
               >
-                {!hydrated ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> Loading…</>
-                ) : placing ? (
+                {placing ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Opening payment…</>
                 ) : (
-                  <>Place order — {formatNaira(total)}</>
+                  <>Place order — {formatNaira(totalDisplay)}</>
                 )}
               </button>
               <p className="mt-2 text-center text-[11px] text-white/50">You'll pay securely online.</p>
             </aside>
-          </div>
+          </form>
         )}
       </div>
     </SiteShell>
@@ -654,11 +752,11 @@ function Row({ label, value }: { label: string; value: string }) {
   return (<div className="flex items-center justify-between text-white/80"><span>{label}</span><span className="font-semibold text-white">{value}</span></div>);
 }
 
-function Field({ label, value, onChange, placeholder, className, invalid, hint }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; className?: string; invalid?: boolean; hint?: string }) {
+function Field({ name, label, value, onChange, placeholder, className, invalid, hint, autoComplete, inputMode }: { name?: string; label: string; value: string; onChange: (v: string) => void; placeholder?: string; className?: string; invalid?: boolean; hint?: string; autoComplete?: string; inputMode?: "text" | "tel" | "email" }) {
   return (
     <label className={`block ${className ?? ""}`}>
       <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">{label}</span>
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={`w-full rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm text-[color:var(--brand)] placeholder-[color:var(--brand)]/40 ring-1 focus:ring-2 focus:outline-none transition ${invalid ? "ring-[color:var(--brand-orange)]/60 focus:ring-[color:var(--brand-orange)]" : "ring-black/5 focus:ring-[color:var(--brand-orange)]"}`} />
+      <input name={name} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoComplete={autoComplete} inputMode={inputMode} className={`w-full rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm text-[color:var(--brand)] placeholder-[color:var(--brand)]/40 ring-1 focus:ring-2 focus:outline-none transition ${invalid ? "ring-[color:var(--brand-orange)]/60 focus:ring-[color:var(--brand-orange)]" : "ring-black/5 focus:ring-[color:var(--brand-orange)]"}`} />
       {invalid && hint && <span className="mt-1 block text-xs text-[color:var(--brand-orange)]">{hint}</span>}
     </label>
   );

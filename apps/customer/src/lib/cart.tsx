@@ -1,6 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
+import { serializeCartCookie } from "@/lib/cart-cookie";
+import { CART_CLEARED_COOKIE } from "@/lib/checkout-post";
 
 /** A line is a preorder when the wanted qty exceeds the online-default
  *  branch's available stock for that size. Whole line flips (spec). */
@@ -50,10 +52,24 @@ const STORAGE_KEY = "ms_cart_v2";
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [open, setOpen] = useState(false);
+  // False until the localStorage load below has run, so the persist effect
+  // cannot write an empty basket over a saved one on first render.
+  const loadedRef = useRef(false);
 
   // Hydrate from localStorage on mount (client-only; SSR starts empty).
   useEffect(() => {
     try {
+      // A no-JS order was placed and paid for in this browser: the server
+      // cleared the cart COOKIE on the redirect, but it cannot reach
+      // localStorage. Without this the customer returns from payment and React
+      // faithfully restores a basket of juice they have already bought — and
+      // rewrites the cart cookie from it, so the next checkout starts dirty.
+      // Consume the one-shot flag and start empty instead.
+      if (document.cookie.split(";").some((c) => c.trim().startsWith(`${CART_CLEARED_COOKIE}=`))) {
+        localStorage.removeItem(STORAGE_KEY);
+        document.cookie = `${CART_CLEARED_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+        return;
+      }
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as CartItem[];
@@ -63,14 +79,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
     } catch {
       /* ignore corrupt cart */
+    } finally {
+      loadedRef.current = true;
     }
   }, []);
 
+  // Persist to localStorage (rich cart, for this app's own UI) AND mirror the
+  // line ids into a cookie so the SERVER can rebuild the basket and render a
+  // real checkout form — see lib/cart-cookie.ts.
+  //
+  // Skipped until the mount load above has run: this effect also fires on the
+  // very first render, when `items` is still the empty SSR value, and writing
+  // then would blow away the saved basket before we ever read it.
   useEffect(() => {
+    if (!loadedRef.current) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch {
       /* ignore quota */
+    }
+    try {
+      document.cookie = serializeCartCookie(
+        items.map((i) => ({ variantId: i.variantId, qty: i.qty })),
+      );
+    } catch {
+      /* cookies unavailable — checkout still works once React hydrates */
     }
   }, [items]);
 
