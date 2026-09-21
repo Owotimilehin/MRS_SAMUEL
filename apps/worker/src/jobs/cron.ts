@@ -4,7 +4,6 @@ import { cronRun, type DbClient } from "@ms/db";
 import { fireMonthlyPnlDigest, shouldFirePnlDigestNow } from "./pnl-digest.js";
 import { fireMonthlyVarianceLossDigest } from "./variance-loss-digest.js";
 import { sweepRecurringExpenses } from "./recurring-expense-sweeper.js";
-import { sweepSubscriptionBilling, sweepPastDueCancellations } from "./subscription-billing.js";
 import { runJob } from "./run-job.js";
 
 const cronLogger = pino({ base: { service: "ms-worker", scope: "cron" } });
@@ -101,10 +100,4 @@ export async function runDueCronJobs(db: DbClient): Promise<void> {
     }
   }
 
-  // Subscription billing: charge anything due, then cancel past-due grace
-  // expiries. Runs every tick (charges are due at specific timestamps, not a
-  // daily window); the sweep is self-claiming per row via FOR UPDATE, and
-  // cancellation is an idempotent guarded UPDATE — so no cron_run claim needed.
-  await runJob(cronLogger, "subscription_billing", () => sweepSubscriptionBilling(db));
-  await runJob(cronLogger, "past_due_cancellations", () => sweepPastDueCancellations(db));
 }

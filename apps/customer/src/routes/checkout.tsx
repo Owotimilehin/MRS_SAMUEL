@@ -12,7 +12,6 @@ import { buildCheckoutLogPayload, type CheckoutStage } from "@/lib/checkout-log"
 import { safeRandomUuid } from "@/lib/uuid";
 import { asApiError } from "@/lib/api/client";
 import type { ApiDeliveryOption, ApiPlacedOrder } from "@/lib/api/types";
-import { launchPayazaCheckout, prewarmPayaza } from "@/lib/payaza";
 import { NIGERIA_STATES } from "@/lib/nigeria-states";
 import { scheduledIso, orderSchedule, type DeliveryWindow } from "@/lib/schedule";
 import { deliveryPromise, isImmediateSchedule } from "@/lib/availability-label";
@@ -24,13 +23,6 @@ export const Route = createFileRoute("/checkout")({
     meta: [
       { title: "Checkout — Mrs. Samuel Fruit Juice" },
       { name: "description", content: "Complete your Mrs. Samuel juice order. Lagos delivery now or scheduled; nationwide arranged separately. Pay securely online." },
-    ],
-    // Warm DNS + TLS to Payaza's checkout host the moment the page loads, so the
-    // SDK/iframe fetches at pay-time aren't paying a cold-connection tax. Pairs
-    // with prewarmPayaza() (eager SDK download) in the component below.
-    links: [
-      { rel: "preconnect", href: "https://checkout-v2.payaza.africa" },
-      { rel: "dns-prefetch", href: "https://checkout-v2.payaza.africa" },
     ],
   }),
   loader: async () => ({ branches: await fetchBranches() }),
@@ -98,13 +90,6 @@ function Page() {
     // scheduling. When it becomes feasible again, leave the customer's choice be.
     if (!immediate) setMode("schedule");
   }, [immediate]);
-
-  // Pre-warm Payaza the moment the customer reaches checkout (while they fill in
-  // details), so tapping Pay opens an already-downloaded popup instead of a cold
-  // DNS + TLS + SDK + iframe load — the slowest, most failure-prone moment.
-  useEffect(() => {
-    prewarmPayaza();
-  }, []);
 
   // The earliest date the customer may schedule (the schedule "floor"), and the
   // 3-month horizon — both as Lagos YYYY-MM-DD for the native date input.
@@ -262,12 +247,18 @@ function Page() {
     }
   }
 
-  // Hand the (already-created) order to Payaza and route to tracking on success.
-  // Shared by the normal path and the gracious-modal "Continue" path.
+  /**
+   * Hand the (already-created) order to OPay's hosted cashier.
+   *
+   * A full-page redirect, so there is no popup that can fail to open, be
+   * blocked, or silently swallow an error. The customer returns to the tracking
+   * page (OPay's returnUrl), which re-verifies payment server-side on view; the
+   * webhook and the reconcile sweep confirm it independently either way.
+   */
   async function proceedToPayment(order: ApiPlacedOrder) {
-    const phone = form.phone.replace(/[\s-]/g, "");
+    const phone = form.phone.replace(/[s-]/g, "");
     // Stash phone + placedAt so the tracking page AND the site-wide ongoing-
-    // order banner can read the order back after Payaza (placedAt bounds the
+    // order banner can read the order back after payment (placedAt bounds the
     // banner's 48h self-prune).
     try {
       localStorage.setItem(
@@ -278,55 +269,17 @@ function Page() {
       /* ignore storage failures */
     }
     const trackUrl = `/order/${order.order_number}?paid=1`;
+    const url = order.payment.redirect_url;
 
-    // OPay: full-page redirect to OPay's hosted cashier page. There is no popup
-    // to fail — the customer returns to the tracking page (returnUrl), which
-    // re-verifies payment server-side on view. Clear the basket before leaving
-    // (the order owns the items now). Mount the redirect overlay FIRST so the tap
-    // gets instant feedback and — if navigation stalls on a flaky network — a
-    // manual "Continue to payment" link appears; assign location.href on the next
-    // tick so the overlay paints before the navigation freezes the page.
-    if (order.payment.provider === "opay") {
-      const url = order.payment.redirect_url;
-      logStage("payment_redirect", { orderNumber: order.order_number });
-      clear();
-      setRedirectTo({ url, trackUrl });
-      setTimeout(() => { window.location.href = url; }, 50);
-      return;
-    }
-
-    // Payaza (fallback) checkout is a client-side popup (no redirect). On success
-    // the server webhook confirms payment; we just move to the tracking page.
-    await launchPayazaCheckout(order.payment.payaza, {
-      onPaid: () => {
-        // Log before navigating away so the success is recorded.
-        logStage("payment_paid", { orderNumber: order.order_number });
-        // Only empty the basket once payment actually succeeded. Clearing it
-        // before the popup opened was what flipped the page to the empty-basket
-        // screen and hid any error when the popup failed to open.
-        clear();
-        window.location.href = trackUrl;
-      },
-      onClose: () => {
-        // Popup dismissed without paying — order stays 'confirmed'; let the
-        // customer retry or view the (unpaid) order.
-        logStage("payment_closed", { orderNumber: order.order_number });
-        setPlacing(false);
-      },
-      onError: (message, diagnostics) => {
-        // The popup never opened (bad network, SDK blocked, or Payaza rejected
-        // the order). Surface it instead of failing silently, and let them retry.
-        // Attach structured diagnostics (reason, timing, sdk/iframe state,
-        // network) so the checkout log shows WHY, not just a generic message.
-        logStage("payment_failed", {
-          orderNumber: order.order_number,
-          errorMessage: message,
-          ...(diagnostics ? { response: { payaza_failure: diagnostics } } : {}),
-        });
-        setPlaceError(message);
-        setPlacing(false);
-      },
-    });
+    // Clear the basket before leaving (the order owns the items now). Mount the
+    // redirect overlay FIRST so the tap gets instant feedback and — if
+    // navigation stalls on a flaky network — a manual "Continue to payment"
+    // link appears; assign location.href on the next tick so the overlay paints
+    // before the navigation freezes the page.
+    logStage("payment_redirect", { orderNumber: order.order_number });
+    clear();
+    setRedirectTo({ url, trackUrl });
+    setTimeout(() => { window.location.href = url; }, 50);
   }
 
   async function submit(retry = false) {

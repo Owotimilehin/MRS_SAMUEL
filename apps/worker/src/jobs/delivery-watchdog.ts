@@ -107,7 +107,7 @@ export async function runDeliveryWatchdog(db: DbClient): Promise<number> {
   }
 
   // Reconcile pass: active deliveries whose last update is stale get polled.
-  // The worker never imports the API's apply logic (same boundary as payaza
+  // The worker never imports the API's apply logic (same boundary as payment
   // reconcile) — it POSTs the external_ref to the internal reconcile endpoint,
   // which asks the provider for current status and applies it through the same
   // path the webhook uses. Best-effort: one bad POST must not abort the pass.

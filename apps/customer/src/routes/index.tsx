@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import type { Product } from "@/lib/api/mappers";
-import { fetchProducts, fetchBlogPosts, fetchSubscriptionPlans, fetchBanner } from "@/lib/api/server-fns";
+import { fetchProducts, fetchBlogPosts, fetchBanner } from "@/lib/api/server-fns";
 import { TopBanner } from "@/components/TopBanner";
 import { pickCustomBannerMessage } from "@/lib/banner";
 import { SiteShell } from "@/components/SiteShell";
@@ -15,7 +15,6 @@ import { ProductDetail } from "@/components/ProductDetail";
 import { Benefits } from "@/components/Benefits";
 import { StepProcess } from "@/components/StepProcess";
 import { Categories } from "@/components/Categories";
-import { Subscription } from "@/components/Subscription";
 import { Testimonials } from "@/components/Testimonials";
 import { FeatureCards } from "@/components/FeatureCards";
 import { FAQ } from "@/components/FAQ";
@@ -43,19 +42,18 @@ export const Route = createFileRoute("/")({
     };
   },
   loader: async () => {
-    const [products, posts, plans, banner] = await Promise.all([
+    const [products, posts, banner] = await Promise.all([
       fetchProducts(),
       fetchBlogPosts(),
-      fetchSubscriptionPlans(),
       fetchBanner(),
     ]);
-    return { products, posts, plans, banner };
+    return { products, posts, banner };
   },
   component: Page,
 });
 
 function Page() {
-  const { products, posts, plans, banner } = Route.useLoaderData();
+  const { products, posts, banner } = Route.useLoaderData();
   const [selected, setSelected] = useState<Product | null>(null);
   const classics = sortByStock650(products.filter((p) => p.category === "Classic")).slice(0, 8);
   const specials = sortByStock650(products.filter((p) => p.category === "Special"));
@@ -120,7 +118,6 @@ function Page() {
       <Benefits />
       <StepProcess />
       <Categories />
-      <Subscription plans={plans} />
       <Story />
       <Sustainability />
       <Testimonials />

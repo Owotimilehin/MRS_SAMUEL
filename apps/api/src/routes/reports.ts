@@ -364,10 +364,7 @@ export function reportRoutes(db: DbClient) {
   // Verified table/column names:
   //   preorders  → sale_order.is_preorder=true, status IN ('confirmed','paid','handed_over','out_for_delivery')
   //   bags_queue → sale_order_packaging rows joined to sale_order with status='confirmed'
-  //   subscriptions → subscription_plan is a catalogue only; NO customer_subscription table exists
-  //   leads      → subscription_lead.created_at (this calendar month)
-  //   expiring_48h → 0 (no batch-expiry source in schema yet)
-  //   active_subscriptions / mrr_ngn → 0 (no active-customer-subscription table)
+  //   leads      → enquiry_lead.created_at (this calendar month)
   r.get("/overview", async (c) => {
     async function block<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
       try { return await fn(); } catch (err) { console.error(`[overview] ${label} block failed:`, err); return fallback; }

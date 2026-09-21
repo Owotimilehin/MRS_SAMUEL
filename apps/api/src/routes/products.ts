@@ -160,17 +160,26 @@ export function productRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth());
 
+  /**
+   * List flavours. Deactivated (soft-deleted) ones are hidden by default so
+   * every existing reader keeps its current behaviour; `?include_deleted=1`
+   * returns them too, which the admin catalogue needs — a deactivated flavour
+   * that vanishes entirely leaves the owner no way to see, count or restore it.
+   */
   r.get("/", async (c) => {
-    const rows = await db.select().from(product).where(isNull(product.deletedAt));
+    const includeDeleted = c.req.query("include_deleted") === "1";
+    const rows = includeDeleted
+      ? await db.select().from(product)
+      : await db.select().from(product).where(isNull(product.deletedAt));
     return c.json({ data: rows });
   });
 
   r.get("/:id", async (c) => {
     const id = c.req.param("id");
-    const [row] = await db
-      .select()
-      .from(product)
-      .where(and(eq(product.id, id), isNull(product.deletedAt)));
+    // A deactivated flavour stays readable by id: the admin catalogue can now
+    // surface it, so its detail must resolve rather than 404 the card. Callers
+    // tell the two apart from `deleted_at` on the row.
+    const [row] = await db.select().from(product).where(eq(product.id, id));
     if (!row) throw new BusinessError("not_found", "product not found", 404);
 
     const variants = await loadVariantsForProduct(db, id);

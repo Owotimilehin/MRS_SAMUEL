@@ -2,15 +2,11 @@ import { eq, asc } from "drizzle-orm";
 import {
   outboxEvent,
   customer,
-  payment,
-  saleReturn,
-  saleOrder,
   type DbClient,
 } from "@ms/db";
 import { isOutsideLagos } from "@ms/shared";
 import { sendMessage, channels } from "./notifiers/telegram.js";
 import { sendEmail } from "./notifiers/email.js";
-import { refundPayaza } from "./payments/payaza-refund.js";
 import { dispatchDeliveryFromEvent } from "./jobs/dispatch-delivery.js";
 import { getWorkerDeliveryProvider } from "./delivery-provider.js";
 import pino from "pino";
@@ -338,7 +334,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         text:
           `💸 *Refund initiated*\n` +
           `Return ${p["return_number"] ?? "?"} · ₦${p["amount_ngn"]}\n` +
-          `Calling Payaza now.`,
+          `Pay this back manually and mark it settled.`,
       };
     case "sale.payment_reminder":
       // Email reminder handled inline; ping owner so they know one was sent.
@@ -401,7 +397,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         chatIds: [owner],
         text:
           `💸 *Refund owed*\n` +
-          `${p["order_number"]} — ₦${p["refund_owed_ngn"]} to refund in the Payaza dashboard.\n` +
+          `${p["order_number"]} — ₦${p["refund_owed_ngn"]} to refund manually.\n` +
           `Mark it refunded once done.\n` +
           `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
       };
@@ -433,54 +429,20 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `${p["name"]} · ${p["subject"]}\n` +
           `${p["email"]}${p["phone"] ? ` · ${p["phone"]}` : ""}`,
       };
-    case "subscription.requested":
+    case "enquiry.received": {
+      const kind = p["enquiry_type"] === "white_label" ? "White label" : "Bulk order";
       return {
         chatIds: [owner],
         text:
-          `🔔 *Subscription enquiry*\n` +
-          `${p["name"]} · ${p["phone"]}\n` +
-          `Plan: ${p["plan_slug"]}`,
+          `🤝 *New ${kind} enquiry*
+` +
+          `${p["name"]} · ${p["phone"]}
+` +
+          `They were sent to WhatsApp — reply there.
+` +
+          `👉 ${ADMIN_URL}/owner/leads`,
       };
-    case "subscription.created":
-      return {
-        chatIds: [owner],
-        text:
-          `🆕 *New subscription started*\n` +
-          `${p["plan_name"]} · ₦${p["price_ngn"]}/${p["period"]}\n` +
-          `Awaiting first payment.`,
-      };
-    case "subscription.activated":
-      return {
-        chatIds: [owner],
-        text:
-          `✅ *Subscription active*\n` +
-          `First payment ₦${p["amount_ngn"]} received.\n` +
-          `Cycle order queued for fulfilment.\n` +
-          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
-      };
-    case "subscription.charged":
-      return {
-        chatIds: [owner],
-        text:
-          `🔁 *Subscription renewed*\n` +
-          `₦${p["amount_ngn"]} charged · cycle order queued.\n` +
-          `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
-      };
-    case "subscription.payment_failed":
-      return {
-        chatIds: [owner],
-        text:
-          `⚠️ *Subscription charge failed*\n` +
-          `₦${p["amount_ngn"]} · attempt ${p["attempt"]}\n` +
-          `Reason: ${p["reason"] ?? "unknown"} — now past due.`,
-      };
-    case "subscription.cancelled":
-      return {
-        chatIds: [owner],
-        text:
-          `🚫 *Subscription cancelled*\n` +
-          `Reason: ${p["reason"] ?? "manual"}.`,
-      };
+    }
     case "sale.preorder_fulfilled": {
       const preorderWindow = lagosDeliveryWindow(event.payload["scheduled_delivery_at"]);
       return {
@@ -570,56 +532,13 @@ export async function drainOutbox(db: DbClient, batchSize = 50): Promise<number>
         }
       }
 
-      // Card refund: hit Payaza, flip payment.status to refunded,
-      // optionally email the customer the receipt.
-      if (ev.eventType === "payment.refund_request") {
-        const p = ev.payload as Record<string, string | number | null>;
-        const processorReference = p["processor_reference"];
-        const amountNgn = p["amount_ngn"];
-        const paymentId = p["payment_id"];
-        const saleReturnId = p["sale_return_id"];
-        if (typeof processorReference === "string" && typeof amountNgn === "number" && typeof paymentId === "string") {
-          const refund = await refundPayaza({
-            processorReference,
-            amountNgn,
-          });
-          await db
-            .update(payment)
-            .set({ status: "refunded", processorReference: refund.refund_reference })
-            .where(eq(payment.id, paymentId));
-
-          // Email the customer if we know who they are.
-          if (typeof saleReturnId === "string") {
-            const [ret] = await db.select().from(saleReturn).where(eq(saleReturn.id, saleReturnId));
-            if (ret) {
-              const [origOrder] = await db
-                .select()
-                .from(saleOrder)
-                .where(eq(saleOrder.id, ret.originalSaleOrderId));
-              if (origOrder?.customerId) {
-                const [cust] = await db
-                  .select()
-                  .from(customer)
-                  .where(eq(customer.id, origOrder.customerId));
-                if (cust?.email) {
-                  await sendEmail({
-                    to: cust.email,
-                    subject: `Refund processed for order ${origOrder.orderNumber}`,
-                    text:
-                      `Hi ${cust.name ?? "there"},\n\n` +
-                      `Your refund of ₦${amountNgn.toLocaleString()} for return ` +
-                      `${ret.returnNumber} has been sent to your card. It should ` +
-                      `reflect in 1-3 working days.\n\n— Mrs. Samuel Fruit Juice`,
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
+      // Refunds are settled by hand (bank transfer), so there is no processor
+      // call here: the Telegram ping above IS the action. The payment row keeps
+      // its refund_owed flag until someone marks it settled, which is the
+      // record of what is outstanding.
 
       // delivery.request: kick off a delivery for a freshly-paid online order.
-      // The worker performs the HTTP call so the Payaza webhook stays fast; if
+      // The worker performs the HTTP call so the payment webhook stays fast; if
       // it fails the outbox retries with backoff.
       if (ev.eventType === "delivery.request") {
         await dispatchDeliveryFromEvent(

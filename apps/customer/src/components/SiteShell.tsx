@@ -83,7 +83,8 @@ function Footer() {
             <li><Link to="/" className="hover:text-white">Home</Link></li>
             <li><Link to="/juices" className="hover:text-white">Our Juices</Link></li>
             <li><Link to="/shop" className="hover:text-white">Shop</Link></li>
-            <li><Link to="/subscription" className="hover:text-white">Subscription</Link></li>
+            <li><Link to="/white-label" className="hover:text-white">White Label</Link></li>
+            <li><Link to="/bulk-orders" className="hover:text-white">Bulk Orders</Link></li>
             <li><Link to="/blog" className="hover:text-white">Blog</Link></li>
           </ul>
         </div>

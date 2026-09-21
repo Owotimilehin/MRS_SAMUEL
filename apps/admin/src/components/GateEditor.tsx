@@ -24,7 +24,7 @@ const LABEL: Record<Capability, string> = {
   "zones.manage": "Manage delivery zones",
   "settings.manage": "Manage settings",
   "blog.manage": "Manage blog/content",
-  "marketing.manage": "Manage subscriptions, bundles & leads",
+  "marketing.manage": "Manage bundles, content & enquiry leads",
   "reports.view": "View reports & dashboard",
   "audit.view": "View audit log",
   "devices.view": "View devices",

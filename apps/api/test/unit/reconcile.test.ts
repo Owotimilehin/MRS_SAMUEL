@@ -3,19 +3,19 @@
    re-deriving Drizzle's generic query-builder types for no test value. */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock the Payaza verify call so verifyAndReconcile can be driven without HTTP.
-// isPayazaSuccess keeps its real (trivial) behaviour.
+// Mock the OPay verify call so verifyAndReconcile can be driven without HTTP.
+// isOpaySuccess keeps its real behaviour.
 const mockVerify = vi.fn();
-vi.mock("../../src/payments/payaza.js", () => ({
-  verifyPayazaTransaction: (...args: unknown[]) => mockVerify(...args),
-  isPayazaSuccess: (status: string) => status.toLowerCase() === "completed",
-}));
+vi.mock("../../src/payments/opay.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/payments/opay.js")>();
+  return { ...actual, verifyOpayTransaction: (ref: string) => mockVerify(ref) };
+});
 
-import { applyPayazaConfirmation, verifyAndReconcile, applyOfflinePayment } from "../../src/payments/reconcile.js";
+import { applyPaymentConfirmation, verifyAndReconcile, applyOfflinePayment } from "../../src/payments/reconcile.js";
 import { saleOrder, saleOrderItem, stockLedger, stockReservation, payment, outboxEvent } from "@ms/db";
 
 // Minimal fake tx: records inserts/updates and returns a seeded order. select()
-// is table-aware so the item-loop in applyPayazaConfirmation gets one fake item
+// is table-aware so the item-loop in applyPaymentConfirmation gets one fake item
 // when querying saleOrderItem, the seeded order when querying saleOrder, and an
 // empty array for anything else.
 //
@@ -83,7 +83,7 @@ const baseOrder = {
 
 function status(over: Partial<{ amountNgn: number | null; feeNgn: number | null; netNgn: number | null }>) {
   return {
-    status: "Completed",
+    status: "SUCCESS",
     amountNgn: 3600,
     feeNgn: 100,
     netNgn: 3500,
@@ -94,12 +94,12 @@ function status(over: Partial<{ amountNgn: number | null; feeNgn: number | null;
   } as const;
 }
 
-describe("applyPayazaConfirmation", () => {
+describe("applyPaymentConfirmation", () => {
   beforeEach(() => vi.unstubAllEnvs());
 
   it("no-ops when the order is already paid", async () => {
     const { tx, calls } = fakeTx(null);
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder, status: "paid" } as any,
       status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
     );
@@ -109,7 +109,7 @@ describe("applyPayazaConfirmation", () => {
 
   it("alerts the owner when a SUCCESS payment lands on a CANCELLED order", async () => {
     const { tx, calls } = fakeTx(null);
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder, status: "cancelled" } as any,
       status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
     );
@@ -121,7 +121,7 @@ describe("applyPayazaConfirmation", () => {
 
   it("does NOT re-alert when a paid-after-cancel event already exists (dedupe)", async () => {
     const { tx, calls } = fakeTx(null, { existingCancelAlert: true });
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder, status: "cancelled" } as any,
       status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
     );
@@ -132,7 +132,7 @@ describe("applyPayazaConfirmation", () => {
   it("parks underpaid when NET is below the product total", async () => {
     const { tx, calls } = fakeTx(null);
     // Customer paid 3400 gross, fee 100 -> net 3300 < total 3500.
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder } as any,
       status({ amountNgn: 3400, feeNgn: 100, netNgn: 3300 }),
     );
@@ -144,7 +144,7 @@ describe("applyPayazaConfirmation", () => {
 
   it("marks PAID when NET meets the product total even though gross is fee-inclusive", async () => {
     const { tx, calls } = fakeTx(null);
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder } as any,
       status({ amountNgn: 3600, feeNgn: 100, netNgn: 3500 }),
     );
@@ -157,9 +157,9 @@ describe("applyPayazaConfirmation", () => {
     ).toBe(true);
   });
 
-  it("falls back to gross>=total when Payaza reports no fee (net null)", async () => {
+  it("falls back to gross>=total when the provider reports no fee (net null)", async () => {
     const { tx } = fakeTx(null);
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder } as any,
       status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
     );
@@ -168,16 +168,16 @@ describe("applyPayazaConfirmation", () => {
 
   it("marks an in-stock order paid, ledgers stock, and clears the reservation", async () => {
     const { tx, calls } = fakeTx(null);
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder } as any,
       status({ amountNgn: 3600, netNgn: 3500 }),
     );
     expect(r.kind).toBe("paid");
-    // Payment row recorded for the order total via Payaza.
+    // Payment row recorded for the order total via the provider.
     expect(
       calls.inserts.some(
         (i: any) =>
-          i.t === payment && i.v.status === "paid" && i.v.processor === "payaza" && i.v.amountNgn === 3500,
+          i.t === payment && i.v.status === "paid" && i.v.processor === "opay" && i.v.amountNgn === 3500,
       ),
     ).toBe(true);
     // Stock actually ledgered OUT for the one fake item (qty 1 -> delta -1).
@@ -192,7 +192,7 @@ describe("applyPayazaConfirmation", () => {
 
   it("does NOT ledger stock or delete the reservation for a preorder (prepaid, not yet made)", async () => {
     const { tx, calls } = fakeTx(null);
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder, isPreorder: true } as any,
       status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
     );
@@ -208,7 +208,7 @@ describe("applyPayazaConfirmation", () => {
 
   it("accepts the reported amount when acceptReportedAmount=true (override mismatch)", async () => {
     const { tx } = fakeTx(null);
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder } as any,
       status({ amountNgn: 3400, netNgn: 3300 }),
       { acceptReportedAmount: true },
@@ -221,7 +221,7 @@ describe("applyPayazaConfirmation", () => {
     // racing the same stuck order: this caller's status-flip UPDATE matches
     // zero rows because a concurrent caller already flipped confirmed->paid.
     const { tx, calls } = fakeTx(null, { casWins: false });
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder } as any,
       status({ amountNgn: 3500, netNgn: 3500 }),
     );
@@ -231,7 +231,7 @@ describe("applyPayazaConfirmation", () => {
 
   it("stamps the payment row with the given processor (opay)", async () => {
     const { tx, calls } = fakeTx(null);
-    const r = await applyPayazaConfirmation(
+    const r = await applyPaymentConfirmation(
       tx as any, { ...baseOrder } as any,
       status({ amountNgn: 3500, feeNgn: null, netNgn: null }),
       { processor: "opay" },
@@ -254,7 +254,7 @@ describe("verifyAndReconcile heals a stuck reconcile_needed order", () => {
     return { db, calls };
   }
 
-  it("re-checks a reconcile_needed order Payaza reports paid in full -> paid", async () => {
+  it("re-checks a reconcile_needed order the provider reports paid in full -> paid", async () => {
     mockVerify.mockResolvedValue(status({ amountNgn: 8600, feeNgn: 100, netNgn: 8500 }));
     const { db, calls } = fakeDb({ ...baseOrder, status: "reconcile_needed", totalNgn: 8500 });
     const r = await verifyAndReconcile(db as any, "SO-1");
@@ -264,17 +264,17 @@ describe("verifyAndReconcile heals a stuck reconcile_needed order", () => {
     expect(calls.updates.some((u: any) => u.v.status === "paid")).toBe(true);
   });
 
-  it("leaves a reconcile_needed order untouched when Payaza shows no payment", async () => {
+  it("leaves a reconcile_needed order untouched when the provider shows no payment", async () => {
     mockVerify.mockResolvedValue({ status: "Pending" });
     const { db, calls } = fakeDb({ ...baseOrder, status: "reconcile_needed", totalNgn: 8500 });
     const r = await verifyAndReconcile(db as any, "SO-1");
-    expect(r).toEqual({ kind: "not_completed", payazaStatus: "Pending" });
+    expect(r).toEqual({ kind: "not_completed", providerStatus: "Pending" });
     // No status writes at all — not auto-cancelled, not nudged.
     expect(calls.updates).toHaveLength(0);
   });
 });
 
-describe("applyOfflinePayment (transfer/cash outside Payaza)", () => {
+describe("applyOfflinePayment (transfer/cash outside the online provider)", () => {
   it("marks a confirmed non-preorder paid via transfer and deducts stock", async () => {
     const { tx, calls } = fakeTx({ ...baseOrder, status: "confirmed", totalNgn: 3500 });
     const r = await applyOfflinePayment(tx as any, { ...baseOrder, status: "confirmed", totalNgn: 3500 } as any, {
@@ -283,7 +283,7 @@ describe("applyOfflinePayment (transfer/cash outside Payaza)", () => {
       collectedByUserId: "staff-1",
     });
     expect(r.kind).toBe("paid");
-    // A manual (NOT payaza) payment row for the transfer.
+    // A manual (NOT provider) payment row for the transfer.
     expect(
       calls.inserts.some(
         (i: any) =>

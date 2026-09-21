@@ -9,9 +9,9 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WhiteLabelRouteImport } from './routes/white-label'
 import { Route as TrackRouteImport } from './routes/track'
 import { Route as TermsRouteImport } from './routes/terms'
-import { Route as SubscriptionRouteImport } from './routes/subscription'
 import { Route as ShopRouteImport } from './routes/shop'
 import { Route as ReturnsRouteImport } from './routes/returns'
 import { Route as QrRouteImport } from './routes/qr'
@@ -19,6 +19,7 @@ import { Route as JuicesRouteImport } from './routes/juices'
 import { Route as DeliveryRouteImport } from './routes/delivery'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as CheckoutRouteImport } from './routes/checkout'
+import { Route as BulkOrdersRouteImport } from './routes/bulk-orders'
 import { Route as BlogRouteImport } from './routes/blog'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
@@ -28,6 +29,11 @@ import { Route as OrderOrderNumberRouteImport } from './routes/order.$orderNumbe
 import { Route as JuicesIdRouteImport } from './routes/juices.$id'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 
+const WhiteLabelRoute = WhiteLabelRouteImport.update({
+  id: '/white-label',
+  path: '/white-label',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TrackRoute = TrackRouteImport.update({
   id: '/track',
   path: '/track',
@@ -36,11 +42,6 @@ const TrackRoute = TrackRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SubscriptionRoute = SubscriptionRouteImport.update({
-  id: '/subscription',
-  path: '/subscription',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ShopRoute = ShopRouteImport.update({
@@ -76,6 +77,11 @@ const ContactRoute = ContactRouteImport.update({
 const CheckoutRoute = CheckoutRouteImport.update({
   id: '/checkout',
   path: '/checkout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BulkOrdersRoute = BulkOrdersRouteImport.update({
+  id: '/bulk-orders',
+  path: '/bulk-orders',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BlogRoute = BlogRouteImport.update({
@@ -123,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/blog': typeof BlogRouteWithChildren
+  '/bulk-orders': typeof BulkOrdersRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
   '/delivery': typeof DeliveryRoute
@@ -130,9 +137,9 @@ export interface FileRoutesByFullPath {
   '/qr': typeof QrRoute
   '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
-  '/subscription': typeof SubscriptionRoute
   '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
+  '/white-label': typeof WhiteLabelRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juices/$id': typeof JuicesIdRoute
   '/order/$orderNumber': typeof OrderOrderNumberRoute
@@ -142,15 +149,16 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/bulk-orders': typeof BulkOrdersRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
   '/delivery': typeof DeliveryRoute
   '/qr': typeof QrRoute
   '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
-  '/subscription': typeof SubscriptionRoute
   '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
+  '/white-label': typeof WhiteLabelRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juices/$id': typeof JuicesIdRoute
   '/order/$orderNumber': typeof OrderOrderNumberRoute
@@ -162,6 +170,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/blog': typeof BlogRouteWithChildren
+  '/bulk-orders': typeof BulkOrdersRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
   '/delivery': typeof DeliveryRoute
@@ -169,9 +178,9 @@ export interface FileRoutesById {
   '/qr': typeof QrRoute
   '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
-  '/subscription': typeof SubscriptionRoute
   '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
+  '/white-label': typeof WhiteLabelRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juices/$id': typeof JuicesIdRoute
   '/order/$orderNumber': typeof OrderOrderNumberRoute
@@ -184,6 +193,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/blog'
+    | '/bulk-orders'
     | '/checkout'
     | '/contact'
     | '/delivery'
@@ -191,9 +201,9 @@ export interface FileRouteTypes {
     | '/qr'
     | '/returns'
     | '/shop'
-    | '/subscription'
     | '/terms'
     | '/track'
+    | '/white-label'
     | '/blog/$slug'
     | '/juices/$id'
     | '/order/$orderNumber'
@@ -203,15 +213,16 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/about'
+    | '/bulk-orders'
     | '/checkout'
     | '/contact'
     | '/delivery'
     | '/qr'
     | '/returns'
     | '/shop'
-    | '/subscription'
     | '/terms'
     | '/track'
+    | '/white-label'
     | '/blog/$slug'
     | '/juices/$id'
     | '/order/$orderNumber'
@@ -222,6 +233,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/blog'
+    | '/bulk-orders'
     | '/checkout'
     | '/contact'
     | '/delivery'
@@ -229,9 +241,9 @@ export interface FileRouteTypes {
     | '/qr'
     | '/returns'
     | '/shop'
-    | '/subscription'
     | '/terms'
     | '/track'
+    | '/white-label'
     | '/blog/$slug'
     | '/juices/$id'
     | '/order/$orderNumber'
@@ -243,6 +255,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   BlogRoute: typeof BlogRouteWithChildren
+  BulkOrdersRoute: typeof BulkOrdersRoute
   CheckoutRoute: typeof CheckoutRoute
   ContactRoute: typeof ContactRoute
   DeliveryRoute: typeof DeliveryRoute
@@ -250,14 +263,21 @@ export interface RootRouteChildren {
   QrRoute: typeof QrRoute
   ReturnsRoute: typeof ReturnsRoute
   ShopRoute: typeof ShopRoute
-  SubscriptionRoute: typeof SubscriptionRoute
   TermsRoute: typeof TermsRoute
   TrackRoute: typeof TrackRoute
+  WhiteLabelRoute: typeof WhiteLabelRoute
   OrderOrderNumberRoute: typeof OrderOrderNumberRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/white-label': {
+      id: '/white-label'
+      path: '/white-label'
+      fullPath: '/white-label'
+      preLoaderRoute: typeof WhiteLabelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/track': {
       id: '/track'
       path: '/track'
@@ -270,13 +290,6 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/subscription': {
-      id: '/subscription'
-      path: '/subscription'
-      fullPath: '/subscription'
-      preLoaderRoute: typeof SubscriptionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/shop': {
@@ -326,6 +339,13 @@ declare module '@tanstack/react-router' {
       path: '/checkout'
       fullPath: '/checkout'
       preLoaderRoute: typeof CheckoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bulk-orders': {
+      id: '/bulk-orders'
+      path: '/bulk-orders'
+      fullPath: '/bulk-orders'
+      preLoaderRoute: typeof BulkOrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/blog': {
@@ -416,6 +436,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   BlogRoute: BlogRouteWithChildren,
+  BulkOrdersRoute: BulkOrdersRoute,
   CheckoutRoute: CheckoutRoute,
   ContactRoute: ContactRoute,
   DeliveryRoute: DeliveryRoute,
@@ -423,9 +444,9 @@ const rootRouteChildren: RootRouteChildren = {
   QrRoute: QrRoute,
   ReturnsRoute: ReturnsRoute,
   ShopRoute: ShopRoute,
-  SubscriptionRoute: SubscriptionRoute,
   TermsRoute: TermsRoute,
   TrackRoute: TrackRoute,
+  WhiteLabelRoute: WhiteLabelRoute,
   OrderOrderNumberRoute: OrderOrderNumberRoute,
 }
 export const routeTree = rootRouteImport

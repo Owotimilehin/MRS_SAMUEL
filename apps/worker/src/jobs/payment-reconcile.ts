@@ -3,26 +3,26 @@ import { saleOrder, type DbClient } from "@ms/db";
 import pino from "pino";
 import { refireProviderWebhook, providerOf } from "./refire-webhook.js";
 
-const logger = pino({ base: { service: "ms-worker", part: "payaza-reconcile" } });
+const logger = pino({ base: { service: "ms-worker", part: "payment-reconcile" } });
 
-/** An order is "stuck" if Payaza's webhook never fired for it. Give the
+/** An order is "stuck" if the payment webhook never fired for it. Give the
  *  webhook this long to land before the sweep steps in. */
 const STUCK_AFTER_SECONDS = 90;
 
 /** How far back the sweep keeps re-verifying a stuck order. Payment happens in
- *  the Payaza popup within minutes of order creation, so this window is orders
+ *  the provider cashier within minutes of order creation, so this window is orders
  *  of magnitude larger than any realistic pay-after-create delay; it exists to
  *  (a) survive worker downtime and (b) bound the work so we don't re-verify
- *  truly-abandoned orders against Payaza forever. Past it, recovery falls to
+ *  truly-abandoned orders against the provider forever. Past it, recovery falls to
  *  the admin "Recheck" action / payment-attention bucket. */
 const LOOKBACK_HOURS = 48;
 
 /**
  * Find online orders sitting in `confirmed` for >=90s (and <48h) — the customer
- * paid or is paying, but our webhook never landed (Payaza retries are not
- * guaranteed) — and re-fire the api's Payaza webhook for each, by order number,
+ * paid or is paying, but our webhook never landed (provider retries are not
+ * guaranteed) — and re-fire the api's payment webhook for each, by order number,
  * over HTTP. This keeps the worker free of any `@ms/api` import: the webhook
- * itself owns the single money-reconcile path (verify + applyPayazaConfirmation,
+ * itself owns the single money-reconcile path (verify + applyPaymentConfirmation,
  * which captures a preorder's payment without moving stock), so the sweep only
  * re-triggers it — it never re-implements ledger logic here.
  *
@@ -38,7 +38,7 @@ const LOOKBACK_HOURS = 48;
  *
  * Returns the number of orders the webhook was re-fired for.
  */
-export async function sweepStuckPayazaOrders(db: DbClient, now: Date = new Date()): Promise<number> {
+export async function sweepStuckPaymentOrders(db: DbClient, now: Date = new Date()): Promise<number> {
   const stuckCutoff = new Date(now.getTime() - STUCK_AFTER_SECONDS * 1000);
   const lookbackCutoff = new Date(now.getTime() - LOOKBACK_HOURS * 3600 * 1000);
 
@@ -64,7 +64,7 @@ export async function sweepStuckPayazaOrders(db: DbClient, now: Date = new Date(
   let posted = 0;
   for (const o of candidates) {
     // Each order carries the provider it was created under (Task 1 stamp). Null
-    // on legacy rows → Payaza, the original provider. Re-fire the MATCHING
+    // on legacy rows → OPay, the only provider. Re-fire the
     // provider's webhook so the money is re-verified against the right API.
     const provider = providerOf(o.paymentProvider);
     try {

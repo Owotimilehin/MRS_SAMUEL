@@ -12,8 +12,8 @@ import {
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
-import { applyPayazaConfirmation, verifyAndReconcile, applyOfflinePayment } from "../payments/reconcile.js";
-import { verifyPayazaTransaction } from "../payments/payaza.js";
+import { applyPaymentConfirmation, verifyAndReconcile, applyOfflinePayment } from "../payments/reconcile.js";
+import { verifyOpayTransaction } from "../payments/opay.js";
 
 const TERMINAL_STATUSES = [
   "handed_over",
@@ -53,7 +53,7 @@ export function paymentsAdminRoutes(db: DbClient) {
 
   /**
    * POST /:id/recheck
-   * Re-verify the order's Payaza transaction and reconcile if Payaza reports
+   * Re-verify the order's OPay transaction and reconcile if OPay reports
    * success. Idempotent: replaying against an already-paid order returns
    * already_processed without side effects.
    */
@@ -73,11 +73,11 @@ export function paymentsAdminRoutes(db: DbClient) {
 
   /**
    * POST /:id/record-payment
-   * Record a payment received OUTSIDE Payaza (bank transfer / cash) and mark the
+   * Record a payment received OUTSIDE OPay (bank transfer / cash) and mark the
    * order paid. Available to the till (orders.manage) — the staff attending the
-   * order confirm the money landed. Handles a full off-Payaza payment on a
+   * order confirm the money landed. Handles a full offline payment on a
    * 'confirmed' order AND a top-up on a 'reconcile_needed' order. Fulfilment
-   * still gates on 'paid'. Force-accepting a MISMATCHED Payaza amount stays the
+   * still gates on 'paid'. Force-accepting a MISMATCHED OPay amount stays the
    * owner-only /accept action.
    */
   r.post("/:id/record-payment", requireCapability("orders.manage"), async (c) => {
@@ -182,10 +182,10 @@ export function paymentsAdminRoutes(db: DbClient) {
 
   /**
    * POST /:id/accept
-   * Owner-only: accept whatever Payaza reports as the authoritative amount and
+   * Owner-only: accept whatever OPay reports as the authoritative amount and
    * mark the order paid, even if there was an amount mismatch. Idempotent path:
    * if status was `reconcile_needed`, reset it to `confirmed` first so
-   * applyPayazaConfirmation's guard acts on it.
+   * applyPaymentConfirmation's guard acts on it.
    */
   r.post("/:id/accept", requireCapability("orders.accept_payment"), async (c) => {
     const id = c.req.param("id");
@@ -202,9 +202,9 @@ export function paymentsAdminRoutes(db: DbClient) {
       );
     }
 
-    // Fetch Payaza status before entering the transaction (avoids holding tx open
+    // Fetch OPay status before entering the transaction (avoids holding tx open
     // during an HTTP call).
-    const confirmed = await verifyPayazaTransaction(o.orderNumber);
+    const confirmed = await verifyOpayTransaction(o.orderNumber);
 
     const outcome = await db.transaction(async (tx) => {
       // Re-read inside transaction to guard against concurrent modification.
@@ -212,7 +212,7 @@ export function paymentsAdminRoutes(db: DbClient) {
       if (!fresh) throw new BusinessError("not_found", "order not found", 404);
 
       // If the order slipped to reconcile_needed, nudge it back to confirmed
-      // so applyPayazaConfirmation's idempotent core will act on it.
+      // so applyPaymentConfirmation's idempotent core will act on it.
       const orderForConfirmation =
         fresh.status === "reconcile_needed"
           ? (await tx
@@ -222,13 +222,13 @@ export function paymentsAdminRoutes(db: DbClient) {
               .returning())[0] ?? fresh
           : fresh;
 
-      return applyPayazaConfirmation(tx, orderForConfirmation, confirmed, {
+      return applyPaymentConfirmation(tx, orderForConfirmation, confirmed, {
         acceptReportedAmount: true,
       });
     });
 
     if (outcome.kind !== "paid" && outcome.kind !== "already_processed") {
-      // applyPayazaConfirmation shouldn't reach underpaid with acceptReportedAmount,
+      // applyPaymentConfirmation shouldn't reach underpaid with acceptReportedAmount,
       // but guard defensively.
       throw new BusinessError("conflict", `reconcile returned: ${outcome.kind}`, 409);
     }

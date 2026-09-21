@@ -1,16 +1,16 @@
 import { createHmac } from "node:crypto";
 
 /**
- * OPay Cashier / Express Checkout integration. Unlike Payaza (client-side
+ * OPay Cashier / Express Checkout integration. Unlike a client-side
  * popup), OPay is a server-created REDIRECT flow: we POST cashier/create, get a
  * cashierUrl, and redirect the customer. Payment is confirmed authoritatively by
  * re-querying cashier/status (server-to-server, signed) — never from a callback
  * body. Amounts on the wire are kobo (naira × 100).
  */
 
-/** Normalized confirmed-transaction shape shared by Payaza + OPay so the
+/** Normalized confirmed-transaction shape for a confirmed payment so the
  *  reconcile money-path is provider-agnostic. Structurally identical to the old
- *  PayazaTransactionStatus (which is now an alias of this). */
+ *  reconcile path is provider-agnostic. */
 export interface ConfirmedTransaction {
   status: string;
   amountNgn: number | null;

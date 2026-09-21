@@ -57,7 +57,6 @@ const ENTITY_NOUN: Record<string, string> = {
   recurring_expense: "Recurring expense",
   business_expense: "Expense",
   packaging_material: "Packaging material",
-  subscription_plan: "Subscription plan",
   bundle: "Bundle",
   media_asset: "Image",
   production_run: "Production run",

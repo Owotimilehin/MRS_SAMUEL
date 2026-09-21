@@ -81,17 +81,6 @@ export interface ApiBundle {
   image_url: string | null;
 }
 
-export interface ApiSubscriptionPlan {
-  id: string;
-  slug: string;
-  name: string;
-  price_ngn: number;
-  period: string;
-  bottles_label: string | null;
-  description: string | null;
-  perks: string[];
-  popular: boolean;
-}
 
 export interface ApiDeliveryOption {
   id: string;
@@ -110,19 +99,6 @@ export interface ApiQuote {
   notice?: string;
 }
 
-/** Init config for the Payaza checkout SDK, built server-side per order. */
-export interface PayazaCheckoutConfig {
-  reference: string;
-  connectionMode: "Test" | "Live";
-  merchantKey: string;
-  amount: number; // kobo (naira × 100)
-  currency: "NGN";
-  email: string;
-  firstName?: string;
-  lastName?: string;
-  phone?: string;
-}
-
 export interface ApiPlacedOrder {
   id: string;
   order_number: string;
@@ -130,15 +106,9 @@ export interface ApiPlacedOrder {
   // True when the order is made-to-order (a line is out of stock at the branch
   // or is a preorder-only size). Drives the gracious checkout confirmation.
   is_preorder: boolean;
-  payment:
-    | { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig }
-    | { provider: "opay"; reference: string; redirect_url: string };
+  payment: { provider: "opay"; reference: string; redirect_url: string };
 }
 
-export interface ApiSubscribeResult {
-  subscription_id: string;
-  payment: { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig };
-}
 
 export interface ApiOrderItem {
   name: string;
@@ -165,10 +135,7 @@ export interface ApiOrderTracking {
   out_for_delivery_at: string | null;
   delivered_at: string | null;
   reservation_expires_at: string | null;
-  resume_payment:
-    | { provider: "payaza"; reference: string; payaza: PayazaCheckoutConfig }
-    | { provider: "opay"; reference: string }
-    | null;
+  resume_payment: { provider: "opay"; reference: string } | null;
   support_whatsapp: { number: string; url: string } | null;
   items: ApiOrderItem[];
   delivery: {

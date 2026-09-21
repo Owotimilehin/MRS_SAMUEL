@@ -1,25 +1,22 @@
-import { eq } from "drizzle-orm";
-import { appSetting, PAYMENT_PROVIDER_KEY, type DbClient, type PaymentProviderValue } from "@ms/db";
-import { buildPayazaCheckoutConfig, type PayazaCheckoutConfig } from "./payaza.js";
+import type { DbClient } from "@ms/db";
 import { createOpayCashier } from "./opay.js";
 
-export type PaymentProvider = "opay" | "payaza";
+export type PaymentProvider = "opay";
 
-/** The active online payment provider, owner-toggleable via app_settings.
- *  Defaults to OPay (the redirect flow) when unset or malformed. */
-export async function getActiveProvider(db: DbClient): Promise<PaymentProvider> {
-  const [row] = await db.select().from(appSetting).where(eq(appSetting.key, PAYMENT_PROVIDER_KEY));
-  const v = row?.value as Partial<PaymentProviderValue> | undefined;
-  return v?.provider === "payaza" ? "payaza" : "opay";
+/**
+ * The online payment provider. OPay is the only one — the Payaza fallback and
+ * its owner-facing toggle were removed once OPay was proven in production.
+ * Kept as a function so call sites (and the app_settings row that used to drive
+ * it) need no reshaping if a second provider is ever added back.
+ */
+export async function getActiveProvider(_db: DbClient): Promise<PaymentProvider> {
+  return "opay";
 }
 
-export type CheckoutHandoff =
-  | { provider: "opay"; redirectUrl: string }
-  | { provider: "payaza"; payaza: PayazaCheckoutConfig };
+export type CheckoutHandoff = { provider: "opay"; redirectUrl: string };
 
-/** Build the checkout handoff for the customer: a redirect URL (OPay) or the
- *  popup SDK config (Payaza). The returnUrl/callbackUrl for OPay come from
- *  PUBLIC_* env — callbackUrl always uses PUBLIC_API_URL (required env, see
+/** Build the checkout handoff for the customer: OPay's hosted cashier URL.
+ *  The returnUrl/callbackUrl come from PUBLIC_* env — callbackUrl always uses PUBLIC_API_URL (required env, see
  *  apps/api/src/env.ts); returnUrl prefers PUBLIC_CUSTOMER_URL (optional) and
  *  otherwise derives the customer site from PUBLIC_ADMIN_URL the same way the
  *  worker does for its WhatsApp tracking links (outbox.ts). */
@@ -34,28 +31,18 @@ export async function createCheckout(
     customerPhone?: string;
   },
 ): Promise<CheckoutHandoff> {
-  if (opts.provider === "opay") {
-    const apiBase = process.env.PUBLIC_API_URL;
-    const customerBase =
-      process.env.PUBLIC_CUSTOMER_URL ||
-      (process.env.PUBLIC_ADMIN_URL ?? "https://www.mrssamuel.com").replace("admin.", "www.");
-    const { cashierUrl } = await createOpayCashier({
-      amountNgn: opts.amountNgn,
-      reference: opts.reference,
-      email: opts.email,
-      ...(opts.customerName !== undefined ? { customerName: opts.customerName } : {}),
-      ...(opts.customerPhone !== undefined ? { customerPhone: opts.customerPhone } : {}),
-      returnUrl: `${customerBase}/order/${opts.reference}?paid=1`,
-      callbackUrl: `${apiBase}/v1/webhooks/opay`,
-    });
-    return { provider: "opay", redirectUrl: cashierUrl };
-  }
-  const payaza = buildPayazaCheckoutConfig({
+  const apiBase = process.env.PUBLIC_API_URL;
+  const customerBase =
+    process.env.PUBLIC_CUSTOMER_URL ||
+    (process.env.PUBLIC_ADMIN_URL ?? "https://www.mrssamuel.com").replace("admin.", "www.");
+  const { cashierUrl } = await createOpayCashier({
     amountNgn: opts.amountNgn,
-    email: opts.email,
     reference: opts.reference,
+    email: opts.email,
     ...(opts.customerName !== undefined ? { customerName: opts.customerName } : {}),
     ...(opts.customerPhone !== undefined ? { customerPhone: opts.customerPhone } : {}),
+    returnUrl: `${customerBase}/order/${opts.reference}?paid=1`,
+    callbackUrl: `${apiBase}/v1/webhooks/opay`,
   });
-  return { provider: "payaza", payaza };
+  return { provider: "opay", redirectUrl: cashierUrl };
 }

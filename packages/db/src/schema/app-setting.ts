@@ -22,7 +22,7 @@ export const SITE_BANNER_KEY = "site_banner";
 
 /** JSON shape stored under the `payment_provider` key. */
 export interface PaymentProviderValue {
-  provider: "opay" | "payaza";
+  provider: "opay";
 }
 
 export const PAYMENT_PROVIDER_KEY = "payment_provider";
