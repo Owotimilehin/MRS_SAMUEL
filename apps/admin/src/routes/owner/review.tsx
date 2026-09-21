@@ -218,7 +218,7 @@ export function ReviewPage(): JSX.Element {
                   <th>Order</th>
                   <th>Status</th>
                   <th className="table__num">Expected</th>
-                  <th className="table__num">Payaza reported</th>
+                  <th className="table__num">Provider reported</th>
                   <th className="table__num">Net settled</th>
                   <th className="table__num">Shortfall</th>
                   <th className="table__num">Refund owed</th>

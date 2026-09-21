@@ -175,7 +175,6 @@ function OrderPage() {
               <PaymentHoldBanner
                 order={order}
                 phone={phone}
-                onResumed={() => phone && void load(phone)}
               />
             )}
             {journey.special === "reconcile" && (

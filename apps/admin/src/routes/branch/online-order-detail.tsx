@@ -101,7 +101,7 @@ export function BranchOnlineOrderDetailPage({
   // unsaved straw/bag change before it transitions the order.
   const packagingRef = useRef<PackagingCardHandle>(null);
 
-  // Payment follow-up (awaiting-payment orders): re-check Payaza, record an
+  // Payment follow-up (awaiting-payment orders): re-check OPay, record an
   // offline transfer/cash payment, or cancel as unpaid.
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -219,7 +219,7 @@ export function BranchOnlineOrderDetailPage({
       );
       await loadOrder();
       if (res.data.status === "paid") setPayNote("Payment confirmed — order is now paid.");
-      else setPayNote("Payaza still shows no completed payment for this order.");
+      else setPayNote("OPay still shows no completed payment for this order.");
     } catch (err) {
       setPayError(humanizeError(err));
     } finally {
@@ -537,7 +537,7 @@ export function BranchOnlineOrderDetailPage({
             >
               {data.paymentMethod === "card" && data.grossNgn != null && (
                 <>
-                  <span style={{ color: "var(--ink-soft)" }}>Payaza fee</span>
+                  <span style={{ color: "var(--ink-soft)" }}>Processor fee</span>
                   <span className="tabular-nums" style={{ textAlign: "right" }}>
                     {data.feeNgn != null ? ngn(data.feeNgn) : "—"}
                   </span>
@@ -613,7 +613,7 @@ export function BranchOnlineOrderDetailPage({
 
                 {journey.special === "payment_hold" && (
                   <p style={{ fontSize: 13, color: "var(--warning)", marginBottom: 12 }}>
-                    Payment not confirmed yet — on hold until Payaza settles.
+                    Payment not confirmed yet — on hold until OPay settles.
                   </p>
                 )}
                 {journey.special === "reconcile" && (
@@ -692,7 +692,7 @@ export function BranchOnlineOrderDetailPage({
                 can("orders.manage") && (
                   <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
                     <p style={{ fontSize: 12, color: "var(--ink-soft)" }}>
-                      Not paid yet. Re-check Payaza, or record a payment the customer sent by
+                      Not paid yet. Re-check OPay, or record a payment the customer sent by
                       transfer or cash. Cancel as unpaid only if no money came at all.
                     </p>
                     <button
@@ -998,7 +998,7 @@ export function BranchOnlineOrderDetailPage({
           onConfirm={() => void cancelUnpaid()}
         >
           <p style={{ fontSize: 14 }}>
-            Only do this if <strong>no money came at all</strong> — not on Payaza and not by
+            Only do this if <strong>no money came at all</strong> — not through OPay and not by
             transfer. This cancels the order and owes the customer nothing. If they actually paid
             by transfer, use “Paid by transfer” instead.
           </p>

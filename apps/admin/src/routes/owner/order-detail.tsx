@@ -539,7 +539,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
             >
               {data.paymentMethod === "card" && data.grossNgn != null && (
                 <>
-                  <span style={{ color: "var(--ink-soft)" }}>Payaza fee</span>
+                  <span style={{ color: "var(--ink-soft)" }}>Processor fee</span>
                   <span className="tabular-nums" style={{ textAlign: "right" }}>
                     {data.feeNgn != null ? ngn(data.feeNgn) : "—"}
                   </span>
@@ -600,7 +600,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
 
                 {journey.special === "payment_hold" && (
                   <p style={{ fontSize: 13, color: "var(--warning)", marginBottom: 12 }}>
-                    Payment not confirmed yet — on hold until Payaza settles.
+                    Payment not confirmed yet — on hold until OPay settles.
                   </p>
                 )}
                 {journey.special === "reconcile" && (
@@ -727,7 +727,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
                       <span style={{ fontWeight: 600, color: "var(--ink)" }}>Expected</span>{" "}
                       {ngn(data.totalNgn)}
                       {" · "}
-                      <span style={{ fontWeight: 600, color: "var(--ink)" }}>Payaza reported</span>{" "}
+                      <span style={{ fontWeight: 600, color: "var(--ink)" }}>Provider reported</span>{" "}
                       {ngn(data.reportedNgn)}
                     </div>
                   )}
@@ -1004,7 +1004,7 @@ export function OrderDetailPage({ saleId }: { saleId: string }): JSX.Element {
         >
           <p style={{ fontSize: 14 }}>
             This will manually mark order <strong>{data.orderNumber}</strong> as{" "}
-            <strong>paid</strong> ({ngn(data.totalNgn)}) without a Payaza verification.
+            <strong>paid</strong> ({ngn(data.totalNgn)}) without an OPay verification.
             Only do this if you have confirmed payment through another channel.
           </p>
         </ConfirmModal>

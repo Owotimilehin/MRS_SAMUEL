@@ -10,11 +10,9 @@ import type { ApiOrderTracking } from "@/lib/api/types";
 export function PaymentHoldBanner({
   order,
   phone,
-  onResumed,
 }: {
   order: ApiOrderTracking;
   phone: string | null;
-  onResumed: () => void;
 }) {
   const { mmss, expired } = useCountdown(order.reservation_expires_at);
   const [busy, setBusy] = useState(false);

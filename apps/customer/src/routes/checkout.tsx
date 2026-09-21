@@ -243,7 +243,7 @@ function Page() {
   // the browser posts to the server, which creates the order and redirects to
   // payment. There is no pre-hydration dead tap to guard against any more. We
   // still track hydration so the JS path can take over the submit for the richer
-  // flow (Payaza popup, redirect overlay, scheduling, inline validation).
+  // flow (OPay redirect overlay, scheduling, inline validation).
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     setHydrated(true);

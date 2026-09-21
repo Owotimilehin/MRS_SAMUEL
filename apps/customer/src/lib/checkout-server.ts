@@ -158,7 +158,7 @@ export async function handleCheckoutPost(request: Request): Promise<Response | n
     return backToCheckout(code);
   }
 
-  void logNoJsAttempt(idempotencyKey, "order_created", { order_number: order.order_number });
+  void logNoJsAttempt(idempotencyKey, "order_created", values, { orderNumber: order.order_number });
 
   // --- hand off to payment ---
   // Provider-agnostic: anything offering a full-page redirect (OPay's hosted

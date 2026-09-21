@@ -6,12 +6,12 @@ import { apiFetch, ApiError } from "./client";
 import { CART_COOKIE_NAME, decodeCartCookie } from "@/lib/cart-cookie";
 import { resolveCart, EMPTY_CART, type ResolvedCart } from "@/lib/checkout-cart";
 import {
-  toUiProduct, toUiPostSummary, toUiPost, toUiBundle, toUiPlan,
+  toUiProduct, toUiPostSummary, toUiPost, toUiBundle,
   type Product, type BlogPostSummary, type BlogPost, type Bundle,
 } from "./mappers";
 import type {
   ApiProduct, ApiBranch, ApiBlogSummary, ApiBlogPost, ApiBundle,
-  ApiQuote, ApiPlacedOrder, ApiOrderTracking, ApiSubscribeResult,
+  ApiQuote, ApiPlacedOrder, ApiOrderTracking,
 } from "./types";
 import type { CheckoutLogPayload } from "@/lib/checkout-log";
 import type { BannerConfig } from "@/lib/banner";
