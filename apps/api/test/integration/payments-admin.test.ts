@@ -12,10 +12,9 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
  *   POST /v1/online-orders/:id/cancel-refund
  *   POST /v1/online-orders/:id/mark-refunded
  *
- * There is no mock-confirm shim: a PKTEST key is set so checkout builds and the
- * webhook/recheck take the real verify path, and global fetch is stubbed to
- * report a completed Payaza transaction (amount omitted → amountNgn=null, which
- * bypasses the amount-equality guard) for the transaction-query URL only — every
+ * There is no mock-confirm shim: the webhook/recheck take the real verify path,
+ * and global fetch is stubbed to report a SUCCESS OPay cashier/status (amount
+ * omitted → amountNgn=null, which bypasses the amount-equality guard) — every
  * other call (this suite's own requests to baseUrl) hits the real fetch.
  */
 describe("admin payment reconciliation endpoints", () => {
@@ -35,10 +34,6 @@ describe("admin payment reconciliation endpoints", () => {
     container = tdb.container;
     db = tdb.db;
     await seedOwner(tdb.db);
-
-    // PKTEST key so checkout builds in Test mode and verify takes the real path
-    // (stubbed below). Direct process.env assignment, cleaned up in afterAll.
-    process.env.PAYAZA_PUBLIC_KEY = "PZ78-PKTEST-itest";
 
     // Seed a branch_staff user (has orders.manage now, but no orders.accept_payment cap)
     await seedUser(tdb.db, {
@@ -188,19 +183,16 @@ describe("admin payment reconciliation endpoints", () => {
     });
 
     // All setup fetches above ran against the real fetch. Now intercept ONLY
-    // the Payaza transaction-query so recheck/webhook see a completed payment;
+    // OPay's cashier/status so recheck/webhook see a completed payment;
     // everything else (this suite's calls to baseUrl) delegates to real fetch.
     const realFetch = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string | URL | Request, init?: RequestInit) => {
-        if (String(url).includes("transaction-query")) {
+        if (String(url).includes("cashier/status")) {
           return Promise.resolve(
             new Response(
-              JSON.stringify({
-                success: true,
-                data: { transaction_status: "Completed", transaction_reference: `PZ-${uuid()}` },
-              }),
+              JSON.stringify({ code: "00000", data: { orderNo: `OP-${uuid()}`, status: "SUCCESS" } }),
               { status: 200 },
             ),
           );
@@ -212,7 +204,6 @@ describe("admin payment reconciliation endpoints", () => {
 
   afterAll(async () => {
     vi.unstubAllGlobals();
-    delete process.env.PAYAZA_PUBLIC_KEY;
     server.close();
     await container.stop();
   });
@@ -246,14 +237,12 @@ describe("admin payment reconciliation endpoints", () => {
     };
   }
 
-  /** Helper: send fake Payaza webhook (marks order confirmed→paid via normal path) */
+  /** Helper: send an OPay wake-up webhook (marks order confirmed→paid via normal path) */
   async function sendWebhook(orderNumber: string) {
-    await fetch(`${baseUrl}/v1/webhooks/payaza`, {
+    await fetch(`${baseUrl}/v1/webhooks/opay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        data: { transaction_reference: orderNumber, status: "SUCCESSFUL" },
-      }),
+      body: JSON.stringify({ reference: orderNumber }),
     });
   }
 
@@ -269,7 +258,7 @@ describe("admin payment reconciliation endpoints", () => {
 
   // ─── recheck ──────────────────────────────────────────────────────────────
 
-  it("POST /recheck on a confirmed order with Payaza Completed flips it to paid", async () => {
+  it("POST /recheck on a confirmed order with OPay SUCCESS flips it to paid", async () => {
     const { id, orderNumber } = await placeOrder("+2348091111001");
 
     // Confirm the order is `confirmed` (not yet paid)
@@ -278,7 +267,7 @@ describe("admin payment reconciliation endpoints", () => {
     const [before] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
     expect(before!.status).toBe("confirmed");
 
-    // Stubbed Payaza query reports Completed — recheck re-verifies and pays it.
+    // Stubbed OPay query reports SUCCESS — recheck re-verifies and pays it.
     const res = await fetch(`${baseUrl}/v1/online-orders/${id}/recheck`, {
       method: "POST",
       headers: { cookie: ownerCookies, "idempotency-key": uuid() },
@@ -713,33 +702,31 @@ describe("admin payment reconciliation endpoints", () => {
     expect(body.data.reportedNgn).toBe(totalNgn);
   });
 
-  it("GET sale detail exposes Payaza fee/gross/net breakdown once paid", async () => {
+  it("GET sale detail: an OPay payment books gross = net with no fee", async () => {
     const { id, orderNumber, totalNgn } = await placeOrder("+2348091111042");
-    // Override the Payaza stub so the transaction-query reports a fee-inclusive
-    // gross (customer paid total + 100 fee → net = total, paid in full).
-    const realFetch = globalThis.fetch;
+    // OPay reports the amount in kobo and no processor fee, so gross and net are
+    // both the full total and fee stays null (fee columns are Payaza history).
     const savedStub = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string | URL | Request, init?: RequestInit) => {
-        if (String(url).includes("transaction-query")) {
+        if (String(url).includes("cashier/status")) {
           return Promise.resolve(
             new Response(
               JSON.stringify({
-                success: true,
+                code: "00000",
                 data: {
-                  transaction_status: "Completed",
-                  amount_received: totalNgn + 100,
-                  fee: 100,
-                  transaction_reference: `PZ-${uuid()}`,
+                  reference: orderNumber,
+                  orderNo: `OP-${uuid()}`,
+                  status: "SUCCESS",
+                  amount: { total: totalNgn * 100, currency: "NGN" },
                 },
               }),
               { status: 200 },
             ),
           );
         }
-        // delegate non-Payaza calls to the underlying fetch
-        return (realFetch as typeof fetch)(url as never, init as never);
+        return (savedStub as typeof fetch)(url as never, init as never);
       }),
     );
     try {
@@ -749,14 +736,15 @@ describe("admin payment reconciliation endpoints", () => {
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
-        data: { grossNgn: number | null; feeNgn: number | null; netNgn: number | null; feeShortfallNgn: number | null };
+        data: { status: string; grossNgn: number | null; feeNgn: number | null; netNgn: number | null; feeShortfallNgn: number | null };
       };
-      expect(body.data.grossNgn).toBe(totalNgn + 100);
-      expect(body.data.feeNgn).toBe(100);
+      expect(body.data.status).toBe("paid");
+      expect(body.data.grossNgn).toBe(totalNgn);
+      expect(body.data.feeNgn).toBeNull();
       expect(body.data.netNgn).toBe(totalNgn);
       expect(body.data.feeShortfallNgn ?? null).toBeNull();
     } finally {
-      // Restore the suite's default Payaza stub for sibling tests.
+      // Restore the suite's default OPay stub for sibling tests.
       vi.stubGlobal("fetch", savedStub);
     }
   });

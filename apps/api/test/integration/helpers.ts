@@ -9,8 +9,6 @@ import { createDbClient, adminUser, assertNonProdDb, branch, product, productVar
 import { hashPassword } from "../../src/auth/argon.js";
 import type { AdminRole, Capability } from "@ms/shared";
 import type { Hono } from "hono";
-import { serve } from "@hono/node-server";
-import type { AddressInfo } from "node:net";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, "../../../../packages/db/migrations");
@@ -34,9 +32,9 @@ export async function setupTestDb(): Promise<{
   process.env.RATE_LIMIT_DISABLED = "1";
   // OPay is the only provider, and placing an online order calls OPay's
   // cashier/create — without keys it throws and the order POST 500s. Give every
-  // suite test keys plus a fake cashier/create so order placement works offline.
-  // Confirmation still requires a real cashier/status "SUCCESS" (tests that
-  // assert a flip-to-paid stub that call themselves, layered over this one).
+  // suite test keys plus fake OPay endpoints so nothing reaches the live API.
+  // Confirmation needs a cashier/status "SUCCESS", which tests that assert a
+  // flip-to-paid stub themselves, layered over this default.
   process.env.OPAY_MERCHANT_ID ??= "256625123456789";
   process.env.OPAY_PUBLIC_KEY ??= "OPAYPUB_TEST_itest";
   process.env.OPAY_SECRET_KEY ??= "OPAYPRV_TEST_itest";
@@ -46,8 +44,11 @@ export async function setupTestDb(): Promise<{
 
 const OPAY_STUBBED = Symbol.for("ms.itest.opayCashierStub");
 
-/** Intercept only OPay cashier/create; everything else hits the real fetch.
- *  Installed once per process — setupTestDb runs in every suite. */
+/** Intercept OPay's two endpoints so no suite ever reaches the live provider:
+ *  cashier/create returns a fake cashier URL, cashier/status answers PENDING
+ *  (orders stay unpaid unless a test stubs a SUCCESS itself). Everything else
+ *  hits the real fetch. Installed once per process — setupTestDb runs in every
+ *  suite. */
 function installOpayCashierStub(): void {
   const g = globalThis as typeof globalThis & { [OPAY_STUBBED]?: true };
   if (g[OPAY_STUBBED]) return;
@@ -63,6 +64,11 @@ function installOpayCashierStub(): void {
           }),
           { status: 200 },
         ),
+      );
+    }
+    if (url.includes("/cashier/status")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ code: "00000", data: { status: "PENDING" } }), { status: 200 }),
       );
     }
     return realFetch(input, init);

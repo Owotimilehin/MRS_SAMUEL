@@ -9,7 +9,7 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
  * Customer-site happy path:
  *   1. Public menu returns seeded products + a zone for our branch
  *   2. Anonymous customer creates an order (zone valid, stock available)
- *   3. Payaza callback → webhook re-verifies against Payaza (stubbed) → paid
+ *   3. OPay callback → webhook re-verifies against OPay (stubbed) → paid
  *   4. Branch ledger decrements; tracking endpoint shows paid status
  */
 describe("Phase 3 customer-site online order flow", () => {
@@ -26,12 +26,6 @@ describe("Phase 3 customer-site online order flow", () => {
     container = tdb.container;
     db = tdb.db;
     await seedOwner(tdb.db);
-    // A PKTEST key so checkout-config builds in "Test" mode and the webhook's
-    // verify takes the real server-to-server path (stubbed per-test). There is
-    // no mock-confirm fallback anymore — without a key, order creation throws.
-    // Set on process.env directly (not vi.stubEnv) so it survives the
-    // afterEach unstubAllEnvs and stays in force for the whole suite.
-    process.env.PAYAZA_PUBLIC_KEY = "PZ78-PKTEST-itest";
     const { buildApp } = await import("../../src/test-app.js");
     server = serve({ fetch: buildApp().fetch, port: 0 });
     await new Promise<void>((resolve) => server.once("listening", () => resolve()));
@@ -50,16 +44,6 @@ describe("Phase 3 customer-site online order flow", () => {
       }),
     });
     branchId = ((await bRes.json()) as { data: { id: string } }).data.id;
-
-    // Task 5 flipped the default active provider to OPay. This whole suite was
-    // written against Payaza's popup-SDK response shape, so pin the setting to
-    // payaza for the suite's default — the dedicated "provider dispatch" tests
-    // below explicitly flip it to opay for their own assertions.
-    const { appSetting, PAYMENT_PROVIDER_KEY } = await import("@ms/db");
-    await tdb.db
-      .insert(appSetting)
-      .values({ key: PAYMENT_PROVIDER_KEY, value: { provider: "payaza" } })
-      .onConflictDoUpdate({ target: appSetting.key, set: { value: { provider: "payaza" } } });
 
     const { factory } = await import("@ms/db");
     const [fac] = await tdb.db.insert(factory).values({ name: "Online Factory" }).returning();
@@ -149,7 +133,6 @@ describe("Phase 3 customer-site online order flow", () => {
   }, 90_000);
 
   afterAll(async () => {
-    delete process.env.PAYAZA_PUBLIC_KEY;
     server.close();
     await container.stop();
   });
@@ -158,6 +141,49 @@ describe("Phase 3 customer-site online order flow", () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
+
+  /**
+   * Make OPay's cashier/status report SUCCESS for the given order numbers
+   * (value = naira received). Any other reference falls through to the shared
+   * helper's PENDING, so a lookup by the wrong reference never confirms — that
+   * is what catches a webhook/re-verify keyed on the wrong id. Other URLs,
+   * including this suite's calls to baseUrl, go to the previous fetch.
+   */
+  function stubOpayPaid(paid: Record<string, number>) {
+    const prevFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("cashier/status")) {
+          const ref = (JSON.parse(String(init?.body ?? "{}")) as { reference?: string }).reference;
+          const amount = ref !== undefined ? paid[ref] : undefined;
+          if (amount !== undefined) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  code: "00000",
+                  message: "SUCCESSFUL",
+                  data: { reference: ref, orderNo: "itest", status: "SUCCESS", amount: { total: amount * 100, currency: "NGN" } },
+                }),
+                { status: 200 },
+              ),
+            );
+          }
+        }
+        return prevFetch(input, init);
+      }),
+    );
+  }
+
+  /** OPay's callback is a wake-up only; the webhook re-queries cashier/status. */
+  function fireOpayWebhook(reference: string) {
+    return fetch(`${baseUrl}/v1/webhooks/opay`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reference }),
+    });
+  }
 
   it("public catalog returns seeded products and zones", async () => {
     const products = await fetch(`${baseUrl}/v1/public/catalog/products`).then((r) => r.json()) as {
@@ -195,76 +221,21 @@ describe("Phase 3 customer-site online order flow", () => {
         order_number: string;
         total_ngn: number;
         is_preorder: boolean;
-        payment: { provider: string; reference: string; payaza: { connectionMode: string; reference: string } };
+        payment: { provider: string; redirect_url: string };
       };
     };
     // No live quote → delivery is not charged; total is the subtotal only.
     expect(orderBody.data.total_ngn).toBe(2500 * 3);
     // In stock (20 on hand, ordered 3) → a normal order, not made-to-order.
     expect(orderBody.data.is_preorder).toBe(false);
-    expect(orderBody.data.payment.provider).toBe("payaza");
-    expect(orderBody.data.payment.payaza.reference).toBe(orderBody.data.order_number);
-    expect(orderBody.data.payment.payaza.connectionMode).toBe("Test"); // PKTEST key in test env
+    expect(orderBody.data.payment.provider).toBe("opay");
+    expect(orderBody.data.payment.redirect_url).toBe("https://sandboxcashier.opaycheckout.com/itest");
 
-    // The callback is only a wake-up; the webhook re-verifies the txn against
-    // Payaza server-to-server. Stub THAT single query to report a completed
-    // payment (delegating every other URL — including this test's own calls to
-    // baseUrl — to the real fetch), so the order is confirmed via the real
-    // verify+reconcile path, never a mock shim.
-    const realFetch = globalThis.fetch;
-    const merchantRef = orderBody.data.order_number;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string | URL | Request, init?: RequestInit) => {
-        if (String(url).includes("transaction-query")) {
-          // Payaza's verify endpoint searches by OUR merchant reference (the
-          // order number). A query by Payaza's own internal id answers "not
-          // found" — exactly like the live API. This is what catches the
-          // wrong-reference bug: the webhook must verify by the merchant ref.
-          const byMerchantRef = String(url).includes(
-            `merchant_reference=${encodeURIComponent(merchantRef)}`,
-          );
-          if (byMerchantRef) {
-            return Promise.resolve(
-              new Response(
-                JSON.stringify({
-                  success: true,
-                  data: {
-                    transaction_status: "Completed",
-                    amount_received: 2500 * 3,
-                    transaction_reference: "PZ-INTERNAL-REF",
-                    merchant_transaction_reference: merchantRef,
-                  },
-                }),
-                { status: 200 },
-              ),
-            );
-          }
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({ success: false, message: "Transaction not found", data: null }),
-              { status: 400 },
-            ),
-          );
-        }
-        return realFetch(url as Parameters<typeof realFetch>[0], init);
-      }),
-    );
-
-    // Simulate the REAL Payaza callback shape: `transaction_reference` is
-    // Payaza's own internal id, `merchant_transaction_reference` is our order
-    // number. The webhook must verify by the merchant reference, not Payaza's id.
-    const webhook = await fetch(`${baseUrl}/v1/webhooks/payaza`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        data: {
-          transaction_reference: "PZ-INTERNAL-REF",
-          merchant_transaction_reference: orderBody.data.order_number,
-          status: "SUCCESSFUL",
-        },
-      }),
-    });
+    // The callback is only a wake-up; the webhook re-verifies against OPay
+    // server-to-server, so the order is confirmed via the real verify+reconcile
+    // path, never a mock shim.
+    stubOpayPaid({ [orderBody.data.order_number]: 2500 * 3 });
+    const webhook = await fireOpayWebhook(orderBody.data.order_number);
     expect(webhook.status).toBe(200);
 
     // Tracking endpoint shows paid status
@@ -288,12 +259,13 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(stockBalance(stockBody.data, productId)).toBe(17); // 20 received - 3 sold
   });
 
-  it("webhook ALONE marks the order paid, verifying by the merchant reference not Payaza's internal id", async () => {
-    // Regression for the prod bug where the webhook read Payaza's own
-    // `transaction_reference` and verified by it — Payaza's verify endpoint
-    // searches by the MERCHANT reference, so it answered "not found" and the
-    // webhook never confirmed. We assert the DB state straight after the webhook
-    // (no tracking call, which would re-verify and mask the bug).
+  it("webhook ALONE marks the order paid, verifying by our reference not OPay's own ids", async () => {
+    // Regression for the class of bug that once no-op'd the Payaza webhook:
+    // reading the provider's own transaction id instead of our order number.
+    // The callback below carries OPay's orderNo/transactionId alongside our
+    // reference; the status stub only answers SUCCESS for our reference. We
+    // assert the DB straight after the webhook (no tracking call, which would
+    // re-verify and mask the bug).
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": uuid() },
@@ -309,65 +281,30 @@ describe("Phase 3 customer-site online order flow", () => {
     const { data: order } = (await orderRes.json()) as { data: { order_number: string } };
     const merchantRef = order.order_number;
 
-    const realFetch = globalThis.fetch;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string | URL | Request, init?: RequestInit) => {
-        if (String(url).includes("transaction-query")) {
-          const byMerchantRef = String(url).includes(
-            `merchant_reference=${encodeURIComponent(merchantRef)}`,
-          );
-          if (byMerchantRef) {
-            return Promise.resolve(
-              new Response(
-                JSON.stringify({
-                  success: true,
-                  data: {
-                    transaction_status: "Completed",
-                    amount_received: 2500,
-                    transaction_reference: "PZ-INTERNAL-REF",
-                    merchant_transaction_reference: merchantRef,
-                  },
-                }),
-                { status: 200 },
-              ),
-            );
-          }
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({ success: false, message: "Transaction not found", data: null }),
-              { status: 400 },
-            ),
-          );
-        }
-        return realFetch(url as Parameters<typeof realFetch>[0], init);
-      }),
-    );
-
-    // Real Payaza callback shape: `transaction_reference` is Payaza's internal id.
-    const webhook = await fetch(`${baseUrl}/v1/webhooks/payaza`, {
+    stubOpayPaid({ [merchantRef]: 2500 });
+    const webhook = await fetch(`${baseUrl}/v1/webhooks/opay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        data: {
-          transaction_reference: "PZ-INTERNAL-REF",
-          merchant_transaction_reference: merchantRef,
-          status: "SUCCESSFUL",
+        type: "transaction-status",
+        payload: {
+          orderNo: "OPAY-INTERNAL-ORDER",
+          transactionId: "OPAY-INTERNAL-TXN",
+          reference: merchantRef,
+          status: "SUCCESS",
         },
       }),
     });
     expect(webhook.status).toBe(200);
 
-    // Assert straight from the DB — the webhook itself must have marked it paid.
-    const { createDbClient, saleOrder } = await import("@ms/db");
+    const { saleOrder } = await import("@ms/db");
     const { eq } = await import("drizzle-orm");
-    const db = createDbClient(process.env.DATABASE_URL!);
     const [row] = await db
       .select({ status: saleOrder.status, paymentStatus: saleOrder.paymentStatus })
       .from(saleOrder)
       .where(eq(saleOrder.orderNumber, merchantRef));
-    expect(row.status).toBe("paid");
-    expect(row.paymentStatus).toBe("paid");
+    expect(row!.status).toBe("paid");
+    expect(row!.paymentStatus).toBe("paid");
   });
 
   it("flags an out-of-stock order as made-to-order (is_preorder) so checkout can reassure the customer", async () => {
@@ -577,28 +514,9 @@ describe("Phase 3 customer-site online order flow", () => {
   });
 
   it("tracking returns items, is_preorder, reservation_expires_at and resume_payment while unpaid", async () => {
-    // The route's on-view re-verify (Task 5) would query Payaza on the GET
-    // below. Stub that query to report "not found" (delegating every other URL,
-    // e.g. this test's own calls to baseUrl, to the real fetch) so the order
-    // stays unpaid and this test stays isolated to the tracking fields.
-    const realFetch = globalThis.fetch;
-    vi.stubEnv("PAYAZA_PUBLIC_KEY", "pub_test_unpaid");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-        const url = typeof input === "string" ? input : input.toString();
-        if (url.includes("transaction-query")) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({ success: false, data: null, message: "Transaction not found" }),
-              { status: 400 },
-            ),
-          );
-        }
-        return realFetch(input, init);
-      }),
-    );
-
+    // The route's on-view re-verify queries OPay on the GET below; the shared
+    // helper answers PENDING, so the order stays unpaid and this test stays
+    // isolated to the tracking fields.
     const phone = "+2348025550012";
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
@@ -633,13 +551,12 @@ describe("Phase 3 customer-site online order flow", () => {
     expect(data).toHaveProperty("reservation_expires_at");
     expect(data["reservation_expires_at"]).not.toBeNull(); // unpaid, non-preorder → live hold
     expect(data["resume_payment"]).not.toBeNull(); // unpaid → resume config present
-    const resumePayment = data["resume_payment"] as { payaza: { reference: string } };
-    expect(resumePayment.payaza.reference).toBe(orderBody.data.order_number);
+    expect(data["resume_payment"]).toEqual({ provider: "opay", reference: orderBody.data.order_number });
   });
 
-  it("tracking re-verifies an unpaid order against Payaza on view and flips it to paid", async () => {
+  it("tracking re-verifies an unpaid order against OPay on view and flips it to paid", async () => {
     // No webhook is fired here — the order is left `confirmed` with a live
-    // reservation. We stub the Payaza transaction-query to report "Completed"
+    // reservation. We stub OPay's cashier/status to report SUCCESS
     // so the tracking endpoint's on-view re-verify reconciles the order to
     // paid, same as the webhook would — exercising the real verify path.
     const phone = "+2348025550013";
@@ -670,26 +587,8 @@ describe("Phase 3 customer-site online order flow", () => {
       .where(eq(saleOrder.orderNumber, orderBody.data.order_number));
     expect(before!.status).toBe("confirmed"); // unpaid, no webhook fired yet
 
-    // Stub the Payaza query the on-view re-verify will make; delegate the
-    // tracking request itself (to baseUrl) to the real fetch.
-    const realFetch = globalThis.fetch;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string | URL | Request, init?: RequestInit) => {
-        if (String(url).includes("transaction-query")) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                success: true,
-                data: { transaction_status: "Completed", transaction_reference: "PZ-ONVIEW" },
-              }),
-              { status: 200 },
-            ),
-          );
-        }
-        return realFetch(url as Parameters<typeof realFetch>[0], init);
-      }),
-    );
+    // Stub the OPay query the on-view re-verify will make (1 bottle @ ₦2500).
+    stubOpayPaid({ [orderBody.data.order_number]: 2500 });
 
     const track = await fetch(
       `${baseUrl}/v1/public/orders/${orderBody.data.order_number}?phone=${encodeURIComponent(phone)}`,
@@ -743,27 +642,6 @@ describe("Phase 3 customer-site online order flow", () => {
   async function placeAndPay(extra: Record<string, unknown>, phone: string) {
     const { saleOrder } = await import("@ms/db");
     const { eq } = await import("drizzle-orm");
-    // The webhook below re-verifies against Payaza; stub that single query to
-    // report a completed payment (delegating all other URLs to real fetch) so
-    // the order reconciles to paid via the real path. afterEach unstubs.
-    const realFetch = globalThis.fetch;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string | URL | Request, init?: RequestInit) => {
-        if (String(url).includes("transaction-query")) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                success: true,
-                data: { transaction_status: "Completed", transaction_reference: `PZ-${uuid()}` },
-              }),
-              { status: 200 },
-            ),
-          );
-        }
-        return realFetch(url as Parameters<typeof realFetch>[0], init);
-      }),
-    );
     const orderRes = await fetch(`${baseUrl}/v1/public/orders`, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": uuid() },
@@ -777,16 +655,10 @@ describe("Phase 3 customer-site online order flow", () => {
       }),
     });
     const ob = (await orderRes.json()) as { data: { order_number: string; total_ngn: number } };
-    await fetch(`${baseUrl}/v1/webhooks/payaza`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        data: {
-          transaction_reference: ob.data.order_number,
-          status: "SUCCESSFUL",
-        },
-      }),
-    });
+    // The webhook re-verifies against OPay; report the full total paid so the
+    // order reconciles to paid via the real path. afterEach unstubs.
+    stubOpayPaid({ [ob.data.order_number]: ob.data.total_ngn });
+    await fireOpayWebhook(ob.data.order_number);
     const [order] = await db
       .select()
       .from(saleOrder)
@@ -940,6 +812,8 @@ describe("Phase 3 customer-site online order flow", () => {
   });
 
   describe("Task 5: order creation dispatches checkout by the active provider", () => {
+    // OPay is the only provider now; setActiveProvider remains only to prove the
+    // retired app_settings toggle no longer changes anything.
     async function setActiveProvider(provider: "opay" | "payaza") {
       const { appSetting, PAYMENT_PROVIDER_KEY } = await import("@ms/db");
       await db
@@ -948,13 +822,7 @@ describe("Phase 3 customer-site online order flow", () => {
         .onConflictDoUpdate({ target: appSetting.key, set: { value: { provider } } });
     }
 
-    afterEach(async () => {
-      // Restore the suite-wide default so later tests (if any run after this
-      // block) keep exercising the payaza path they were written against.
-      await setActiveProvider("payaza");
-    });
-
-    it("payment_provider=payaza: order creation returns the payaza checkout config", async () => {
+    it("a leftover payment_provider=payaza setting is ignored — orders still go to OPay", async () => {
       await setActiveProvider("payaza");
       const res = await fetch(`${baseUrl}/v1/public/orders`, {
         method: "POST",
@@ -964,9 +832,9 @@ describe("Phase 3 customer-site online order flow", () => {
           zone_name: "Test zone",
           delivery_fee_ngn: 1500,
           customer: {
-            name: "Payaza Provider",
+            name: "Stale Setting",
             phone: "+2348025550020",
-            email: "payazaprovider@example.com",
+            email: "stalesetting@example.com",
             address: "20 Provider Street",
           },
           items: [{ product_id: productId, quantity: 1 }],
@@ -974,23 +842,19 @@ describe("Phase 3 customer-site online order flow", () => {
       });
       expect(res.status).toBe(201);
       const body = (await res.json()) as {
-        data: {
-          order_number: string;
-          payment: { provider: string; reference: string; payaza?: { reference: string } };
-        };
+        data: { order_number: string; payment: { provider: string; redirect_url?: string } };
       };
-      expect(body.data.payment.provider).toBe("payaza");
-      expect(body.data.payment.payaza).toBeDefined();
-      expect(body.data.payment.payaza!.reference).toBe(body.data.order_number);
+      expect(body.data.payment.provider).toBe("opay");
+      expect(body.data.payment.redirect_url).toBeTruthy();
 
-      // The order row itself is stamped with the provider it was created under.
       const { saleOrder } = await import("@ms/db");
       const { eq } = await import("drizzle-orm");
       const [row] = await db
         .select({ paymentProvider: saleOrder.paymentProvider })
         .from(saleOrder)
         .where(eq(saleOrder.orderNumber, body.data.order_number));
-      expect(row!.paymentProvider).toBe("payaza");
+      expect(row!.paymentProvider).toBe("opay");
+      await setActiveProvider("opay");
     });
 
     it("payment_provider=opay: order creation returns an OPay redirect_url", async () => {
