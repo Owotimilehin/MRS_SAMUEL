@@ -38,18 +38,6 @@ export const fetchBranches = createServerFn({ method: "GET" }).handler(async ():
   return apiFetch<ApiBranch[]>("/v1/public/catalog/branches");
 });
 
-/** Live delivery zones + fees from admin → Zones. Empty list if the API fails,
- *  so a landing page never breaks over a missing fee. */
-export const fetchZones = createServerFn({ method: "GET" }).handler(
-  async (): Promise<{ name: string; fee_ngn: number }[]> => {
-    try {
-      return await apiFetch<{ name: string; fee_ngn: number }[]>("/v1/public/catalog/zones");
-    } catch {
-      return [];
-    }
-  },
-);
-
 // Rebuild the customer's basket on the SERVER from the ms_cart cookie, so
 // /checkout can render a real form + summary in its SSR HTML instead of the
 // "Your basket is empty" screen it used to emit for everyone. This is what
