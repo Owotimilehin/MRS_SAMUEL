@@ -24,9 +24,11 @@ import { Route as BlogRouteImport } from './routes/blog'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as JuicesIndexRouteImport } from './routes/juices.index'
+import { Route as JuiceDeliveryLagosIndexRouteImport } from './routes/juice-delivery-lagos.index'
 import { Route as BlogIndexRouteImport } from './routes/blog.index'
 import { Route as OrderOrderNumberRouteImport } from './routes/order.$orderNumber'
 import { Route as JuicesIdRouteImport } from './routes/juices.$id'
+import { Route as JuiceDeliveryLagosAreaRouteImport } from './routes/juice-delivery-lagos.$area'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 
 const WhiteLabelRoute = WhiteLabelRouteImport.update({
@@ -104,6 +106,11 @@ const JuicesIndexRoute = JuicesIndexRouteImport.update({
   path: '/',
   getParentRoute: () => JuicesRoute,
 } as any)
+const JuiceDeliveryLagosIndexRoute = JuiceDeliveryLagosIndexRouteImport.update({
+  id: '/juice-delivery-lagos/',
+  path: '/juice-delivery-lagos/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BlogIndexRoute = BlogIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -118,6 +125,11 @@ const JuicesIdRoute = JuicesIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => JuicesRoute,
+} as any)
+const JuiceDeliveryLagosAreaRoute = JuiceDeliveryLagosAreaRouteImport.update({
+  id: '/juice-delivery-lagos/$area',
+  path: '/juice-delivery-lagos/$area',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const BlogSlugRoute = BlogSlugRouteImport.update({
   id: '/$slug',
@@ -141,9 +153,11 @@ export interface FileRoutesByFullPath {
   '/track': typeof TrackRoute
   '/white-label': typeof WhiteLabelRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/juice-delivery-lagos/$area': typeof JuiceDeliveryLagosAreaRoute
   '/juices/$id': typeof JuicesIdRoute
   '/order/$orderNumber': typeof OrderOrderNumberRoute
   '/blog/': typeof BlogIndexRoute
+  '/juice-delivery-lagos/': typeof JuiceDeliveryLagosIndexRoute
   '/juices/': typeof JuicesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -160,9 +174,11 @@ export interface FileRoutesByTo {
   '/track': typeof TrackRoute
   '/white-label': typeof WhiteLabelRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/juice-delivery-lagos/$area': typeof JuiceDeliveryLagosAreaRoute
   '/juices/$id': typeof JuicesIdRoute
   '/order/$orderNumber': typeof OrderOrderNumberRoute
   '/blog': typeof BlogIndexRoute
+  '/juice-delivery-lagos': typeof JuiceDeliveryLagosIndexRoute
   '/juices': typeof JuicesIndexRoute
 }
 export interface FileRoutesById {
@@ -182,9 +198,11 @@ export interface FileRoutesById {
   '/track': typeof TrackRoute
   '/white-label': typeof WhiteLabelRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/juice-delivery-lagos/$area': typeof JuiceDeliveryLagosAreaRoute
   '/juices/$id': typeof JuicesIdRoute
   '/order/$orderNumber': typeof OrderOrderNumberRoute
   '/blog/': typeof BlogIndexRoute
+  '/juice-delivery-lagos/': typeof JuiceDeliveryLagosIndexRoute
   '/juices/': typeof JuicesIndexRoute
 }
 export interface FileRouteTypes {
@@ -205,9 +223,11 @@ export interface FileRouteTypes {
     | '/track'
     | '/white-label'
     | '/blog/$slug'
+    | '/juice-delivery-lagos/$area'
     | '/juices/$id'
     | '/order/$orderNumber'
     | '/blog/'
+    | '/juice-delivery-lagos/'
     | '/juices/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -224,9 +244,11 @@ export interface FileRouteTypes {
     | '/track'
     | '/white-label'
     | '/blog/$slug'
+    | '/juice-delivery-lagos/$area'
     | '/juices/$id'
     | '/order/$orderNumber'
     | '/blog'
+    | '/juice-delivery-lagos'
     | '/juices'
   id:
     | '__root__'
@@ -245,9 +267,11 @@ export interface FileRouteTypes {
     | '/track'
     | '/white-label'
     | '/blog/$slug'
+    | '/juice-delivery-lagos/$area'
     | '/juices/$id'
     | '/order/$orderNumber'
     | '/blog/'
+    | '/juice-delivery-lagos/'
     | '/juices/'
   fileRoutesById: FileRoutesById
 }
@@ -266,7 +290,9 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   TrackRoute: typeof TrackRoute
   WhiteLabelRoute: typeof WhiteLabelRoute
+  JuiceDeliveryLagosAreaRoute: typeof JuiceDeliveryLagosAreaRoute
   OrderOrderNumberRoute: typeof OrderOrderNumberRoute
+  JuiceDeliveryLagosIndexRoute: typeof JuiceDeliveryLagosIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -376,6 +402,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JuicesIndexRouteImport
       parentRoute: typeof JuicesRoute
     }
+    '/juice-delivery-lagos/': {
+      id: '/juice-delivery-lagos/'
+      path: '/juice-delivery-lagos'
+      fullPath: '/juice-delivery-lagos/'
+      preLoaderRoute: typeof JuiceDeliveryLagosIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/blog/': {
       id: '/blog/'
       path: '/'
@@ -396,6 +429,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/juices/$id'
       preLoaderRoute: typeof JuicesIdRouteImport
       parentRoute: typeof JuicesRoute
+    }
+    '/juice-delivery-lagos/$area': {
+      id: '/juice-delivery-lagos/$area'
+      path: '/juice-delivery-lagos/$area'
+      fullPath: '/juice-delivery-lagos/$area'
+      preLoaderRoute: typeof JuiceDeliveryLagosAreaRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/blog/$slug': {
       id: '/blog/$slug'
@@ -447,7 +487,9 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   TrackRoute: TrackRoute,
   WhiteLabelRoute: WhiteLabelRoute,
+  JuiceDeliveryLagosAreaRoute: JuiceDeliveryLagosAreaRoute,
   OrderOrderNumberRoute: OrderOrderNumberRoute,
+  JuiceDeliveryLagosIndexRoute: JuiceDeliveryLagosIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

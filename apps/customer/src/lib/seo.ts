@@ -199,6 +199,19 @@ export function articleLd(a: {
   };
 }
 
+/** FAQPage — only for Q&As that are visibly rendered on the same page. */
+export function faqPageLd(faqs: { q: string; a: string }[]): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((f) => ({
+      "@type": "Question",
+      name: f.q,
+      acceptedAnswer: { "@type": "Answer", text: f.a },
+    })),
+  };
+}
+
 /** Breadcrumb trail. Pass [{name, path}] root-first. */
 export function breadcrumbLd(items: { name: string; path: string }[]): object {
   return {
