@@ -1,17 +1,18 @@
 import { createFileRoute, notFound, Link } from "@tanstack/react-router";
-import { fetchProducts } from "@/lib/api/server-fns";
+import { fetchProducts, fetchZones } from "@/lib/api/server-fns";
 import { sortByStock650 } from "@/lib/stock-summary";
 import { LocalLanding, type LocalFaq } from "@/components/LocalLanding";
 import { SiteShell } from "@/components/SiteShell";
-import { findArea, type DeliveryArea } from "@/lib/areas";
+import { findArea, areaFee, type DeliveryArea } from "@/lib/areas";
+import { formatNaira } from "@/lib/cart";
 import { seo, breadcrumbLd, faqPageLd } from "@/lib/seo";
 import clusterCitrus from "@/assets/decor/cluster-citrus.png";
 
-function areaFaqs(a: DeliveryArea): LocalFaq[] {
+function areaFaqs(a: DeliveryArea, fee: number | null): LocalFaq[] {
   return [
     {
       q: `Do you deliver fresh juice to ${a.name}?`,
-      a: `Yes. We deliver to ${a.neighbourhoods.join(", ")}. Add your address at checkout and the delivery fee is shown before you pay.`,
+      a: `Yes. We deliver to ${a.neighbourhoods.join(", ")}. ${fee != null ? `Delivery is ${formatNaira(fee)}, confirmed at checkout before you pay.` : "Add your address at checkout and the delivery fee is shown before you pay."}`,
     },
     {
       q: `How soon will my juice arrive in ${a.name}?`,
@@ -28,8 +29,8 @@ export const Route = createFileRoute("/juice-delivery-lagos/$area")({
   loader: async ({ params }) => {
     const area = findArea(params.area);
     if (!area) throw notFound();
-    const products = await fetchProducts();
-    return { area, products: sortByStock650(products).slice(0, 8) };
+    const [products, zones] = await Promise.all([fetchProducts(), fetchZones()]);
+    return { area, fee: areaFee(area, zones), products: sortByStock650(products).slice(0, 8) };
   },
   head: ({ loaderData }) => {
     const a = loaderData?.area;
@@ -45,7 +46,7 @@ export const Route = createFileRoute("/juice-delivery-lagos/$area")({
           { name: "Fresh Juice Delivery in Lagos", path: "/juice-delivery-lagos" },
           { name: a.name, path },
         ]),
-        faqPageLd(areaFaqs(a)),
+        faqPageLd(areaFaqs(a, loaderData?.fee ?? null)),
       ],
     });
   },
@@ -66,7 +67,7 @@ function NotFound() {
 }
 
 function Page() {
-  const { area: a, products } = Route.useLoaderData();
+  const { area: a, fee, products } = Route.useLoaderData();
   return (
     <LocalLanding
       eyebrow={`Juice Delivery · ${a.name}`}
@@ -74,9 +75,9 @@ function Page() {
       subtitle={`Cold-pressed fruit juice, delivered cold across ${a.neighbourhoods.join(", ")}.`}
       decor={clusterCitrus}
       intro={[a.intro]}
-      notes={a.localNotes}
+      notes={fee != null ? [`Delivery to ${a.name}: ${formatNaira(fee)}.`, ...a.localNotes] : a.localNotes}
       products={products}
-      faqs={areaFaqs(a)}
+      faqs={areaFaqs(a, fee)}
       whatsappMessage={`Hi Mrs. Samuel, I'd like fresh juice delivered in ${a.name}.`}
     />
   );
