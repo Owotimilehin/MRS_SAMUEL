@@ -21,7 +21,8 @@ import { FAQ } from "@/components/FAQ";
 import { Story } from "@/components/Story";
 import { Sustainability } from "@/components/Sustainability";
 import { Blog } from "@/components/Blog";
-import { seo } from "@/lib/seo";
+import { seo, faqPageLd } from "@/lib/seo";
+import { faqs } from "@/components/FAQ";
 
 export const Route = createFileRoute("/")({
   head: () => {
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/")({
       description:
         "Fresh, 100% natural fruit juice made daily in Lagos: zobo, pineapple, orange, green juice and more. No added sugar, no preservatives. Order online for cold delivery.",
       path: "/",
+      jsonLd: [faqPageLd(faqs)],
     });
     return {
       ...base,
