@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import type { Product } from "@/lib/api/mappers";
-import { fetchProducts, fetchBlogPosts, fetchBanner } from "@/lib/api/server-fns";
+import { fetchProducts, fetchBlogPosts, fetchBanner, fetchInstagramFeed } from "@/lib/api/server-fns";
 import { TopBanner } from "@/components/TopBanner";
 import { pickCustomBannerMessage } from "@/lib/banner";
 import { SiteShell } from "@/components/SiteShell";
@@ -44,18 +44,19 @@ export const Route = createFileRoute("/")({
     };
   },
   loader: async () => {
-    const [products, posts, banner] = await Promise.all([
+    const [products, posts, banner, instagram] = await Promise.all([
       fetchProducts(),
       fetchBlogPosts(),
       fetchBanner(),
+      fetchInstagramFeed(),
     ]);
-    return { products, posts, banner };
+    return { products, posts, banner, instagram };
   },
   component: Page,
 });
 
 function Page() {
-  const { products, posts, banner } = Route.useLoaderData();
+  const { products, posts, banner, instagram } = Route.useLoaderData();
   const [selected, setSelected] = useState<Product | null>(null);
   const classics = sortByStock650(products.filter((p) => p.category === "Classic")).slice(0, 8);
   const specials = sortByStock650(products.filter((p) => p.category === "Special"));
@@ -122,7 +123,7 @@ function Page() {
       <Categories />
       <Story />
       <Sustainability />
-      <Testimonials />
+      <Testimonials instagram={instagram} />
       <Blog posts={posts} />
       <FeatureCards />
       <FAQ />
