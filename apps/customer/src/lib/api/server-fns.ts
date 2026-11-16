@@ -38,6 +38,27 @@ export const fetchBranches = createServerFn({ method: "GET" }).handler(async ():
   return apiFetch<ApiBranch[]>("/v1/public/catalog/branches");
 });
 
+// ---------- Instagram ----------
+export interface IgPost {
+  id: string;
+  imageUrl: string;
+  permalink: string;
+  caption: string;
+  isVideo: boolean;
+  timestamp: string;
+}
+
+/** Latest @Mrs_samuelfruitjuice posts. Empty on any failure so pages
+ *  fall back to the static tiles instead of breaking. */
+export const fetchInstagramFeed = createServerFn({ method: "GET" }).handler(async (): Promise<IgPost[]> => {
+  try {
+    const rows = await apiFetch<IgPost[]>("/v1/public/instagram/feed");
+    return Array.isArray(rows) ? rows.filter((p) => p?.imageUrl && p?.permalink) : [];
+  } catch {
+    return [];
+  }
+});
+
 // Rebuild the customer's basket on the SERVER from the ms_cart cookie, so
 // /checkout can render a real form + summary in its SSR HTML instead of the
 // "Your basket is empty" screen it used to emit for everyone. This is what

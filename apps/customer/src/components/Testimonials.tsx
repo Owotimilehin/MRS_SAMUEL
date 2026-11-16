@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Star, Instagram } from "lucide-react";
+import type { IgPost } from "@/lib/api/server-fns";
 import bottleSunrise from "@/assets/bottle-sunrise.png";
 import bottleGreen from "@/assets/bottle-green.png";
 import bottleRuby from "@/assets/bottle-ruby.png";
@@ -18,7 +19,14 @@ const ig = [
   { img: bottleGreen, bg: "#e5f0d2" },
 ];
 
-export function Testimonials() {
+/** First line of a caption, trimmed — used as alt text and visible caption. */
+function captionLine(c: string, max = 110): string {
+  const line = (c.split("\n").find((l) => l.trim()) ?? "").trim();
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
+export function Testimonials({ instagram = [] }: { instagram?: IgPost[] }) {
+  const posts = instagram.slice(0, 8);
   return (
     <section id="reviews" className="px-5 sm:px-10 py-16 max-w-7xl mx-auto">
       <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-10">
@@ -66,6 +74,28 @@ export function Testimonials() {
           <h3 className="mt-3 font-display text-3xl font-semibold text-[color:var(--brand)]">
             @Mrs_samuelfruitjuice
           </h3>
+          {posts.length > 0 ? (
+            <ul className="mt-6 grid grid-cols-4 gap-3">
+              {posts.map((p) => (
+                <li key={p.id}>
+                  <a
+                    href={p.permalink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group relative block aspect-square overflow-hidden rounded-xl bg-[color:var(--cream)]"
+                    title={captionLine(p.caption) || "Mrs. Samuel on Instagram"}
+                  >
+                    <img
+                      src={p.imageUrl}
+                      alt={captionLine(p.caption) || "Mrs. Samuel fresh juice on Instagram"}
+                      loading="lazy"
+                      className="h-full w-full object-cover transition group-hover:scale-105"
+                    />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
           <div className="mt-6 grid grid-cols-4 gap-3">
             {ig.map((g, i) => (
               <a
@@ -80,6 +110,13 @@ export function Testimonials() {
               </a>
             ))}
           </div>
+          )}
+          {posts[0]?.caption && (
+            <p className="mt-4 text-sm leading-relaxed text-[color:var(--brand)]/75">
+              <span className="font-semibold">Latest:</span> {captionLine(posts[0].caption, 220)}{" "}
+              <a href={posts[0].permalink} target="_blank" rel="noreferrer" className="underline">See post</a>
+            </p>
+          )}
         </div>
       </div>
     </section>
