@@ -5,6 +5,9 @@ import { v4 as uuid } from "uuid";
 import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
+/** Shape of a /v1/admin/users row, as far as these tests read it. */
+type UserRow = { id: string; email: string; name: string | null };
+
 describe("admin_user name field", () => {
   let container: StartedPostgreSqlContainer;
   let baseUrl: string;
@@ -69,7 +72,7 @@ describe("admin_user name field", () => {
     });
     expect(res.status).toBe(201);
     const list = await api("/v1/admin/users");
-    const row = (await list.json()).data.find((u: any) => u.email === "aisha@example.com");
+    const row = (await list.json()).data.find((u: UserRow) => u.email === "aisha@example.com");
     expect(row.name).toBe("Aisha Bello");
   });
 
@@ -89,7 +92,7 @@ describe("admin_user name field", () => {
     expect(patchRes.status).toBe(200);
 
     const list = await api("/v1/admin/users");
-    const row = (await list.json()).data.find((u: any) => u.id === userId);
+    const row = (await list.json()).data.find((u: UserRow) => u.id === userId);
     expect(row.name).toBe("Updated Name");
   });
 
@@ -109,7 +112,7 @@ describe("admin_user name field", () => {
     expect(patchRes.status).toBe(200);
 
     const list = await api("/v1/admin/users");
-    const row = (await list.json()).data.find((u: any) => u.id === userId);
+    const row = (await list.json()).data.find((u: UserRow) => u.id === userId);
     expect(row.name).toBeNull();
   });
 });
