@@ -62,10 +62,44 @@ Target: **10 new Google reviews a month**, and a reply to every one within 48 ho
 
 ## Instagram: turn your audience into Google signals
 
-Instagram links don't directly raise your Google ranking. But they send visitors and get people searching for your name, and Google rewards both.
-- Put `mrssamuel.com` as the bio link, not a link-in-bio service. Or link specific pages (`/shop`, `/bulk-orders`).
-- In captions and stories, say "search **Mrs. Samuel Fruit Juice** on Google" or "order at mrssamuel.com".
-- Repost every food critic or customer mention, and save them to a story highlight called "Press".
+Instagram helps you on Google in three ways:
+1. **Google now shows public Instagram posts from business accounts in its results.** A caption that says "fresh juice delivery in Lekki" can show up when someone searches that.
+2. **Instagram sends people to the website,** and people who arrive and order are a signal Google rewards.
+3. **People who see you on Instagram later search your name on Google,** which lifts your whole listing.
+
+### Set up once (15 min)
+- [ ] **Bio link:** `mrssamuel.com/ig`. This is your own link page, already built, so it replaces Linktree. It sends people to Shop, Lagos delivery, bulk orders, WhatsApp and the blog.
+- [ ] **Name field:** "Mrs. Samuel | Fresh Juice Lagos". Instagram search reads the name field, so people searching "fresh juice Lagos" on Instagram find you.
+- [ ] **Bio text:** say what and where. For example: "100% fresh cold-pressed juice 🍍 No added sugar. Delivered cold all round Lagos. Order 👇"
+- [ ] **Story highlights:** *Order*, *Delivery areas*, *Reviews*, *Press*, *Events*.
+- [ ] **Account settings:** make sure it's a public Business or Creator account. That's what lets Google show your posts.
+- [ ] **Leave a Google review:** once you have the review link from your Google profile, send it to the developer. A "Leave us a Google review" button then appears on `/ig`.
+
+### Every post (habits)
+- **Write captions in search words, naturally.** The first line counts most: "Fresh zobo, pressed this morning in Ikeja 🌺" works better than "Monday vibes ✨".
+- **Tag the location** (Lekki, Victoria Island, Ikeja and so on) on every delivery and event post.
+- **Add alt text** (Advanced settings → Accessibility): describe the photo, e.g. "Bottles of fresh pineapple juice on ice at a Lekki wedding".
+- **End with "Order: link in bio"** or "Delivery all round Lagos: link in bio".
+- **Use 3–5 specific hashtags,** not 30 generic ones: #freshjuicelagos #lagosjuice #zobo #coldpressedjuice #lagosevents.
+
+### Weekly content loop (ties Instagram and the website together)
+| Day | Instagram | Website |
+|---|---|---|
+| Mon | Carousel from the week's blog post ("5 things about zobo") | Publish that post in admin → Blog |
+| Wed | Reel delivering to one area, location tagged: "Fresh juice delivery in Yaba" | The matching area page is already live; send us any local fact from the delivery |
+| Fri | Customer or critic repost, plus a story with a link sticker to the Google review link | That review lifts your Maps ranking |
+| Sat | Event or bulk-order reel (wedding, office) | Links to `/bulk-orders` |
+
+### Food critics and influencer mentions
+- **Repost every mention** to your story and the *Press* highlight.
+- **Send the developer the list** of every critic who has featured you: their name, Instagram handle, and the link to the post or article. It goes on the website as an "As featured in" section, which builds trust for customers and Google.
+- **The big one:** if a critic also has a **blog, YouTube channel or website**, ask them to add a link to mrssamuel.com (see the template below). One link from a real Lagos food site is worth more than hundreds of likes.
+- **Collaborate with Lagos gyms, fitness coaches and wellness creators.** Use Instagram's Collab post feature so the post shows on both accounts.
+
+### The Instagram feed on the website
+The home page now shows your latest Instagram posts and captions. Fresh posts mean fresh text on the page, and Google likes that. It needs two things on the server:
+- the server fix in this update, so the feed works even when the server's cache is down
+- a valid Instagram access token (`IG_ACCESS_TOKEN`). These expire every 60 days. The developer should check it's set and put a renewal reminder in the calendar. If the feed is empty after deploying, an expired token is the likely reason.
 
 ## Food critics and bloggers: turn mentions into links
 
