@@ -42,7 +42,7 @@ export const Route = createFileRoute("/juices/$id")({
       `${p.tagline} Cold-pressed ${p.name} made fresh in Lagos with ${p.ingredients.slice(0, 4).join(", ")} — no added sugar, no preservatives.`.trim();
     const fromPrice = p.prices["330ml"] || p.prices["650ml"];
     return seo({
-      title: `${p.name} — Cold-Pressed Juice | Mrs. Samuel`,
+      title: `${p.name} — Fresh Cold-Pressed Juice in Lagos | Mrs. Samuel`,
       description,
       path,
       image: p.image,

@@ -14,7 +14,7 @@ import { seo, breadcrumbLd } from "@/lib/seo";
 export const Route = createFileRoute("/juices/")({
   head: () =>
     seo({
-      title: "Our Juices — Cold-Pressed Nigerian Flavours | Mrs. Samuel",
+      title: "Fresh Juice Menu — Zobo, Pineapple, Green Juice | Mrs. Samuel",
       description:
         "Browse every cold-pressed Mrs. Samuel juice — zobo, tigernut, pineapple-ginger and more. Filter by ingredient or category. Pressed fresh daily in Lagos, no added sugar.",
       path: "/juices",
