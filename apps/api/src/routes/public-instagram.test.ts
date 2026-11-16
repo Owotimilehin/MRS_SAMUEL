@@ -51,6 +51,27 @@ describe("GET /feed", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("serves the last good feed (no error field) when a refresh fails, and backs off", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [graphPost] }), { status: 200 }))
+      .mockResolvedValue(new Response("token expired", { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { publicInstagramRoutes } = await import("./public-instagram.js");
+    const app = publicInstagramRoutes();
+    await app.request("/feed"); // fills memory cache
+
+    vi.advanceTimersByTime(31 * 60 * 1000); // past the 30-min TTL
+    const stale = (await (await app.request("/feed")).json()) as { data: unknown[]; error?: string };
+    expect(stale.data).toHaveLength(1);
+    expect(stale.error).toBeUndefined();
+
+    await app.request("/feed"); // within the 60s back-off: no new Graph call
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
   it("soft-fails without leaking internal error text", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("token expired", { status: 400 })));
     const { publicInstagramRoutes } = await import("./public-instagram.js");
