@@ -55,9 +55,9 @@ Even 100% juice contains natural fruit sugar, so moderation still matters. But a
 Shelf life tells you a lot about how a juice has been made.
 
 - **Long shelf life (weeks or months, unopened, out of the fridge):** the juice has almost certainly been heat-treated and sealed to keep it stable. Some products also contain preservatives.
-- **Short shelf life (a few days, refrigerated):** this points to fresh juice that has not been heat-treated or preserved.
+- **Short shelf life (a day or two, refrigerated):** this points to fresh juice that has not been heat-treated or preserved.
 
-Our juices, for example, should be kept refrigerated at 2–6°C and drunk within 4 days. That short window is the price of skipping heat and preservatives, and we think it's worth it.
+Our juices, for example, should be kept refrigerated at 2–6°C and drunk within 48 hours. That short window is the price of skipping heat and preservatives, and we think it's worth it.
 
 ## How to read a juice label
 

@@ -29,12 +29,13 @@ Standing weekly or monthly drops are invoiced together, so your finance or admin
 
 ### Getting the quantity right
 
-Because our juice has no preservatives, it should be kept refrigerated at 2–6°C and drunk within 4 days. That shapes how you plan a weekly drop:
+Because our juice has no preservatives, it should be kept refrigerated at 2–6°C and drunk within 48 hours. That shapes how you plan your drops:
 
-1. **Count your regular drinkers, not your headcount.** Not everyone will take a bottle every day.
-2. **Plan for the days people are actually in.** If your team works a hybrid week, plan around office days.
-3. **Check your fridge space.** Make sure there's room for the full drop at the right temperature.
-4. **Start modest and adjust.** It's easier to add bottles after a couple of weeks than to watch extras go past their best.
+1. **Order what your team will drink in two days.** Talk to us about how often to deliver so the fridge is never full of juice past its best.
+2. **Count your regular drinkers, not your headcount.** Not everyone will take a bottle every day.
+3. **Plan for the days people are actually in.** If your team works a hybrid week, plan around office days.
+4. **Check your fridge space.** Make sure there's room for the full drop at the right temperature.
+5. **Start modest and adjust.** It's easier to add bottles after a couple of weeks than to watch extras go past their best.
 
 We bottle in 650ml, and some flavours also come in 330ml. Ask us which ones are available in the smaller size. Smaller bottles usually work best for a staff fridge, as one bottle is one serving.
 
@@ -73,7 +74,7 @@ We offer branded crates and hampers for corporate gifting. They're a good fit fo
 - **Welcome packs** for new team members
 - **Event and conference gifts** for speakers and guests
 
-Because fresh juice is best within 4 days, gifting works best when bottles go out quickly after delivery. We're happy to help you plan timing so recipients enjoy their juice at its freshest.
+Because fresh juice is best within 48 hours, gifting works best when bottles go out quickly after delivery. We're happy to help you plan timing so recipients enjoy their juice at its freshest.
 
 ## Delivery across Lagos
 

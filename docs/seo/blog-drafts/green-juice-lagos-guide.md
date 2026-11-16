@@ -90,7 +90,7 @@ And to be clear: green juice is a nourishing drink, not a cure or treatment for 
 Our green juices are pressed in the morning and delivered cold. Because there are no preservatives, the rules are simple:
 
 - Keep it refrigerated at 2–6°C
-- Drink it within 4 days
+- Drink it within 48 hours
 - Keep it out of direct sun, especially in a hot car
 
 If you'd like to understand why we press rather than blend or boil, have a look at [why cold-pressed matters](/blog/why-cold-pressed). And if you're interested in what juice can and can't do for your weight, our [honest weight-loss juice guide](/blog/best-juice-for-weight-loss-nigeria) is worth a read.
