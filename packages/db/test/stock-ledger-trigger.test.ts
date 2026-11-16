@@ -14,6 +14,9 @@ const url = process.env.DATABASE_URL ?? "postgres://ms:ms@localhost:5432/ms_dev"
 
 let sql: Sql;
 let available = true;
+/** Product id we created ourselves (fresh DB with no seed, e.g. CI), else null. */
+let createdProductId: string | null = null;
+const TEST_PRODUCT_SLUG = "zz-test-stock-ledger-trigger";
 
 beforeAll(async () => {
   sql = postgres(url, { max: 1, idle_timeout: 2 });
@@ -21,10 +24,26 @@ beforeAll(async () => {
     await sql`SELECT 1`;
   } catch {
     available = false;
+    return;
+  }
+  // The FK needs a real product. CI migrates but doesn't seed, so create a
+  // throwaway one when the table is empty; removed again in afterAll.
+  const [existing] = await sql<{ id: string }[]>`SELECT id FROM product LIMIT 1`;
+  if (!existing) {
+    const [row] = await sql<{ id: string }[]>`
+      INSERT INTO product (name, slug, category)
+      VALUES ('Test product (stock ledger trigger)', ${TEST_PRODUCT_SLUG}, 'regular')
+      RETURNING id
+    `;
+    createdProductId = row?.id ?? null;
   }
 });
 
 afterAll(async () => {
+  if (sql && createdProductId) {
+    await sql`DELETE FROM stock_ledger WHERE product_id = ${createdProductId}::uuid`;
+    await sql`DELETE FROM product WHERE id = ${createdProductId}::uuid`;
+  }
   if (sql) await sql.end({ timeout: 2 });
 });
 
@@ -34,7 +53,7 @@ describe("stock_ledger non-negative balance trigger", () => {
     const fakeLocation = "11111111-1111-1111-1111-111111111111";
     const fakeProduct = "22222222-2222-2222-2222-222222222222";
 
-    // Need a real product row because of the FK. Use any existing seeded product.
+    // Need a real product row because of the FK (seeded, or created in beforeAll).
     const [prod] = await sql<{ id: string }[]>`SELECT id FROM product LIMIT 1`;
     if (!prod) throw new Error("seeded products required for this test");
 
