@@ -3,6 +3,8 @@ import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { handleCheckoutPost } from "./lib/checkout-server";
+import { handleSitemapRequest } from "./lib/sitemap";
+import { apiFetch } from "./lib/api/client";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -45,6 +47,10 @@ export default {
       // TanStack ever sees the request. Returns null for everything else.
       const checkoutRedirect = await handleCheckoutPost(request);
       if (checkoutRedirect) return checkoutRedirect;
+
+      // Dynamic sitemap: every juice, blog post and local landing page.
+      const sitemap = await handleSitemapRequest(request, apiFetch);
+      if (sitemap) return sitemap;
 
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
