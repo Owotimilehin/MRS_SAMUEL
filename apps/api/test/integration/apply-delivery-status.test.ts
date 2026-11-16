@@ -3,11 +3,12 @@ import { eq } from "drizzle-orm";
 import { deliveryOrder, saleOrder, outboxEvent } from "@ms/db";
 import { setupTestDb, seedOwner, seedOnlineOrder } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import type { Hono } from "hono";
 
 describe("applyDeliveryStatus + reconcile endpoint (mock provider)", () => {
   let container: StartedPostgreSqlContainer;
   let db: Awaited<ReturnType<typeof setupTestDb>>["db"];
-  let app: import("hono").Hono;
+  let app: Hono;
 
   beforeAll(async () => {
     const tdb = await setupTestDb();

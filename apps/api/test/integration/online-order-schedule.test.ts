@@ -306,7 +306,7 @@ describe("Task 6: server-authoritative delivery schedule + alt_phone", () => {
     // Sending "morning" must be rejected silently and the stored time must still be evening.
 
     // We need a 650ml variant with 0 stock. Create a separate product for this.
-    const { productVariant: pvTable, productPrice, stockLedger } = await import("@ms/db");
+    const { productVariant: pvTable, productPrice } = await import("@ms/db");
 
     // Create product via API
     const pRes = await fetch(`${baseUrl}/v1/products`, {

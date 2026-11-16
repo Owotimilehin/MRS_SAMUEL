@@ -2,12 +2,13 @@
    stand-in for Drizzle's transaction handle; typing it precisely would mean
    re-deriving Drizzle's generic query-builder types for no test value. */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as OpayModule from "../../src/payments/opay.js";
 
 // Mock the OPay verify call so verifyAndReconcile can be driven without HTTP.
 // isOpaySuccess keeps its real behaviour.
 const mockVerify = vi.fn();
 vi.mock("../../src/payments/opay.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/payments/opay.js")>();
+  const actual = await importOriginal<typeof OpayModule>();
   return { ...actual, verifyOpayTransaction: (ref: string) => mockVerify(ref) };
 });
 

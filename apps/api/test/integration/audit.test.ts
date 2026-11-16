@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { desc, eq } from "drizzle-orm";
-import { auditLog, bundle, outboxEvent } from "@ms/db";
+import { auditLog, outboxEvent } from "@ms/db";
 import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 

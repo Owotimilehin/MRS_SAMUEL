@@ -127,7 +127,7 @@ describe("public catalog – per-variant available count", () => {
   });
 
   it("also returns per-variant available on the single-product slug endpoint", async () => {
-    const res = await fetch(`${baseUrl}/v1/public/catalog/products/stock-juice-${productId.slice(0, 8)}`);
+    await fetch(`${baseUrl}/v1/public/catalog/products/stock-juice-${productId.slice(0, 8)}`);
     // The slug might not match exactly since we used Date.now(); fetch the list and get the slug.
     // Instead, let's re-fetch via the list and confirm the shape is correct for both endpoints.
     // This test ensures the /products/:slug endpoint also returns per-variant available.
