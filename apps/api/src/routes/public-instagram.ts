@@ -40,6 +40,7 @@ type FeedItem = {
 };
 
 let redisClient: Redis | null = null;
+let memCache: { at: number; data: FeedItem[] } | null = null;
 function getRedis(): Redis {
   if (redisClient) return redisClient;
   redisClient = new Redis(env.REDIS_URL, { enableOfflineQueue: false, maxRetriesPerRequest: 1 });
@@ -75,20 +76,37 @@ export function publicInstagramRoutes(): Hono {
   const r = new Hono();
 
   r.get("/feed", async (c) => {
+    // The Redis cache is an optimisation, never a dependency: if it's
+    // unreachable (e.g. "Stream isn't writeable" while the client is offline)
+    // we fall back to a per-process memory cache and still fetch from Meta.
+    const now = Date.now();
+    if (memCache && now - memCache.at < CACHE_TTL_S * 1000) {
+      return c.json({ data: memCache.data, cached: true });
+    }
     try {
-      const redis = getRedis();
-      const cached = await redis.get(CACHE_KEY);
+      const cached = await getRedis().get(CACHE_KEY);
       if (cached) {
-        return c.json({ data: JSON.parse(cached) as FeedItem[], cached: true });
+        const data = JSON.parse(cached) as FeedItem[];
+        memCache = { at: now, data };
+        return c.json({ data, cached: true });
       }
+    } catch (err) {
+      logger.warn({ err: err instanceof Error ? err.message : String(err) }, "ig cache read failed");
+    }
+    try {
       const feed = await fetchFromGraphApi();
-      await redis.set(CACHE_KEY, JSON.stringify(feed), "EX", CACHE_TTL_S);
+      memCache = { at: now, data: feed };
+      getRedis()
+        .set(CACHE_KEY, JSON.stringify(feed), "EX", CACHE_TTL_S)
+        .catch((err: unknown) =>
+          logger.warn({ err: err instanceof Error ? err.message : String(err) }, "ig cache write failed"),
+        );
       return c.json({ data: feed, cached: false });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.warn({ err: msg }, "ig feed fetch failed");
-      // Soft-fail: return empty feed so the landing page renders cleanly
-      return c.json({ data: [] satisfies FeedItem[], error: msg });
+      logger.warn({ err: err instanceof Error ? err.message : String(err) }, "ig feed fetch failed");
+      // Soft-fail: empty feed so pages render cleanly. Serve the last good
+      // copy if we have one. Never echo internal error text publicly.
+      return c.json({ data: memCache?.data ?? ([] satisfies FeedItem[]), error: "feed unavailable" });
     }
   });
 
