@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSitemapXml, collectSitemapEntries, handleSitemapRequest, STATIC_ENTRIES } from "./sitemap";
+import { buildSitemapXml, collectSitemapEntries, handleSitemapRequest, resetSitemapCache, STATIC_ENTRIES } from "./sitemap";
 import { PUBLISHED_AREAS } from "./areas";
 
 const fakeApi = (data: Record<string, unknown>) =>
@@ -44,11 +44,24 @@ describe("sitemap", () => {
   });
 
   it("only answers GET/HEAD /sitemap.xml", async () => {
+    resetSitemapCache();
     const api = fakeApi({ "/v1/public/catalog/products": [], "/v1/public/blog": [] });
     expect(await handleSitemapRequest(new Request("https://mrssamuel.com/shop"), api)).toBeNull();
     expect(await handleSitemapRequest(new Request("https://mrssamuel.com/sitemap.xml", { method: "POST" }), api)).toBeNull();
     const res = await handleSitemapRequest(new Request("https://mrssamuel.com/sitemap.xml"), api);
     expect(res?.status).toBe(200);
     expect(res?.headers.get("content-type")).toContain("application/xml");
+  });
+
+  it("memoises the built sitemap instead of calling the API on every hit", async () => {
+    resetSitemapCache();
+    let calls = 0;
+    const api = (async (path: string) => {
+      calls++;
+      return path.includes("products") ? [{ slug: "orange" }] : [];
+    }) as <T>(path: string) => Promise<T>;
+    await handleSitemapRequest(new Request("https://mrssamuel.com/sitemap.xml"), api);
+    await handleSitemapRequest(new Request("https://mrssamuel.com/sitemap.xml"), api);
+    expect(calls).toBe(2); // one build = products + blog
   });
 });

@@ -33,7 +33,7 @@ const FAQS: LocalFaq[] = [
 
 export const Route = createFileRoute("/juice-delivery-lagos/")({
   loader: async () => {
-    const products = await fetchProducts();
+    const products = await fetchProducts().catch(() => []); // page content is static; never 500 over the juice grid
     return { products: sortByStock650(products).slice(0, 8) };
   },
   head: () =>

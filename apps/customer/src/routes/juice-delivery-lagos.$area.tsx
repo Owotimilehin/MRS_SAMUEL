@@ -28,7 +28,7 @@ export const Route = createFileRoute("/juice-delivery-lagos/$area")({
   loader: async ({ params }) => {
     const area = findArea(params.area);
     if (!area) throw notFound();
-    const products = await fetchProducts();
+    const products = await fetchProducts().catch(() => []); // page content is static; never 500 over the juice grid
     return { area, products: sortByStock650(products).slice(0, 8) };
   },
   head: ({ loaderData }) => {

@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ShoppingBag, Truck, Users, BookOpen, MessageCircle, Instagram, Star } from "lucide-react";
 import { seo } from "@/lib/seo";
 import { whatsappLink } from "@/lib/whatsapp";
+import { INSTAGRAM_PROFILE } from "@/lib/instagram-fallback";
 import logoDark from "@/assets/logo-dark.png";
 
 /**
@@ -71,7 +72,7 @@ function Page() {
           })}
         </ul>
         <a
-          href="https://instagram.com/Mrs_samuelfruitjuice"
+          href={INSTAGRAM_PROFILE}
           className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--brand)]/70"
         >
           <Instagram className="h-4 w-4" aria-hidden /> @Mrs_samuelfruitjuice

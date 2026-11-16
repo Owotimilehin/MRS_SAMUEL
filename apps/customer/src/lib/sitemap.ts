@@ -74,6 +74,8 @@ type Fetcher = <T>(path: string) => Promise<T>;
 export async function collectSitemapEntries(fetchJson: Fetcher): Promise<SitemapEntry[]> {
   const [products, posts] = await Promise.all([
     fetchJson<{ slug: string }[]>("/v1/public/catalog/products").catch(() => []),
+    // NOTE: /v1/public/blog returns at most 50 posts; add a sitemap-specific
+    // endpoint before the blog passes that.
     fetchJson<{ slug: string; published_at: string | null }[]>("/v1/public/blog").catch(() => []),
   ]);
   return [
@@ -93,12 +95,26 @@ export async function collectSitemapEntries(fetchJson: Fetcher): Promise<Sitemap
   ];
 }
 
-/** Returns a Response for GET /sitemap.xml, else null. */
+let memo: { xml: string; until: number } | null = null;
+/** Test hook. */
+export function resetSitemapCache(): void {
+  memo = null;
+}
+
+/** Returns a Response for GET /sitemap.xml, else null.
+ *  Built XML is memoised in-process (1h, matching Cache-Control) so crawler
+ *  hits don't each cost two API calls; a degraded build (no products, e.g.
+ *  API down) is only kept for a minute. */
 export async function handleSitemapRequest(request: Request, fetchJson: Fetcher): Promise<Response | null> {
   if (request.method !== "GET" && request.method !== "HEAD") return null;
   if (new URL(request.url).pathname !== "/sitemap.xml") return null;
-  const xml = buildSitemapXml(await collectSitemapEntries(fetchJson));
-  return new Response(request.method === "HEAD" ? null : xml, {
+  const now = Date.now();
+  if (!memo || now >= memo.until) {
+    const entries = await collectSitemapEntries(fetchJson);
+    const complete = entries.some((e) => e.path.startsWith("/juices/"));
+    memo = { xml: buildSitemapXml(entries), until: now + (complete ? 3600_000 : 60_000) };
+  }
+  return new Response(request.method === "HEAD" ? null : memo.xml, {
     status: 200,
     headers: {
       "content-type": "application/xml; charset=utf-8",

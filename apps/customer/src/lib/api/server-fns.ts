@@ -51,12 +51,12 @@ export interface IgPost {
 /** Latest @Mrs_samuelfruitjuice posts. Empty on any failure so pages
  *  fall back to the static tiles instead of breaking. */
 export const fetchInstagramFeed = createServerFn({ method: "GET" }).handler(async (): Promise<IgPost[]> => {
-  try {
-    const rows = await apiFetch<IgPost[]>("/v1/public/instagram/feed");
-    return Array.isArray(rows) ? rows.filter((p) => p?.imageUrl && p?.permalink) : [];
-  } catch {
-    return [];
-  }
+  // The home page waits on this, so cap it: no Instagram beats a slow page.
+  const timeout = new Promise<IgPost[]>((resolve) => setTimeout(() => resolve([]), 2500));
+  const feed = apiFetch<IgPost[]>("/v1/public/instagram/feed")
+    .then((rows) => (Array.isArray(rows) ? rows.filter((p) => p?.imageUrl && p?.permalink) : []))
+    .catch(() => [] as IgPost[]);
+  return Promise.race([feed, timeout]);
 });
 
 // Rebuild the customer's basket on the SERVER from the ms_cart cookie, so

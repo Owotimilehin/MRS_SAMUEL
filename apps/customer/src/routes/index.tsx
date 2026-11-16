@@ -18,12 +18,11 @@ import { Categories } from "@/components/Categories";
 import { Testimonials } from "@/components/Testimonials";
 import { FeaturedBy } from "@/components/FeaturedBy";
 import { FeatureCards } from "@/components/FeatureCards";
-import { FAQ } from "@/components/FAQ";
+import { FAQ, faqs } from "@/components/FAQ";
 import { Story } from "@/components/Story";
 import { Sustainability } from "@/components/Sustainability";
 import { Blog } from "@/components/Blog";
 import { seo, faqPageLd } from "@/lib/seo";
-import { faqs } from "@/components/FAQ";
 
 export const Route = createFileRoute("/")({
   head: () => {
