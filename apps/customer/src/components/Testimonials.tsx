@@ -1,22 +1,12 @@
 import { motion } from "framer-motion";
-import { Star, Instagram } from "lucide-react";
+import { Star, Instagram, Play } from "lucide-react";
 import type { IgPost } from "@/lib/api/server-fns";
-import bottleSunrise from "@/assets/bottle-sunrise.png";
-import bottleGreen from "@/assets/bottle-green.png";
-import bottleRuby from "@/assets/bottle-ruby.png";
-import bottleGolden from "@/assets/bottle-golden.png";
+import { INSTAGRAM_FALLBACK, INSTAGRAM_PROFILE } from "@/lib/instagram-fallback";
 
 const reviews = [
   { name: "Adaeze M.", text: "I look forward to my delivery every Monday. Tastes like the fruit was picked an hour ago." },
   { name: "Tunde A.", text: "Swapped soft drinks for the Detox bottle. My skin and my mornings are different now." },
   { name: "Kemi O.", text: "The Pink Paradise is unreal. My kids fight over the last bottle." },
-];
-
-const ig = [
-  { img: bottleSunrise, bg: "#fdecd2" },
-  { img: bottleGolden, bg: "#fbe7a8" },
-  { img: bottleRuby, bg: "#f4ccd2" },
-  { img: bottleGreen, bg: "#e5f0d2" },
 ];
 
 /** First line of a caption, trimmed — used as alt text and visible caption. */
@@ -26,7 +16,11 @@ function captionLine(c: string, max = 110): string {
 }
 
 export function Testimonials({ instagram = [] }: { instagram?: IgPost[] }) {
-  const posts = instagram.slice(0, 8);
+  // Live feed first; otherwise our own curated posts. Never placeholder art.
+  const live = instagram.length > 0;
+  const tiles = live
+    ? instagram.slice(0, 6).map((p) => ({ url: p.permalink, caption: p.caption, image: p.imageUrl, isVideo: p.isVideo }))
+    : INSTAGRAM_FALLBACK;
   return (
     <section id="reviews" className="px-5 sm:px-10 py-16 max-w-7xl mx-auto">
       <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-10">
@@ -74,49 +68,57 @@ export function Testimonials({ instagram = [] }: { instagram?: IgPost[] }) {
           <h3 className="mt-3 font-display text-3xl font-semibold text-[color:var(--brand)]">
             @Mrs_samuelfruitjuice
           </h3>
-          {posts.length > 0 ? (
-            <ul className="mt-6 grid grid-cols-4 gap-3">
-              {posts.map((p) => (
-                <li key={p.id}>
-                  <a
-                    href={p.permalink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="group relative block aspect-square overflow-hidden rounded-xl bg-[color:var(--cream)]"
-                    title={captionLine(p.caption) || "Mrs. Samuel on Instagram"}
-                  >
+          <ul className={`mt-6 grid gap-3 ${live ? "grid-cols-3" : "grid-cols-2"}`}>
+            {tiles.map((t) => (
+              <li key={t.url}>
+                <a
+                  href={t.url}
+                  target="_blank"
+                  rel="noopener"
+                  title={captionLine(t.caption) || "Mrs. Samuel on Instagram"}
+                  className={`group relative block overflow-hidden rounded-2xl ring-1 ring-black/5 ${live ? "aspect-square" : "aspect-[4/5]"}`}
+                >
+                  {t.image ? (
                     <img
-                      src={p.imageUrl}
-                      alt={captionLine(p.caption) || "Mrs. Samuel fresh juice on Instagram"}
+                      src={t.image}
+                      alt={captionLine(t.caption) || "Mrs. Samuel fresh juice on Instagram"}
                       loading="lazy"
-                      className="h-full w-full object-cover transition group-hover:scale-105"
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                     />
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-          <div className="mt-6 grid grid-cols-4 gap-3">
-            {ig.map((g, i) => (
-              <a
-                key={i}
-                href="https://instagram.com/Mrs_samuelfruitjuice"
-                target="_blank"
-                rel="noreferrer"
-                className="group relative aspect-square overflow-hidden rounded-xl"
-                style={{ background: g.bg }}
-              >
-                <img src={g.img} alt="" className="h-full w-full object-contain p-2 transition group-hover:scale-110" />
-              </a>
+                  ) : (
+                    <span className="flex h-full w-full flex-col justify-between bg-gradient-to-br from-[color:var(--brand)] to-[#0f8a4c] p-4 text-white">
+                      <Instagram className="h-5 w-5 opacity-80" aria-hidden />
+                      <span className="text-[13px] font-medium leading-snug line-clamp-5">{captionLine(t.caption, 160)}</span>
+                      <span className="text-[11px] font-bold uppercase tracking-[0.18em] opacity-80">
+                        {t.isVideo ? "Watch reel" : "View post"} →
+                      </span>
+                    </span>
+                  )}
+                  {t.isVideo && (
+                    <span className="pointer-events-none absolute inset-0 grid place-items-center">
+                      <span className="grid h-12 w-12 place-items-center rounded-full bg-white/90 text-[color:var(--brand)] shadow-lg transition group-hover:scale-110">
+                        <Play className="h-5 w-5 fill-current" aria-hidden />
+                      </span>
+                    </span>
+                  )}
+                </a>
+              </li>
             ))}
-          </div>
-          )}
-          {posts[0]?.caption && (
+          </ul>
+          {live && tiles[0]?.caption && (
             <p className="mt-4 text-sm leading-relaxed text-[color:var(--brand)]/75">
-              <span className="font-semibold">Latest:</span> {captionLine(posts[0].caption, 220)}{" "}
-              <a href={posts[0].permalink} target="_blank" rel="noreferrer" className="underline">See post</a>
+              <span className="font-semibold">Latest:</span> {captionLine(tiles[0].caption, 220)}{" "}
+              <a href={tiles[0].url} target="_blank" rel="noopener" className="underline">See post</a>
             </p>
           )}
+          <a
+            href={INSTAGRAM_PROFILE}
+            target="_blank"
+            rel="noopener"
+            className="mt-6 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#f58529] via-[#dd2a7b] to-[#8134af] px-6 py-3 text-sm font-semibold text-white shadow-lg hover:opacity-90 transition"
+          >
+            <Instagram className="h-4 w-4" aria-hidden /> Follow @Mrs_samuelfruitjuice
+          </a>
         </div>
       </div>
     </section>
