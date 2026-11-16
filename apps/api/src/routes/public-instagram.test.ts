@@ -44,7 +44,7 @@ describe("GET /feed", () => {
     const body = (await res.json()) as { data: { caption: string; permalink: string }[]; error?: string };
     expect(body.error).toBeUndefined();
     expect(body.data).toHaveLength(1);
-    expect(body.data[0].caption).toContain("Fresh zobo");
+    expect(body.data[0]?.caption).toContain("Fresh zobo");
 
     // Second call is served from the in-memory cache — no extra Graph call.
     await app.request("/feed");
