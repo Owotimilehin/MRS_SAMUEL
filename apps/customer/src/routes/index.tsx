@@ -16,6 +16,7 @@ import { Benefits } from "@/components/Benefits";
 import { StepProcess } from "@/components/StepProcess";
 import { Categories } from "@/components/Categories";
 import { Testimonials } from "@/components/Testimonials";
+import { FeaturedBy } from "@/components/FeaturedBy";
 import { FeatureCards } from "@/components/FeatureCards";
 import { FAQ } from "@/components/FAQ";
 import { Story } from "@/components/Story";
@@ -124,6 +125,7 @@ function Page() {
       <Story />
       <Sustainability />
       <Testimonials instagram={instagram} />
+      <FeaturedBy />
       <Blog posts={posts} />
       <FeatureCards />
       <FAQ />
