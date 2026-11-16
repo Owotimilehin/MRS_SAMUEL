@@ -108,6 +108,9 @@ export function organizationLd(): object {
       availableLanguage: "en",
     },
     priceRange: "₦₦",
+    areaServed: { "@type": "City", name: "Lagos", containedInPlace: { "@type": "Country", name: "Nigeria" } },
+    // TODO(owner): add `hasMap: "<Google Maps listing URL>"` and the Maps URL
+    // to `sameAs` once shared — it ties this site to the Business Profile.
     servesCuisine: "Cold-pressed fruit juice",
     address: {
       "@type": "PostalAddress",
