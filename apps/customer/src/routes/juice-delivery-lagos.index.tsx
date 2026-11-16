@@ -11,7 +11,7 @@ const PATH = "/juice-delivery-lagos";
 const FAQS: LocalFaq[] = [
   {
     q: "Do you deliver fresh juice across Lagos?",
-    a: "Yes. We deliver from our kitchen in Ajao Estate, Ikeja. If you're not sure we reach your area, message us on WhatsApp before you order and we'll confirm.",
+    a: "Yes, we deliver all round Lagos, from our kitchen in Ajao Estate, Ikeja, to the Island, Lekki, Ajah, and across the mainland.",
   },
   {
     q: "How fast is delivery?",
