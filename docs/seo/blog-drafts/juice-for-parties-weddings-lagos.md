@@ -40,7 +40,7 @@ Weddings have a few extra moving parts. If you're looking for a wedding juice su
 
 ## Keeping juice cold in Lagos heat
 
-Cold-pressed juice has no preservatives, so temperature matters. Our juices are pressed in the morning and delivered cold. They should be kept refrigerated at 2–6°C and drunk within 4 days. At an event, this is what keeps them fresh and tasting their best:
+Cold-pressed juice has no preservatives, so temperature matters. Our juices are pressed in the morning and delivered cold. They should be kept refrigerated at 2–6°C and drunk within 48 hours. At an event, this is what keeps them fresh and tasting their best:
 
 1. **Plan your cold storage before delivery day.** Fridges, chest freezers set to chill, or large coolers all work. Make sure there's enough space for the full order.
 2. **Use plenty of ice.** Coolers packed with ice blocks or bags of ice keep bottles cold for hours. Top up as the day goes on.
@@ -86,7 +86,7 @@ When you contact us, it helps to have:
 - Any flavours you'd love or want to avoid
 - Whether you'd like branded crates or gift hampers
 
-Because the juice is best within 4 days of pressing, we'll plan delivery close to your event date so your guests drink it at its freshest.
+Because the juice is best within 48 hours of pressing, we'll plan delivery close to your event date so your guests drink it at its freshest.
 
 ## Let's plan your drinks
 

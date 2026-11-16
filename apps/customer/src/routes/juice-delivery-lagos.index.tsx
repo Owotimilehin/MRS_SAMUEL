@@ -23,7 +23,7 @@ const FAQS: LocalFaq[] = [
   },
   {
     q: "Is the juice really fresh?",
-    a: "Every bottle is cold-pressed from whole fruit and vegetables. There's no added sugar, water or preservatives. Keep it refrigerated and drink it within 4 days.",
+    a: "Every bottle is cold-pressed from whole fruit and vegetables. There's no added sugar, water or preservatives. Keep it refrigerated and drink it fresh.",
   },
   {
     q: "Can I order juice in bulk for an office or event?",

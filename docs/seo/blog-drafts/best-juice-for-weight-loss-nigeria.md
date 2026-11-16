@@ -64,7 +64,7 @@ Sweeter bottles like Pineapple, Orange or Creamy Paradise are still 100% fruit, 
 
 - **Swap, don't add.** Replace a soft drink with your juice, rather than having both.
 - **Pair it with food.** A green juice alongside a protein-rich breakfast, such as eggs or beans, is more filling than juice alone.
-- **Drink it cold and fresh.** Our juices are pressed in the morning and delivered cold. Keep them in the fridge at 2–6°C and finish within 4 days.
+- **Drink it cold and fresh.** Our juices are pressed in the morning and delivered cold. Keep them in the fridge at 2–6°C and finish within 48 hours.
 - **Keep drinking water.** In Lagos heat, water is still your main drink. Our post on [beating the Lagos heat with cold-pressed juice](/blog/cold-pressed-juices-beat-lagos-heat) has more on staying hydrated.
 
 If you're curious why we press cold rather than boil or blend, have a read of [why cold-pressed matters](/blog/why-cold-pressed).

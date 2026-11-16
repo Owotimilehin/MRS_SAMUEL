@@ -5,11 +5,11 @@ import { Plus, Minus } from "lucide-react";
 /** Exported so the home route can emit matching FAQPage JSON-LD. */
 export const faqs = [
   { q: "Where can I buy fresh juice in Lagos?", a: "Order online at mrssamuel.com for cold delivery, or walk in to our kitchen at 30 Asa Afariogun Street, Ajao Estate, Ikeja. We're open Monday to Saturday 8am–8pm and Sunday 10am–8pm." },
-  { q: "How long does the juice last?", a: "Up to 4 days refrigerated. Cold-pressed and unpasteurised, so the cold chain matters — keep it chilled the whole way." },
+  { q: "How long does the juice last?", a: "About 48 hours from pressing, kept refrigerated. It's cold-pressed and unpasteurised, so keep it chilled the whole way." },
   { q: "Do you add sugar or sweeteners?", a: "Never. The only sweetness is from the fruit itself. No syrups, no concentrates, no preservatives." },
   { q: "Do you deliver nationwide?", a: "Same-day cold delivery across Lagos. Other cities by special arrangement — message us on WhatsApp." },
   { q: "Do you supply juice for events and offices?", a: "Yes. We deliver chilled crates for weddings, parties, office fridges and corporate gifts across Lagos. See our bulk orders page for crate pricing." },
-  { q: "Can I refrigerate the juice?", a: "Yes, please do. Store between 2–6°C from the moment it arrives and consume within 4 days for the best taste." },
+  { q: "Can I refrigerate the juice?", a: "Yes, please do. Store between 2–6°C from the moment it arrives and drink it within 48 hours for the best taste." },
 ];
 
 export function FAQ() {
