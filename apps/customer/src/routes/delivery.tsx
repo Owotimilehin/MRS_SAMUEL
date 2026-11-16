@@ -6,7 +6,7 @@ import { seo, breadcrumbLd } from "@/lib/seo";
 export const Route = createFileRoute("/delivery")({
   head: () =>
     seo({
-      title: "Delivery Information — Mrs. Samuel Fruit Juice",
+      title: "Juice Delivery in Lagos — Areas, Timing & Fees | Mrs. Samuel",
       description:
         "How Mrs. Samuel delivers cold-pressed juice across Lagos — delivery areas, timing, fees, preorder lead times, and how we keep your juice cold on the way to you.",
       path: "/delivery",

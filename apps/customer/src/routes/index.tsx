@@ -26,9 +26,9 @@ import { seo } from "@/lib/seo";
 export const Route = createFileRoute("/")({
   head: () => {
     const base = seo({
-      title: "Mrs. Samuel Fruit Juice — Real Fruit, Real Good. Cold-Pressed in Lagos",
+      title: "Fresh Fruit Juice in Lagos — Delivered Cold | Mrs. Samuel",
       description:
-        "100% natural, cold-pressed Nigerian juice made fresh in Lagos. Over 40,000 bottles shared. No added sugar, no preservatives — pressed at sunrise, delivered the same morning.",
+        "Fresh, 100% natural fruit juice made daily in Lagos: zobo, pineapple, orange, green juice and more. No added sugar, no preservatives. Order online for cold delivery.",
       path: "/",
     });
     return {

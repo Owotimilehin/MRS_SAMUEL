@@ -151,7 +151,7 @@ export function Hero({ products }: { products: Product[] }) {
       <div className="relative z-10 max-w-xl order-2 lg:order-1">
         <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand)]/75">
           <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--brand-orange)]" />
-          100% Natural & Cold Pressed
+          Fresh Fruit Juice · Made in Lagos
         </div>
         <motion.h1
           initial={{ opacity: 0, y: 24 }}
@@ -170,8 +170,8 @@ export function Hero({ products }: { products: Product[] }) {
           transition={{ duration: 0.7, delay: 0.15 }}
           className="mt-6 text-[17px] leading-relaxed text-[color:var(--brand)]/75 max-w-md"
         >
-          Cold-pressed in Lagos from sun-ripened Nigerian fruit. No added sugar. No preservatives.
-          Just nature in a bottle — pressed the same morning it reaches you.
+          100% natural fresh juice, cold-pressed in Lagos from sun-ripened Nigerian fruit. No added
+          sugar. No preservatives. Pressed the same morning it reaches you.
         </motion.p>
 
         <motion.div
