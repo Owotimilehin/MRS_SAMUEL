@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { fetchProducts } from "@/lib/api/server-fns";
 import { sortByStock650 } from "@/lib/stock-summary";
 import { LocalLanding, type LocalFaq } from "@/components/LocalLanding";
-import { DELIVERY_AREAS } from "@/lib/areas";
+import { PUBLISHED_AREAS } from "@/lib/areas";
 import { seo, breadcrumbLd, faqPageLd } from "@/lib/seo";
 import clusterTropical from "@/assets/decor/cluster-tropical.png";
 
@@ -74,11 +74,11 @@ function Page() {
       faqs={FAQS}
       whatsappMessage="Hi Mrs. Samuel, do you deliver fresh juice to my area?"
     >
-      {DELIVERY_AREAS.length > 0 && (
+      {PUBLISHED_AREAS.length > 0 && (
         <section className="px-5 sm:px-10 max-w-5xl mx-auto pb-12">
           <h2 className="font-display text-3xl font-semibold text-[color:var(--brand)]">Delivery areas</h2>
           <ul className="mt-4 flex flex-wrap gap-3">
-            {DELIVERY_AREAS.map((a) => (
+            {PUBLISHED_AREAS.map((a) => (
               <li key={a.slug}>
                 <Link
                   to="/juice-delivery-lagos/$area"

@@ -7,7 +7,7 @@
  * unreachable we still return the static pages (never a 500 to Googlebot).
  */
 import { SITE_URL } from "./seo";
-import { DELIVERY_AREAS } from "./areas";
+import { PUBLISHED_AREAS } from "./areas";
 
 export interface SitemapEntry {
   path: string;
@@ -33,7 +33,7 @@ export const STATIC_ENTRIES: SitemapEntry[] = [
 ];
 
 export function areaEntries(): SitemapEntry[] {
-  return DELIVERY_AREAS.map((a) => ({
+  return PUBLISHED_AREAS.map((a) => ({
     path: `/juice-delivery-lagos/${a.slug}`,
     changefreq: "monthly" as const,
     priority: 0.8,
