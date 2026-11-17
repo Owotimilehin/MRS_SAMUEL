@@ -60,7 +60,8 @@ export function signR2Request(
   const kService = createHmac("sha256", kRegion).update("s3").digest();
   const kSigning = createHmac("sha256", kService).update("aws4_request").digest();
   const signature = createHmac("sha256", kSigning).update(stringToSign).digest("hex");
-  const { host: _host, ...sendHeaders } = headers;
+  // fetch sets Host itself; it is signed but must not be sent manually.
+  const sendHeaders = Object.fromEntries(Object.entries(headers).filter(([k]) => k !== "host"));
   return {
     url: `https://${host}${path}`,
     headers: {

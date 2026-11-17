@@ -48,7 +48,8 @@ function dispatch(raw: string): void {
     return;
   }
   // Strip routing facts other users don't need.
-  const { userIds: _u, ...publicSignal } = signal;
+  const publicSignal: InboxSignal = { ...signal };
+  delete publicSignal.userIds;
   for (const sub of subscribers.values()) {
     if (shouldDeliver(sub.viewer, signal)) sub.send(signal.event, publicSignal);
   }
