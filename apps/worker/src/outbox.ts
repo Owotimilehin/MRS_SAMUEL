@@ -464,6 +464,23 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Customer has paid; ready to fulfil.\n` +
           `👉 ${ADMIN_URL}/owner/orders/${p["sale_order_id"]}`,
       };
+    case "inbox.unknown_number":
+      return {
+        chatIds: [owner],
+        text:
+          `📵 *WhatsApp message for an unknown number*\n` +
+          `Meta sent a message for phone number ID ${String(p["phone_number_ids"] ?? "?")}, which isn't set up in the inbox. ` +
+          `Add it under Inbox settings → Numbers, or the message stays unread.\n` +
+          `👉 ${ADMIN_URL}/inbox/settings`,
+      };
+    case "inbox.webhook_dead":
+      return {
+        chatIds: [owner],
+        text:
+          `⚠️ *Inbox webhook failed repeatedly*\n` +
+          `A WhatsApp event could not be saved after several retries: ${String(p["error"] ?? "unknown error").slice(0, 200)}\n` +
+          `Event ${String(p["webhook_event_id"] ?? "?")} — ask a developer to check.`,
+      };
     case "audit.logged": {
       // Generic mirror of any audited action that doesn't have a richer,
       // purpose-built event of its own. Renders "<Noun> <verb> — <identifier>

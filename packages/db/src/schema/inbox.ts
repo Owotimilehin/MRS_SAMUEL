@@ -48,6 +48,8 @@ export const inboxCallOutcome = pgEnum("inbox_call_outcome", [
   "missed",
   "voicemail",
   "after_hours",
+  // Caller picked a menu option that only plays a message (no follow-up needed).
+  "information",
   "failed",
 ]);
 export const inboxRecordingKind = pgEnum("inbox_recording_kind", ["call", "voicemail"]);

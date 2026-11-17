@@ -10,7 +10,7 @@ DO $$ BEGIN CREATE TYPE "inbox_direction" AS ENUM ('in','out'); EXCEPTION WHEN d
 --> statement-breakpoint
 DO $$ BEGIN CREATE TYPE "inbox_message_status" AS ENUM ('received','queued','sent','delivered','read','failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 --> statement-breakpoint
-DO $$ BEGIN CREATE TYPE "inbox_call_outcome" AS ENUM ('in_progress','answered','missed','voicemail','after_hours','failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE "inbox_call_outcome" AS ENUM ('in_progress','answered','missed','voicemail','after_hours','information','failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 --> statement-breakpoint
 DO $$ BEGIN CREATE TYPE "inbox_recording_kind" AS ENUM ('call','voicemail'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 --> statement-breakpoint
