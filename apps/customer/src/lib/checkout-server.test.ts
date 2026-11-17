@@ -50,10 +50,10 @@ describe("handleCheckoutPost (no-JS checkout)", () => {
       "fetch",
       vi.fn(async (url: string) =>
         String(url).endsWith("/v1/public/orders")
-          ? new Response(
-              JSON.stringify({ error: { code: "order_closed", message: "closed" } }),
-              { status: 409, headers: { "content-type": "application/json" } },
-            )
+          ? new Response(JSON.stringify({ error: { code: "order_closed", message: "closed" } }), {
+              status: 409,
+              headers: { "content-type": "application/json" },
+            })
           : new Response(JSON.stringify({ data: null }), {
               status: 200,
               headers: { "content-type": "application/json" },
@@ -105,10 +105,13 @@ describe("handleCheckoutPost: 'Try payment again' (POST /checkout/pay)", () => {
   function stubSession(ok: boolean) {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
       ok
-        ? new Response(JSON.stringify({ data: { redirect_url: "https://cashier.example.test/again" } }), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          })
+        ? new Response(
+            JSON.stringify({ data: { redirect_url: "https://cashier.example.test/again" } }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          )
         : new Response(JSON.stringify({ error: { code: "internal_error", message: "x" } }), {
             status: 500,
             headers: { "content-type": "application/json" },

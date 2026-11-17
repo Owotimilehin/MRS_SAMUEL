@@ -187,7 +187,9 @@ async function handlePayPost(request: Request): Promise<Response> {
  */
 export async function handleCheckoutPost(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
-  if (request.method === "POST" && url.pathname === CHECKOUT_PAY_PATH) return handlePayPost(request);
+  if (request.method === "POST" && url.pathname === CHECKOUT_PAY_PATH) {
+    return handlePayPost(request);
+  }
   if (request.method !== "POST" || url.pathname !== CHECKOUT_POST_PATH) return null;
 
   // --- read the form + basket ---
