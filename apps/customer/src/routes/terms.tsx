@@ -88,7 +88,7 @@ const sections: PolicySection[] = [
   {
     heading: "Contact us",
     body: [
-      "Questions about these terms? Reach us on WhatsApp at 0901 951 2246, by email at info@mrssamuel.com, or visit us at 30 Asa-Afariogun Street, opposite Access Bank, Ajao Estate, Lagos.",
+      "Questions about these terms? Reach us on WhatsApp at 0901 951 2246, by email at info@mrssamuel.com, or visit us at 30 Asa Afariogun Street, opposite Access Bank, Ajao Estate, Lagos.",
     ],
   },
 ];

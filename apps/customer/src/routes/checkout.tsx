@@ -54,11 +54,11 @@ function postErrorMessage(code: string | undefined): string | null {
     case undefined:
       return null;
     case "empty":
-      return "Your basket is empty. Add a juice and try again.";
+      return "Your cart is empty. Add a juice and try again.";
     case "fields":
       return "Please add your full name, a valid phone number and delivery address, then place your order again.";
     case "stock":
-      return "A juice in your basket just went out of stock. Adjust your basket and try again.";
+      return "A juice in your cart just went out of stock. Adjust your cart and try again.";
     case "branch":
       return "Online ordering is temporarily unavailable. Please try again shortly or order on WhatsApp.";
     case "closed":
@@ -429,7 +429,7 @@ function Page() {
       let message: string;
       if (err && (err.code === "conflict" || err.status === 422)) {
         // Stock/validation conflict — the API message explains (e.g. "only N left").
-        message = `${err.message} Adjust your basket and try again.`;
+        message = `${err.message} Adjust your cart and try again.`;
       } else {
         message = err ? err.message : "Something went wrong placing your order. Please try again.";
       }
@@ -448,11 +448,13 @@ function Page() {
     return (
       <SiteShell>
         <div className="px-5 max-w-3xl mx-auto pt-40 pb-32 text-center">
-          <div className="text-7xl mb-4">🥤</div>
-          <h1 className="font-display text-4xl text-[color:var(--brand)]">Your basket is empty</h1>
+          <div className="mx-auto mb-5 grid h-20 w-20 place-items-center rounded-full bg-[color:var(--brand-orange)]/10 text-[color:var(--brand-orange)]">
+            <ShoppingBag className="h-9 w-9" strokeWidth={1.5} aria-hidden />
+          </div>
+          <h1 className="font-display text-4xl text-[color:var(--brand)]">Your cart is empty</h1>
           <p className="mt-3 text-[color:var(--brand)]/70">Pick a juice or a bundle to get started.</p>
           <div className="mt-6 flex justify-center gap-3">
-            <Link to="/juices" className="rounded-full bg-[color:var(--brand)] text-white px-6 py-3 text-sm font-semibold">Browse juices</Link>
+            <Link to="/juices" className="rounded-full bg-[color:var(--brand)] text-white px-6 py-3 text-sm font-semibold">Shop Juices</Link>
             <Link to="/shop" className="rounded-full bg-white ring-1 ring-black/10 text-[color:var(--brand)] px-6 py-3 text-sm font-semibold">Bundles</Link>
           </div>
         </div>
@@ -477,7 +479,7 @@ function Page() {
           <div className="mt-6 flex items-start gap-3 rounded-2xl bg-[color:var(--brand-orange)]/10 ring-1 ring-[color:var(--brand-orange)]/30 p-4 text-sm text-[color:var(--brand)]" role="status">
             <AlertCircle className="h-5 w-5 shrink-0 text-[color:var(--brand-orange)]" />
             <span>
-              {droppedCount === 1 ? "One juice" : `${droppedCount} juices`} in your basket{" "}
+              {droppedCount === 1 ? "One juice" : `${droppedCount} juices`} in your cart{" "}
               {droppedCount === 1 ? "is" : "are"} no longer available and{" "}
               {droppedCount === 1 ? "has" : "have"} been removed. The total below is what you'll pay.
             </span>

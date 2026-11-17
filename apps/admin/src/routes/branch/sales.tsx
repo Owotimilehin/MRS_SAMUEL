@@ -111,7 +111,7 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
     <BranchShell branchId={branchId} title="Today's sales">
       <StatHero
         eyebrow="Branch"
-        title="Sales"
+        title="Today's sales"
         sub="Today's completed and pending orders at this branch."
         loading={loading}
         chips={chips}
@@ -121,30 +121,32 @@ export function BranchSalesPage({ branchId }: { branchId: string }): JSX.Element
         { to: "/branch/sales", label: "Today's sales", cap: "sales.view" },
       ]} />
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
-        <button
-          type="button"
-          className={filter === "today" ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
-          onClick={() => setFilter("today")}
-        >
-          Today
-        </button>
-        <button
-          type="button"
-          className={filter === "all" ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
-          onClick={() => setFilter("all")}
-        >
-          All recent
-        </button>
-        <button
-          type="button"
-          className={filter === "awaiting" ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
-          onClick={() => setFilter("awaiting")}
-        >
-          Awaiting fulfilment{awaitingList.length > 0 ? ` (${awaitingList.length})` : ""}
-        </button>
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 13, color: "var(--ink-soft)" }}>{list.length} orders</span>
+      {/* A boxed "Show" bar with outlined choices, so it does not read as a
+          second row of page tabs. It wraps on a phone instead of squeezing. */}
+      <div className="toolbar" style={{ marginBottom: 12, gap: 8 }} role="group" aria-label="Which orders to show">
+        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)" }}>Show</span>
+        {(
+          [
+            ["today", "Today"],
+            ["all", "All recent"],
+            ["awaiting", `Awaiting fulfilment${awaitingList.length > 0 ? ` (${awaitingList.length})` : ""}`],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={filter === key}
+            className={filter === key ? "btn btn--ghost btn--sm" : "btn btn--subtle btn--sm"}
+            style={{ flex: "none", background: filter === key ? "rgba(27,87,51,0.08)" : undefined }}
+            onClick={() => setFilter(key)}
+          >
+            {label}
+          </button>
+        ))}
+        <span style={{ flex: "1 1 auto" }} />
+        <span style={{ fontSize: 13, color: "var(--ink-soft)", whiteSpace: "nowrap" }}>
+          {list.length} {list.length === 1 ? "order" : "orders"}
+        </span>
       </div>
 
       {loading ? (

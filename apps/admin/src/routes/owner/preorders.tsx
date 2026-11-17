@@ -135,7 +135,7 @@ export function PreordersPage(): JSX.Element {
             tone: rows.length > 0 ? "danger" : "good",
           },
           {
-            label: "Cans reserved",
+            label: "Bottles reserved",
             value: rows.reduce((sum, r) => sum + r.items.reduce((s, i) => s + i.quantity, 0), 0),
           },
           {

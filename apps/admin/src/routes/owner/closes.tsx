@@ -4,6 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
+import { dayLabel } from "../../lib/date-labels.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 
@@ -64,7 +65,8 @@ export function OwnerClosesPage(): JSX.Element {
           <input
             type="date"
             className="input"
-            style={{ width: 160, height: 36 }}
+            style={{ width: 160, height: 36, flex: "0 0 auto" }}
+            aria-label="Show reports since"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
@@ -89,7 +91,7 @@ export function OwnerClosesPage(): JSX.Element {
         <InlineLoader />
       ) : variances.length === 0 ? (
         <div className="empty">
-          <div className="empty__title">No closes in range</div>
+          <div className="empty__title">No shift-end reports in this range</div>
           Shift-end reports will appear here as branches submit them.
         </div>
       ) : (
@@ -106,7 +108,7 @@ export function OwnerClosesPage(): JSX.Element {
             <tbody>
               {variances.map((v) => (
                 <tr key={v.daily_close_id}>
-                  <td style={{ fontWeight: 600 }}>{v.business_date}</td>
+                  <td style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{dayLabel(v.business_date)}</td>
                   <td>{branchName(v.branch_id)}</td>
                   <td
                     className="table__num"

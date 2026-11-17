@@ -139,7 +139,7 @@ export function BranchShell({
           </div>
           <div>
             <div className="app-brand__name">{branchName ?? "Branch"}</div>
-            <div className="app-brand__role">Point of sale</div>
+            <div className="app-brand__role" style={{ textTransform: "none" }}>Point of sale</div>
           </div>
         </div>
 
@@ -225,7 +225,7 @@ export function BranchShell({
             <Menu strokeWidth={2} />
           </button>
           <h1 className="app-head__title">{title}</h1>
-          <div style={{ flex: 1 }} />
+          <div className="app-head__spacer" style={{ flex: 1 }} />
           <SyncBadge
             online={sync.online}
             queued={sync.queued}
@@ -323,7 +323,7 @@ function SyncBadge({
         className="pill pill--warning"
         title="No network — showing last known stock; sales save locally and sync when online."
       >
-        ● Offline · last update {updated}
+        ● Offline · {updated === "never" ? "not synced yet" : `last update ${updated}`}
         {queued > 0 ? ` · ${queued} queued` : ""}
       </span>
     );
@@ -348,7 +348,7 @@ function SyncBadge({
   }
   return (
     <span className="pill pill--success" title="Stock and sales in sync with the server">
-      ● Synced · {updated}
+      {lastPullAt == null || updated === "never" ? "● Not synced yet" : `● Synced · ${updated}`}
     </span>
   );
 }

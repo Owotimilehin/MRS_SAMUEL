@@ -4,7 +4,7 @@ import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { BranchTabs } from "../../components/BranchTabs.js";
 import { api, humanizeError } from "../../lib/api.js";
-import { ngn, formatDateTime } from "../../lib/format.js";
+import { ngn, formatDate, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import type { StatChip } from "../../components/StatHero.js";
@@ -116,33 +116,44 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
       branchId={branchId}
       title="Shift-end history"
       actions={
-        <Link to="/branch/close" className="btn btn--primary btn--sm">
-          + New shift end
-        </Link>
+        // With a shift open this goes to the shift-end form; with none open
+        // there is nothing to end, so it starts a shift instead.
+        shiftOpen === null ? undefined : shiftOpen ? (
+          <Link to="/branch/close" className="btn btn--primary btn--sm">
+            End this shift
+          </Link>
+        ) : (
+          <Link to="/branch/shift-start" className="btn btn--primary btn--sm">
+            Start a shift
+          </Link>
+        )
       }
     >
       <StatHero
         eyebrow="Branch"
-        title="Shift-end reports"
-        sub="Cash reconciliation records for this branch."
+        title="Shift-end history"
+        sub="The stock and money report filed at the end of each shift."
         loading={loading}
         chips={chips}
       />
       <BranchTabs items={shiftTabs} />
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <span className="pill pill--success">Approved · {approved}</span>
         <span className="pill pill--warning">Submitted · {submitted}</span>
         {disputed > 0 && <span className="pill pill--danger">Disputed · {disputed}</span>}
-        <span className="pill">{rows.length} total</span>
+        <span className="pill">Total · {rows.length}</span>
       </div>
 
       {loading ? (
         <InlineLoader />
       ) : rows.length === 0 ? (
         <div className="empty">
-          <div className="empty__title">No past shift-end reports</div>
-          File your first shift-end report from the "Shift end" tab.
+          <div className="empty__title">No shift-end reports yet</div>
+          A report appears here each time a shift is ended.{" "}
+          {shiftOpen
+            ? "End the open shift from the “End” tab."
+            : "Start a shift from the “Start” tab, then end it when the day is done."}
         </div>
       ) : (
         <div className="table-wrap">
@@ -162,7 +173,7 @@ export function BranchClosesPage({ branchId }: { branchId: string }): JSX.Elemen
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id}>
-                  <td style={{ fontWeight: 600 }}>{r.businessDate}</td>
+                  <td style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{formatDate(`${r.businessDate.slice(0, 10)}T12:00:00`)}</td>
                   <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
                     {r.shiftNumber != null ? `#${r.shiftNumber}` : "—"}
                   </td>

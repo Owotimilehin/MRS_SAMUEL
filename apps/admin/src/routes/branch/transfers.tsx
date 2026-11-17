@@ -144,7 +144,7 @@ export function BranchTransfersPage({ branchId }: { branchId: string }): JSX.Ele
     <BranchShell branchId={branchId} title="Incoming transfers">
       <StatHero
         eyebrow="Branch"
-        title="Transfers"
+        title="Incoming transfers"
         sub="Shipments dispatched from the factory to this branch."
         loading={loading}
         chips={transferChips}

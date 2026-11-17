@@ -9,6 +9,14 @@ const GROUPS: { heading: string; caps: Capability[] }[] = [
   { heading: "Bookkeeping", caps: ["expenses.view", "expenses.write", "finance.daily", "finance.view"] },
   { heading: "Visibility", caps: ["reports.view", "audit.view", "devices.view", "customers.view", "orders.view", "stock.read"] },
   { heading: "Operations", caps: ["production.manage", "transfers.create", "transfers.receive", "orders.manage", "orders.accept_payment", "packaging.view", "packaging.write", "packaging.adjust"] },
+  {
+    heading: "Inbox & calls",
+    caps: [
+      "inbox.view", "inbox.view_team", "inbox.view_all", "inbox.reply", "inbox.assign", "inbox.close", "inbox.notes",
+      "inbox.templates", "inbox.export", "calls.answer", "calls.outbound", "recordings.listen", "recordings.download",
+      "recordings.delete", "transcripts.view", "inbox.settings", "inbox.reports", "inbox.erase",
+    ],
+  },
   { heading: "Branch / POS", caps: ["pos.sell", "pos.preorder", "shift_open.submit", "sales.view", "daily_close.submit", "returns.create", "stock.adjust"] },
 ];
 
@@ -51,6 +59,24 @@ const LABEL: Record<Capability, string> = {
   "packaging.write": "Manage packaging & materials",
   "packaging.adjust": "Adjust packaging stock (owner)",
   "variance.settle": "Settle transfer variance (owner)",
+  "inbox.view": "Open the WhatsApp & calls inbox",
+  "inbox.view_team": "See their team's chats",
+  "inbox.view_all": "See every chat",
+  "inbox.reply": "Reply to customers",
+  "inbox.assign": "Assign chats to others",
+  "inbox.close": "Close / reopen chats",
+  "inbox.notes": "Write internal notes",
+  "inbox.templates": "Send WhatsApp templates",
+  "inbox.export": "Download contact list",
+  "calls.answer": "Answer phone calls",
+  "calls.outbound": "Make phone calls",
+  "recordings.listen": "Listen to call recordings",
+  "recordings.download": "Download call recordings",
+  "transcripts.view": "Read call transcripts & summaries",
+  "inbox.settings": "Manage inbox settings",
+  "inbox.reports": "View inbox reports",
+  "recordings.delete": "Delete call recordings",
+  "inbox.erase": "Delete a customer's inbox history and merge contacts",
 };
 
 // Silence unused import warning — CAPABILITIES is used at runtime via GROUPS validation.

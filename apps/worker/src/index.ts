@@ -14,6 +14,7 @@ import {
 import { expireUnpaidOrders } from "./jobs/expire-unpaid-orders.js";
 import { pruneCheckoutLog } from "./jobs/prune-checkout-log.js";
 import { runJob } from "./jobs/run-job.js";
+import { runInboxLoop } from "./inbox-loop.js";
 
 const logger = pino({ base: { service: "ms-worker" } });
 
@@ -151,5 +152,6 @@ async function loop(): Promise<void> {
 }
 
 logger.info({ pollMs: POLL_MS, sweepIntervalMs: SWEEP_INTERVAL_MS }, "worker started");
-await loop();
+// The inbox jobs run beside the shop loop, never inside it.
+await Promise.all([loop(), runInboxLoop(db, logger, () => stopping)]);
 logger.info("worker exited");

@@ -27,7 +27,7 @@ export function CartDrawer() {
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/30">
               <div className="flex items-center gap-2">
                 <ShoppingBag className="h-5 w-5" />
-                <h3 className="font-display text-2xl font-black">Your Basket</h3>
+                <h3 className="font-display text-2xl font-black">Your Cart</h3>
               </div>
               <button
                 onClick={() => setOpen(false)}
@@ -40,8 +40,8 @@ export function CartDrawer() {
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
               {items.length === 0 && (
                 <div className="text-center py-20 opacity-70">
-                  <div className="text-6xl mb-3">🥤</div>
-                  <p className="font-semibold">Your basket is empty</p>
+                  <ShoppingBag className="mx-auto mb-3 h-12 w-12" strokeWidth={1.5} aria-hidden />
+                  <p className="font-semibold">Your cart is empty</p>
                   <p className="text-sm mt-1">Pick a juice to get started.</p>
                 </div>
               )}

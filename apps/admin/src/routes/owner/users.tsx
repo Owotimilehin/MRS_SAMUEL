@@ -147,11 +147,11 @@ export function UsersPage(): JSX.Element {
             <tbody>
               {rows.map((u) => (
                 <tr key={u.id}>
-                  <td style={{ fontWeight: 600 }}>{u.name?.trim() || u.email.split("@")[0]}</td>
-                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>{u.email}</td>
-                  <td>{rolePill(u.role)}</td>
-                  <td>{branchName(u.branchId)}</td>
-                  <td>
+                  <td style={{ fontWeight: 600, minWidth: 130 }}>{u.name?.trim() || u.email.split("@")[0]}</td>
+                  <td style={{ color: "var(--ink-soft)", fontSize: 13, whiteSpace: "nowrap" }}>{u.email}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{rolePill(u.role)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{branchName(u.branchId)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
                     {u.isActive ? (
                       <span className="pill pill--success">Active</span>
                     ) : (
@@ -163,7 +163,7 @@ export function UsersPage(): JSX.Element {
                       </span>
                     )}
                   </td>
-                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                  <td style={{ color: "var(--ink-soft)", fontSize: 13, whiteSpace: "nowrap" }}>
                     {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "Never"}
                   </td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>

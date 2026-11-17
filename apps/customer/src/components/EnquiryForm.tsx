@@ -3,6 +3,10 @@ import { MessageCircle } from "lucide-react";
 import { submitEnquiry } from "@/lib/api/server-fns";
 import { whatsappLink } from "@/lib/whatsapp";
 
+// Same field look as the Contact page form.
+const inputCls =
+  "w-full rounded-xl border border-black/10 bg-[color:var(--cream)]/40 px-4 py-3 text-base sm:text-sm text-[color:var(--brand)] placeholder:text-[color:var(--brand)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-orange)]/40";
+
 interface Props {
   enquiryType: "white_label" | "bulk_order";
   /** Pre-filled first WhatsApp message. */
@@ -46,26 +50,27 @@ export function EnquiryForm({ enquiryType, template, cta }: Props) {
 
   return (
     <div className="rounded-[1.5rem] bg-white ring-1 ring-black/5 p-6 sm:p-8">
-      <h3 className="font-display text-2xl text-[color:var(--brand)]">Let's talk</h3>
+      <h2 className="font-display text-3xl text-[color:var(--brand)]">Let's talk</h2>
       <p className="mt-2 text-sm text-[color:var(--brand)]/70">
         Leave your name and number and we'll pick it up on WhatsApp — usually within the hour.
       </p>
       <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label className="block">
-          <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">
-            Your name
+          <span className="block text-xs font-semibold text-[color:var(--brand)]/70 mb-1.5">
+            Your name<span className="text-[color:var(--brand-orange)]" aria-hidden> *</span>
           </span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Adaeze Okeke"
             autoComplete="name"
-            className="w-full rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm text-[color:var(--brand)] ring-1 ring-black/5 focus:ring-2 focus:ring-[color:var(--brand-orange)] focus:outline-none"
+            aria-required
+            className={inputCls}
           />
         </label>
         <label className="block">
-          <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/55 mb-1.5">
-            Phone
+          <span className="block text-xs font-semibold text-[color:var(--brand)]/70 mb-1.5">
+            Phone<span className="text-[color:var(--brand-orange)]" aria-hidden> *</span>
           </span>
           <input
             value={phone}
@@ -73,7 +78,8 @@ export function EnquiryForm({ enquiryType, template, cta }: Props) {
             placeholder="0800 000 0000"
             autoComplete="tel"
             inputMode="tel"
-            className="w-full rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm text-[color:var(--brand)] ring-1 ring-black/5 focus:ring-2 focus:ring-[color:var(--brand-orange)] focus:outline-none"
+            aria-required
+            className={inputCls}
           />
         </label>
       </div>

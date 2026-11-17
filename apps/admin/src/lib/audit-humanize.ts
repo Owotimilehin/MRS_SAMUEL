@@ -113,6 +113,12 @@ export function humanizeAction(row: AuditRow, branches: BranchLookup[]): string 
   const s = (v: unknown): string => (typeof v === "string" ? v : "—");
   const transferNum = () => s(pick(after, "transferNumber", "transfer_number")) || "a transfer";
   const orderNum = () => s(pick(after, "orderNumber", "order_number", "saleNumber")) || "a sale";
+  // "Updated inbox team Sales", or just "Updated inbox team" when the row has no name.
+  const withName = (text: string, v: unknown, quoted = false): string => {
+    const n = s(v);
+    if (n === "—") return text;
+    return quoted ? `${text} "${n}"` : `${text} ${n}`;
+  };
 
   switch (row.action) {
     case "auth.login_success":
@@ -297,11 +303,209 @@ export function humanizeAction(row: AuditRow, branches: BranchLookup[]): string 
     case "shift_open.submit":
       return "Filed opening stock count";
 
-    default:
-      // Last-resort fallback — turn "some_thing.did_action" into
-      // "Some thing — did action" so even an unmapped row is readable.
-      return tidy(row.action.replace(".", " — "));
+    // ── Inbox: conversations ──
+    case "inbox.message_send": {
+      const failed = s(pick(after, "status")) === "failed";
+      const what = s(pick(after, "type")) === "template" ? "a WhatsApp template message" : "a WhatsApp message";
+      return failed ? `Tried to send ${what} (it failed)` : `Sent ${what}`;
+    }
+    case "inbox.note_add":
+      return "Added an internal note to a conversation";
+    case "inbox.conversation_update": {
+      const status = pick(after, "status");
+      if (status === "closed") return "Closed a conversation";
+      if (status === "open") return "Reopened a conversation";
+      if (after && "assignee_id" in after) {
+        return after["assignee_id"] ? "Assigned a conversation" : "Unassigned a conversation";
+      }
+      if (after && "team_id" in after) return "Moved a conversation to another team";
+      if (after && "labels" in after) return "Changed a conversation's labels";
+      return "Updated a conversation";
+    }
+
+    // ── Inbox: calls ──
+    case "inbox.call_transfer": {
+      const team = s(pick(after, "team"));
+      return team !== "—" ? `Transferred a call to ${team}` : "Transferred a call";
+    }
+    case "inbox.recording_play":
+      return "Listened to a call recording";
+    case "inbox.recording_download":
+      return "Downloaded a call recording";
+    case "inbox.recording_delete":
+      return "Deleted a call recording";
+
+    // ── Inbox: contacts ──
+    case "inbox.contact_update":
+      return "Edited a contact's name or notes";
+    case "inbox.contact_merge": {
+      const moved = pick(after, "moved_conversations");
+      return typeof moved === "number"
+        ? `Merged two contacts (${moved} conversation${moved === 1 ? "" : "s"} moved)`
+        : "Merged two contacts";
+    }
+    case "inbox.contact_erase":
+      return "Erased a contact's messages and calls";
+    case "inbox.contacts_export": {
+      const n = pick(after, "rows");
+      return typeof n === "number"
+        ? `Downloaded the contact list (${n} contact${n === 1 ? "" : "s"})`
+        : "Downloaded the contact list";
+    }
+
+    // ── Inbox: quick replies & templates ──
+    case "inbox.quick_reply_create":
+      return withName("Added quick reply", pick(after, "title"), true);
+    case "inbox.quick_reply_update":
+      return withName("Edited quick reply", pick(after, "title") ?? pick(before, "title"), true);
+    case "inbox.quick_reply_delete":
+      return withName("Deleted quick reply", pick(before, "title") ?? pick(after, "title"), true);
+    case "inbox.templates_sync": {
+      const n = pick(after, "count");
+      return typeof n === "number"
+        ? `Refreshed WhatsApp templates (${n} found)`
+        : "Refreshed WhatsApp templates";
+    }
+
+    // ── Inbox: settings ──
+    case "inbox.number_create":
+      return withName("Added phone number", pick(after, "label", "e164"));
+    case "inbox.number_update":
+      return withName("Updated phone number", pick(after, "label") ?? pick(before, "label", "e164"));
+    case "inbox.number_register":
+      return `Registered ${withName("phone number", pick(after, "label"))} on WhatsApp`;
+    case "inbox.number_access_set":
+      return "Changed which phone numbers a staff member can use";
+    case "inbox.team_create":
+      return withName("Created inbox team", pick(after, "name"));
+    case "inbox.team_update":
+      return withName("Updated inbox team", pick(after, "name") ?? pick(before, "name"));
+    case "inbox.team_members_set":
+      return "Changed an inbox team's members";
+    case "inbox.hours_create":
+      return withName("Added opening hours", pick(after, "name"), true);
+    case "inbox.hours_update":
+      return withName("Updated opening hours", pick(after, "name") ?? pick(before, "name"), true);
+    case "inbox.holiday_create":
+      return withName("Added holiday", pick(after, "name"));
+    case "inbox.holiday_delete":
+      return withName("Removed holiday", pick(before, "name") ?? pick(after, "name"));
+    case "inbox.ivr_create":
+      return withName("Created phone menu", pick(after, "name"), true);
+    case "inbox.ivr_update":
+      return withName("Updated phone menu", pick(after, "name") ?? pick(before, "name"), true);
+
+    default: {
+      // Last-resort fallback: turn "some_thing.did_action" into
+      // "Some thing: did action" so even an unmapped row is readable.
+      const words = tidy(row.action.replace(".", ": "));
+      return words.charAt(0).toUpperCase() + words.slice(1);
+    }
   }
+}
+
+/**
+ * Filter-dropdown label for an action key, e.g. "inbox.contacts_export" →
+ * "Inbox: contact list downloads". Unknown keys are tidied, never shown raw.
+ */
+const ACTION_LABEL: Record<string, string> = {
+  "auth.login_success": "Sign-ins",
+  "admin_user.invite": "User invites",
+  "admin_user.update": "User updates",
+  "admin_user.reset_password": "Password resets",
+  "branch.create": "Branches created",
+  "branch.update": "Branches updated",
+  "branch.delete": "Branches deleted",
+  "product.create": "Products created",
+  "product.update": "Products updated",
+  "product.delete": "Products deleted",
+  "product_price.publish": "Prices published",
+  "blog_post.create": "Posts drafted",
+  "blog_post.update": "Posts updated",
+  "blog_post.delete": "Posts deleted",
+  "vendor.create": "Vendors added",
+  "vendor.update": "Vendors updated",
+  "vendor.delete": "Vendors removed",
+  "recurring_expense.create": "Recurring expenses added",
+  "recurring_expense.update": "Recurring expenses updated",
+  "recurring_expense.delete": "Recurring expenses deleted",
+  "business_expense.create": "Expenses recorded",
+  "business_expense.update": "Expenses updated",
+  "business_expense.delete": "Expenses deleted",
+  "packaging_material.create": "Packaging materials added",
+  "packaging_material.update": "Packaging materials updated",
+  "packaging_purchase.create": "Packaging purchases",
+  "packaging_stock.adjust": "Packaging stock adjustments",
+  "bundle.create": "Bundles created",
+  "bundle.update": "Bundles updated",
+  "bundle.delete": "Bundles deleted",
+  "media_asset.create": "Images uploaded",
+  "stock_adjustment.create": "Stock adjustments",
+  "production_run.create_draft": "Production runs started",
+  "production_run.complete": "Production runs completed",
+  "production_run.append_items": "Production items added",
+  "production_run.update_item": "Production items edited",
+  "production_run.delete_item": "Production items removed",
+  "stock_transfer.create_draft": "Transfers drafted",
+  "stock_transfer.dispatch": "Transfers sent",
+  "stock_transfer.arrive": "Transfers arrived",
+  "stock_transfer.receive": "Transfers received",
+  "stock_transfer.approve_variance": "Variances approved",
+  "stock_transfer.reject": "Transfers rejected",
+  "stock_transfer.adjust_count": "Transfer counts corrected",
+  "sale.create_draft": "Sales started",
+  "sale.confirm": "Sales confirmed",
+  "sale.pay": "Sales paid",
+  "sale.hand_over": "Sales handed over",
+  "sale.mark_delivered": "Sales delivered",
+  "sale.advance": "Orders advanced",
+  "sale.edit_delivery_address": "Delivery addresses edited",
+  "sale.cancel": "Sales cancelled",
+  "sale.packaging_set": "Sale packaging recorded",
+  "sale_order.record_offline_payment": "Offline payments recorded",
+  "sale_order.cancel_unpaid": "Unpaid orders cancelled",
+  "sale_return.create": "Returns created",
+  "sale_return.approve": "Returns approved",
+  "preorder.fulfil": "Preorders fulfilled",
+  "daily_close.submit": "Shift-end reports filed",
+  "daily_close.approve": "Shift-end reports approved",
+  "shift_open.submit": "Opening stock counts filed",
+  "inbox.message_send": "Inbox: messages sent",
+  "inbox.note_add": "Inbox: internal notes added",
+  "inbox.conversation_update": "Inbox: conversations updated",
+  "inbox.call_transfer": "Inbox: calls transferred",
+  "inbox.recording_play": "Inbox: recordings played",
+  "inbox.recording_download": "Inbox: recordings downloaded",
+  "inbox.recording_delete": "Inbox: recordings deleted",
+  "inbox.contact_update": "Inbox: contacts edited",
+  "inbox.contact_merge": "Inbox: contacts merged",
+  "inbox.contact_erase": "Inbox: contacts erased",
+  "inbox.contacts_export": "Inbox: contact list downloads",
+  "inbox.quick_reply_create": "Inbox: quick replies added",
+  "inbox.quick_reply_update": "Inbox: quick replies edited",
+  "inbox.quick_reply_delete": "Inbox: quick replies deleted",
+  "inbox.templates_sync": "Inbox: templates refreshed",
+  "inbox.number_create": "Inbox: phone numbers added",
+  "inbox.number_update": "Inbox: phone numbers updated",
+  "inbox.number_register": "Inbox: numbers registered on WhatsApp",
+  "inbox.number_access_set": "Inbox: number access changed",
+  "inbox.team_create": "Inbox: teams created",
+  "inbox.team_update": "Inbox: teams updated",
+  "inbox.team_members_set": "Inbox: team members changed",
+  "inbox.hours_create": "Inbox: opening hours added",
+  "inbox.hours_update": "Inbox: opening hours updated",
+  "inbox.holiday_create": "Inbox: holidays added",
+  "inbox.holiday_delete": "Inbox: holidays removed",
+  "inbox.ivr_create": "Inbox: phone menus created",
+  "inbox.ivr_update": "Inbox: phone menus updated",
+};
+
+export function actionFilterLabel(action: string): string {
+  const known = ACTION_LABEL[action];
+  if (known) return known;
+  const [area, verb] = action.split(".");
+  const a = entityTypeLabel(area ?? action);
+  return verb ? `${a}: ${tidy(verb)}` : a;
 }
 
 /**
@@ -319,6 +523,34 @@ export function humanizeEntity(row: AuditRow): string {
     return typeof v === "string" && v !== "" ? v : undefined;
   };
   switch (row.entityType) {
+    // ── Inbox ── (these rows carry no customer name, so say what the thing is
+    // and give a short reference instead of a wrong or raw label)
+    case "customer":
+      if (row.entityId === "export") return "All contacts";
+      if (row.action === "inbox.contact_merge") return `Contact ref ${id8} (merged into another)`;
+      return str("name") ?? `${row.action.startsWith("inbox.") ? "Contact" : "Customer"} ref ${id8}`;
+    case "inbox_conversation":
+      return `Conversation ref ${id8}`;
+    case "inbox_message":
+    case "inbox_note": {
+      const conv = str("conversation_id");
+      return conv ? `In conversation ref ${conv.slice(0, 8)}` : `${entityTypeLabel(row.entityType)} ref ${id8}`;
+    }
+    case "inbox_call":
+      return `Call ref ${id8}`;
+    case "inbox_recording":
+      return `Recording ref ${id8}`;
+    case "inbox_template":
+      return row.entityId === "all" ? "All WhatsApp templates" : str("name") ?? `Template ref ${id8}`;
+    case "inbox_phone_number":
+      return str("label") ?? str("e164") ?? `Phone number ref ${id8}`;
+    case "inbox_quick_reply":
+      return str("title") ?? `Quick reply ref ${id8}`;
+    case "inbox_team":
+    case "inbox_hours_profile":
+    case "inbox_holiday":
+    case "inbox_ivr_menu":
+      return str("name") ?? `${entityTypeLabel(row.entityType)} ref ${id8}`;
     case "stock_transfer":
     case "stock_transfer_item":
       return str("transferNumber") ?? str("transfer_number") ?? id8;
@@ -376,6 +608,21 @@ export function entityTypeLabel(entityType: string): string {
     recurring_expense: "Recurring expense",
     bundle: "Bundle",
     media_asset: "Image",
+    customer: "Customer",
+    inbox_conversation: "Conversation",
+    inbox_message: "Message",
+    inbox_note: "Internal note",
+    inbox_call: "Call",
+    inbox_recording: "Call recording",
+    inbox_template: "WhatsApp template",
+    inbox_quick_reply: "Quick reply",
+    inbox_phone_number: "Phone number",
+    inbox_team: "Inbox team",
+    inbox_hours_profile: "Opening hours",
+    inbox_holiday: "Holiday",
+    inbox_ivr_menu: "Phone menu",
+    inbox: "Inbox",
+    auth: "Sign-in",
   };
   if (map[entityType]) return map[entityType];
   const words = entityType.replace(/_/g, " ").trim();

@@ -129,7 +129,7 @@ export function BlogPage(): JSX.Element {
             <thead>
               <tr>
                 <th>Title</th>
-                <th>Slug</th>
+                <th>Web address</th>
                 <th>Status</th>
                 <th>Published</th>
                 <th>Updated</th>
@@ -139,9 +139,9 @@ export function BlogPage(): JSX.Element {
             <tbody>
               {rows.map((p) => (
                 <tr key={p.id}>
-                  <td style={{ fontWeight: 600 }}>{p.title}</td>
-                  <td style={{ fontFamily: "monospace", fontSize: 12, color: "var(--ink-soft)" }}>
-                    {p.slug}
+                  <td style={{ fontWeight: 600, minWidth: 220 }}>{p.title}</td>
+                  <td style={{ fontSize: 12, color: "var(--ink-soft)", minWidth: 160, overflowWrap: "anywhere" }}>
+                    /blog/{p.slug}
                   </td>
                   <td>
                     {p.publishedAt ? (
@@ -150,10 +150,10 @@ export function BlogPage(): JSX.Element {
                       <span className="pill">Draft</span>
                     )}
                   </td>
-                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                  <td style={{ color: "var(--ink-soft)", fontSize: 13, whiteSpace: "nowrap" }}>
                     {p.publishedAt ? formatDateTime(p.publishedAt) : "—"}
                   </td>
-                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                  <td style={{ color: "var(--ink-soft)", fontSize: 13, whiteSpace: "nowrap" }}>
                     {formatDateTime(p.updatedAt)}
                   </td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
@@ -176,7 +176,7 @@ export function BlogPage(): JSX.Element {
                     </button>
                     <button
                       type="button"
-                      className="btn btn--subtle btn--sm"
+                      className="btn btn--danger btn--sm"
                       disabled={busyId === p.id}
                       onClick={() => void remove(p)}
                     >
@@ -303,7 +303,7 @@ function PostForm({
         </div>
 
         <div className="field">
-          <label className="field__label">Slug</label>
+          <label className="field__label">Web address</label>
           <input
             className="input"
             value={slug}
@@ -314,7 +314,7 @@ function PostForm({
             style={{ fontFamily: "monospace" }}
           />
           <span className="field__hint">
-            Used in the URL: <code>/blog/{slug || "your-slug"}</code>. Locked after creation.
+            The post's link will be <code>/blog/{slug || "your-post-name"}</code>. It can't be changed after the post is created.
           </span>
         </div>
 

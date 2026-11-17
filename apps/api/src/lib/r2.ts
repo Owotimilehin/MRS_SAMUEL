@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuid } from "uuid";
 import { env } from "../env.js";
@@ -68,4 +68,91 @@ export async function presignGet(objectKey: string | null | undefined): Promise<
   if (!env.R2_ACCOUNT_ID || !env.R2_BUCKET) return null;
   const cmd = new GetObjectCommand({ Bucket: env.R2_BUCKET!, Key: objectKey });
   return getSignedUrl(getClient(), cmd, { expiresIn: 86_400 });
+}
+
+// ── Unified inbox: private files (WhatsApp media, call recordings) ───────────
+
+/** What staff may attach to a WhatsApp reply, with Meta's own size limits. */
+export const INBOX_UPLOAD_TYPES: Record<string, { kind: "image" | "document" | "audio" | "video"; maxBytes: number }> = {
+  "image/jpeg": { kind: "image", maxBytes: 5 * 1024 * 1024 },
+  "image/png": { kind: "image", maxBytes: 5 * 1024 * 1024 },
+  "application/pdf": { kind: "document", maxBytes: 16 * 1024 * 1024 },
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { kind: "document", maxBytes: 16 * 1024 * 1024 },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { kind: "document", maxBytes: 16 * 1024 * 1024 },
+  "text/plain": { kind: "document", maxBytes: 16 * 1024 * 1024 },
+  "audio/mpeg": { kind: "audio", maxBytes: 16 * 1024 * 1024 },
+  "audio/ogg": { kind: "audio", maxBytes: 16 * 1024 * 1024 },
+  "audio/aac": { kind: "audio", maxBytes: 16 * 1024 * 1024 },
+  "video/mp4": { kind: "video", maxBytes: 16 * 1024 * 1024 },
+};
+
+/** Presigned PUT for an outgoing inbox attachment under inbox/outgoing/. */
+export async function presignInboxPut(args: {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+}): Promise<PresignPutResult & { kind: "image" | "document" | "audio" | "video" }> {
+  const rule = INBOX_UPLOAD_TYPES[args.contentType];
+  if (!rule) throw new BusinessError("validation_failed", `This file type can't be sent on WhatsApp: ${args.contentType}`, 400);
+  if (args.sizeBytes <= 0 || args.sizeBytes > rule.maxBytes) {
+    throw new BusinessError("validation_failed", `File is too large (max ${Math.round(rule.maxBytes / 1048576)} MB)`, 400);
+  }
+  const now = new Date();
+  const ext = (args.filename.split(".").pop() ?? "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 6) || "bin";
+  const key = `inbox/outgoing/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${uuid()}.${ext}`;
+  const cmd = new PutObjectCommand({
+    Bucket: env.R2_BUCKET!,
+    Key: key,
+    ContentType: args.contentType,
+    ContentLength: args.sizeBytes,
+  });
+  const url = await getSignedUrl(getClient(), cmd, { expiresIn: 300 });
+  return { upload_url: url, object_key: key, kind: rule.kind };
+}
+
+/**
+ * Short-lived signed GET (default 10 minutes) for private inbox files. Only
+ * call after a permission check. `downloadName` forces a download.
+ */
+export async function presignInboxGet(
+  objectKey: string,
+  opts: { expiresIn?: number; downloadName?: string } = {},
+): Promise<string> {
+  const cmd = new GetObjectCommand({
+    Bucket: env.R2_BUCKET!,
+    Key: objectKey,
+    ...(opts.downloadName
+      ? { ResponseContentDisposition: `attachment; filename="${opts.downloadName.replace(/["\\\r\n]/g, "")}"` }
+      : {}),
+  });
+  return getSignedUrl(getClient(), cmd, { expiresIn: opts.expiresIn ?? 600 });
+}
+
+/** Permanently delete private inbox files. No-op when storage isn't configured. */
+export async function deleteInboxObjects(keys: readonly (string | null | undefined)[]): Promise<number> {
+  const real = [...new Set(keys.filter((k): k is string => !!k && k.startsWith("inbox/")))];
+  if (real.length === 0 || !env.R2_ACCOUNT_ID || !env.R2_BUCKET) return 0;
+  for (let i = 0; i < real.length; i += 1000) {
+    await getClient().send(
+      new DeleteObjectsCommand({
+        Bucket: env.R2_BUCKET!,
+        Delete: { Objects: real.slice(i, i + 1000).map((Key) => ({ Key })), Quiet: true },
+      }),
+    );
+  }
+  return real.length;
+}
+
+const GREETING_TYPES: Record<string, string> = { "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav" };
+
+/** Presigned PUT for a phone greeting recording (MP3/WAV, max 5 MB) under inbox/greetings/. */
+export async function presignGreetingPut(args: { contentType: string; sizeBytes: number }): Promise<PresignPutResult> {
+  const ext = GREETING_TYPES[args.contentType];
+  if (!ext) throw new BusinessError("validation_failed", "Upload an MP3 or WAV file", 400);
+  if (args.sizeBytes <= 0 || args.sizeBytes > 5 * 1024 * 1024) {
+    throw new BusinessError("validation_failed", "Recording is too large (max 5 MB)", 400);
+  }
+  const key = `inbox/greetings/${uuid()}.${ext}`;
+  const cmd = new PutObjectCommand({ Bucket: env.R2_BUCKET!, Key: key, ContentType: args.contentType, ContentLength: args.sizeBytes });
+  return { upload_url: await getSignedUrl(getClient(), cmd, { expiresIn: 300 }), object_key: key };
 }

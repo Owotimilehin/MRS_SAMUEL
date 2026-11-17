@@ -1,0 +1,28 @@
+# Staging copy of the stack, for testing the unified inbox against Meta's test
+# number and a Twilio test number before anything reaches real customers.
+#
+# Runs beside production on the same server under its own project name, with
+# its own database, Redis, volumes and ports. Nothing here is shared with prod.
+# Start command and the settings file it needs: docs/runbooks/inbox-staging.md.
+#
+# UNTESTED: written without Docker available. Treat the first start as a test.
+
+services:
+  api:
+    ports: !override
+      - "127.0.0.1:${STAGING_API_PORT:-4001}:3001"
+    mem_limit: 512m
+  admin:
+    ports: !override
+      - "127.0.0.1:${STAGING_ADMIN_PORT:-4010}:80"
+    mem_limit: 128m
+  customer:
+    ports: !override
+      - "127.0.0.1:${STAGING_CUSTOMER_PORT:-4002}:3000"
+    mem_limit: 384m
+  worker:
+    mem_limit: 384m
+  postgres:
+    mem_limit: 512m
+  redis:
+    mem_limit: 128m

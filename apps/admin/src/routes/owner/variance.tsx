@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
+import { monthLabel } from "../../lib/date-labels.js";
 import { InlineLoader } from "../../components/Spinner.js";
 
 interface SourceTotal { bottles: number; value_ngn: number }
@@ -59,6 +60,8 @@ export function VarianceReportPage(): JSX.Element {
         <input
           type="month"
           className="input"
+          style={{ width: 190, flex: "0 0 auto" }}
+          aria-label="Month"
           value={month}
           max={new Date().toISOString().slice(0, 7)}
           onChange={(e) => setMonth(e.target.value)}
@@ -91,7 +94,7 @@ export function VarianceReportPage(): JSX.Element {
           <section className="card" style={{ marginTop: 16 }}>
             <h2 className="t-h2" style={{ marginBottom: 12 }}>By flavour</h2>
             {report.by_flavour.length === 0 ? (
-              <p className="t-muted">No losses recorded for {month}.</p>
+              <p className="t-muted">No losses recorded for {monthLabel(month)}.</p>
             ) : (
               <div className="table-wrap" style={{ border: 0 }}>
                 <table className="table">

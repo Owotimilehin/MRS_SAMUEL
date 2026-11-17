@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
+import { MapPin, X } from "lucide-react";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
@@ -117,19 +118,9 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
     <Shell
       title={branch?.name ?? "Branch"}
       actions={
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="button"
-            className="btn btn--danger btn--sm"
-            disabled={deleting || loading || !branch}
-            onClick={() => void remove()}
-          >
-            {deleting ? "Deleting…" : "Delete branch"}
-          </button>
-          <Link to="/owner/branches" className="btn btn--subtle btn--sm">
-            ← All branches
-          </Link>
-        </div>
+        <Link to="/owner/branches" className="btn btn--subtle btn--sm">
+          ← All branches
+        </Link>
       }
     >
       <StatHero
@@ -156,10 +147,12 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
       {loading || !branch ? (
         <InlineLoader />
       ) : (
-        <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
-          <section className="card">
+        <>
+        <form onSubmit={save} className="l-split l-split--detail" style={{ alignItems: "start" }}>
+          <section className="card" style={{ minWidth: 0 }}>
             <h2 className="t-h2" style={{ marginBottom: 14 }}>Details</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+            <div style={{ display: "grid", gap: 14 }}>
+            <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
               <div className="field">
                 <label className="field__label">Name</label>
                 <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -167,15 +160,15 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
               <div className="field">
                 <label className="field__label">Code</label>
                 <input className="input" value={branch.code} disabled />
-                <span className="field__hint">Code is immutable.</span>
+                <span className="field__hint">Code can't be changed.</span>
               </div>
             </div>
             <div className="field">
               <label className="field__label">Address</label>
               <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12 }}>
-              <div className="field">
+            <div className="grid grid-cols-2 sm:grid-cols-[2fr_1fr_1fr] gap-3">
+              <div className="field col-span-2 sm:col-span-1">
                 <label className="field__label">Phone</label>
                 <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
@@ -188,11 +181,12 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
                 <input className="input" type="time" value={closesAt} onChange={(e) => setClosesAt(e.target.value)} />
               </div>
             </div>
+            </div>
 
             <h3 style={{ fontSize: 14, fontWeight: 700, margin: "18px 0 10px", letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--ink-soft)" }}>
               Pickup coordinates · used for courier dispatch
             </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "end" }}>
+            <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
               <div className="field">
                 <label className="field__label">Latitude</label>
                 <input
@@ -221,7 +215,7 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
               </div>
               <button
                 type="button"
-                className="btn btn--subtle"
+                className="btn btn--subtle col-span-2 sm:col-span-1"
                 onClick={() => {
                   if (!navigator.geolocation) {
                     setGeoStatus("Browser doesn't expose geolocation.");
@@ -239,7 +233,7 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
                   );
                 }}
               >
-                📍 Use my location
+                <MapPin aria-hidden="true" /> Use my location
               </button>
             </div>
             {geoStatus && (
@@ -269,11 +263,31 @@ export function BranchDetailPage({ branchId }: { branchId: string }): JSX.Elemen
             </button>
           </section>
 
-          <section className="card">
+          <section className="card" style={{ minWidth: 0 }}>
             <h2 className="t-h2" style={{ marginBottom: 14 }}>Delivery zones</h2>
             <ZonesEditor zones={zones} onChange={setZones} />
           </section>
         </form>
+        <section
+          className="card"
+          style={{ marginTop: 18, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}
+        >
+          <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+            <div style={{ fontWeight: 700 }}>Delete this branch</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 2 }}>
+              The branch is archived and hidden everywhere. Past sales and shift-end reports stay readable.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn--danger btn--sm"
+            disabled={deleting || loading || !branch}
+            onClick={() => void remove()}
+          >
+            {deleting ? "Deleting…" : "Delete branch"}
+          </button>
+        </section>
+        </>
       )}
     </Shell>
   );
@@ -314,42 +328,56 @@ function ZonesEditor({
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                padding: "8px 12px",
+                gap: 12,
+                padding: "4px 4px 4px 12px",
                 background: "var(--surface-soft)",
                 borderRadius: 10,
               }}
             >
-              <span style={{ fontWeight: 600 }}>{z.name}</span>
-              <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <span className="tabular-nums">{ngn(z.fee_ngn)}</span>
+              <span style={{ fontWeight: 600, minWidth: 0 }}>{z.name}</span>
+              <span style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+                <span className="tabular-nums" style={{ whiteSpace: "nowrap" }}>{ngn(z.fee_ngn)}</span>
                 <button
                   type="button"
                   onClick={() => removeAt(i)}
-                  style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--ink-soft)", fontSize: 18 }}
-                  aria-label="Remove zone"
+                  style={{
+                    background: "transparent",
+                    border: 0,
+                    cursor: "pointer",
+                    color: "var(--ink-soft)",
+                    width: 40,
+                    height: 40,
+                    display: "grid",
+                    placeItems: "center",
+                    borderRadius: 10,
+                  }}
+                  aria-label={`Remove zone ${z.name}`}
+                  title="Remove zone"
                 >
-                  ×
+                  <X size={18} strokeWidth={2.2} aria-hidden="true" />
                 </button>
               </span>
             </li>
           ))}
         </ul>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.6fr) minmax(84px, 1fr) auto", gap: 8 }}>
         <input
           className="input"
           placeholder="Zone name"
+          aria-label="Zone name"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <input
           className="input"
           type="number"
-          placeholder="Fee"
+          placeholder="Fee (₦)"
+          aria-label="Delivery fee in naira"
           value={fee}
           onChange={(e) => setFee(e.target.value)}
         />
-        <button type="button" className="btn btn--subtle btn--sm" onClick={add}>
+        <button type="button" className="btn btn--subtle" onClick={add}>
           Add
         </button>
       </div>

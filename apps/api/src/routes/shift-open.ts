@@ -11,7 +11,7 @@ import {
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
-import { BusinessError } from "../lib/errors.js";
+import { BusinessError, pgErrorText } from "../lib/errors.js";
 import { enqueueOutbox } from "../lib/notify.js";
 
 const Submit = z.object({
@@ -193,7 +193,7 @@ export function shiftOpenRoutes(db: DbClient) {
       });
     } catch (err: unknown) {
       // Partial-index unique violation (concurrent open from another request).
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = pgErrorText(err);
       if (msg.includes("uq_shift_open_one_open_per_branch")) {
         throw new BusinessError("conflict", "shift already open", 409);
       }

@@ -5,6 +5,7 @@ import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { EnquiryForm } from "@/components/EnquiryForm";
 import { seo, breadcrumbLd } from "@/lib/seo";
+import clusterGreen from "@/assets/decor/cluster-green.png";
 
 export const Route = createFileRoute("/white-label")({
   head: () =>
@@ -40,6 +41,8 @@ function Page() {
         eyebrow="White Label"
         title={<>Your brand.<br /><span className="text-[color:var(--brand-orange)]">Our press.</span></>}
         subtitle="Real cold-pressed fruit juice, bottled under your own label. No added sugar, no preservatives — the same juice we put our own name on."
+        decor={clusterGreen}
+        accent="#a8d27a"
       />
 
       <section className="px-5 sm:px-10 max-w-7xl mx-auto pb-16">

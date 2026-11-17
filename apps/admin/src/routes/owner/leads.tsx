@@ -59,7 +59,7 @@ export function LeadsPage(): JSX.Element {
   }, []);
 
   return (
-    <Shell title="Leads" crumb="Storefront">
+    <Shell title="Leads" crumb="Marketing">
       <StatHero
         eyebrow="Marketing"
         title="Leads"
@@ -67,7 +67,7 @@ export function LeadsPage(): JSX.Element {
         loading={loading}
         chips={[
           {
-            label: "Sub enquiries",
+            label: "Business enquiries",
             value: subs.length,
             tone: subs.length > 0 ? "danger" : "good",
           },
@@ -77,7 +77,7 @@ export function LeadsPage(): JSX.Element {
             tone: contacts.length > 0 ? "danger" : "good",
           },
           {
-            label: "Subs this week",
+            label: "Enquiries this week",
             value: subs.filter((s) => s.createdAt >= new Date(Date.now() - 7 * 86_400_000).toISOString()).length,
           },
           {

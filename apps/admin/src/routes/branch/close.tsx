@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { Sunrise } from "lucide-react";
 import { BranchShell } from "../../components/BranchShell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { BranchTabs } from "../../components/BranchTabs.js";
@@ -115,7 +116,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
       const key = stockKey(line.product_id, line.variant_id);
       const expected = line.balance;
       const got = Number(counts[key] ?? "0");
-      const sizeLabel = line.size_ml ? `${line.size_ml}ml` : "untyped";
+      const sizeLabel = line.size_ml ? `${line.size_ml}ml` : "no size set";
       return {
         key,
         product_id: line.product_id,
@@ -185,7 +186,10 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
         { to: "/branch/closes" as const, label: "History" },
       ]
     : [
+        // No shift open: Start + History as on the sibling pages, plus this
+        // page's own "End" tab so the strip always shows where you are.
         { to: "/branch/shift-start" as const, label: "Start", cap: "shift_open.submit" as const },
+        { to: "/branch/close" as const, label: "End", cap: "daily_close.submit" as const },
         { to: "/branch/closes" as const, label: "History" },
       ];
 
@@ -193,6 +197,11 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
   if (closed) {
     return (
       <BranchShell branchId={branchId} title="Shift end">
+        <StatHero
+          eyebrow="Branch"
+          title="Shift end"
+          sub="The shift is closed and the report has gone to the owner."
+        />
         <BranchTabs items={shiftTabs} />
         <section className="card" style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
@@ -201,7 +210,7 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
             The shift-end report has been submitted and is awaiting owner approval.
           </p>
           <a className="btn btn--primary btn--lg" href="/branch/shift-start">
-            Open a new shift
+            Start a new shift
           </a>
         </section>
       </BranchShell>
@@ -212,15 +221,24 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
   if (hasShift === false) {
     return (
       <BranchShell branchId={branchId} title="Shift end">
+        {/* Same banner as the Start and History tabs, so the tabs sit at the
+            same height on all three. */}
+        <StatHero
+          eyebrow="Branch"
+          title="Shift end"
+          sub="Count stock and money to close a shift. No shift is open right now."
+        />
         <BranchTabs items={shiftTabs} />
         <section className="card" style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🌅</div>
-          <h2 className="t-h2" style={{ marginBottom: 8 }}>No open shift</h2>
+          <span className="empty__icon" aria-hidden>
+            <Sunrise />
+          </span>
+          <h2 className="t-h2" style={{ marginBottom: 8 }}>No shift to end</h2>
           <p style={{ color: "var(--ink-soft)", margin: "0 0 24px" }}>
-            There is no open shift to close. Start a new shift first.
+            You can only end a shift that is open. Start one first by counting the opening stock.
           </p>
           <a className="btn btn--primary btn--lg" href="/branch/shift-start">
-            Open a shift
+            Start a shift
           </a>
         </section>
       </BranchShell>
@@ -243,8 +261,9 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
           <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
             <h2 className="t-h2">Stock count</h2>
             <div className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <label className="field__label" style={{ marginBottom: 0 }}>Date</label>
+              <label className="field__label" style={{ marginBottom: 0 }} htmlFor="close-date">Date</label>
               <input
+                id="close-date"
                 className="input"
                 type="date"
                 style={{ width: 160 }}
@@ -256,7 +275,10 @@ export function BranchClosePage({ branchId }: { branchId: string }): JSX.Element
           {loading ? (
             <InlineLoader />
           ) : stockRows.length === 0 ? (
-            <div className="empty">No products in scope.</div>
+            <div className="empty">
+              <div className="empty__title">Nothing to count</div>
+              No stock has been received at this branch yet.
+            </div>
           ) : (
             <div className="table-wrap" style={{ border: 0 }}>
               <table className="table">

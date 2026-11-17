@@ -106,6 +106,22 @@ services:
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
       R2_BUCKET: ${R2_BUCKET:-}
+      # Unified inbox: WhatsApp (Meta Cloud API). Empty = WhatsApp is off and
+      # the webhook answers 503. Values live in the server's settings file.
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-}
+      META_SYSTEM_USER_TOKEN: ${META_SYSTEM_USER_TOKEN:-}
+      META_GRAPH_VERSION: ${META_GRAPH_VERSION:-}
+      INBOX_TEMPLATE_LANGUAGE: ${INBOX_TEMPLATE_LANGUAGE:-}
+      # Unified inbox: phone calls (Twilio). Empty = calling is off and the
+      # call bar stays hidden.
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_API_KEY_SID: ${TWILIO_API_KEY_SID:-}
+      TWILIO_API_KEY_SECRET: ${TWILIO_API_KEY_SECRET:-}
+      TWILIO_TWIML_APP_SID: ${TWILIO_TWIML_APP_SID:-}
+      TWILIO_PUSH_CREDENTIAL_SID_IOS: ${TWILIO_PUSH_CREDENTIAL_SID_IOS:-}
+      TWILIO_PUSH_CREDENTIAL_SID_ANDROID: ${TWILIO_PUSH_CREDENTIAL_SID_ANDROID:-}
       # Instagram feed (optional).
       IG_ACCESS_TOKEN: ${IG_ACCESS_TOKEN:-}
       IG_BUSINESS_ACCOUNT_ID: ${IG_BUSINESS_ACCOUNT_ID:-}
@@ -168,6 +184,16 @@ services:
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
       R2_BUCKET: ${R2_BUCKET:-}
+      # Unified inbox jobs: media download, templates, follow-ups, recordings,
+      # call summaries. Empty = that job does nothing.
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_SYSTEM_USER_TOKEN: ${META_SYSTEM_USER_TOKEN:-}
+      META_GRAPH_VERSION: ${META_GRAPH_VERSION:-}
+      INBOX_TEMPLATE_LANGUAGE: ${INBOX_TEMPLATE_LANGUAGE:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      INBOX_SUMMARY_MODEL: ${INBOX_SUMMARY_MODEL:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-}
       SENTRY_DSN: ${SENTRY_DSN:-}

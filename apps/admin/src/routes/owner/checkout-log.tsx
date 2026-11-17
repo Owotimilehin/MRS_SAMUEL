@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
+import { StatHero } from "../../components/StatHero.js";
 import { ngn } from "../../lib/format.js";
 
 interface StageRow {
@@ -52,24 +53,41 @@ export function CheckoutLogPage(): JSX.Element {
 
   return (
     <Shell title="Checkout log">
-      <div style={{ padding: 24, maxWidth: 880, margin: "0 auto" }}>
-        <p style={{ color: "var(--muted, #6b7280)", marginBottom: 20, fontSize: 14 }}>
-          Every "Place order" press in the last 30 days — delivery details, errors, and what happened.
-        </p>
-
+      <StatHero
+        eyebrow="Admin"
+        title="Checkout log"
+        sub={'Every "Place order" press on the website in the last 30 days: delivery details, errors, and what happened.'}
+        loading={loading}
+        chips={[
+          { label: "Attempts", value: attempts.length },
+          {
+            label: "With errors",
+            value: attempts.filter((a) => a.stages.some((s) => s.status === "error")).length,
+          },
+        ]}
+      />
+      <div>
         {loading && <InlineLoader />}
-        {error && <div style={{ color: "#dc2626" }}>{error}</div>}
+        {error && (
+          <div className="empty" role="alert">
+            <div className="empty__title">We couldn't load this</div>
+            {error}
+          </div>
+        )}
         {!loading && !error && attempts.length === 0 && (
-          <p style={{ color: "#6b7280" }}>No checkout attempts recorded yet.</p>
+          <div className="empty">
+            <div className="empty__title">No checkout attempts yet</div>
+            When a customer presses "Place order" on the website, it shows up here.
+          </div>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {attempts.map((a) => (
             <div
               key={a.attempt_id}
-              style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: 14, padding: 16, background: "#fff" }}
+              className="card"
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "2px 8px", fontSize: 14, flexWrap: "wrap" }}>
                 <span style={{ fontWeight: 700 }}>
                   {a.customer.name ?? "—"}
                   {a.customer.phone ? ` · ${a.customer.phone}` : ""}
@@ -97,7 +115,7 @@ export function CheckoutLogPage(): JSX.Element {
               )}
               <ol style={{ marginTop: 12, listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                 {a.stages.map((s, i) => (
-                  <li key={i} style={{ fontSize: 13, display: "flex", gap: 10, alignItems: "baseline" }}>
+                  <li key={i} style={{ fontSize: 13, display: "flex", gap: "0 10px", alignItems: "baseline", flexWrap: "wrap" }}>
                     <span style={{ color: "#9ca3af", width: 80, flexShrink: 0 }}>
                       {lagos(s.created_at, { timeStyle: "medium" })}
                     </span>

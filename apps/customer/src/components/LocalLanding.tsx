@@ -6,6 +6,7 @@ import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { formatNaira } from "@/lib/cart";
 import { whatsappLink } from "@/lib/whatsapp";
+import { LinkedText } from "@/components/LinkedText";
 
 export interface LocalFaq {
   q: string;
@@ -61,14 +62,14 @@ export function LocalLanding({
           <>
             <h2 className="mt-12 font-display text-3xl font-semibold text-[color:var(--brand)]">Good to know</h2>
             <ul className="mt-4 list-disc pl-5 space-y-2 text-[15px] leading-relaxed text-[color:var(--brand)]/80">
-              {notes.map((n, i) => <li key={i}>{n}</li>)}
+              {notes.map((n, i) => <li key={i}><LinkedText text={n} /></li>)}
             </ul>
           </>
         )}
       </section>
 
       {products.length > 0 && (
-        <section className="px-5 sm:px-10 max-w-7xl mx-auto pb-12">
+        <section className="px-5 sm:px-10 max-w-5xl mx-auto pb-12">
           <h2 className="font-display text-3xl font-semibold text-[color:var(--brand)]">Popular fresh juices</h2>
           <ul className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {products.map((p) => (
@@ -99,7 +100,7 @@ export function LocalLanding({
             {faqs.map((f) => (
               <div key={f.q} className="px-5 py-4">
                 <dt className="font-semibold text-[color:var(--brand)]">{f.q}</dt>
-                <dd className="mt-1 text-[15px] leading-relaxed text-[color:var(--brand)]/75">{f.a}</dd>
+                <dd className="mt-1 text-[15px] leading-relaxed text-[color:var(--brand)]/75"><LinkedText text={f.a} /></dd>
               </div>
             ))}
           </dl>

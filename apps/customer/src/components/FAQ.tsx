@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Plus, Minus } from "lucide-react";
+import { LinkedText } from "@/components/LinkedText";
 
 /** Exported so the home route can emit matching FAQPage JSON-LD. */
 export const faqs = [
@@ -8,7 +9,7 @@ export const faqs = [
   { q: "How long does the juice last?", a: "About 48 hours from pressing, kept refrigerated. It's cold-pressed and unpasteurised, so keep it chilled the whole way." },
   { q: "Do you add sugar or sweeteners?", a: "Never. The only sweetness is from the fruit itself. No syrups, no concentrates, no preservatives." },
   { q: "Do you deliver nationwide?", a: "We deliver cold all round Lagos, the same morning or the next morning depending on when you order. Other cities by special arrangement: message us on WhatsApp." },
-  { q: "Do you supply juice for events and offices?", a: "Yes. We deliver chilled crates for weddings, parties, office fridges and corporate gifts across Lagos. See our bulk orders page for crate pricing." },
+  { q: "Do you supply juice for events and offices?", a: "Yes. We deliver chilled crates for weddings, parties, office fridges and corporate gifts across Lagos. Request a quote on our bulk orders page." },
   { q: "Can I refrigerate the juice?", a: "Yes, please do. Store between 2–6°C from the moment it arrives and drink it within 48 hours for the best taste." },
 ];
 
@@ -51,7 +52,7 @@ export function FAQ() {
                 className="overflow-hidden"
                 aria-hidden={open !== i}
               >
-                <p className="pb-5 pr-10 text-sm text-[color:var(--brand)]/70 leading-relaxed">{f.a}</p>
+                <p inert={open !== i} className="pb-5 pr-10 text-sm text-[color:var(--brand)]/70 leading-relaxed"><LinkedText text={f.a} /></p>
               </motion.div>
             </div>
           ))}

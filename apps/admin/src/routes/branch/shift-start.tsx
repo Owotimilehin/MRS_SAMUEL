@@ -9,6 +9,7 @@ import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import { fileLocalShiftOpen } from "../../sync/local-shift-open.js";
 import { lagosToday } from "../../lib/biz-date.js";
+import { formatDate } from "../../lib/format.js";
 
 /** One expected-stock line per (flavour, size); mirrors the API's ExpectedStockLine. */
 interface ExpectedStockLine {
@@ -33,6 +34,8 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
+  // true when the list to count could not be fetched (offline) — wording only.
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // null = loading; false = no open shift (this page); true = shift open (shouldn't stay here)
   const [shiftOpen, setShiftOpen] = useState<boolean | null>(null);
@@ -68,6 +71,7 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
       } catch (err) {
         // Offline: fall back to an empty grid so she can still count + unlock.
         if (!cancelled) setExpected([]);
+        if (!cancelled) setPreviewFailed(true);
         if (!cancelled) toast.error(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
@@ -85,7 +89,7 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
       const key = stockKey(line.product_id, line.variant_id);
       const exp = line.balance;
       const got = Number(counts[key] ?? "0");
-      const sizeLabel = line.size_ml ? `${line.size_ml}ml` : "untyped";
+      const sizeLabel = line.size_ml ? `${line.size_ml}ml` : "no size set";
       return {
         key,
         product_id: line.product_id,
@@ -143,7 +147,7 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
         title="Shift start"
         sub="Count the stock you're starting with. This unlocks your till."
         loading={loading}
-        chips={[{ label: "Date", value: businessDate }]}
+        chips={[{ label: "Date", value: formatDate(`${businessDate}T12:00:00`) }]}
       />
       <BranchTabs items={shiftTabs} />
       <section className="card">
@@ -151,7 +155,17 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
         {loading ? (
           <InlineLoader />
         ) : rows.length === 0 ? (
-          <div className="empty">No products to count — you can confirm to open.</div>
+          // The list only holds flavours that have had stock at this branch
+          // (received, sold or adjusted). A branch that has never received
+          // stock has nothing to count even though the till lists every flavour.
+          <div className="empty">
+            <div className="empty__title">
+              {previewFailed ? "Could not load the stock list" : "Nothing to count yet"}
+            </div>
+            {previewFailed
+              ? "Check the connection and reload to count your stock. You can still confirm below to open the till."
+              : "No stock has been received at this branch yet, so there is nothing to count. Confirm below to open the till."}
+          </div>
         ) : (
           <div className="table-wrap" style={{ border: 0 }}>
             <table className="table">
@@ -196,11 +210,12 @@ export function BranchShiftStartPage({ branchId }: { branchId: string }): JSX.El
           </div>
         )}
         <div className="field" style={{ marginTop: 12 }}>
-          <label className="field__label">Notes</label>
-          <textarea className="textarea" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the owner should see" />
+          <label className="field__label" htmlFor="shift-start-notes">Notes</label>
+          <textarea id="shift-start-notes" className="textarea" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the owner should see" />
         </div>
         <button
           type="button" className="btn btn--primary btn--block btn--lg"
+          style={{ marginTop: 16 }}
           disabled={submitting || loading || !expected}
           onClick={() => void submit()}
         >

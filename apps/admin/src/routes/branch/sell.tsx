@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { ChevronDown, Search, Sunrise } from "lucide-react";
 import { BranchShell } from "../../components/BranchShell.js";
 import {
   local,
@@ -56,6 +57,37 @@ interface Flavour {
 }
 
 const sizeLabel = (ml: number): string => (ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`);
+
+// Below this width the till stacks into one column (the same 860px breakpoint
+// `.l-split--pos` uses in index.css), so the cart sits under every product.
+const NARROW_TILL = "(max-width: 860px)";
+
+function useNarrowTill(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(NARROW_TILL).matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(NARROW_TILL);
+    const onChange = (): void => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return narrow;
+}
+
+// Touch-sized square button for the bag / straw steppers.
+const STEP_BTN: React.CSSProperties = {
+  width: 40,
+  height: 40,
+  padding: 0,
+  fontSize: 20,
+  flex: "none",
+  borderRadius: 12,
+  background: "#fff",
+  border: "1px solid var(--line)",
+};
 
 export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const products = useLiveQuery(() => local.products.toArray(), [], [] as ProductRow[]);
@@ -212,6 +244,52 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   // Flavour whose size picker is open (null = no modal).
   const [picking, setPicking] = useState<Flavour | null>(null);
 
+  // ── Layout only (nothing below changes what a sale sends) ──
+  // Narrow screens stack the cart under the products, so a bar pinned to the
+  // bottom of the screen keeps the item count, total and a jump to the cart in
+  // reach. Wide screens keep the cart beside the products with Total + Charge
+  // pinned to the bottom of the cart card.
+  const narrow = useNarrowTill();
+  const cartFootRef = useRef<HTMLDivElement | null>(null);
+  // True while Total + Charge are on screen (the bar then offers the way back).
+  const [cartInView, setCartInView] = useState(false);
+  // The floating call pill (owner shell) sits bottom-right; if it is on this
+  // page, lift the bar above it rather than sliding underneath.
+  const [barLift, setBarLift] = useState(0);
+  // Bags + straws stay folded away until the cashier needs them.
+  const [extrasOpen, setExtrasOpen] = useState(false);
+  useEffect(() => {
+    if (!narrow) return;
+    setBarLift(document.querySelector(".callbar") ? 72 : 0);
+    const el = cartFootRef.current;
+    if (!el || typeof IntersectionObserver !== "function") return;
+    // Bottom margin discounts the strip of screen the bar itself covers.
+    const io = new IntersectionObserver(
+      (entries) => setCartInView(entries.some((e) => e.isIntersecting && e.intersectionRatio >= 0.6)),
+      { rootMargin: "0px 0px -72px 0px", threshold: [0, 0.6, 1] },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+    // hasShift: the cart only mounts once the shift gate has cleared.
+  }, [narrow, hasShift]);
+  useEffect(() => {
+    if (successSale) setExtrasOpen(false);
+  }, [successSale]);
+  // A preorder with no date is the one checkout error whose fix can be scrolled
+  // out of sight inside the cart, so bring the date field back into view.
+  useEffect(() => {
+    if (!error || fulfillBy) return;
+    const el = document.getElementById("sell-fulfil-by");
+    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [error, fulfillBy]);
+  // Land with Total + Charge sitting just above the bar, the cart lines above them.
+  function jumpToCart(): void {
+    cartFootRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }
+  function jumpToProducts(): void {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   // Pick a flavour: single-size flavours skip straight to the cart; multi-size
   // flavours open the size picker so the cashier chooses the can.
   function pickFlavour(f: Flavour): void {
@@ -255,6 +333,18 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   }
 
   const total = cart.reduce((sum, l) => sum + l.quantity * l.unit_price_ngn, 0);
+  const cartItemCount = cart.reduce((n, l) => n + l.quantity, 0);
+  const bagsAdded = Object.values(bagCart).reduce((n, q) => n + q, 0);
+  const strawsAdded = Object.values(strawCart).reduce((n, q) => n + q, 0);
+  const extrasTitle =
+    bagMaterials.length > 0 && strawMaterials.length > 0 ? "Bags and straws" : bagMaterials.length > 0 ? "Bags" : "Straws";
+  const extrasSummary =
+    [
+      bagsAdded > 0 ? `${bagsAdded} ${bagsAdded === 1 ? "bag" : "bags"}` : null,
+      strawsAdded > 0 ? `${strawsAdded} ${strawsAdded === 1 ? "straw" : "straws"}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "None added";
 
   // Live per-variant availability for everything in the cart, so we can tell
   // when a line can't be covered from stock and the order must become a preorder.
@@ -405,6 +495,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
 
   function ConsumableSection(props: {
     title: string;
+    noun: string;
     emoji: string;
     materials: BagMaterial[];
     cart: Record<string, number>;
@@ -412,37 +503,44 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     isSet: boolean;
     markNone: () => void;
   }): JSX.Element {
-    const { title, emoji, materials, cart, setQty, isSet, markNone } = props;
+    const { title, noun, emoji, materials, cart, setQty, isSet, markNone } = props;
+    const added = materials.reduce((n, m) => n + (cart[m.id] ?? 0), 0);
     return (
-      <div className="card card--soft" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
           <strong style={{ fontSize: 13 }}>{title}</strong>
-          <span style={{ fontSize: 11, color: isSet ? "var(--success)" : "var(--ink-soft)" }}>
-            {isSet ? "✓ set" : "optional · leave at 0 if none"}
+          <span style={{ fontSize: 12, color: isSet ? "var(--success-ink, #047857)" : "var(--ink-soft)" }}>
+            {isSet ? (added > 0 ? `✓ ${added} added` : "✓ None this sale") : "Optional"}
           </span>
         </div>
         {materials.map((m) => {
           const qty = cart[m.id] ?? 0;
           const remaining = m.balance - qty;
-          const low = remaining <= 0;
+          // Red only when more are being handed out than the stock record holds.
+          const short = remaining < 0;
           return (
             <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                {emoji} {m.name}
-                <span className="tabular-nums" style={{ marginLeft: 6, fontSize: 12, color: low ? "var(--danger)" : "var(--ink-soft)" }}>
-                  {remaining} left
+              <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", lineHeight: 1.25 }}>
+                <span>{emoji} {m.name}</span>
+                <span className="tabular-nums" style={{ fontSize: 12, color: short ? "var(--danger)" : "var(--ink-soft)" }}>
+                  {short
+                    ? `${-remaining} more than the stock record shows`
+                    : remaining === 0
+                      ? "None left"
+                      : `${remaining} left`}
                 </span>
               </span>
-              <button type="button" className="btn btn--subtle btn--sm" style={{ width: 28, padding: 0, height: 26 }} onClick={() => setQty(m.id, qty - 1)}>−</button>
-              <span className="tabular-nums" style={{ width: 22, textAlign: "center" }}>{qty}</span>
-              <button type="button" className="btn btn--subtle btn--sm" style={{ width: 28, padding: 0, height: 26 }} onClick={() => setQty(m.id, qty + 1)}>+</button>
+              <button type="button" className="btn btn--subtle" style={STEP_BTN} aria-label={`One less ${m.name}`} onClick={() => setQty(m.id, qty - 1)}>−</button>
+              <span className="tabular-nums" style={{ width: 24, textAlign: "center", fontWeight: 700 }}>{qty}</span>
+              <button type="button" className="btn btn--subtle" style={STEP_BTN} aria-label={`One more ${m.name}`} onClick={() => setQty(m.id, qty + 1)}>+</button>
             </div>
           );
         })}
-        <button type="button" className="btn btn--subtle btn--sm" onClick={markNone} disabled={isSet}>
-          None (0)
-        </button>
-        <span className="field__hint">Counts down as you add. Not added to the total; may go below zero.</span>
+        {!isSet && (
+          <button type="button" className="btn btn--ghost btn--sm" style={{ alignSelf: "flex-start", height: 40 }} onClick={markNone}>
+            No {noun} this sale
+          </button>
+        )}
       </div>
     );
   }
@@ -455,7 +553,9 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     return (
       <BranchShell branchId={branchId} title="Sell">
         <section className="card" style={{ textAlign: "center", padding: 32 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🌅</div>
+          <span className="empty__icon" aria-hidden>
+            <Sunrise />
+          </span>
           <h2 className="t-h2">
             {hasShift === null ? "Loading…" : "Open a shift to start selling"}
           </h2>
@@ -489,24 +589,19 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           {flash}
         </div>
       )}
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}
-        >
-          {error}
-        </div>
-      )}
-
       <div className="l-split l-split--pos">
         <section>
-          <input
-            className="input"
-            placeholder="Search products…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ marginBottom: 14 }}
-          />
+          <div className="toolbar__search" style={{ marginBottom: 14 }}>
+            <Search aria-hidden />
+            <input
+              className="input"
+              type="search"
+              aria-label="Search products"
+              placeholder="Search products…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           {filtered.length === 0 ? (
             <div className="empty">
               <div className="empty__title">No products in catalog</div>
@@ -532,23 +627,42 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           )}
         </section>
 
-        <aside className="card pos-cart">
-          <header className="till-cart__head">
+        {/* Wide screens: the cart sticks beside the products, lines up with the
+            search box (header 61px + 24px page padding), never grows taller
+            than the window, and keeps Total + Charge pinned at its foot while
+            the lines and options scroll inside it. Narrow screens: it stacks
+            under the products at full height and the bottom bar jumps to it. */}
+        <aside
+          className="card pos-cart"
+          style={
+            narrow
+              ? undefined
+              : { top: 85, maxHeight: "calc(100vh - 101px)", display: "flex", flexDirection: "column" }
+          }
+        >
+          <header className="till-cart__head" style={{ flex: "none" }}>
             <span className="till-cart__count">
               <b>Cart</b>
               {cart.length > 0 && (
-                <span className="till-cart__pill">{cart.reduce((n, l) => n + l.quantity, 0)} items</span>
+                <span className="till-cart__pill">{cartItemCount} {cartItemCount === 1 ? "item" : "items"}</span>
               )}
             </span>
             {cart.length > 0 && (
-              <button type="button" className="till-cart__clear" onClick={clearCart}>
+              <button type="button" className="till-cart__clear" style={{ minHeight: 32, padding: "0 6px" }} onClick={clearCart}>
                 Clear
               </button>
             )}
           </header>
 
+          <div
+            style={
+              narrow
+                ? undefined
+                : { flex: "1 1 auto", minHeight: 0, overflowY: "auto", margin: "0 -6px", padding: "0 6px 4px" }
+            }
+          >
           {cart.length === 0 ? (
-            <div className="empty" style={{ padding: 24 }}>
+            <div className="empty" style={{ padding: 16 }}>
               Tap a flavour to add it to the cart.
             </div>
           ) : (
@@ -569,17 +683,18 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                     <div className="till-line__total tabular-nums">{ngn(l.unit_price_ngn * l.quantity)}</div>
                     <div className="till-line__controls">
                       <div className="qty-step">
-                        <button type="button" aria-label="Decrease" onClick={() => updateQty(l.variant_id, l.quantity - 1)}>−</button>
+                        <button type="button" aria-label="Decrease" style={{ width: 40, height: 40 }} onClick={() => updateQty(l.variant_id, l.quantity - 1)}>−</button>
                         <input
                           type="number"
                           inputMode="numeric"
                           value={l.quantity}
                           onChange={(e) => updateQty(l.variant_id, Number(e.target.value))}
                           aria-label="Quantity"
+                          style={{ height: 40, width: 48 }}
                         />
-                        <button type="button" aria-label="Increase" onClick={() => updateQty(l.variant_id, l.quantity + 1)}>+</button>
+                        <button type="button" aria-label="Increase" style={{ width: 40, height: 40 }} onClick={() => updateQty(l.variant_id, l.quantity + 1)}>+</button>
                       </div>
-                      <button type="button" className="till-line__rm" onClick={() => removeLine(l.variant_id)} aria-label="Remove">×</button>
+                      <button type="button" className="till-line__rm" style={{ width: 40, height: 40, fontSize: 22 }} onClick={() => removeLine(l.variant_id)} aria-label="Remove">×</button>
                     </div>
                   </li>
                 );
@@ -588,26 +703,30 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           )}
 
           <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div className="field">
-              <label className="field__label">Customer phone (optional)</label>
-              <input
-                className="input"
-                inputMode="tel"
-                autoComplete="off"
-                placeholder="e.g. 0803…"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label className="field__label">Customer name (optional)</label>
-              <input
-                className="input"
-                autoComplete="off"
-                placeholder="e.g. Bisi"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-              />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div className="field" style={{ minWidth: 0 }}>
+                <label className="field__label" htmlFor="sell-customer-phone">Customer phone</label>
+                <input
+                  id="sell-customer-phone"
+                  className="input"
+                  inputMode="tel"
+                  autoComplete="off"
+                  placeholder="Optional"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                />
+              </div>
+              <div className="field" style={{ minWidth: 0 }}>
+                <label className="field__label" htmlFor="sell-customer-name">Customer name</label>
+                <input
+                  id="sell-customer-name"
+                  className="input"
+                  autoComplete="off"
+                  placeholder="Optional"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                />
+              </div>
             </div>
             <div className="field">
               <label className="field__label" htmlFor="sell-channel">Channel</label>
@@ -658,8 +777,9 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
               {orderIsPreorder && (
                 <>
                   <div className="field">
-                    <label className="field__label">Delivery date *</label>
+                    <label className="field__label" htmlFor="sell-fulfil-by">Delivery date *</label>
                     <input
+                      id="sell-fulfil-by"
                       className="input"
                       type="date"
                       value={fulfillBy}
@@ -674,24 +794,85 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                 </>
               )}
             </div>
-            {bagMaterials.length > 0 && (
-              <ConsumableSection
-                title="Bags on hand" emoji="🛍" materials={bagMaterials}
-                cart={bagCart} setQty={setBagQty} isSet={bagsSet}
-                markNone={() => setBagsSet(true)}
-              />
+            {(bagMaterials.length > 0 || strawMaterials.length > 0) && (
+              <div className="card card--soft" style={{ padding: 0, borderColor: "var(--line)", overflow: "hidden" }}>
+                <button
+                  type="button"
+                  aria-expanded={extrasOpen}
+                  onClick={() => setExtrasOpen((o) => !o)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    width: "100%",
+                    minHeight: 44,
+                    padding: "0 12px",
+                    background: "transparent",
+                    border: 0,
+                    cursor: "pointer",
+                    font: "inherit",
+                    color: "inherit",
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>🛍 {extrasTitle}</span>
+                  <span className="tabular-nums" style={{ fontSize: 12, color: "var(--ink-soft)" }}>{extrasSummary}</span>
+                  <ChevronDown
+                    aria-hidden
+                    size={18}
+                    style={{ flex: "none", transition: "transform 160ms ease", transform: extrasOpen ? "rotate(180deg)" : undefined }}
+                  />
+                </button>
+                {extrasOpen && (
+                  <div style={{ padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 14 }}>
+                    {bagMaterials.length > 0 && (
+                      <ConsumableSection
+                        title="Bags" noun="bags" emoji="🛍" materials={bagMaterials}
+                        cart={bagCart} setQty={setBagQty} isSet={bagsSet}
+                        markNone={() => setBagsSet(true)}
+                      />
+                    )}
+                    {strawMaterials.length > 0 && (
+                      <ConsumableSection
+                        title="Straws" noun="straws" emoji="🥤" materials={strawMaterials}
+                        cart={strawCart} setQty={setStrawQty} isSet={strawsSet}
+                        markNone={() => setStrawsSet(true)}
+                      />
+                    )}
+                    <span className="field__hint">
+                      Free with the sale. Adding them here only keeps the count of what is left correct.
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
-            {strawMaterials.length > 0 && (
-              <ConsumableSection
-                title="Straws on hand" emoji="🥤" materials={strawMaterials}
-                cart={strawCart} setQty={setStrawQty} isSet={strawsSet}
-                markNone={() => setStrawsSet(true)}
-              />
-            )}
-            <div className="till-total">
+          </div>
+          </div>
+
+          <div
+            ref={cartFootRef}
+            style={{ flex: "none", display: "flex", flexDirection: "column", gap: 10, scrollMarginBottom: 96 + barLift }}
+          >
+            <div className="till-total" style={{ margin: "12px 0 0", paddingTop: 12 }}>
               <span className="till-total__label">{orderIsPreorder ? "Preorder total" : "Total"}</span>
               <span className="till-total__value tabular-nums">{ngn(total)}</span>
             </div>
+            {error && (
+              <div
+                role="alert"
+                style={{
+                  border: "1px solid rgba(220,38,38,0.25)",
+                  background: "rgba(220,38,38,0.06)",
+                  color: "var(--danger)",
+                  borderRadius: 12,
+                  padding: "8px 12px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {error}
+              </div>
+            )}
             <button
               type="button"
               className="btn btn--primary btn--block btn--cta"
@@ -710,6 +891,55 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           </div>
         </aside>
       </div>
+
+      {/* Narrow screens only: item count + total pinned to the bottom of the
+          screen, with one button to jump to the cart (or back to the products).
+          The spacer keeps the end of the page from hiding behind the bar. */}
+      {narrow && (
+        <>
+          <div aria-hidden style={{ height: 16 + barLift }} />
+          <div
+            style={{
+              position: "fixed",
+              left: 0,
+              right: 0,
+              bottom: barLift,
+              zIndex: 40,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 14px calc(10px + env(safe-area-inset-bottom, 0px))",
+              background: "#fff",
+              borderTop: "1px solid var(--line)",
+              boxShadow: "0 -8px 24px -14px rgba(20,24,31,0.28)",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0, lineHeight: 1.2 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
+                {cartItemCount === 0
+                  ? "Cart is empty"
+                  : `${cartItemCount} ${cartItemCount === 1 ? "item" : "items"} in cart`}
+              </div>
+              <div className="tabular-nums" style={{ fontSize: 20, fontWeight: 800, color: "var(--brand)" }}>
+                {ngn(total)}
+              </div>
+            </div>
+            {cartInView ? (
+              <button type="button" className="btn btn--subtle btn--lg" onClick={jumpToProducts}>
+                ↑ Add more
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={`btn btn--lg ${cartItemCount > 0 ? "btn--primary" : "btn--subtle"}`}
+                onClick={jumpToCart}
+              >
+                View cart ↓
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       {picking && (
         <SizePicker
@@ -906,8 +1136,11 @@ function FlavourTile({
     : available === null
       ? ""
       : oos
-        ? "Out of stock"
+        ? "Out of stock · preorder only"
         : `${available} in stock`;
+  // Out-of-stock tiles stay tappable (the order becomes a preorder) but are
+  // dimmed so they no longer look the same as something on the shelf.
+  const dim = oos && !allPreorder;
   return (
     <button
       type="button"
@@ -932,15 +1165,9 @@ function FlavourTile({
           background: vis.surface,
         }}
       >
-        <BottleImage src={vis.bottle} name={product.name} float />
-        <img
-          src={vis.fruit}
-          alt=""
-          aria-hidden
-          loading="lazy"
-          onError={(e) => { e.currentTarget.style.display = "none"; }}
-          style={{ position: "absolute", left: 8, top: 8, width: 24, filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.3))" }}
-        />
+        <div style={{ width: "100%", height: "100%", opacity: dim ? 0.4 : 1, filter: dim ? "grayscale(0.6)" : undefined }}>
+          <BottleImage src={vis.bottle} name={product.name} float={!dim} />
+        </div>
         {allPreorder && (
           <span
             className="pill"
@@ -959,12 +1186,22 @@ function FlavourTile({
         )}
       </div>
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 3 }}>
-        <span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.25 }}>{product.name}</span>
+        <span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.25, color: dim ? "var(--ink-soft)" : undefined }}>{product.name}</span>
         {statusText && (
           <span style={{ fontSize: 11, fontWeight: 600, color: statusColor }}>{statusText}</span>
         )}
-        <div className="text-grad tabular-nums" style={{ fontWeight: 800, fontSize: 18, marginTop: 2 }}>
-          {multi ? `from ${ngn(minPrice)}` : ngn(sizes[0]!.price)}
+        {/* Same shape on every tile: a small lead-in ("from" when there are
+            several sizes, the size itself when there is only one), then the price. */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
+            {multi ? "from" : sizeLabel(sizes[0]!.variant.size_ml)}
+          </span>
+          <span
+            className={dim ? "tabular-nums" : "text-grad tabular-nums"}
+            style={{ fontWeight: 800, fontSize: 18, color: dim ? "var(--ink-soft)" : undefined }}
+          >
+            {multi ? ngn(minPrice) : ngn(sizes[0]!.price)}
+          </span>
         </div>
       </div>
     </button>

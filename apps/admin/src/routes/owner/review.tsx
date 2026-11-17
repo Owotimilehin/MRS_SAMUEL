@@ -4,6 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
+import { dayLabel } from "../../lib/date-labels.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 
@@ -169,7 +170,7 @@ export function ReviewPage(): JSX.Element {
                   const counted = cl.cash_counted_ngn + cl.transfers_counted_ngn;
                   return (
                     <tr key={cl.id}>
-                      <td style={{ fontWeight: 600 }}>{cl.business_date}</td>
+                      <td style={{ fontWeight: 600 }}>{dayLabel(cl.business_date)}</td>
                       <td>{cl.branch_name ?? cl.branch_id.slice(0, 8)}</td>
                       <td>{cl.shift_number != null ? `#${cl.shift_number}` : "—"}</td>
                       <td className="table__num">{ngn(counted)}</td>

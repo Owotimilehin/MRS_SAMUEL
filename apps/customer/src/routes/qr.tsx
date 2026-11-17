@@ -18,14 +18,15 @@ export const Route = createFileRoute("/qr")({
 function Page() {
   return (
     <SiteShell>
-      <section className="px-5 max-w-3xl mx-auto py-24 sm:py-32 text-center">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[color:var(--brand-orange)]">
-          Scan • Share • Order
+      <section className="px-5 sm:px-10 max-w-3xl mx-auto pt-32 sm:pt-40 pb-20 text-center">
+        <p className="flex items-center justify-center gap-3 text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand)]/70">
+          <span className="h-px w-6 bg-[color:var(--brand)]/40" /> Scan · Share · Order{" "}
+          <span className="h-px w-6 bg-[color:var(--brand)]/40" />
         </p>
-        <h1 className="mt-3 font-display text-4xl sm:text-6xl font-semibold tracking-tight text-[color:var(--brand)] leading-[1.05]">
-          Mrs. Samuel QR Code
+        <h1 className="mt-4 font-display text-[clamp(2.5rem,6vw,4.5rem)] font-semibold leading-[1.02] tracking-[-0.03em] text-[color:var(--brand)]">
+          Mrs. Samuel <span className="text-[color:var(--brand-orange)]">QR&nbsp;Code</span>
         </h1>
-        <p className="mt-4 text-[17px] leading-[1.7] text-[color:var(--brand)]/75 max-w-xl mx-auto">
+        <p className="mt-5 text-[16px] leading-relaxed text-[color:var(--brand)]/70 max-w-xl mx-auto">
           Point your phone camera at the code below and it opens{" "}
           <strong>mrssamuel.com</strong> — where you can order fresh, cold-pressed
           Nigerian juice for same-morning delivery in Lagos.

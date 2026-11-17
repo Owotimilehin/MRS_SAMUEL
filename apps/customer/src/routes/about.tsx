@@ -18,7 +18,7 @@ export const Route = createFileRoute("/about")({
 });
 
 const dialogue: Array<{ who: "MRS" | "MR" | "BOTH"; text: string }> = [
-  { who: "MRS", text: "Last year September, we started this journey with a simple vision — to create fresh, honest juice from Nigerian fruit and put it in glass on a Lagos table." },
+  { who: "MRS", text: "In September 2024, we started this journey with a simple vision — to create fresh, honest juice from Nigerian fruit and put it in glass on a Lagos table." },
   { who: "MR", text: "We started in our kitchen. One press. Six bottles a day. People came back the next week asking for more." },
   { who: "MRS", text: "By the third month, the kitchen wasn't enough. We moved to a proper prep room, hired two people, and stopped pretending this was a side project." },
   { who: "MR", text: "Today we press thousands of bottles a month. Same recipes. Same press. Same morning delivery." },

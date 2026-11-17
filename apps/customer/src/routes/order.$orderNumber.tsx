@@ -94,10 +94,15 @@ function OrderPage() {
   return (
     <SiteShell>
       <div className="px-5 sm:px-10 max-w-2xl mx-auto pt-32 sm:pt-36 pb-24">
-        <div className="inline-flex items-center gap-2 rounded-full bg-[color:var(--cream)]/80 px-4 py-1.5 text-xs font-mono">
-          <span className="text-[color:var(--brand)]/60">Order</span>
-          <span className="font-bold text-[color:var(--brand)]">{orderNumber}</span>
-        </div>
+        {/* Before the order loads there is no status yet, so give the page its
+            own heading. Once loaded, the status below is the page heading. */}
+        {!order && (
+          <h1 className="font-display text-4xl text-[color:var(--brand)]">Your order</h1>
+        )}
+        <p className={`text-sm text-[color:var(--brand)]/70 ${order ? "" : "mt-2"}`}>
+          Order number{" "}
+          <span className="font-semibold text-[color:var(--brand)] break-all">{orderNumber}</span>
+        </p>
 
         {!phone && (
           <div className="mt-8 rounded-2xl bg-white ring-1 ring-black/5 p-6">
@@ -109,7 +114,11 @@ function OrderPage() {
                 value={phoneInput}
                 onChange={(e) => setPhoneInput(e.target.value)}
                 placeholder="0800 000 0000"
-                className="flex-1 rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-sm ring-1 ring-black/5 focus:ring-2 focus:ring-[color:var(--brand-orange)] focus:outline-none"
+                aria-label="Phone number on the order"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                className="min-w-0 flex-1 rounded-xl bg-[color:var(--cream)]/60 px-4 py-3 text-base sm:text-sm ring-1 ring-black/5 focus:ring-2 focus:ring-[color:var(--brand-orange)] focus:outline-none"
               />
               <button
                 onClick={() => setPhone(phoneInput.replace(/[\s-]/g, ""))}
@@ -133,7 +142,7 @@ function OrderPage() {
         )}
 
         {order && journey && (
-          <div className="mt-6 space-y-5">
+          <div className="mt-3 space-y-5">
             <div aria-live="polite">
               <h1 className="font-display text-4xl text-[color:var(--brand)]">
                 {journey.special === "cancelled"
