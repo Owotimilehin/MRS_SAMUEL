@@ -112,8 +112,22 @@ async function sendOne(row: OutboxRow): Promise<void> {
   // Business rule rejection — don't keep retrying.
   if ([400, 403, 404, 409, 422].includes(res.status)) {
     const body = (await res.json().catch(() => ({}))) as {
-      error?: { message?: string };
+      error?: { code?: string; message?: string };
     };
+    // Not a rejection: the server is still working on an earlier send of this
+    // very row (e.g. one cut off by a deploy). It will either finish or free
+    // the key, so keep the sale pending and try again later. Dead-lettering
+    // here is how a sale that may never have lodged got parked.
+    if (body.error?.code === "idempotency_in_flight") {
+      const nextAttempts = row.attempt_count + 1;
+      await local.outbox.update(row.id, {
+        attempt_count: nextAttempts,
+        next_attempt_at: Date.now() + backoffMs(nextAttempts),
+        last_error: "Still sending — this will retry automatically.",
+        status: nextAttempts > 50 ? "dead" : "pending",
+      });
+      return;
+    }
     await local.outbox.update(row.id, {
       status: "dead",
       last_error: body.error?.message ?? `HTTP ${res.status}`,
