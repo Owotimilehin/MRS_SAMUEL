@@ -107,7 +107,9 @@ export function inboxSettingsRoutes(db: DbClient) {
       await audit(db, c, "inbox.number_create", "inbox_phone_number", row!.id, { label: row!.label, e164: row!.e164 });
       return c.json({ data: row }, 201);
     } catch (err) {
-      if (String((err as { code?: string }).code) === "23505") {
+      // Drizzle wraps driver errors, so the Postgres code may sit on .cause.
+      const pgCode = (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code;
+      if (pgCode === "23505") {
         throw new BusinessError("conflict", "That number (or WhatsApp phone number ID) is already set up", 409);
       }
       throw err;

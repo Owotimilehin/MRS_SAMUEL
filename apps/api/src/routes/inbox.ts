@@ -179,6 +179,9 @@ export function inboxRoutes(db: DbClient) {
   // ── Live updates (Server-Sent Events) ──
   r.get("/stream", async (c) => {
     const viewer = c.get("inboxViewer");
+    // nginx buffers proxied responses by default, which would hold events back.
+    c.header("X-Accel-Buffering", "no");
+    c.header("Cache-Control", "no-cache, no-transform");
     return streamSSE(c, async (stream) => {
       let closed = false;
       let seq = 0;

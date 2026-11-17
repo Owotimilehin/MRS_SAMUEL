@@ -12,8 +12,8 @@ It is all switched off until the Meta and Twilio settings below are filled in. T
 
 | # | Step | Who | Undo |
 |---|---|---|---|
-| 1 | Review and merge the PR | Tes | Revert the merge commit |
-| 2 | Apply migration `0070_unified_inbox.sql` | Tes | Drop the `inbox_*` tables and `inbox_*` types. Nothing else depends on them. |
+| 1 | Review and merge the PR. **Merging to master deploys at once and the migrator applies `0070_unified_inbox.sql` automatically**, so the merge is the migration. | Tes | Revert the merge commit. The new tables stay behind harmlessly. |
+| 2 | Only if the tables must go: drop the `inbox_*` tables and `inbox_*` types. Nothing else depends on them. | Tes | n/a |
 | 3 | Add the env vars below on the server, then restart the api and worker | Tes | Remove the vars; the features switch off again |
 | 4 | Point the Meta and Twilio webhooks at the URLs below | Tes / Olu | Clear the webhook URLs |
 | 5 | In Inbox settings: add the team(s), the number(s), hours and the phone menu; grant staff access | Owner | Edit in the same screens |
@@ -62,8 +62,10 @@ Someone who can't see a conversation gets "not found" (404), even through the AP
 
 ## Checked, and what still needs checking
 
-- **Unit tests pass locally:** shared 52, domain 22.
-- **Integration tests haven't run here (no Docker on this Mac); CI runs them.** They cover the WhatsApp webhook, the 24-hour rule, access scope and the voice webhooks: `apps/api/test/integration/inbox-whatsapp.test.ts` and `inbox-voice.test.ts`.
+- **Unit tests pass locally:** shared 52, domain 22, admin 153, mobile 29.
+- **Integration tests ran locally against a throwaway Postgres 16** (no Docker here, so a stand-in replaced the test container): the 18 inbox tests pass, and 489 of the 500 API tests pass. The failing ones are in stock-transfer, date-window and migration-count tests that the inbox does not touch; CI is the real check for those.
+- **First real run found a bug the type checker missed** (every inbound message failed to save); fixed in `a92fd62`. Migration 0070 applied cleanly on Postgres 16.
+- **Smoke-tested on a local preview:** every inbox page endpoint, live updates, and each worker job once.
 - **Never run against real Meta or Twilio.** Please check these against the provider docs on the test number before go-live:
   - Twilio: `<Client><Identity>` with `<Parameter>`, `recordingStatusCallbackEvent` on `<Dial>` and `<Record>`, and `RequestedChannels=2` on dual-channel recording downloads.
   - Meta: the Graph API version, and the `phone_number_quality_update` payload fields.
