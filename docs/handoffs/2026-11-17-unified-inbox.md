@@ -70,3 +70,17 @@ Someone who can't see a conversation gets "not found" (404), even through the AP
   - Twilio: `<Client><Identity>` with `<Parameter>`, `recordingStatusCallbackEvent` on `<Dial>` and `<Record>`, and `RequestedChannels=2` on dual-channel recording downloads.
   - Meta: the Graph API version, and the `phone_number_quality_update` payload fields.
 - **Assumes one worker process.** Recording jobs don't lock rows.
+
+## Added in the second pass (17 Nov)
+
+- **Calls:** transfer to another team; Hold (in the browser only: the customer hears silence, not music, and the call is still recorded); uploaded MP3/WAV greetings for the menu, the after-hours message and "play a message" options.
+- **Records:** recordings are kept until someone deletes them. Staff with `recordings.delete` (Owner, Admin) can delete one recording. Staff with `inbox.erase` (Owner only) can erase a customer's whole inbox history on request, or merge a duplicate contact's chats into another contact. Neither touches the customer record or orders.
+- **Long chats:** the timeline loads the newest 100 items and pages back.
+- **Sending:** when WhatsApp never answers, the message shows amber "not confirmed" instead of red "failed". Missed-call follow-ups retry up to 3 times, only when the message certainly did not go out.
+- **Worker:** inbox jobs run on their own loop beside the shop's jobs, and each takes a database lock, so a second worker is safe.
+- **Phones:** a closed phone keeps ringing for 30 days after the app was last opened; dead push tokens are removed.
+- **Staging:** `docker-compose.staging.yml` and `docs/runbooks/inbox-staging.md` (not yet run).
+- **Load test:** `scripts/inbox-load-test.mjs`. Local result: 20 messages a second for 60 seconds with 50 live connections, 0 lost, 0 duplicated, 95% within 14 ms, about 15% of one core.
+- **Shop fix included in this branch:** database rule errors now show their proper message instead of a server error in six places (see `2026-11-17-app-and-payments-audit.md`, A2).
+
+Still to check on a real test call: that redirecting a call for transfer does not also trigger the old ring's result callback, and the Twilio details listed above.
