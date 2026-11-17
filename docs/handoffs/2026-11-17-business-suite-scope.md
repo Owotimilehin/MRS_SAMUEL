@@ -70,18 +70,20 @@ Depends on the payment fixes.
 - Make the calling code work with that provider as well as Twilio: phone menu, hours, voicemail, recording with a spoken notice, transfer.
 - Answer customer-started WhatsApp calls in the same call bar.
 - Outbound calls over the phone line only.
+- Call tracking: a separate number for each place the business advertises (Instagram bio, a flyer, Google, a radio ad), so every call shows where it came from. Reports per source: calls, missed calls, answer time, and how many callers went on to order.
 
-Done when: a customer can ring a Nigerian number or tap call on WhatsApp and reach the right team, and staff can call back from the conversation.
+Done when: a customer can ring a Nigerian number or tap call on WhatsApp and reach the right team, staff can call back from the conversation, and the owner can see which advert made the phone ring.
 
 ### Phase 4: AI built in
 
-- Call transcripts and summaries (needs a transcription provider).
+- Call tracking with AI: every call transcribed and summarised (needs a transcription provider), then tagged with why the customer called (order, complaint, delivery, bulk enquiry), how it ended (order placed, follow-up needed, unresolved) and anything promised to the customer. Missed or unresolved calls become follow-up tasks.
+- Call quality view for the owner: common reasons for calling, complaints by topic, calls that needed a second call.
 - Suggested replies drawn from quick replies, the product list, order status and delivery rules. Staff approve before sending.
 - Optional auto-answer for simple questions outside hours (hours, delivery areas, order status), always with "talk to a person".
 - Chat summaries for hand-overs and automatic labels (complaint, bulk enquiry).
 - Guardrails: no chat content used to train any model; no card details in chat.
 
-Done when: staff accept or edit a suggested reply in one tap, and every call has a readable summary.
+Done when: staff accept or edit a suggested reply in one tap, and every call has a readable summary, a reason and an outcome without anyone typing them.
 
 ### Phase 5: marketing and measurement
 
