@@ -134,6 +134,7 @@ export const INBOX_EVENTS = [
   "message.status",
   "conversation.updated",
   "note.created",
+  "conversation.typing",
   "call.ringing",
   "call.updated",
   "recording.processed",
