@@ -236,6 +236,20 @@ export function saleRoutes(db: DbClient) {
       throw new BusinessError("forbidden", "this role may only create preorders", 403);
     }
 
+    // A re-send of a sale that is already lodged. A sale that completed is
+    // replayed by the idempotency middleware and never gets here; this is the
+    // one that was saved by a request which then did not finish (cut off
+    // mid-flight), whose key a retry has taken over. sale_order.idempotency_key
+    // is unique, so running on could only fail at the insert, and the till
+    // would re-send into that failure for good. Hand back the SAME sale
+    // instead. Before the shift gate on purpose: the sale exists whether or not
+    // the shift has since closed.
+    const [lodged] = await db
+      .select()
+      .from(saleOrder)
+      .where(and(eq(saleOrder.idempotencyKey, idempotencyKey), eq(saleOrder.branchId, branchId)));
+    if (lodged) return c.json({ data: lodged }, 201);
+
     // Open-shift gate: the branch must have an open shift before any sale
     // (walk-up or preorder) can be created. The OWNER is exempt — they may ring
     // a sale on the till without first opening a shift; every other role
