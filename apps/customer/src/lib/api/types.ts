@@ -106,7 +106,9 @@ export interface ApiPlacedOrder {
   // True when the order is made-to-order (a line is out of stock at the branch
   // or is a preorder-only size). Drives the gracious checkout confirmation.
   is_preorder: boolean;
-  payment: { provider: "opay"; reference: string; redirect_url: string };
+  // redirect_url is null when the order was saved but OPay's payment page could
+  // not be opened; the customer completes payment from the order's page.
+  payment: { provider: "opay"; reference: string; redirect_url: string | null };
 }
 
 
