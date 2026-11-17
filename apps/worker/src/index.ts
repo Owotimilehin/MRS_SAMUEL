@@ -11,10 +11,7 @@ import { sweepStuckPaymentOrders } from "./jobs/payment-reconcile.js";
 import { expireUnpaidOrders } from "./jobs/expire-unpaid-orders.js";
 import { pruneCheckoutLog } from "./jobs/prune-checkout-log.js";
 import { runJob } from "./jobs/run-job.js";
-import { retryWebhookEvents, downloadPendingMedia, syncAllTemplates } from "./jobs/inbox-whatsapp.js";
-import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-voice.js";
-import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
-import { sendMessagePushes } from "./jobs/inbox-push.js";
+import { runInboxLoop } from "./inbox-loop.js";
 
 const logger = pino({ base: { service: "ms-worker" } });
 
@@ -31,19 +28,6 @@ const CRON_CHECK_INTERVAL_MS = 15 * 60_000; // cron poll every 15 minutes
 const PAYMENT_RECONCILE_INTERVAL_MS = 120_000; // re-fire stuck payment webhooks every 2 minutes
 const EXPIRE_UNPAID_INTERVAL_MS = 5 * 60_000; // auto-cancel abandoned online orders every 5 minutes
 const PRUNE_CHECKOUT_LOG_INTERVAL_MS = 6 * 60 * 60_000; // prune old checkout-log rows every 6h
-
-// Unified inbox jobs (each is a no-op when its provider isn't configured).
-const INBOX_MEDIA_INTERVAL_MS = 10_000; // incoming photos / voice notes
-const INBOX_WEBHOOK_RETRY_MS = 30_000;
-const INBOX_RECORDINGS_MS = 15_000; // store, transcribe, summarise calls
-const INBOX_FOLLOWUP_MS = 60_000; // missed-call WhatsApp follow-ups
-const INBOX_TEMPLATE_SYNC_MS = 60 * 60_000; // hourly
-const inboxSummariser = claudeSummariserFromEnv();
-let lastInboxMediaAt = 0;
-let lastInboxWebhookRetryAt = 0;
-let lastInboxRecordingsAt = 0;
-let lastInboxFollowupAt = 0;
-let lastInboxTemplateSyncAt = 0;
 
 let stopping = false;
 function shutdown(reason: string): void {
@@ -127,32 +111,6 @@ async function loop(): Promise<void> {
         lastPruneCheckoutLogAt = now;
       }
 
-      // ── Unified inbox ──
-      if (now - lastInboxMediaAt > INBOX_MEDIA_INTERVAL_MS) {
-        await runJob(logger, "inbox_media", () => downloadPendingMedia(db, logger));
-        lastInboxMediaAt = now;
-      }
-      // Push notifications to staff phones: every tick (5s) so they feel instant.
-      await runJob(logger, "inbox_push", () => sendMessagePushes(db, logger));
-      if (now - lastInboxWebhookRetryAt > INBOX_WEBHOOK_RETRY_MS) {
-        await runJob(logger, "inbox_webhook_retry", () => retryWebhookEvents(db, logger));
-        lastInboxWebhookRetryAt = now;
-      }
-      if (now - lastInboxRecordingsAt > INBOX_RECORDINGS_MS) {
-        await runJob(logger, "inbox_recordings", () =>
-          processPendingRecordings(db, logger, { summariser: inboxSummariser }),
-        );
-        lastInboxRecordingsAt = now;
-      }
-      if (now - lastInboxFollowupAt > INBOX_FOLLOWUP_MS) {
-        await runJob(logger, "inbox_followups", () => sendMissedCallFollowups(db, logger));
-        lastInboxFollowupAt = now;
-      }
-      if (now - lastInboxTemplateSyncAt > INBOX_TEMPLATE_SYNC_MS) {
-        await runJob(logger, "inbox_template_sync", () => syncAllTemplates(db, logger));
-        lastInboxTemplateSyncAt = now;
-      }
-
       // Cron jobs: monthly P&L digest + recurring expense sweep. Idempotent
       // via the cron_run table so a restart never double-fires.
       if (now - lastCronCheckAt > CRON_CHECK_INTERVAL_MS) {
@@ -178,5 +136,6 @@ async function loop(): Promise<void> {
 }
 
 logger.info({ pollMs: POLL_MS, sweepIntervalMs: SWEEP_INTERVAL_MS }, "worker started");
-await loop();
+// The inbox jobs run beside the shop loop, never inside it.
+await Promise.all([loop(), runInboxLoop(db, logger, () => stopping)]);
 logger.info("worker exited");

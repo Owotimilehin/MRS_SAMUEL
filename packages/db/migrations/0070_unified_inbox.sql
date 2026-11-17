@@ -15,7 +15,7 @@ DO $$ BEGIN CREATE TYPE "inbox_call_outcome" AS ENUM ('in_progress','answered','
 --> statement-breakpoint
 DO $$ BEGIN CREATE TYPE "inbox_recording_kind" AS ENUM ('call','voicemail'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 --> statement-breakpoint
-DO $$ BEGIN CREATE TYPE "inbox_recording_status" AS ENUM ('pending','stored','transcribed','summarised','failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE "inbox_recording_status" AS ENUM ('pending','stored','transcribed','summarised','failed','deleted'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 --> statement-breakpoint
 DO $$ BEGIN CREATE TYPE "inbox_ivr_action" AS ENUM ('ring_team','voicemail','play'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 --> statement-breakpoint

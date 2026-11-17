@@ -60,6 +60,8 @@ export const inboxRecordingStatus = pgEnum("inbox_recording_status", [
   "transcribed",
   "summarised",
   "failed",
+  // Audio, transcript and summary removed on purpose by staff.
+  "deleted",
 ]);
 export const inboxIvrAction = pgEnum("inbox_ivr_action", ["ring_team", "voicemail", "play"]);
 export const inboxWebhookSource = pgEnum("inbox_webhook_source", ["meta", "twilio"]);

@@ -15,7 +15,7 @@ import {
 import { checkFactoryStockAvailableByVariant, nextTransferNumber, recordVarianceLoss } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
-import { BusinessError } from "../lib/errors.js";
+import { BusinessError, pgErrorCode } from "../lib/errors.js";
 import { enqueueOutbox } from "../lib/notify.js";
 
 function actsOnAnyBranch(role: string): boolean {
@@ -673,7 +673,7 @@ export function transferRoutes(db: DbClient) {
     }).catch((err: unknown) => {
       // The append-only ledger trigger raises check_violation (23514) if a
       // settlement would drive a location's balance negative.
-      if (err && typeof err === "object" && (err as { code?: string }).code === "23514") {
+      if (pgErrorCode(err) === "23514") {
         throw new BusinessError("conflict", "settlement would make stock negative", 409);
       }
       throw err;

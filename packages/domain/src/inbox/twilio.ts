@@ -354,3 +354,21 @@ export async function deleteRecording(cfg: TwilioRestConfig, recordingSid: strin
     throw new TwilioApiError(`recording delete failed: ${res.status}`, res.status, res.status === 429 || res.status >= 500);
   }
 }
+
+/**
+ * Point a live call at new instructions (TwiML fetched from `url`). Used for
+ * transfer: the customer's leg is redirected, which ends the current <Dial>.
+ */
+export async function redirectCall(cfg: TwilioRestConfig, callSid: string, url: string): Promise<void> {
+  const base = cfg.baseUrl ?? "https://api.twilio.com";
+  const endpoint = `${base}/2010-04-01/Accounts/${encodeURIComponent(cfg.accountSid)}/Calls/${encodeURIComponent(callSid)}.json`;
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { authorization: basicAuth(cfg), "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ Url: url, Method: "POST" }).toString(),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    throw new TwilioApiError(`call redirect failed: ${res.status}`, res.status, res.status === 429 || res.status >= 500);
+  }
+}

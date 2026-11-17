@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { wantsPush } from "./inbox-push.js";
+import { deadTokens, wantsPush, type PushMessage } from "./inbox-push.js";
 import type { InboxViewer } from "@ms/domain";
 
 const viewer: InboxViewer = { userId: "U1", capabilities: ["inbox.view"], teamIds: ["T1"], numberIds: ["N1"] };
@@ -19,5 +19,18 @@ describe("wantsPush", () => {
     const team: InboxViewer = { ...viewer, capabilities: ["inbox.view", "inbox.view_team"] };
     expect(wantsPush(team, "all", { ...conv, assigneeId: "U2" })).toBe(true);
     expect(wantsPush(team, "assigned", { ...conv, assigneeId: "U2" })).toBe(false);
+  });
+});
+
+describe("deadTokens", () => {
+  const msg = (to: string): PushMessage => ({ to, title: "t", body: "b", data: {}, sound: "default", channelId: "messages" });
+  it("picks out only DeviceNotRegistered tickets, by position", () => {
+    const tickets = [
+      { status: "ok", id: "1" },
+      { status: "error", details: { error: "DeviceNotRegistered" } },
+      { status: "error", details: { error: "MessageRateExceeded" } },
+    ];
+    expect(deadTokens([msg("a"), msg("b"), msg("c")], tickets)).toEqual(["b"]);
+    expect(deadTokens([msg("a")], null)).toEqual([]);
   });
 });

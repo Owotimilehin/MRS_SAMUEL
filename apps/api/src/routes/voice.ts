@@ -35,6 +35,7 @@ import {
   inboxPhoneNumber,
   inboxPresence,
   inboxPushToken,
+  inboxTeam,
   inboxRecording,
   inboxTeamMember,
   inboxUserNumberAccess,
@@ -44,6 +45,8 @@ import {
 } from "@ms/db";
 import {
   canSeeConversation,
+  redirectCall,
+  twilioRestConfigFromEnv,
   findOrCreateCustomer,
   ts,
   findOrOpenConversation,
@@ -63,6 +66,8 @@ import { requireAnyCapability, requireAuth, requireCapability } from "../middlew
 import { BusinessError } from "../lib/errors.js";
 import { logger } from "../logger.js";
 import { reloadViewer } from "../inbox/realtime.js";
+import { presignInboxGet } from "../lib/r2.js";
+import { writeAudit } from "../middleware/audit.js";
 
 export const VOICE_WEBHOOK_PREFIX = "/v1/voice";
 
@@ -239,8 +244,12 @@ async function hasNumberAccess(db: DbExecutor, userId: string, caps: readonly Ca
  * the last 90s, active, holding calls.answer, and (unless inbox.view_all)
  * granted that number.
  */
-/** A phone that opened the app within this window can be rung while closed. */
-const MOBILE_REACHABLE_MS = 12 * 60 * 60 * 1000;
+/**
+ * A phone that opened the app within this window can be rung while closed
+ * (Twilio wakes it by push). 30 days: staff who marked themselves available
+ * keep ringing over nights and weekends; signing out removes the device.
+ */
+const MOBILE_REACHABLE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export async function onlineStaffFor(
   db: DbExecutor,
@@ -305,9 +314,18 @@ async function markMissed(db: DbExecutor, call: CallRow, preview = "Missed call"
 
 // ── TwiML fragments ──────────────────────────────────────────────────────────
 
-function appendVoicemail(t: TwiML, callId: string, prompt: string): TwiML {
-  return t
-    .say(prompt)
+/** A short-lived link Twilio can fetch an uploaded greeting from; null if storage is off. */
+async function greetingUrl(key: string | null | undefined): Promise<string | null> {
+  if (!key) return null;
+  try {
+    return await presignInboxGet(key, { expiresIn: 3600 });
+  } catch {
+    return null; // fall back to the typed text
+  }
+}
+
+function appendVoicemail(t: TwiML, callId: string, prompt: string, audioUrl: string | null = null): TwiML {
+  return (audioUrl ? t.play(audioUrl) : t.say(prompt))
     .record({
       maxLength: 120,
       playBeep: true,
@@ -317,9 +335,12 @@ function appendVoicemail(t: TwiML, callId: string, prompt: string): TwiML {
     .hangup();
 }
 
-function appendMenu(t: TwiML, callId: string, menu: Menu, attempt: number): TwiML {
+async function appendMenu(t: TwiML, callId: string, menu: Menu, attempt: number): Promise<TwiML> {
   const next = voiceUrl("/menu", { callId, attempt });
-  return t.gather({ numDigits: 1, timeout: 5, action: next }, { say: menu.menu.greetingText }).redirect(next);
+  const audio = await greetingUrl(menu.menu.greetingAudioKey);
+  return t
+    .gather({ numDigits: 1, timeout: 5, action: next }, audio ? { play: audio } : { say: menu.menu.greetingText })
+    .redirect(next);
 }
 
 async function ringTeam(
@@ -368,7 +389,10 @@ async function runOption(
         .update(inboxCall)
         .set({ outcome: "information" })
         .where(and(eq(inboxCall.id, ctx.call.id), eq(inboxCall.outcome, "in_progress")));
-      return t.say(option.playText ?? option.label).hangup();
+      {
+        const audio = await greetingUrl(option.audioKey);
+        return (audio ? t.play(audio) : t.say(option.playText ?? option.label)).hangup();
+      }
   }
 }
 
@@ -421,7 +445,12 @@ export function voiceWebhookRoutes(db: DbClient) {
             .where(and(eq(inboxCall.id, call!.id), eq(inboxCall.outcome, "in_progress")));
           const closedConv = await touchConversation(tx, conv.id, { preview: "After-hours call", unreadIncrement: true, at: now });
           await publishCall(tx, closedConv, call!.id);
-          return appendVoicemail(twiml(), call!.id, num.afterHoursText || DEFAULT_AFTER_HOURS);
+          return appendVoicemail(
+            twiml(),
+            call!.id,
+            num.afterHoursText || DEFAULT_AFTER_HOURS,
+            await greetingUrl(num.afterHoursAudioKey),
+          );
         }
 
         const t = twiml().say(RECORDING_NOTICE);
@@ -454,6 +483,18 @@ export function voiceWebhookRoutes(db: DbClient) {
         const fallback = defaultOption(menu.options);
         if (!fallback) return ringTeam(tx, ctx, ctx.num.defaultTeamId, twiml());
         return runOption(tx, ctx, fallback, twiml());
+      });
+    }),
+  );
+
+  // A staff member transferred the call: ring the chosen team (voicemail if nobody is online).
+  r.post(
+    "/transfer",
+    twilioWebhook(db, "/transfer", async ({ query }) => {
+      return db.transaction(async (tx) => {
+        const ctx = await loadCallContext(tx, query.callId);
+        if (!ctx || !query.teamId) return twiml().hangup();
+        return ringTeam(tx, ctx, query.teamId, twiml().say("Please hold while we transfer your call."));
       });
     }),
   );
@@ -767,6 +808,55 @@ export function voiceAppRoutes(db: DbClient) {
       return updated;
     });
     return c.json({ data: result });
+  });
+
+  /**
+   * Transfer a call I answered to another team. The customer's leg is sent to
+   * /transfer (rings that team); my own leg ends.
+   */
+  r.post("/calls/:ref/transfer", requireCapability("calls.answer"), async (c) => {
+    const auth = c.get("auth");
+    const ref = c.req.param("ref");
+    const { team_id } = z.object({ team_id: z.string().uuid() }).parse(await c.req.json());
+    const cfg = twilioRestConfigFromEnv();
+    if (!cfg) throw new BusinessError("service_unavailable", "Phone calls are not configured on this server", 503);
+    const [call] = await db
+      .select()
+      .from(inboxCall)
+      .where(UUID_RE.test(ref) ? eq(inboxCall.id, ref) : eq(inboxCall.twilioCallSid, ref));
+    if (!call || call.direction !== "in" || call.answeredByUserId !== auth.userId) {
+      throw new BusinessError("not_found", "call not found", 404);
+    }
+    if (call.endedAt || call.outcome !== "answered") {
+      throw new BusinessError("conflict", "This call can't be transferred", 409);
+    }
+    const [team] = await db.select().from(inboxTeam).where(and(eq(inboxTeam.id, team_id), eq(inboxTeam.isActive, true)));
+    if (!team) throw new BusinessError("validation_failed", "Pick a team to transfer to", 400);
+
+    // Back to "ringing" for the new team, so their accept works; remember who had it.
+    await db
+      .update(inboxCall)
+      .set({ outcome: "in_progress", answeredByUserId: null, teamId: team_id })
+      .where(eq(inboxCall.id, call.id));
+    try {
+      await redirectCall(cfg, call.twilioCallSid, voiceUrl("/transfer", { callId: call.id, teamId: team_id }));
+    } catch (err) {
+      // Put it back: the caller is still talking to this staff member.
+      await db
+        .update(inboxCall)
+        .set({ outcome: "answered", answeredByUserId: auth.userId, teamId: call.teamId })
+        .where(eq(inboxCall.id, call.id));
+      logger.warn({ err, callId: call.id }, "call transfer failed");
+      throw new BusinessError("conflict", "Couldn't transfer the call — it may have just ended", 409);
+    }
+    await writeAudit(db, c, {
+      action: "inbox.call_transfer",
+      entityType: "inbox_call",
+      entityId: call.id,
+      after: { team_id, team: team.name },
+      notify: false,
+    });
+    return c.json({ ok: true });
   });
 
   return r;

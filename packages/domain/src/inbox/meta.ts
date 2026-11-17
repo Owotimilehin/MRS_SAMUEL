@@ -27,6 +27,12 @@ export class MetaApiError extends Error {
     public readonly code: string | null,
     /** Worth retrying: rate limit or Meta-side failure. */
     public readonly retryable: boolean,
+    /**
+     * Did the request reach Meta? "not_sent" = Meta refused it or we never
+     * connected (safe to retry). "unknown" = no answer came back (timeout,
+     * dropped connection), so the message may have been delivered.
+     */
+    public readonly delivery: "not_sent" | "unknown" = "not_sent",
   ) {
     super(message);
     this.name = "MetaApiError";
@@ -63,16 +69,32 @@ async function graph<T>(
 ): Promise<T> {
   const base = cfg.baseUrl ?? "https://graph.facebook.com";
   const url = path.startsWith("http") ? path : `${base}/${cfg.graphVersion}/${path.replace(/^\//, "")}`;
-  const res = await fetch(url, {
-    method,
-    headers: {
-      authorization: `Bearer ${cfg.token}`,
-      ...(body ? { "content-type": "application/json" } : {}),
-    },
-    body: body ? JSON.stringify(body) : null,
-    signal: AbortSignal.timeout(15_000),
-  });
-  const text = await res.text();
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        authorization: `Bearer ${cfg.token}`,
+        ...(body ? { "content-type": "application/json" } : {}),
+      },
+      body: body ? JSON.stringify(body) : null,
+      signal: AbortSignal.timeout(15_000),
+    });
+    text = await res.text();
+  } catch (err) {
+    // Never connected → certainly not sent. Anything else (timeout, reset
+    // mid-flight) → we can't know whether Meta acted on it.
+    const code = String((err as { cause?: { code?: string } }).cause?.code ?? "");
+    const neverConnected = ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH"].includes(code);
+    throw new MetaApiError(
+      neverConnected ? "Could not reach WhatsApp" : "No answer from WhatsApp",
+      0,
+      code || null,
+      true,
+      neverConnected ? "not_sent" : "unknown",
+    );
+  }
   let json: unknown = null;
   try {
     json = text ? JSON.parse(text) : null;
@@ -85,7 +107,8 @@ async function graph<T>(
     const detail = err?.error_data?.details;
     const msg = [err?.message ?? `Meta API ${res.status}`, detail].filter(Boolean).join(": ");
     const retryable = res.status >= 500 || res.status === 429 || (code !== null && RETRYABLE_CODES.has(code));
-    throw new MetaApiError(msg, res.status, code, retryable);
+    // A structured error means Meta refused it; a bare 5xx leaves it unknown.
+    throw new MetaApiError(msg, res.status, code, retryable, err || res.status < 500 ? "not_sent" : "unknown");
   }
   return json as T;
 }

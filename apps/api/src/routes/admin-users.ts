@@ -13,12 +13,12 @@ import { hashPassword } from "../auth/argon.js";
 import { revokeAllUserSessions } from "../auth/session.js";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
-import { BusinessError } from "../lib/errors.js";
+import { BusinessError, pgErrorCode } from "../lib/errors.js";
 
 /** Postgres foreign-key violation — raised when a hard delete is blocked by a
  *  referencing row (a sale/payment/stock entry the user recorded). */
 function isForeignKeyViolation(e: unknown): boolean {
-  return typeof e === "object" && e !== null && (e as { code?: string }).code === "23503";
+  return pgErrorCode(e) === "23503";
 }
 
 /** True when two effective-capability lists hold the same set. resolveCapabilities

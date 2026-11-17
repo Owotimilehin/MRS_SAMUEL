@@ -12,7 +12,7 @@ import {
 } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
-import { BusinessError } from "../lib/errors.js";
+import { BusinessError, pgErrorCode } from "../lib/errors.js";
 import { enqueueOutbox } from "../lib/notify.js";
 
 const MaterialCreate = z.object({
@@ -453,7 +453,7 @@ export function packagingRoutes(db: DbClient) {
         return { before: purchase, after: updated };
       })
       .catch((err: unknown) => {
-        if (err && typeof err === "object" && (err as { code?: string }).code === "23514") {
+        if (pgErrorCode(err) === "23514") {
           throw new BusinessError(
             "conflict",
             "reducing the quantity would make packaging stock negative",

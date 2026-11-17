@@ -36,18 +36,37 @@ export interface PushMessage {
   channelId: string;
 }
 
-export type PushSender = (messages: PushMessage[]) => Promise<void>;
+/** Sends pushes; returns the tokens the push service says are dead. */
+export type PushSender = (messages: PushMessage[]) => Promise<string[] | void>;
+
+/** Tokens Expo reports as DeviceNotRegistered (app uninstalled). Exported for tests. */
+export function deadTokens(messages: PushMessage[], tickets: unknown): string[] {
+  if (!Array.isArray(tickets)) return [];
+  const dead: string[] = [];
+  tickets.forEach((t, i) => {
+    const ticket = t as { status?: string; details?: { error?: string } } | null;
+    if (ticket?.status === "error" && ticket.details?.error === "DeviceNotRegistered" && messages[i]) {
+      dead.push(messages[i]!.to);
+    }
+  });
+  return dead;
+}
 
 export const expoPushSender: PushSender = async (messages) => {
+  const dead: string[] = [];
   for (let i = 0; i < messages.length; i += 100) {
+    const batch = messages.slice(i, i + 100);
     const res = await fetch(EXPO_PUSH_URL, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify(messages.slice(i, i + 100)),
+      body: JSON.stringify(batch),
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`expo push ${res.status}`);
+    const json = (await res.json().catch(() => null)) as { data?: unknown } | null;
+    dead.push(...deadTokens(batch, json?.data));
   }
+  return dead;
 };
 
 /** Exported for tests. */
@@ -148,7 +167,14 @@ export async function sendMessagePushes(db: DbClient, log: Log, send: PushSender
   }
 
   try {
-    if (outgoing.length) await send(outgoing);
+    if (outgoing.length) {
+      const dead = await send(outgoing);
+      // Uninstalled apps: stop pushing to them (and stop counting them as reachable).
+      if (dead && dead.length) {
+        await db.delete(inboxPushToken).where(inArray(inboxPushToken.token, dead));
+        log.info({ removed: dead.length }, "dead push tokens removed");
+      }
+    }
   } catch (err) {
     log.warn({ err, count: outgoing.length }, "inbox push send failed");
   }

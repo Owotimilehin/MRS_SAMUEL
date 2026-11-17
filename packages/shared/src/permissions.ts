@@ -81,7 +81,12 @@ export const CAPABILITIES = [
   "calls.outbound",
   "recordings.listen",
   "recordings.download",
+  // Permanently delete a call recording (audio, transcript, summary).
+  "recordings.delete",
   "transcripts.view",
+  // Owner-only by default: erase a customer's inbox history on request, and
+  // merge duplicate contacts' threads.
+  "inbox.erase",
   // Numbers, teams, hours, phone menu, quick replies, template sync.
   "inbox.settings",
   "inbox.reports",
@@ -127,6 +132,7 @@ const ADMIN_CAPS: Capability[] = [
   "calls.outbound",
   "recordings.listen",
   "recordings.download",
+  "recordings.delete",
   "transcripts.view",
   "inbox.settings",
   "inbox.reports",

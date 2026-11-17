@@ -27,7 +27,7 @@ import {
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
-import { BusinessError } from "../lib/errors.js";
+import { BusinessError, pgErrorCode } from "../lib/errors.js";
 import { enqueueOutbox } from "../lib/notify.js";
 
 const Submit = z.object({
@@ -364,7 +364,7 @@ export function dailyCloseRoutes(db: DbClient) {
       .catch((err: unknown) => {
         // Append-only ledger trigger: reversing an overage after that stock was
         // sold would drive the balance negative.
-        if (err && typeof err === "object" && (err as { code?: string }).code === "23514") {
+        if (pgErrorCode(err) === "23514") {
           throw new BusinessError("conflict", "reversal would make stock negative", 409);
         }
         throw err;

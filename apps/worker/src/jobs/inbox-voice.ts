@@ -196,6 +196,7 @@ export async function processPendingRecordings(
 
 const FOLLOWUP_WINDOW_MS = 6 * 60 * 60 * 1000;
 const FOLLOWUP_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const FOLLOWUP_MAX_TRIES = 3;
 /** Calls with no final status callback are treated as over after this long. */
 const STALE_CALL_MS = 15 * 60 * 1000;
 export const MISSED_CALL_TEMPLATE = "missed_call_followup";
@@ -274,6 +275,7 @@ export async function sendMissedCallFollowups(
         and(
           eq(inboxConversation.customerId, call.customerId),
           eq(inboxMessage.direction, "out"),
+          ne(inboxMessage.status, "failed"),
           gte(inboxMessage.createdAt, call.startedAt),
         ),
       )
@@ -311,7 +313,26 @@ export async function sendMissedCallFollowups(
         now,
       );
       if (msg.status === "failed") {
-        logger.warn({ callId: call.id, messageId: msg.id, error: msg.errorMessage }, "missed-call follow-up failed at Meta");
+        // Retry only when it certainly did not go out (never when unconfirmed,
+        // which could double-send), and at most FOLLOWUP_MAX_TRIES times.
+        const retryable = (msg.payload as { retryable?: boolean } | null)?.retryable === true;
+        const [tries] = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(inboxMessage)
+          .where(
+            and(
+              eq(inboxMessage.conversationId, conversationId),
+              eq(inboxMessage.templateName, MISSED_CALL_TEMPLATE),
+              eq(inboxMessage.status, "failed"),
+              gte(inboxMessage.createdAt, call.startedAt),
+            ),
+          );
+        if (retryable && (tries?.n ?? 0) < FOLLOWUP_MAX_TRIES) {
+          await db.update(inboxCall).set({ followupSentAt: null }).where(eq(inboxCall.id, call.id));
+          logger.warn({ callId: call.id, error: msg.errorMessage }, "missed-call follow-up not sent; will retry");
+        } else {
+          logger.warn({ callId: call.id, messageId: msg.id, error: msg.errorMessage }, "missed-call follow-up failed");
+        }
       } else {
         sent++;
       }

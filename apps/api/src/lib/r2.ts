@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuid } from "uuid";
 import { env } from "../env.js";
@@ -126,4 +126,33 @@ export async function presignInboxGet(
       : {}),
   });
   return getSignedUrl(getClient(), cmd, { expiresIn: opts.expiresIn ?? 600 });
+}
+
+/** Permanently delete private inbox files. No-op when storage isn't configured. */
+export async function deleteInboxObjects(keys: readonly (string | null | undefined)[]): Promise<number> {
+  const real = [...new Set(keys.filter((k): k is string => !!k && k.startsWith("inbox/")))];
+  if (real.length === 0 || !env.R2_ACCOUNT_ID || !env.R2_BUCKET) return 0;
+  for (let i = 0; i < real.length; i += 1000) {
+    await getClient().send(
+      new DeleteObjectsCommand({
+        Bucket: env.R2_BUCKET!,
+        Delete: { Objects: real.slice(i, i + 1000).map((Key) => ({ Key })), Quiet: true },
+      }),
+    );
+  }
+  return real.length;
+}
+
+const GREETING_TYPES: Record<string, string> = { "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav" };
+
+/** Presigned PUT for a phone greeting recording (MP3/WAV, max 5 MB) under inbox/greetings/. */
+export async function presignGreetingPut(args: { contentType: string; sizeBytes: number }): Promise<PresignPutResult> {
+  const ext = GREETING_TYPES[args.contentType];
+  if (!ext) throw new BusinessError("validation_failed", "Upload an MP3 or WAV file", 400);
+  if (args.sizeBytes <= 0 || args.sizeBytes > 5 * 1024 * 1024) {
+    throw new BusinessError("validation_failed", "Recording is too large (max 5 MB)", 400);
+  }
+  const key = `inbox/greetings/${uuid()}.${ext}`;
+  const cmd = new PutObjectCommand({ Bucket: env.R2_BUCKET!, Key: key, ContentType: args.contentType, ContentLength: args.sizeBytes });
+  return { upload_url: await getSignedUrl(getClient(), cmd, { expiresIn: 300 }), object_key: key };
 }

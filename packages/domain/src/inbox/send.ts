@@ -121,6 +121,12 @@ export async function sendFromConversation(
         status: "failed",
         errorCode: e?.code ?? null,
         errorMessage: err instanceof Error ? err.message : String(err),
+        // unconfirmed: it may have been delivered — staff should check before
+        // resending. retryable: certainly not sent and worth another try.
+        payload: {
+          unconfirmed: e?.delivery === "unknown",
+          retryable: e !== null && e.delivery === "not_sent" && e.retryable,
+        },
       })
       .where(eq(inboxMessage.id, queued!.id))
       .returning()) as [SentMessage];

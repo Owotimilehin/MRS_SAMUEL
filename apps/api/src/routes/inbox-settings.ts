@@ -19,11 +19,14 @@ import { getNumberInfo, metaConfigFromEnv, registerNumber, unparkEventsForNumber
 import { toE164 } from "@ms/shared";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
-import { BusinessError } from "../lib/errors.js";
+import { BusinessError, pgErrorCode } from "../lib/errors.js";
 import { clearInboxViewerCache } from "./inbox.js";
+import { presignGreetingPut, presignInboxGet } from "../lib/r2.js";
 
 const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$|^24:00$/, "use HH:MM");
 const Uuid = z.string().uuid();
+/** Storage key of an uploaded greeting (from POST /greetings/upload). */
+const GreetingKey = z.string().regex(/^inbox\/greetings\/[0-9a-f-]{36}\.(mp3|wav)$/).nullable().optional();
 
 async function audit(db: DbClient, c: Context, action: string, entityType: string, entityId: string, after?: unknown, before?: unknown) {
   await writeAudit(db, c, { action, entityType, entityId, after, before, notify: true });
@@ -49,6 +52,7 @@ const NumberBody = z.object({
   hours_profile_id: Uuid.nullable().optional(),
   ivr_menu_id: Uuid.nullable().optional(),
   after_hours_text: z.string().max(600).nullable().optional(),
+  after_hours_audio_key: GreetingKey,
   is_active: z.boolean().optional(),
 });
 
@@ -71,6 +75,7 @@ function numberValues(b: { [K in keyof z.infer<typeof NumberBody>]?: z.infer<typ
   if (b.hours_profile_id !== undefined) out.hoursProfileId = b.hours_profile_id;
   if (b.ivr_menu_id !== undefined) out.ivrMenuId = b.ivr_menu_id;
   if (b.after_hours_text !== undefined) out.afterHoursText = b.after_hours_text;
+  if (b.after_hours_audio_key !== undefined) out.afterHoursAudioKey = b.after_hours_audio_key;
   if (b.is_active !== undefined) out.isActive = b.is_active;
   return out;
 }
@@ -107,9 +112,7 @@ export function inboxSettingsRoutes(db: DbClient) {
       await audit(db, c, "inbox.number_create", "inbox_phone_number", row!.id, { label: row!.label, e164: row!.e164 });
       return c.json({ data: row }, 201);
     } catch (err) {
-      // Drizzle wraps driver errors, so the Postgres code may sit on .cause.
-      const pgCode = (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code;
-      if (pgCode === "23505") {
+      if (pgErrorCode(err) === "23505") {
         throw new BusinessError("conflict", "That number (or WhatsApp phone number ID) is already set up", 409);
       }
       throw err;
@@ -316,6 +319,19 @@ export function inboxSettingsRoutes(db: DbClient) {
     return c.json({ ok: true });
   });
 
+  // ── Greeting recordings ──
+  r.post("/greetings/upload", requireCapability("inbox.settings"), async (c) => {
+    const body = z
+      .object({ filename: z.string().max(240).optional(), content_type: z.string().max(100), size_bytes: z.number().int().positive() })
+      .parse(await c.req.json());
+    return c.json({ data: await presignGreetingPut({ contentType: body.content_type, sizeBytes: body.size_bytes }) }, 201);
+  });
+  r.get("/greetings/url", requireCapability("inbox.settings"), async (c) => {
+    const key = z.string().regex(/^inbox\/greetings\/[0-9a-f-]{36}\.(mp3|wav)$/).safeParse(c.req.query("key"));
+    if (!key.success) throw new BusinessError("not_found", "not found", 404);
+    return c.json({ data: { url: await presignInboxGet(key.data), expires_in: 600 } });
+  });
+
   // ── Phone menu (IVR) ──
   r.get("/ivr", requireCapability("inbox.settings"), async (c) => {
     const menus = await db.select().from(inboxIvrMenu).orderBy(asc(inboxIvrMenu.name));
@@ -330,6 +346,7 @@ export function inboxSettingsRoutes(db: DbClient) {
   const MenuBody = z.object({
     name: z.string().trim().min(1).max(60),
     greeting_text: z.string().trim().min(1).max(1000),
+    greeting_audio_key: GreetingKey,
     options: z
       .array(
         z.object({
@@ -338,12 +355,13 @@ export function inboxSettingsRoutes(db: DbClient) {
           action: z.enum(["ring_team", "voicemail", "play"]),
           team_id: Uuid.nullable().optional(),
           play_text: z.string().max(1000).nullable().optional(),
+          audio_key: GreetingKey,
         }),
       )
       .max(10)
       .refine((os) => new Set(os.map((o) => o.digit)).size === os.length, "Each key can only be used once")
       .refine((os) => os.every((o) => o.action !== "ring_team" || !!o.team_id), "Pick a team for every 'ring team' option")
-      .refine((os) => os.every((o) => o.action !== "play" || !!o.play_text), "Add the message to read out"),
+      .refine((os) => os.every((o) => o.action !== "play" || !!o.play_text || !!o.audio_key), "Add the message to read out, or upload a recording"),
   });
 
   async function saveMenu(tx: Parameters<Parameters<DbClient["transaction"]>[0]>[0], menuId: string, body: z.infer<typeof MenuBody>) {
@@ -357,6 +375,7 @@ export function inboxSettingsRoutes(db: DbClient) {
           action: o.action,
           teamId: o.team_id ?? null,
           playText: o.play_text ?? null,
+          audioKey: o.audio_key ?? null,
         })),
       );
     }
@@ -365,7 +384,7 @@ export function inboxSettingsRoutes(db: DbClient) {
   r.post("/ivr", requireCapability("inbox.settings"), async (c) => {
     const body = MenuBody.parse(await c.req.json());
     const row = await db.transaction(async (tx) => {
-      const [m] = await tx.insert(inboxIvrMenu).values({ name: body.name, greetingText: body.greeting_text }).returning();
+      const [m] = await tx.insert(inboxIvrMenu).values({ name: body.name, greetingText: body.greeting_text, greetingAudioKey: body.greeting_audio_key ?? null }).returning();
       await saveMenu(tx, m!.id, body);
       return m!;
     });
@@ -378,7 +397,7 @@ export function inboxSettingsRoutes(db: DbClient) {
     await db.transaction(async (tx) => {
       const [m] = await tx
         .update(inboxIvrMenu)
-        .set({ name: body.name, greetingText: body.greeting_text })
+        .set({ name: body.name, greetingText: body.greeting_text, greetingAudioKey: body.greeting_audio_key ?? null })
         .where(eq(inboxIvrMenu.id, id))
         .returning();
       if (!m) throw new BusinessError("not_found", "not found", 404);

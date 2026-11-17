@@ -17,6 +17,7 @@ import {
   inboxTeam,
   inboxTeamMember,
   inboxTemplate,
+  inboxWebhookEvent,
   type DbClient,
 } from "@ms/db";
 import {
@@ -38,7 +39,7 @@ import { resolveCapabilities, waWindowRemainingMs, type AdminRole, type Capabili
 import { requireAuth } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
-import { presignInboxGet, presignInboxPut } from "../lib/r2.js";
+import { deleteInboxObjects, presignInboxGet, presignInboxPut } from "../lib/r2.js";
 import { toCsv } from "../lib/csv.js";
 import { reloadViewer, subscribe } from "../inbox/realtime.js";
 import { logger } from "../logger.js";
@@ -377,7 +378,13 @@ export function inboxRoutes(db: DbClient) {
   /** Messages, calls (with recordings) and notes in time order. */
   r.get("/conversations/:id/timeline", async (c) => {
     const conv = await visibleConversation(db, c, c.req.param("id"));
-    return c.json({ data: await buildTimeline(db, c.get("inboxViewer"), [conv.id]) });
+    const before = c.req.query("before") ? new Date(String(c.req.query("before"))) : null;
+    const limit = Math.min(Math.max(Number(c.req.query("limit")) || 100, 1), 200);
+    const page = await buildTimelinePage(db, c.get("inboxViewer"), [conv.id], {
+      before: before && !Number.isNaN(before.getTime()) ? before : null,
+      limit,
+    });
+    return c.json(page);
   });
 
   r.post("/conversations/:id/read", async (c) => {
@@ -555,6 +562,28 @@ export function inboxRoutes(db: DbClient) {
     return c.json({ data: { url, expires_in: 600 } });
   });
 
+  /** Permanently delete one recording: audio file, transcript and summary. The call stays on the timeline. */
+  r.delete("/recordings/:id", async (c) => {
+    need(c, "recordings.delete");
+    const id = c.req.param("id");
+    if (!z.string().uuid().safeParse(id).success) throw new BusinessError("not_found", "not found", 404);
+    const [rec] = await db
+      .select({ rec: inboxRecording, conversationId: inboxCall.conversationId })
+      .from(inboxRecording)
+      .innerJoin(inboxCall, eq(inboxCall.id, inboxRecording.callId))
+      .where(eq(inboxRecording.id, id));
+    if (!rec) throw new BusinessError("not_found", "not found", 404);
+    const conv = await visibleConversation(db, c, rec.conversationId);
+    await deleteInboxObjects([rec.rec.storageKey]);
+    await db
+      .update(inboxRecording)
+      .set({ status: "deleted", storageKey: null, transcript: null, summaryJson: null, twilioRecordingUrl: null, processedAt: new Date() })
+      .where(eq(inboxRecording.id, id));
+    await publishInboxEvent(db, signalFor("recording.processed", conv, id));
+    await audit(db, c, "inbox.recording_delete", "inbox_recording", id, { call_id: rec.rec.callId, kind: rec.rec.kind });
+    return c.json({ ok: true });
+  });
+
   // ── Templates and quick replies ──
   r.get("/templates", async (c) => {
     const rows = await db.select().from(inboxTemplate).orderBy(asc(inboxTemplate.name));
@@ -617,6 +646,36 @@ export function inboxRoutes(db: DbClient) {
     return c.json({ ok: true });
   });
 
+  /** Contacts that have inbox history the viewer can see, for the merge picker. */
+  r.get("/contacts/search", async (c) => {
+    const q = (c.req.query("q") ?? "").trim();
+    if (q.length < 2) return c.json({ data: [] });
+    const term = `%${q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+    const digits = q.replace(/\D/g, "");
+    const rows = await db
+      .select({
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        conversations: sql<number>`count(*)::int`,
+      })
+      .from(inboxConversation)
+      .innerJoin(customer, eq(customer.id, inboxConversation.customerId))
+      .where(
+        and(
+          conversationScope(c.get("inboxViewer")),
+          or(
+            ilike(customer.name, term),
+            ...(digits.length >= 4 ? [sql`regexp_replace(coalesce(${customer.phone}, ''), '\\D', '', 'g') like ${`%${digits}%`}`] : []),
+          ),
+        ),
+      )
+      .groupBy(customer.id)
+      .orderBy(asc(customer.name))
+      .limit(20);
+    return c.json({ data: rows });
+  });
+
   // ── Contacts: combined timeline across every number the viewer may see ──
   r.get("/contacts/:customerId", async (c) => {
     const id = c.req.param("customerId");
@@ -643,6 +702,122 @@ export function inboxRoutes(db: DbClient) {
         timeline: c.req.query("timeline") ? await buildTimeline(db, v, convs.map((x) => x.id)) : undefined,
       },
     });
+  });
+
+  /**
+   * Erase a customer's inbox history on request: chats, calls, recordings,
+   * notes and the stored files. Their customer record and orders are the
+   * shop's own records and are not touched.
+   */
+  r.post("/contacts/:customerId/erase", async (c) => {
+    need(c, "inbox.erase");
+    const id = c.req.param("customerId");
+    if (!z.string().uuid().safeParse(id).success) throw new BusinessError("not_found", "not found", 404);
+    const { confirm_phone } = z.object({ confirm_phone: z.string().min(4).max(30) }).parse(await c.req.json());
+    const [cust] = await db.select().from(customer).where(eq(customer.id, id));
+    if (!cust) throw new BusinessError("not_found", "not found", 404);
+    const digits = (v: string | null) => (v ?? "").replace(/\D/g, "").replace(/^(234|0)/, "");
+    if (!digits(cust.phone) || digits(confirm_phone) !== digits(cust.phone)) {
+      throw new BusinessError("validation_failed", "The phone number doesn't match this customer", 400);
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const convs = await tx.select().from(inboxConversation).where(eq(inboxConversation.customerId, id));
+      const convIds = convs.map((x) => x.id);
+      if (convIds.length === 0) return { conversations: 0, messages: 0, calls: 0, recordings: 0, keys: [] as (string | null)[] };
+      const calls = await tx.select({ id: inboxCall.id }).from(inboxCall).where(inArray(inboxCall.conversationId, convIds));
+      const callIds = calls.map((x) => x.id);
+      const recs = callIds.length
+        ? await tx.delete(inboxRecording).where(inArray(inboxRecording.callId, callIds)).returning({ key: inboxRecording.storageKey })
+        : [];
+      if (callIds.length) await tx.delete(inboxCall).where(inArray(inboxCall.id, callIds));
+      const msgs = await tx.delete(inboxMessage).where(inArray(inboxMessage.conversationId, convIds)).returning({ key: inboxMessage.mediaKey });
+      await tx.delete(inboxNote).where(inArray(inboxNote.conversationId, convIds));
+      for (const conv of convs) await publishInboxEvent(tx, signalFor("conversation.updated", conv));
+      await tx.delete(inboxConversation).where(inArray(inboxConversation.id, convIds));
+      // Raw webhook copies of their messages and calls.
+      const d = digits(cust.phone);
+      if (d.length >= 7) {
+        await tx.delete(inboxWebhookEvent).where(sql`${inboxWebhookEvent.payload}::text like ${`%${d}%`}`);
+      }
+      return {
+        conversations: convIds.length,
+        messages: msgs.length,
+        calls: callIds.length,
+        recordings: recs.length,
+        keys: [...recs.map((x) => x.key), ...msgs.map((x) => x.key)],
+      };
+    });
+    const { keys, ...counts } = result;
+    await deleteInboxObjects(keys).catch((err: unknown) => logger.error({ err, customerId: id }, "inbox erase: file delete failed"));
+    await writeAudit(db, c, { action: "inbox.contact_erase", entityType: "customer", entityId: id, after: counts, notify: true });
+    return c.json({ data: counts });
+  });
+
+  /**
+   * Merge a duplicate contact's inbox history into another contact. Only inbox
+   * threads move; customer records and orders are left exactly as they are.
+   */
+  r.post("/contacts/:customerId/merge", async (c) => {
+    need(c, "inbox.erase");
+    const fromId = c.req.param("customerId");
+    const { into_customer_id: intoId } = z.object({ into_customer_id: z.string().uuid() }).parse(await c.req.json());
+    if (!z.string().uuid().safeParse(fromId).success || fromId === intoId) {
+      throw new BusinessError("validation_failed", "Pick a different contact to merge into", 400);
+    }
+    const [target] = await db.select({ id: customer.id }).from(customer).where(and(eq(customer.id, intoId), isNull(customer.deletedAt)));
+    if (!target) throw new BusinessError("not_found", "contact not found", 404);
+
+    const moved = await db.transaction(async (tx) => {
+      const convs = await tx.select().from(inboxConversation).where(eq(inboxConversation.customerId, fromId));
+      for (const conv of convs) {
+        const [clash] =
+          conv.status === "closed"
+            ? []
+            : await tx
+                .select()
+                .from(inboxConversation)
+                .where(
+                  and(
+                    eq(inboxConversation.customerId, intoId),
+                    eq(inboxConversation.phoneNumberId, conv.phoneNumberId),
+                    sql`${inboxConversation.status} <> 'closed'`,
+                  ),
+                );
+        if (clash) {
+          // Both have a live thread on this number: fold this one into the target's.
+          await tx.update(inboxMessage).set({ conversationId: clash.id }).where(eq(inboxMessage.conversationId, conv.id));
+          await tx.update(inboxNote).set({ conversationId: clash.id }).where(eq(inboxNote.conversationId, conv.id));
+          await tx.update(inboxCall).set({ conversationId: clash.id, customerId: intoId }).where(eq(inboxCall.conversationId, conv.id));
+          await tx
+            .update(inboxConversation)
+            .set({
+              unreadCount: sql`${inboxConversation.unreadCount} + ${conv.unreadCount}`,
+              lastActivityAt: sql`greatest(${inboxConversation.lastActivityAt}, ${conv.lastActivityAt.toISOString()}::timestamptz)`,
+              ...(conv.lastInboundWaAt
+                ? { lastInboundWaAt: sql`greatest(coalesce(${inboxConversation.lastInboundWaAt}, '-infinity'::timestamptz), ${conv.lastInboundWaAt.toISOString()}::timestamptz)` }
+                : {}),
+            })
+            .where(eq(inboxConversation.id, clash.id));
+          await publishInboxEvent(tx, signalFor("conversation.updated", conv));
+          await tx.delete(inboxConversation).where(eq(inboxConversation.id, conv.id));
+          await publishInboxEvent(tx, signalFor("conversation.updated", clash));
+        } else {
+          await tx.update(inboxCall).set({ customerId: intoId }).where(eq(inboxCall.conversationId, conv.id));
+          const [updated] = await tx.update(inboxConversation).set({ customerId: intoId }).where(eq(inboxConversation.id, conv.id)).returning();
+          await publishInboxEvent(tx, signalFor("conversation.updated", updated!));
+        }
+      }
+      return convs.length;
+    });
+    await writeAudit(db, c, {
+      action: "inbox.contact_merge",
+      entityType: "customer",
+      entityId: fromId,
+      after: { into_customer_id: intoId, moved_conversations: moved },
+      notify: true,
+    });
+    return c.json({ data: { moved_conversations: moved } });
   });
 
   r.patch("/contacts/:customerId", async (c) => {
@@ -729,8 +904,23 @@ type TimelineItem =
 
 const TIMELINE_LIMIT = 500;
 
+/** Whole (capped) timeline, for the contact view. */
 async function buildTimeline(db: DbClient, v: InboxViewer, conversationIds: string[]): Promise<TimelineItem[]> {
-  if (conversationIds.length === 0) return [];
+  return (await buildTimelinePage(db, v, conversationIds, { before: null, limit: TIMELINE_LIMIT })).data;
+}
+
+/**
+ * One page of the timeline, newest `limit` items older than `before`, returned
+ * oldest → newest. Page back with before = next_before.
+ */
+async function buildTimelinePage(
+  db: DbClient,
+  v: InboxViewer,
+  conversationIds: string[],
+  opts: { before: Date | null; limit: number },
+): Promise<{ data: TimelineItem[]; has_more: boolean; next_before: string | null }> {
+  if (conversationIds.length === 0) return { data: [], has_more: false, next_before: null };
+  const take = opts.limit + 1;
   const staff = alias(adminUser, "staff");
 
   const messages = await db
@@ -747,14 +937,15 @@ async function buildTimeline(db: DbClient, v: InboxViewer, conversationIds: stri
       template_name: inboxMessage.templateName,
       status: inboxMessage.status,
       error_message: inboxMessage.errorMessage,
+      unconfirmed: sql<boolean>`${inboxMessage.direction} = 'out' and coalesce((${inboxMessage.payload}->>'unconfirmed')::boolean, false)`,
       sender_name: sql<string | null>`coalesce(${staff.name}, ${staff.email})`,
       created_at: inboxMessage.createdAt,
     })
     .from(inboxMessage)
     .leftJoin(staff, eq(staff.id, inboxMessage.senderUserId))
-    .where(inArray(inboxMessage.conversationId, conversationIds))
+    .where(and(inArray(inboxMessage.conversationId, conversationIds), ...(opts.before ? [lt(inboxMessage.createdAt, opts.before)] : [])))
     .orderBy(desc(inboxMessage.createdAt))
-    .limit(TIMELINE_LIMIT);
+    .limit(take);
 
   const calls = await db
     .select({
@@ -769,9 +960,9 @@ async function buildTimeline(db: DbClient, v: InboxViewer, conversationIds: stri
     })
     .from(inboxCall)
     .leftJoin(staff, eq(staff.id, inboxCall.answeredByUserId))
-    .where(inArray(inboxCall.conversationId, conversationIds))
+    .where(and(inArray(inboxCall.conversationId, conversationIds), ...(opts.before ? [lt(inboxCall.startedAt, opts.before)] : [])))
     .orderBy(desc(inboxCall.startedAt))
-    .limit(TIMELINE_LIMIT);
+    .limit(take);
 
   const recordings = calls.length
     ? await db.select().from(inboxRecording).where(inArray(inboxRecording.callId, calls.map((x) => x.id)))
@@ -789,9 +980,9 @@ async function buildTimeline(db: DbClient, v: InboxViewer, conversationIds: stri
     })
     .from(inboxNote)
     .leftJoin(staff, eq(staff.id, inboxNote.authorUserId))
-    .where(inArray(inboxNote.conversationId, conversationIds))
+    .where(and(inArray(inboxNote.conversationId, conversationIds), ...(opts.before ? [lt(inboxNote.createdAt, opts.before)] : [])))
     .orderBy(desc(inboxNote.createdAt))
-    .limit(TIMELINE_LIMIT);
+    .limit(take);
 
   const items: TimelineItem[] = [
     ...messages.map((m) => ({ kind: "message" as const, at: m.created_at.toISOString(), data: m })),
@@ -816,5 +1007,7 @@ async function buildTimeline(db: DbClient, v: InboxViewer, conversationIds: stri
     ...notes.map((n) => ({ kind: "note" as const, at: n.created_at.toISOString(), data: n })),
   ];
   items.sort((a, b) => a.at.localeCompare(b.at));
-  return items.slice(-TIMELINE_LIMIT);
+  const data = items.slice(-opts.limit);
+  const has_more = items.length > opts.limit;
+  return { data, has_more, next_before: has_more && data[0] ? data[0].at : null };
 }
