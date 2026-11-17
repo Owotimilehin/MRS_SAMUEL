@@ -61,6 +61,8 @@ function postErrorMessage(code: string | undefined): string | null {
       return "A juice in your basket just went out of stock. Adjust your basket and try again.";
     case "branch":
       return "Online ordering is temporarily unavailable. Please try again shortly or order on WhatsApp.";
+    case "closed":
+      return "This order was already completed or has expired. Please start a new order.";
     default:
       return "Something went wrong placing your order. Please try again.";
   }

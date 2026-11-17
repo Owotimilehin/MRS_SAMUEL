@@ -45,6 +45,26 @@ function stubApi(redirectUrl: string | null): void {
 }
 
 describe("handleCheckoutPost (no-JS checkout)", () => {
+  it("an order that is already paid or expired bounces back with the 'closed' message code", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        String(url).endsWith("/v1/public/orders")
+          ? new Response(
+              JSON.stringify({ error: { code: "order_closed", message: "closed" } }),
+              { status: 409, headers: { "content-type": "application/json" } },
+            )
+          : new Response(JSON.stringify({ data: null }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+      ),
+    );
+    const res = await handleCheckoutPost(submit());
+    expect(res?.status).toBe(303);
+    expect(res?.headers.get("location")).toBe("/checkout?e=closed");
+  });
+
   it("redirects to OPay's payment page when the API returns one", async () => {
     stubApi("https://cashier.example.test/pay/abc");
     const res = await handleCheckoutPost(submit());

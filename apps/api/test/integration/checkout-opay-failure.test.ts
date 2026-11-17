@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest
 import type { Hono } from "hono";
 import { v4 as uuid } from "uuid";
 import { eq, sql } from "drizzle-orm";
-import { saleOrder, outboxEvent, idempotencyKey, type DbClient } from "@ms/db";
+import { saleOrder, outboxEvent, idempotencyKey, cartLine, type DbClient } from "@ms/db";
 import { makeTestApp, seedCatalog, addBranchStock } from "./helpers.js";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
@@ -17,12 +17,13 @@ describe("checkout when OPay cannot open a payment page", () => {
   let db: DbClient;
   let branchId: string;
   let productId: string;
+  let variantId: string;
   let phoneSeq = 0;
 
   beforeAll(async () => {
     const t = await makeTestApp();
     ({ app, db, container } = t);
-    ({ branchId, productId } = await seedCatalog(db));
+    ({ branchId, productId, variantId } = await seedCatalog(db));
     await addBranchStock(db, { branchId, productId, qty: 50 });
   }, 120_000);
 
@@ -164,6 +165,73 @@ describe("checkout when OPay cannot open a payment page", () => {
     expect(second.data.payment.redirect_url).toBeNull();
     expect(await ordersForKey(key)).toHaveLength(1);
     expect(await newOrderAlerts(first.data.id)).toBe(1);
+  });
+
+  /** Place an order, then leave its key as a cut-off request would: free to retry. */
+  async function placedThenCutOff() {
+    const checkout = newCheckout();
+    opayCreate("ok");
+    const placed = (await (await place(checkout.key, checkout.body)).json()) as Placed;
+    await db.delete(idempotencyKey).where(eq(idempotencyKey.key, checkout.key));
+    return { ...checkout, placed };
+  }
+
+  it.each(["cancelled", "paid"] as const)(
+    "a retry for an order that is now %s is told to start again, not sent to pay",
+    async (status) => {
+      const { key, body, placed } = await placedThenCutOff();
+      await db.update(saleOrder).set({ status }).where(eq(saleOrder.id, placed.data.id));
+
+      const res = await place(key, body);
+      expect(res.status).toBe(409);
+      const err = ((await res.json()) as { error: { code: string; message: string } }).error;
+      expect(err.code).toBe("order_closed");
+      expect(err.message).toBe(
+        "This order was already completed or has expired. Please start a new order.",
+      );
+      expect(await ordersForKey(key)).toHaveLength(1);
+    },
+  );
+
+  it("a different basket under the same key and phone does not inherit the order", async () => {
+    const { key, body, placed } = await placedThenCutOff();
+    const bigger = { ...body, items: [{ product_id: productId, quantity: 3 }] };
+
+    const res = await place(key, bigger);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      "idempotency_key_reused",
+    );
+    const orders = await ordersForKey(key);
+    expect(orders).toHaveLength(1);
+    expect(orders[0]!.id).toBe(placed.data.id);
+  });
+
+  it("returning an existing order empties the server-side cart, like a fresh checkout", async () => {
+    const { key, body, placed } = await placedThenCutOff();
+    // The customer's cookie cart still holds the lines.
+    const add = await app.request("/v1/public/cart/lines", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ variant_id: variantId, quantity: 1 }),
+    });
+    const cartId = /ms_cart=([^;]+)/.exec(add.headers.get("set-cookie") ?? "")?.[1];
+    expect(cartId).toBeTruthy();
+    const lines = () => db.select().from(cartLine).where(eq(cartLine.cartId, cartId!));
+    expect(await lines()).toHaveLength(1);
+
+    const res = await app.request("/v1/public/orders", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": key,
+        cookie: `ms_cart=${cartId}`,
+      },
+      body: JSON.stringify(body),
+    });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as Placed).data.id).toBe(placed.data.id);
+    expect(await lines()).toHaveLength(0);
   });
 
   it("does not hand an existing order to a different customer who presents its key", async () => {

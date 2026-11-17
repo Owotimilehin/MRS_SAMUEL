@@ -165,6 +165,32 @@ function placedOrderBody(o: typeof saleOrder.$inferSelect, redirectUrl: string |
   };
 }
 
+/**
+ * Whether a checkout request asks for exactly the lines an existing order has.
+ * A request line names a variant, or (older callers) only a product.
+ */
+function sameBasket(
+  requested: ReadonlyArray<{
+    variant_id?: string | undefined;
+    product_id?: string | undefined;
+    quantity: number;
+  }>,
+  existing: ReadonlyArray<{ productId: string; variantId: string | null; quantity: number }>,
+): boolean {
+  if (requested.length !== existing.length) return false;
+  const unmatched = [...existing];
+  for (const r of requested) {
+    const i = unmatched.findIndex(
+      (e) =>
+        e.quantity === r.quantity &&
+        (r.variant_id != null ? e.variantId === r.variant_id : e.productId === r.product_id),
+    );
+    if (i === -1) return false;
+    unmatched.splice(i, 1);
+  }
+  return true;
+}
+
 export function publicOrderRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", rateLimit({ points: 30, durationSeconds: 60, keyPrefix: "public-orders" }));
@@ -283,27 +309,53 @@ export function publicOrderRoutes(db: DbClient) {
     // A retry of a checkout whose order is already saved. A checkout that
     // completed is replayed by the idempotency middleware and never gets here;
     // this is the attempt that saved the order and then did not finish (cut off
-    // mid-request, or failed after the commit), whose key is free again.
+    // mid-request), whose abandoned key a retry has taken over.
     // sale_order.idempotency_key is unique, so running on could only fail at
-    // the insert: hand back the SAME order instead, never a second one. The
-    // phone must match the order's, as on the tracking page, so a guessed key
-    // reveals nothing. Done before the bot check: a Turnstile token cannot be
-    // verified twice.
+    // the insert: hand back the SAME order instead, never a second one. Done
+    // before the bot check: a Turnstile token cannot be verified twice.
     const [prior] = await db
       .select()
       .from(saleOrder)
       .where(and(eq(saleOrder.idempotencyKey, idempotencyKey), eq(saleOrder.channel, "online")));
     if (prior) {
+      // It must be the same checkout: the same phone (as on the tracking page,
+      // so a guessed key reveals nothing) and the same basket. Anything else is
+      // a different order that happens to present this key.
       const [priorCustomer] = prior.customerId
         ? await db.select().from(customer).where(eq(customer.id, prior.customerId))
         : [null];
-      if (!priorCustomer?.phone || !phonesMatch(priorCustomer.phone, body.customer.phone)) {
+      const priorItems = await db
+        .select({
+          productId: saleOrderItem.productId,
+          variantId: saleOrderItem.variantId,
+          quantity: saleOrderItem.quantity,
+        })
+        .from(saleOrderItem)
+        .where(eq(saleOrderItem.saleOrderId, prior.id));
+      if (
+        !priorCustomer?.phone ||
+        !phonesMatch(priorCustomer.phone, body.customer.phone) ||
+        (body.items !== undefined && !sameBasket(body.items, priorItems))
+      ) {
         throw new BusinessError(
           "idempotency_key_reused",
           "idempotency key reused with different payload",
           409,
         );
       }
+      // Only an order still awaiting payment can be handed back as "placed"
+      // (the same two statuses the resume-payment endpoint accepts). One that
+      // has since been paid, cancelled or expired must not send the customer
+      // to a payment page.
+      if (prior.status !== "confirmed" && prior.status !== "reconcile_needed") {
+        throw new BusinessError(
+          "order_closed",
+          "This order was already completed or has expired. Please start a new order.",
+          409,
+        );
+      }
+      // The order owns the cart contents, exactly as on the normal path below.
+      await clearCartForCookie(db, c);
       return c.json(placedOrderBody(prior, null), 201);
     }
 
