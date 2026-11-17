@@ -21,10 +21,11 @@ const TTL_DAYS = 30;
 const STALE_IN_PROGRESS_MS = 5 * 60_000;
 
 /**
- * Only a completed operation is remembered and replayed. Every non-2xx response
- * from this API is a thrown error (see middleware/error.ts): the handler did
- * not complete, so there is nothing to protect from running twice, and
- * replaying the failure only stops the retry from ever succeeding:
+ * Only a completed operation is remembered and replayed. A non-2xx response
+ * from this API means the request was rejected or failed, almost always as a
+ * thrown error (see middleware/error.ts) that rolled the handler's transaction
+ * back. Nothing completed, so there is nothing to protect from running twice,
+ * and replaying the failure only stops the retry from ever succeeding:
  *
  *   - 401/403: the session lapsed; the same request must run after re-login.
  *   - 429/5xx: transient; the caller is expected to retry with the same key.
