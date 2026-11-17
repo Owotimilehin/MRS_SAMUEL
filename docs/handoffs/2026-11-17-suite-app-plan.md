@@ -22,10 +22,35 @@ Draft for approval, 17 Nov 2026, by Olu with Claude. Nothing here is built. It t
 | The calling code speaks only to Twilio | Call tracking with Nigerian numbers needs a second provider behind a common interface |
 | Customers are matched by phone number only | Instagram, Messenger and WhatsApp usernames need a proper list of identities per customer |
 
+## The server (read over SSH on 17 Nov 2026, read-only)
+
+| | Finding | What it means |
+|---|---|---|
+| Size | 2 CPUs, 3.8 GB memory, 78 GB disk, no swap. DigitalOcean. Up 130 days | Small, but lightly used |
+| Memory | 1.2 GB in use, 2.2 GB available | Room to run the suite |
+| Mrs Samuel's containers | About 350 MB in total: database 176 MB, API 61 MB, storefront 58 MB, worker 39 MB, admin 8 MB | The suite's web app will be about the size of the admin app: under 10 MB |
+| Load | 0.5 on 2 CPUs; no out-of-memory kills since boot | Idle most of the time |
+| **Another business shares the server** | Six containers for a second site ("n9ja wholesale"), about 430 MB | A heavy build or a full disk on one takes down both |
+| **Disk** | 61 GB used of 78 GB (78%). About 50 GB is old Docker build files. The deploy script clears old images but never the build files | The disk will fill with more deploys. A full disk stops the database, which stops the shop and the till |
+| Left-over volumes | 80 unused Docker volumes, small | Clutter, not urgent |
+| Database | 213 MB | Small. Messages add little; recordings and media go to Cloudflare, not this disk |
+| Tunnel | Cloudflare Tunnel is running | A new address is one entry in Cloudflare |
+
+**Verdict.** The server can run the suite as planned (one small extra container, shared API and worker). In the load test the API used 264 MB at 20 messages a second, which fits. The risks are the disk and the deploys, not the day-to-day load.
+
+**Before the suite is added, in this order:**
+1. Clear the old build files: `docker builder prune` on the server frees most of the 50 GB. This deletes data, so the owner runs it. It does not touch running containers, images in use or databases.
+2. Add the clean-up to the deploy script so it cannot build up again (a small code change, in a pull request).
+3. Add 2 GB of swap, so a heavy build slows down instead of failing.
+4. Add memory caps to the containers in the compose file (code change).
+
+**Later, if calls become busy:** move to 4 CPUs and 8 GB, or give the wholesale site its own server. Call audio does not pass through this server, so that is about safety margin, not capacity.
+
+`DEPLOY.md` still describes a Hetzner server; it is out of date.
+
 ## What I do not know yet
 
 - The name of the subdomain. That is the owner's choice.
-- How much memory the server has free. The guard blocks me from reading the DigitalOcean account; Tes can check with `free -h`.
 - Which Nigerian phone provider, and its features (needs a quote and a test number).
 - Which Meta approvals are already granted on the business's account.
 
@@ -99,7 +124,7 @@ The inbox pull request stays as it is, so the screen fixes and the Bundles fix a
 
 ## What could go wrong
 
-1. **The server runs out of memory during a deploy.** The suite adds one small container (static files, a few tens of MB), which is not the concern. The concern is that every deploy builds all the apps on the server itself, and a fourth app makes that build heavier. No container has a memory limit today, so a heavy build can starve the till. We would notice as slow or failed deploys, or the shop stalling while one runs. Mitigation: a memory cap on the new container; Tes checks free memory (`free -h`, `docker stats`) before step 3. The server's size could not be read from here: the guard blocks the DigitalOcean connection, and `DEPLOY.md` describes a Hetzner server while the deploy script says "droplet", so the documents disagree about where it runs.
+1. **The server's disk fills up, or a deploy starves the shop.** See "The server" below: the disk is 78% full, mostly old build files that no deploy clears, and there is no swap. We would notice as a failed deploy, or the shop's database stopping when the disk is full. Mitigation: clear the build files and add the clean-up to the deploy script before the suite is added; add swap; cap the new container's memory.
 2. **Two sign-ins annoy staff.** The suite and the admin app are different addresses, so staff sign in to each. We would notice in the first week of use. Mitigation: one shared sign-in across both is possible later, but it changes how the session cookie is scoped for the admin app and the till, so it is a deliberate change for Tes, not a default.
 3. **Moving the inbox breaks what was just fixed.** The screens were reviewed and fixed inside the admin layout; a new layout can reintroduce fit problems. We would notice in the screenshot check. Mitigation: the same full-screen review (every screen, desktop and phone) is run on the suite before step 2 is called done.
 
