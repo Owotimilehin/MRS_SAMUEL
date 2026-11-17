@@ -27,6 +27,7 @@ import {
   checkoutFormErrors,
   buildPlaceOrderBody,
   stableIdempotencyKey,
+  validNgPhone,
   type CheckoutFormValues,
   BRANCH_FIELD,
   CHECKOUT_POST_PATH,
@@ -94,12 +95,99 @@ async function logNoJsAttempt(
   }
 }
 
+/** Where the "Try payment again" button on the page below posts to. */
+const CHECKOUT_PAY_PATH = "/checkout/pay";
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+}
+
+/**
+ * The page a no-JS customer gets when their order was saved but OPay's payment
+ * page could not be opened.
+ *
+ * The order's own page cannot help them: it reads the phone from localStorage
+ * and needs JavaScript for its "Complete payment" button. This is plain HTML
+ * with one form button; the phone they just typed travels in a hidden field of
+ * their own response (never in a URL), so the retry needs nothing from them.
+ */
+function payLaterPage(orderNumber: string, phone: string, failedAgain: boolean): Response {
+  const order = escapeHtml(orderNumber);
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Complete your payment — Mrs. Samuel Fruit Juice</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body { font: 15px/1.5 system-ui, -apple-system, sans-serif; background: #fafafa; color: #111; display: grid; place-items: center; min-height: 100vh; margin: 0; padding: 1.5rem; }
+      .card { max-width: 28rem; width: 100%; text-align: center; padding: 2rem; }
+      h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+      p { color: #4b5563; margin: 0 0 1.5rem; }
+      a, button { display: inline-block; padding: 0.75rem 1.25rem; border-radius: 999px; font: inherit; cursor: pointer; text-decoration: none; border: 1px solid transparent; }
+      button { background: #111; color: #fff; width: 100%; font-weight: 600; }
+      a { color: #111; margin-top: 0.75rem; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Your order ${order} is saved</h1>
+      <p>${
+        failedAgain
+          ? "We still couldn't open the payment page. Please wait a moment and try again."
+          : "We couldn't open the payment page just now. Your order is safe, so please don't place it again."
+      }</p>
+      <form method="POST" action="${CHECKOUT_PAY_PATH}">
+        <input type="hidden" name="order" value="${order}" />
+        <input type="hidden" name="phone" value="${escapeHtml(phone)}" />
+        <button type="submit">Try payment again</button>
+      </form>
+      <a href="/order/${encodeURIComponent(orderNumber)}">View your order</a>
+    </div>
+  </body>
+</html>`;
+  const headers = new Headers({
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  // The order owns the items: clear the basket exactly as the redirect to OPay
+  // does, or the customer returns to a full basket and orders the same twice.
+  headers.append("set-cookie", CLEAR_CART_COOKIE);
+  headers.append("set-cookie", SIGNAL_CART_CLEARED);
+  return new Response(html, { status: 200, headers });
+}
+
+/** "Try payment again": open a fresh OPay session for the order and go there. */
+async function handlePayPost(request: Request): Promise<Response> {
+  let form: URLSearchParams;
+  try {
+    form = new URLSearchParams(await request.text());
+  } catch {
+    return backToCheckout("badform");
+  }
+  const orderNumber = (form.get("order") ?? "").trim();
+  const phone = (form.get("phone") ?? "").trim();
+  if (!/^[A-Za-z0-9-]{1,40}$/.test(orderNumber) || !validNgPhone(phone)) {
+    return backToCheckout("badform");
+  }
+  try {
+    const { redirect_url } = await apiFetch<{ redirect_url: string }>(
+      `/v1/public/orders/${encodeURIComponent(orderNumber)}/opay-session?phone=${encodeURIComponent(phone.replace(/[\s-]/g, ""))}`,
+      { method: "POST" },
+    );
+    return seeOther(redirect_url);
+  } catch {
+    return payLaterPage(orderNumber, phone, true);
+  }
+}
+
 /**
  * Handle a checkout POST. Returns a redirect Response when it owns the request,
  * or `null` to let normal SSR proceed (any other method/path).
  */
 export async function handleCheckoutPost(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
+  if (request.method === "POST" && url.pathname === CHECKOUT_PAY_PATH) return handlePayPost(request);
   if (request.method !== "POST" || url.pathname !== CHECKOUT_POST_PATH) return null;
 
   // --- read the form + basket ---
@@ -180,10 +268,7 @@ export async function handleCheckoutPost(request: Request): Promise<Response | n
   }
 
   // The order exists but no payment page could be opened (OPay unreachable).
-  // It still owns the items, so clear the basket exactly as above; otherwise
-  // the customer returns to a full basket and orders the same thing twice.
-  return seeOther(`/order/${order.order_number}?await_payment=1`, [
-    CLEAR_CART_COOKIE,
-    SIGNAL_CART_CLEARED,
-  ]);
+  // Not the order's own page: without JavaScript it can neither show the order
+  // nor start payment. A plain page with a "Try payment again" button instead.
+  return payLaterPage(order.order_number, values.phone, false);
 }
