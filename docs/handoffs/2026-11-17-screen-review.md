@@ -115,3 +115,31 @@ Not seen: the lower part of the home page on a phone (blog, FAQ, footer), becaus
 4. Inbox polish (buttons, tabs, labels, empty states).
 5. S4 to S14 as one consistency pass.
 6. Owner decisions: product photos, testimonial and bundle names, delivery wording, bulk pricing.
+
+## Fix status (added later on 17 Nov 2026)
+
+Fixed on `work/olu/unified-inbox` and re-checked by re-photographing every screen. Nothing is live until Tes merges.
+
+| | Automatic layout findings before | After |
+|---|---|---|
+| Staff app (108 captures) | 204 | 30, all form fields missing a screen-reader label |
+| Storefront (34 captures) | 187 | 55, mostly carousel dots and small filter chips |
+
+Correction to the review above: real order numbers look like `SO-2026-01042`. "MS-000000" was only the test address used for the screenshots. The Track page example now shows the real format.
+
+Also fixed: the owner's Bundles screen. Its list address in the API was deleted by accident in commit `b13839b` (August); it is restored with a test.
+
+### Still open
+
+- Nothing was tried on a real phone or tablet. The preview has no stock, no open shift and no WhatsApp connection, so the open reply box, a ringing call, in-stock till tiles and the shift-end form were not seen.
+- **The newsletter form does nothing.** It promises "10% off your first order" but saves no email (`apps/customer/src/components/SiteShell.tsx:47`).
+- "View All Reviews" and "View All FAQs" on the home page lead nowhere useful.
+- Order tracking only matches the exact capitals: "so-2026-01042" fails.
+- Devices have no name to show (needs an API field). The product page repeats its name three times.
+- Inbox reports never count an answered call as a first reply.
+- A new branch that has never received stock gets an empty opening count.
+- Storefront type check and formatting lint were already failing before these changes (12 errors in `components/ui`, about 500 formatting errors).
+
+### Owner decisions (wording left untouched)
+
+Product photos that do not match the juice; juice names in testimonials and bundles that are not on the menu; "same morning" or "same or next morning"; "100% fruit" or "fruit and vegetables"; "Nationwide on request"; bulk and volume pricing claims; "Twenty flavours" while 15 show; "from ₦2,500" on Lagos page cards; the blog excerpt that says "Last year September" (stored in the database); no privacy policy.
