@@ -153,7 +153,12 @@ export async function handleCheckoutPost(request: Request): Promise<Response | n
     });
   } catch (e) {
     const err = asApiError(e);
-    const code = err && (err.code === "conflict" || err.status === 422) ? "stock" : "order";
+    const code =
+      err?.code === "order_closed"
+        ? "closed"
+        : err && (err.code === "conflict" || err.status === 422)
+          ? "stock"
+          : "order";
     void logNoJsAttempt(idempotencyKey, "order_failed", values, { errorMessage: err?.code ?? "unknown" });
     return backToCheckout(code);
   }
