@@ -42,6 +42,10 @@ The shopper's address is taken from Cloudflare's `CF-Connecting-IP`, so the
 storefront (port 3002) must only be reachable through the tunnel: set
 `HOST_BIND=127.0.0.1` so the ports are not also open on the VPS's public IP.
 
+Before the first deploy that includes the November 2026 payment fixes, read
+`docs/handoffs/2026-11-17-payment-fixes-before-merge.md`: two checks to make
+with OPay, and what changes at deploy (till queues, alerts, open orders).
+
 Wait ~30s. Smoke test:
 
 ```bash
