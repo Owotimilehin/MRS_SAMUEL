@@ -17,6 +17,7 @@ import {
   useVoice,
 } from "../../lib/inbox-voice.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
+import { api } from "../../lib/api.js";
 import { contactName, formatDuration, prettyPhone } from "../../lib/inbox-logic.js";
 import { toE164 } from "@ms/shared";
 import "./inbox.css";
@@ -46,6 +47,15 @@ export function CallBar(): JSX.Element | null {
   const canCall = can("calls.outbound");
   const canInbox = can("inbox.view");
   const v = useVoice();
+  // Hide the whole bar until the server says calling is set up.
+  const setup = useQuery({
+    queryKey: ["inbox", "voice", "status"],
+    enabled: canAnswer || canCall,
+    staleTime: 5 * 60_000,
+    retry: false,
+    queryFn: () => api<{ data: { configured: boolean } }>("/inbox/voice/status", {}, { silentError: true }),
+  });
+  const configured = setup.data?.data.configured === true;
   const [keypad, setKeypad] = useState(false);
   const [dialOpen, setDialOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -54,8 +64,8 @@ export function CallBar(): JSX.Element | null {
   // Answerers who left themselves "available" get the phone back on every load.
   useEffect(() => {
     useVoice.setState({ canAnswer, canCall });
-    if (canAnswer && useVoice.getState().available) void initVoice({ canAnswer, canCall });
-  }, [canAnswer, canCall]);
+    if (configured && canAnswer && useVoice.getState().available) void initVoice({ canAnswer, canCall });
+  }, [canAnswer, canCall, configured]);
 
   // Re-render each second while a call is connected, for the timer.
   useEffect(() => {
@@ -76,6 +86,7 @@ export function CallBar(): JSX.Element | null {
   const callerName = caller.data ? contactName(caller.data.customer_name, caller.data.customer_phone) : null;
 
   if (!canAnswer && !canCall) return null;
+  if (!configured && !v.active && !v.incoming) return null;
 
   return (
     <div className="callbar" aria-live="polite">

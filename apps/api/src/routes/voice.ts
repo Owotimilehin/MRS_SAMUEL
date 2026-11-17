@@ -751,6 +751,18 @@ export function voiceAppRoutes(db: DbClient) {
 
   /** Heartbeat: the web app calls this every 30s while open. */
   /** What this person last chose, so a new device starts in the same state. */
+  // Is calling set up on this server at all? The admin's call bar hides itself
+  // when it is not, so staff never see controls that cannot work.
+  r.get("/status", (c) => {
+    const configured = Boolean(
+      process.env.TWILIO_ACCOUNT_SID &&
+        process.env.TWILIO_API_KEY_SID &&
+        process.env.TWILIO_API_KEY_SECRET &&
+        process.env.TWILIO_TWIML_APP_SID,
+    );
+    return c.json({ data: { configured } });
+  });
+
   r.get("/presence", requireCapability("calls.answer"), async (c) => {
     const [row] = await db.select().from(inboxPresence).where(eq(inboxPresence.userId, c.get("auth").userId));
     return c.json({ data: { available: row?.available ?? false, last_seen_at: row?.lastSeenAt ?? null } });
