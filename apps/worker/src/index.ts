@@ -7,7 +7,10 @@ import { exportAuditLog, isAuditExportWindow } from "./jobs/audit-export.js";
 import { queuePaymentReminders } from "./jobs/unpaid-reminder.js";
 import { runDeliveryWatchdog } from "./jobs/delivery-watchdog.js";
 import { runDueCronJobs } from "./jobs/cron.js";
-import { sweepStuckPaymentOrders } from "./jobs/payment-reconcile.js";
+import {
+  sweepStuckPaymentOrders,
+  sweepExpiredOrdersForLatePayment,
+} from "./jobs/payment-reconcile.js";
 import { expireUnpaidOrders } from "./jobs/expire-unpaid-orders.js";
 import { pruneCheckoutLog } from "./jobs/prune-checkout-log.js";
 import { runJob } from "./jobs/run-job.js";
@@ -26,6 +29,7 @@ const DELIVERY_WATCHDOG_MS = 60_000; // delivery retry/escalation every minute
 const CRON_CHECK_INTERVAL_MS = 15 * 60_000; // cron poll every 15 minutes
 const PAYMENT_RECONCILE_INTERVAL_MS = 120_000; // re-fire stuck payment webhooks every 2 minutes
 const EXPIRE_UNPAID_INTERVAL_MS = 5 * 60_000; // auto-cancel abandoned online orders every 5 minutes
+const LATE_PAYMENT_INTERVAL_MS = 15 * 60_000; // re-check expired orders for a late payment every 15 minutes
 const PRUNE_CHECKOUT_LOG_INTERVAL_MS = 6 * 60 * 60_000; // prune old checkout-log rows every 6h
 
 let stopping = false;
@@ -44,6 +48,7 @@ let lastDeliveryWatchdogAt = 0;
 let lastCronCheckAt = 0;
 let lastPaymentReconcileAt = 0;
 let lastExpireUnpaidAt = 0;
+let lastLatePaymentAt = 0;
 let lastPruneCheckoutLogAt = 0;
 let lastAuditExportDate: string | null = null;
 
@@ -101,6 +106,17 @@ async function loop(): Promise<void> {
         const expired = await runJob(logger, "expire_unpaid_orders", () => expireUnpaidOrders(db));
         if ((expired ?? 0) > 0) logger.info({ expired }, "abandoned unpaid online orders cancelled");
         lastExpireUnpaidAt = now;
+      }
+
+      // Late payments: for 48h after an order is auto-cancelled as unpaid, keep
+      // asking the provider about it. A payment that landed after the cancel
+      // raises the existing "payment on a CANCELLED order" alert, once.
+      if (now - lastLatePaymentAt > LATE_PAYMENT_INTERVAL_MS) {
+        const checked = await runJob(logger, "late_payment_check", () =>
+          sweepExpiredOrdersForLatePayment(db),
+        );
+        if ((checked ?? 0) > 0) logger.info({ checked }, "expired orders re-checked for late payment");
+        lastLatePaymentAt = now;
       }
 
       // Prune the checkout attempt log (PII auto-deleted after 30 days). Every 6h.
