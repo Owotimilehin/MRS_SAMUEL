@@ -1,7 +1,8 @@
 import { Hono } from "hono";
-import { eq, sql } from "drizzle-orm";
+import { bodyLimit } from "hono/body-limit";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { inboxWebhookEvent, outboxEvent, type DbClient } from "@ms/db";
-import { ingestWhatsAppPayload, verifyMetaSignature, type WaWebhookPayload } from "@ms/domain";
+import { finishWebhookEvent, ingestWhatsAppPayload, verifyMetaSignature, type WaWebhookPayload } from "@ms/domain";
 import { env } from "../env.js";
 import { logger } from "../logger.js";
 
@@ -18,6 +19,8 @@ import { logger } from "../logger.js";
  */
 export function whatsappWebhookRoutes(db: DbClient) {
   const r = new Hono();
+  // Reject oversized bodies before reading them (Meta payloads are small).
+  r.use("*", bodyLimit({ maxSize: 1024 * 1024, onError: (c) => c.text("payload too large", 413) }));
 
   r.get("/", (c) => {
     const mode = c.req.query("hub.mode");
@@ -70,18 +73,12 @@ export async function processStoredWhatsAppEvent(
   try {
     const result = await db.transaction(async (tx) => {
       const res = await ingestWhatsAppPayload(tx, payload);
-      await tx
-        .update(inboxWebhookEvent)
-        .set({ processedAt: new Date(), attempts: sql`${inboxWebhookEvent.attempts} + 1` })
-        .where(eq(inboxWebhookEvent.id, eventId));
+      await finishWebhookEvent(tx, eventId, res);
       return res;
     });
     if (result.unknownNumbers.length > 0) {
-      logger.warn({ unknown: result.unknownNumbers }, "whatsapp webhook for unknown business number");
-      await db.insert(outboxEvent).values({
-        eventType: "inbox.unknown_number",
-        payload: { phone_number_ids: result.unknownNumbers, webhook_event_id: eventId },
-      });
+      logger.warn({ unknown: result.unknownNumbers }, "whatsapp webhook for unknown business number (parked)");
+      await alertUnknownNumbers(db, result.unknownNumbers, eventId);
     }
   } catch (err) {
     logger.error({ err, eventId }, "whatsapp webhook processing failed; worker will retry");
@@ -92,5 +89,27 @@ export async function processStoredWhatsAppEvent(
         lastError: err instanceof Error ? err.message : String(err),
       })
       .where(eq(inboxWebhookEvent.id, eventId));
+  }
+}
+
+/** Tell the owner once a day per unknown number, not on every webhook. */
+async function alertUnknownNumbers(db: DbClient, ids: string[], eventId: string): Promise<void> {
+  for (const id of ids) {
+    const [recent] = await db
+      .select({ id: outboxEvent.id })
+      .from(outboxEvent)
+      .where(
+        and(
+          eq(outboxEvent.eventType, "inbox.unknown_number"),
+          gt(outboxEvent.createdAt, new Date(Date.now() - 24 * 3600_000)),
+          sql`${outboxEvent.payload}->>'phone_number_ids' = ${id}`,
+        ),
+      )
+      .limit(1);
+    if (recent) continue;
+    await db.insert(outboxEvent).values({
+      eventType: "inbox.unknown_number",
+      payload: { phone_number_ids: id, webhook_event_id: eventId },
+    });
   }
 }

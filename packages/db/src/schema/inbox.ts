@@ -12,6 +12,7 @@ import {
   primaryKey,
   date,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { adminUser } from "./admin-user.js";
 import { customer } from "./customer.js";
 
@@ -215,6 +216,8 @@ export const inboxConversation = pgTable(
   (t) => ({
     idxActivity: index("idx_inbox_conv_activity").on(t.status, t.lastActivityAt),
     idxCustomer: index("idx_inbox_conv_customer").on(t.customerId, t.phoneNumberId),
+    // At most one live thread per customer per business number.
+    uqLive: uniqueIndex("uq_inbox_conv_live").on(t.customerId, t.phoneNumberId).where(sql`status <> 'closed'`),
     idxAssignee: index("idx_inbox_conv_assignee").on(t.assigneeId),
   }),
 );

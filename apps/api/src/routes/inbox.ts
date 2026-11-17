@@ -43,6 +43,8 @@ import { toCsv } from "../lib/csv.js";
 import { reloadViewer, subscribe } from "../inbox/realtime.js";
 import { logger } from "../logger.js";
 import { alias } from "drizzle-orm/pg-core";
+import crypto from "node:crypto";
+import { env } from "../env.js";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -100,13 +102,29 @@ async function audit(db: DbClient, c: Context, action: string, entityType: strin
 
 const assignee = alias(adminUser, "assignee");
 
+// ── Upload tokens: an attachment can only be sent by whoever uploaded it ──
+
+function uploadToken(userId: string, key: string): string {
+  return crypto.createHmac("sha256", env.JWT_SIGNING_KEY).update(`inbox-upload:${userId}:${key}`).digest("base64url");
+}
+
+function verifyUploadToken(userId: string, key: string, token: string): boolean {
+  const a = Buffer.from(uploadToken(userId, key));
+  const b = Buffer.from(token);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
 const SendBody = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), body: z.string().trim().min(1).max(4096) }),
   z.object({
     type: z.enum(["image", "document", "audio", "video"]),
-    media_key: z.string().regex(/^inbox\/outgoing\/[\w/.-]+$/),
+    media_key: z
+      .string()
+      .regex(/^inbox\/outgoing\/\d{4}\/\d{2}\/[0-9a-f-]{36}\.[a-z0-9]{1,6}$/, "invalid upload"),
+    /** Proof this user got the upload slot (from POST /uploads). */
+    media_token: z.string().min(16).max(128),
     mime: z.string().max(200),
     filename: z.string().max(240).optional(),
     caption: z.string().max(1024).optional(),
@@ -388,6 +406,9 @@ export function inboxRoutes(db: DbClient) {
       need(c, "inbox.templates");
       content = { type: "template", name: body.name, language: body.language, bodyParams: body.params };
     } else {
+      if (!verifyUploadToken(v.userId, body.media_key, body.media_token)) {
+        throw new BusinessError("forbidden", "That attachment wasn't uploaded by you", 403);
+      }
       // Meta fetches the file from a short-lived signed link.
       const link = await presignInboxGet(body.media_key, { expiresIn: 600 });
       content = { type: body.type, link };
@@ -487,7 +508,7 @@ export function inboxRoutes(db: DbClient) {
       .object({ filename: z.string().min(1).max(240), content_type: z.string().max(200), size_bytes: z.number().int().positive() })
       .parse(await c.req.json());
     const res = await presignInboxPut({ filename: body.filename, contentType: body.content_type, sizeBytes: body.size_bytes });
-    return c.json({ data: res }, 201);
+    return c.json({ data: { ...res, media_token: uploadToken(c.get("inboxViewer").userId, res.object_key) } }, 201);
   });
 
   r.get("/messages/:id/media", async (c) => {

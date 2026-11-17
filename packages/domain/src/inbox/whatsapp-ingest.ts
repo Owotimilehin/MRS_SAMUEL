@@ -8,9 +8,23 @@
  * worker fetches it (Meta's URLs are short-lived; the worker retries).
  */
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { inboxConversation, inboxMessage, inboxPhoneNumber, type DbExecutor } from "@ms/db";
+import { inboxConversation, inboxMessage, inboxPhoneNumber, inboxWebhookEvent, type DbExecutor } from "@ms/db";
 import { messagePreview, toE164 } from "@ms/shared";
 import { findOrCreateCustomer, findOrOpenConversation, publishInboxEvent, signalFor, touchConversation } from "./core.js";
+
+/**
+ * A delivery status arrived for a message we haven't finished saving (Meta can
+ * call back before our send request returns). Thrown so the whole event stays
+ * unprocessed and the worker retries it shortly; older orphans are ignored.
+ */
+export class StatusBeforeSendError extends Error {
+  constructor(public readonly waMessageId: string) {
+    super(`status for ${waMessageId} arrived before the message was saved; will retry`);
+    this.name = "StatusBeforeSendError";
+  }
+}
+
+const ORPHAN_STATUS_RETRY_MS = 5 * 60 * 1000;
 
 export class UnknownBusinessNumberError extends Error {
   constructor(public readonly waPhoneNumberId: string) {
@@ -243,6 +257,11 @@ async function ingestMessage(
 
 async function applyStatus(db: DbExecutor, s: WaStatus): Promise<boolean> {
   const at = tsToDate(s.timestamp);
+  const [known] = await db.select({ id: inboxMessage.id }).from(inboxMessage).where(eq(inboxMessage.waMessageId, s.id));
+  if (!known) {
+    if (Date.now() - at.getTime() < ORPHAN_STATUS_RETRY_MS) throw new StatusBeforeSendError(s.id);
+    return false; // sent outside the inbox (e.g. WhatsApp Business app) — nothing to update
+  }
   if (s.status === "failed") {
     const err = s.errors?.[0];
     const [row] = await db
@@ -296,4 +315,43 @@ async function applyQualityUpdate(db: DbExecutor, value: WaChangeValue): Promise
       updatedAt: new Date(),
     })
     .where(eq(inboxPhoneNumber.e164, e164));
+}
+
+/** Attempts value that parks an event until its business number is added. */
+export const PARKED_ATTEMPTS = 1000;
+
+/**
+ * Close out a stored webhook event after ingestWhatsAppPayload. Events that
+ * mention a business number we don't know are parked (not dropped): adding the
+ * number later calls unparkEventsForNumber() and the worker replays them.
+ */
+export async function finishWebhookEvent(db: DbExecutor, eventId: string, result: IngestResult): Promise<void> {
+
+  if (result.unknownNumbers.length > 0) {
+    await db
+      .update(inboxWebhookEvent)
+      .set({ attempts: PARKED_ATTEMPTS, lastError: `unknown_number:${result.unknownNumbers.join(",")}` })
+      .where(eq(inboxWebhookEvent.id, eventId));
+    return;
+  }
+  await db
+    .update(inboxWebhookEvent)
+    .set({ processedAt: new Date(), attempts: sql`${inboxWebhookEvent.attempts} + 1`, lastError: null })
+    .where(eq(inboxWebhookEvent.id, eventId));
+}
+
+/** Re-queue parked events for a WhatsApp phone number ID that now exists. */
+export async function unparkEventsForNumber(db: DbExecutor, waPhoneNumberId: string): Promise<number> {
+
+  const rows = await db
+    .update(inboxWebhookEvent)
+    .set({ attempts: 0, lastError: null, receivedAt: sql`now() - interval '1 hour'` })
+    .where(
+      and(
+        sql`${inboxWebhookEvent.processedAt} is null`,
+        sql`${inboxWebhookEvent.lastError} like ${`unknown_number:%${waPhoneNumberId}%`}`,
+      ),
+    )
+    .returning({ id: inboxWebhookEvent.id });
+  return rows.length;
 }

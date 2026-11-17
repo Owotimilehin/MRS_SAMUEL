@@ -1,5 +1,6 @@
 -- Unified inbox (WhatsApp + voice). Additive only: new enums and inbox_* tables.
--- No existing table is altered; customer rows are referenced, never changed.
+-- No existing table is altered. The inbox inserts a customer row only when no
+-- existing customer matches the phone number; it never updates existing ones.
 -- Undo: DROP the inbox_* tables and inbox_* enums (no other table depends on them).
 
 DO $$ BEGIN CREATE TYPE "inbox_channels" AS ENUM ('voice','whatsapp','both'); EXCEPTION WHEN duplicate_object THEN null; END $$;
@@ -132,6 +133,8 @@ CREATE INDEX IF NOT EXISTS "idx_inbox_conv_activity" ON "inbox_conversation" ("s
 CREATE INDEX IF NOT EXISTS "idx_inbox_conv_customer" ON "inbox_conversation" ("customer_id","phone_number_id");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_inbox_conv_assignee" ON "inbox_conversation" ("assignee_id");
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_inbox_conv_live" ON "inbox_conversation" ("customer_id","phone_number_id") WHERE "status" <> 'closed';
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "inbox_message" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

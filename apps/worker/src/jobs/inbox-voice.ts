@@ -8,8 +8,8 @@
  * Both are safe to run every tick: they no-op when their providers are not
  * configured.
  */
-import { and, eq, gte, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
-import { customer, inboxCall, inboxConversation, inboxPhoneNumber, inboxRecording, type DbClient } from "@ms/db";
+import { and, eq, gte, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
+import { customer, inboxCall, inboxConversation, inboxMessage, inboxPhoneNumber, inboxRecording, type DbClient } from "@ms/db";
 import {
   InboxSendError,
   deleteRecording,
@@ -195,6 +195,7 @@ export async function processPendingRecordings(
 // ── Missed-call follow-up ────────────────────────────────────────────────────
 
 const FOLLOWUP_WINDOW_MS = 6 * 60 * 60 * 1000;
+const FOLLOWUP_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 /** Calls with no final status callback are treated as over after this long. */
 const STALE_CALL_MS = 15 * 60 * 1000;
 export const MISSED_CALL_TEMPLATE = "missed_call_followup";
@@ -206,9 +207,10 @@ export function firstNameOrThere(name: string | null | undefined): string {
 
 /**
  * WhatsApp the callers we missed (missed / voicemail / after_hours, inbound,
- * within the last 6h). At-most-once: each call is claimed by setting
- * followup_sent_at before sending, and only released again on an unexpected
- * error that happened before anything was sent.
+ * never answered, within the last 6h). At-most-once: each call is claimed by
+ * setting followup_sent_at before sending and the claim is never released.
+ * Skipped when the customer already had a follow-up in the last 6h or staff
+ * have messaged them since the call.
  */
 export async function sendMissedCallFollowups(
   db: DbClient,
@@ -237,6 +239,8 @@ export async function sendMissedCallFollowups(
         eq(inboxCall.direction, "in"),
         inArray(inboxCall.outcome, ["missed", "voicemail", "after_hours"]),
         isNull(inboxCall.followupSentAt),
+        // A call someone picked up is never "missed", whatever the callbacks said.
+        isNull(inboxCall.answeredAt),
         gte(inboxCall.startedAt, new Date(now.getTime() - FOLLOWUP_WINDOW_MS)),
         // Wait until the caller has hung up (or the call is clearly over).
         or(sql`${inboxCall.endedAt} is not null`, lt(inboxCall.startedAt, new Date(now.getTime() - STALE_CALL_MS))),
@@ -254,6 +258,30 @@ export async function sendMissedCallFollowups(
       .where(and(eq(inboxCall.id, call.id), isNull(inboxCall.followupSentAt)))
       .returning({ id: inboxCall.id });
     if (!claimed) continue;
+
+    // One follow-up per customer per 6 hours, and none if staff already replied.
+    const since = new Date(now.getTime() - FOLLOWUP_COOLDOWN_MS);
+    const [recentFollowup] = await db
+      .select({ id: inboxCall.id })
+      .from(inboxCall)
+      .where(and(eq(inboxCall.customerId, call.customerId), ne(inboxCall.id, call.id), gte(inboxCall.followupSentAt, since)))
+      .limit(1);
+    const [staffReply] = await db
+      .select({ id: inboxMessage.id })
+      .from(inboxMessage)
+      .innerJoin(inboxConversation, eq(inboxConversation.id, inboxMessage.conversationId))
+      .where(
+        and(
+          eq(inboxConversation.customerId, call.customerId),
+          eq(inboxMessage.direction, "out"),
+          gte(inboxMessage.createdAt, call.startedAt),
+        ),
+      )
+      .limit(1);
+    if (recentFollowup || staffReply) {
+      logger.info({ callId: call.id }, "missed-call follow-up skipped: already contacted");
+      continue;
+    }
 
     let conversationId: string | null = null;
     try {
@@ -292,8 +320,9 @@ export async function sendMissedCallFollowups(
         // Not retryable (template not approved, no WhatsApp, …): keep the claim so it doesn't loop.
         logger.warn({ callId: call.id, code: err.code, err: err.message }, "missed-call follow-up not sent");
       } else {
-        logger.error({ err, callId: call.id }, "missed-call follow-up error; will retry");
-        await db.update(inboxCall).set({ followupSentAt: null }).where(eq(inboxCall.id, call.id));
+        // At most once: the send may already have reached Meta before this
+        // error, so the claim is never released (no double messages).
+        logger.error({ err, callId: call.id }, "missed-call follow-up error; not retried");
       }
     }
   }

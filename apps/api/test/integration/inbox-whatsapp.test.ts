@@ -262,12 +262,52 @@ describe("unified inbox — WhatsApp", () => {
     expect(res.status).toBe(403);
   });
 
-  it("logs unknown business numbers instead of dropping them silently", async () => {
+  it("parks messages for an unknown number and brings them in once the number is added", async () => {
     const payload = inboundPayload({ wamid: "wamid.unknown", from: "2347055555555", text: "?" });
     payload.entry[0]!.changes[0]!.value.metadata.phone_number_id = "999999";
     expect((await postWebhook(payload)).status).toBe(200);
-    const events = await db.select().from(inboxWebhookEvent);
-    expect(events.length).toBeGreaterThan(0);
     expect(await db.select().from(inboxMessage).where(eq(inboxMessage.waMessageId, "wamid.unknown"))).toHaveLength(0);
+    const parked = (await db.select().from(inboxWebhookEvent)).filter((e) => e.lastError?.startsWith("unknown_number:"));
+    expect(parked).toHaveLength(1);
+    expect(parked[0]!.processedAt).toBeNull();
+
+    const owner = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
+    const res = await fetch(`${baseUrl}/v1/inbox/settings/numbers`, {
+      method: "POST",
+      headers: { cookie: owner, "content-type": "application/json" },
+      body: JSON.stringify({ e164: "+2348000000009", label: "Abuja", channels: "whatsapp", wa_phone_number_id: "999999" }),
+    });
+    expect(res.status).toBe(201);
+    const [after] = await db.select().from(inboxWebhookEvent).where(eq(inboxWebhookEvent.id, parked[0]!.id));
+    expect(after!.attempts).toBe(0);
+    expect(after!.lastError).toBeNull(); // re-queued for the worker
+  });
+
+  it("keeps a fresh status for an unknown message id unprocessed so it is retried", async () => {
+    const payload = {
+      object: "whatsapp_business_account",
+      entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: WA_NUMBER_ID }, statuses: [{ id: "wamid.not.yet.saved", status: "delivered", timestamp: String(Math.floor(Date.now() / 1000)) }] } }] }],
+    };
+    expect((await postWebhook(payload)).status).toBe(200);
+    const events = await db.select().from(inboxWebhookEvent);
+    const ev = events.find((e) => JSON.stringify(e.payload).includes("wamid.not.yet.saved"));
+    expect(ev!.processedAt).toBeNull();
+    expect(ev!.lastError).toContain("will retry");
+  });
+
+  it("refuses an attachment the sender didn't upload", async () => {
+    const cookie = await loginAs(baseUrl, "agent@example.com", "userpassword123");
+    const list = (await (await fetch(`${baseUrl}/v1/inbox/conversations?view=mine`, { headers: { cookie } })).json()) as { data: { id: string }[] };
+    const res = await fetch(`${baseUrl}/v1/inbox/conversations/${list.data[0]!.id}/messages`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "image",
+        media_key: "inbox/outgoing/2026/11/0b9a1c5e-1111-4222-8333-444455556666.jpg",
+        mime: "image/jpeg",
+        media_token: "forged-token-forged-token",
+      }),
+    });
+    expect(res.status).toBe(403);
   });
 });

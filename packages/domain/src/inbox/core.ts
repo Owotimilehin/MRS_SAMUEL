@@ -56,8 +56,9 @@ export function signalFor(
  * Find the customer for a phone number, or create one. Existing customer.phone
  * values were typed in many formats, so match on digits: +2347067220914 matches
  * "2347067220914", "07067220914" and "7067220914". The oldest live record wins
- * when there are duplicates; nothing existing is modified except filling a
- * blank name.
+ * when there are duplicates. Existing customer rows are never modified; a new
+ * row is inserted only when nothing matches. Must run inside a transaction
+ * (uses a transaction-scoped advisory lock).
  */
 export async function findOrCreateCustomer(
   db: DbExecutor,
@@ -71,27 +72,37 @@ export async function findOrCreateCustomer(
     ? [digits, `0${digits.slice(3)}`, digits.slice(3)]
     : [digits];
 
-  const [existing] = await db
-    .select({ id: customer.id, name: customer.name })
+  // Serialise per phone number for the rest of this transaction, so two
+  // webhooks arriving together for a new customer can't both insert.
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`inbox-customer:${e164}`}))`);
+
+  const live = isNull(customer.deletedAt);
+  // Fast path: canonical form, uses the phone index.
+  let [existing] = await db
+    .select({ id: customer.id })
     .from(customer)
-    .where(
-      and(
-        isNull(customer.deletedAt),
-        sql`regexp_replace(coalesce(${customer.phone}, ''), '\\D', '', 'g') in (${sql.join(
-          variants.map((v) => sql`${v}`),
-          sql`, `,
-        )})`,
-      ),
-    )
+    .where(and(live, eq(customer.phone, e164)))
     .orderBy(asc(customer.createdAt))
     .limit(1);
-
-  if (existing) {
-    if (!existing.name && opts.name) {
-      await db.update(customer).set({ name: opts.name, updatedAt: new Date() }).where(eq(customer.id, existing.id));
-    }
-    return { id: existing.id, created: false };
+  if (!existing) {
+    // Slow path: phones typed in other formats (scans; only on a miss).
+    [existing] = await db
+      .select({ id: customer.id })
+      .from(customer)
+      .where(
+        and(
+          live,
+          sql`regexp_replace(coalesce(${customer.phone}, ''), '\\D', '', 'g') in (${sql.join(
+            variants.map((v) => sql`${v}`),
+            sql`, `,
+          )})`,
+        ),
+      )
+      .orderBy(asc(customer.createdAt))
+      .limit(1);
   }
+  // Existing customer rows are never modified by the inbox.
+  if (existing) return { id: existing.id, created: false };
 
   const [row] = await db
     .insert(customer)
@@ -153,9 +164,14 @@ export async function touchConversation(
   const [row] = await db
     .update(inboxConversation)
     .set({
-      lastActivityAt: at,
-      ...(patch.preview !== undefined ? { lastPreview: patch.preview } : {}),
-      ...(patch.inboundWa ? { lastInboundWaAt: patch.inboundWa } : {}),
+      // Forward-only, so a late retry of an old event can't move things back.
+      lastActivityAt: sql`greatest(${inboxConversation.lastActivityAt}, ${at})`,
+      ...(patch.preview !== undefined
+        ? { lastPreview: sql`case when ${at} >= ${inboxConversation.lastActivityAt} then ${patch.preview} else ${inboxConversation.lastPreview} end` }
+        : {}),
+      ...(patch.inboundWa
+        ? { lastInboundWaAt: sql`greatest(coalesce(${inboxConversation.lastInboundWaAt}, '-infinity'::timestamptz), ${patch.inboundWa})` }
+        : {}),
       ...(patch.unreadIncrement ? { unreadCount: sql`${inboxConversation.unreadCount} + 1` } : {}),
       // A new inbound message on a pending/closed-but-reopened thread is open work.
       ...(patch.unreadIncrement ? { status: "open" as const } : {}),

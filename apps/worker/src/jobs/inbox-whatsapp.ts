@@ -17,6 +17,7 @@ import {
 } from "@ms/db";
 import {
   downloadMedia,
+  finishWebhookEvent,
   ingestWhatsAppPayload,
   listTemplates,
   metaConfigFromEnv,
@@ -52,11 +53,8 @@ export async function retryWebhookEvents(db: DbClient, log: Log): Promise<number
   for (const ev of due) {
     try {
       await db.transaction(async (tx) => {
-        await ingestWhatsAppPayload(tx, ev.payload as WaWebhookPayload);
-        await tx
-          .update(inboxWebhookEvent)
-          .set({ processedAt: new Date(), attempts: sql`${inboxWebhookEvent.attempts} + 1`, lastError: null })
-          .where(eq(inboxWebhookEvent.id, ev.id));
+        const res = await ingestWhatsAppPayload(tx, ev.payload as WaWebhookPayload);
+        await finishWebhookEvent(tx, ev.id, res);
       });
       done++;
     } catch (err) {

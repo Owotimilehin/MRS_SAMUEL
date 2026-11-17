@@ -15,7 +15,7 @@ import {
   inboxUserNumberAccess,
   type DbClient,
 } from "@ms/db";
-import { getNumberInfo, metaConfigFromEnv, registerNumber, MetaApiError } from "@ms/domain";
+import { getNumberInfo, metaConfigFromEnv, registerNumber, unparkEventsForNumber, MetaApiError } from "@ms/domain";
 import { toE164 } from "@ms/shared";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
@@ -103,6 +103,7 @@ export function inboxSettingsRoutes(db: DbClient) {
     const values = numberValues(body) as typeof inboxPhoneNumber.$inferInsert;
     try {
       const [row] = await db.insert(inboxPhoneNumber).values(values).returning();
+      if (row!.waPhoneNumberId) await unparkEventsForNumber(db, row!.waPhoneNumberId);
       await audit(db, c, "inbox.number_create", "inbox_phone_number", row!.id, { label: row!.label, e164: row!.e164 });
       return c.json({ data: row }, 201);
     } catch (err) {
@@ -124,6 +125,9 @@ export function inboxSettingsRoutes(db: DbClient) {
       .set({ ...numberValues(body), updatedAt: new Date() })
       .where(eq(inboxPhoneNumber.id, id))
       .returning();
+    if (row?.waPhoneNumberId && row.waPhoneNumberId !== before.waPhoneNumberId) {
+      await unparkEventsForNumber(db, row.waPhoneNumberId);
+    }
     await audit(db, c, "inbox.number_update", "inbox_phone_number", id, body, before);
     return c.json({ data: row });
   });

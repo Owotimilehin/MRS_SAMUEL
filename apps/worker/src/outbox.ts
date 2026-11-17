@@ -470,7 +470,7 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         text:
           `📵 *WhatsApp message for an unknown number*\n` +
           `Meta sent a message for phone number ID ${String(p["phone_number_ids"] ?? "?")}, which isn't set up in the inbox. ` +
-          `Add it under Inbox settings → Numbers, or the message stays unread.\n` +
+          `Its messages are kept and come in automatically once you add it under Inbox settings → Numbers.\n` +
           `👉 ${ADMIN_URL}/inbox/settings`,
       };
     case "inbox.webhook_dead":

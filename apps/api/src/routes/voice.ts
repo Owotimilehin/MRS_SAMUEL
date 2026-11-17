@@ -18,6 +18,7 @@
  * Missed-call / after-hours WhatsApp follow-ups are NOT sent here; the worker
  * picks them up (apps/worker/src/jobs/inbox-voice.ts).
  */
+import { bodyLimit } from "hono/body-limit";
 import { Hono, type Context } from "hono";
 import { and, asc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -42,6 +43,7 @@ import {
   type DbExecutor,
 } from "@ms/db";
 import {
+  canSeeConversation,
   findOrCreateCustomer,
   findOrOpenConversation,
   publishInboxEvent,
@@ -59,6 +61,7 @@ import { isOpenNow, resolveCapabilities, toE164, type Capability, type Permissio
 import { requireAnyCapability, requireAuth, requireCapability } from "../middleware/auth.js";
 import { BusinessError } from "../lib/errors.js";
 import { logger } from "../logger.js";
+import { reloadViewer } from "../inbox/realtime.js";
 
 export const VOICE_WEBHOOK_PREFIX = "/v1/voice";
 
@@ -372,6 +375,8 @@ async function runOption(
 
 export function voiceWebhookRoutes(db: DbClient) {
   const r = new Hono();
+  // Twilio form posts are tiny; reject anything large before parsing.
+  r.use("*", bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.text("payload too large", 413) }));
 
   r.post(
     "/incoming",
@@ -476,7 +481,8 @@ export function voiceWebhookRoutes(db: DbClient) {
                 ? { answeredByUserId: call.startedByUserId }
                 : {}),
             })
-            .where(and(eq(inboxCall.id, call.id), inArray(inboxCall.outcome, ["in_progress", "answered"])));
+            // "missed" included: a late /status may have marked it before this ran.
+            .where(and(eq(inboxCall.id, call.id), inArray(inboxCall.outcome, ["in_progress", "answered", "missed"])));
           await publishCall(tx, ctx.conv, call.id);
           return twiml().hangup();
         }
@@ -727,9 +733,18 @@ export function voiceAppRoutes(db: DbClient) {
         .select()
         .from(inboxCall)
         .where(UUID_RE.test(ref) ? eq(inboxCall.id, ref) : eq(inboxCall.twilioCallSid, ref));
-      if (!call) throw new BusinessError("not_found", "call not found", 404);
-      if (!(await hasNumberAccess(tx, auth.userId, auth.capabilities, call.phoneNumberId))) {
-        throw new BusinessError("forbidden", "no access to this business number", 403);
+      if (!call || call.direction !== "in") throw new BusinessError("not_found", "call not found", 404);
+      // Fresh permissions (not the JWT): must see the conversation, still hold
+      // calls.answer, and be in the team being rung (unless they see everything).
+      const viewer = await reloadViewer(db, auth.userId);
+      const [convRow] = await tx.select().from(inboxConversation).where(eq(inboxConversation.id, call.conversationId));
+      if (!viewer || !convRow || !viewer.capabilities.includes("calls.answer")) {
+        throw new BusinessError("not_found", "call not found", 404);
+      }
+      const routing = { phoneNumberId: call.phoneNumberId, teamId: call.teamId, assigneeId: null };
+      const inRungTeam = viewer.capabilities.includes("inbox.view_all") || (call.teamId !== null && viewer.teamIds.includes(call.teamId));
+      if (!canSeeConversation(viewer, routing) || !inRungTeam) {
+        throw new BusinessError("not_found", "call not found", 404);
       }
       const [updated] = await tx
         .update(inboxCall)
