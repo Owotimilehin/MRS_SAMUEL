@@ -336,7 +336,11 @@ function Page() {
       /* ignore storage failures */
     }
     const trackUrl = `/order/${order.order_number}?paid=1`;
-    const url = order.payment.redirect_url;
+    // No payment URL means the order was saved but OPay could not be reached.
+    // Never ask the customer to place it again (that would be a second order):
+    // take them to the order's page, where "Complete payment" opens a fresh
+    // OPay session.
+    const url = order.payment.redirect_url ?? `/order/${order.order_number}?await_payment=1`;
 
     // Clear the basket before leaving (the order owns the items now). Mount the
     // redirect overlay FIRST so the tap gets instant feedback and — if

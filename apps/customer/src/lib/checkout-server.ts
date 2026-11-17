@@ -174,5 +174,11 @@ export async function handleCheckoutPost(request: Request): Promise<Response | n
     return seeOther(redirectUrl, [CLEAR_CART_COOKIE, SIGNAL_CART_CLEARED]);
   }
 
-  return seeOther(`/order/${order.order_number}?await_payment=1`);
+  // The order exists but no payment page could be opened (OPay unreachable).
+  // It still owns the items, so clear the basket exactly as above; otherwise
+  // the customer returns to a full basket and orders the same thing twice.
+  return seeOther(`/order/${order.order_number}?await_payment=1`, [
+    CLEAR_CART_COOKIE,
+    SIGNAL_CART_CLEARED,
+  ]);
 }
