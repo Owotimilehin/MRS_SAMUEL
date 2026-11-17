@@ -18,6 +18,9 @@ export const ErrorCode = {
   // paid — the client must re-submit with reconciled:true to proceed. Never
   // triggers an automatic charge or refund.
   ReconcileRequired: "reconcile_required",
+  // A checkout was re-sent for an order that is no longer awaiting payment
+  // (paid, cancelled or expired). The customer must start a new order.
+  OrderClosed: "order_closed",
   Internal: "internal_error",
   ServiceUnavailable: "service_unavailable"
 } as const;

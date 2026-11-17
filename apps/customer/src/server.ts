@@ -4,7 +4,12 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { handleCheckoutPost } from "./lib/checkout-server";
 import { handleSitemapRequest } from "./lib/sitemap";
-import { apiFetch } from "./lib/api/client";
+import { apiFetch, setApiHeaderSource } from "./lib/api/client";
+import { withShopper, currentShopperHeaders } from "./lib/api/shopper.server";
+
+// Every API call made while serving a request carries that shopper's address
+// (see shopper.server.ts), so the API rate-limits shoppers individually.
+setApiHeaderSource(currentShopperHeaders);
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -41,6 +46,12 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 }
 
 export default {
+  fetch(request: Request, env: unknown, ctx: unknown) {
+    return withShopper(request, () => ssrEntry.fetch(request, env, ctx));
+  },
+};
+
+const ssrEntry = {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       // No-JS checkout submit: create the order + redirect to payment before

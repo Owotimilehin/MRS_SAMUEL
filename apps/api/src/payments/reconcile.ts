@@ -44,6 +44,15 @@ export async function applyPaymentConfirmation(
     // (the reconcile sweep re-fires this every couple of minutes; the guard
     // below dedupes on the order id so we don't spam a fresh alert each pass).
     if (o.status === "cancelled") {
+      // Take the order's row lock first. The check-then-insert below is not
+      // atomic on its own: OPay's callback and a worker sweep arriving together
+      // would both see "no alert yet" and both insert one. Holding the lock
+      // makes the second caller wait until the first has committed its alert.
+      await tx
+        .select({ id: saleOrder.id })
+        .from(saleOrder)
+        .where(eq(saleOrder.id, o.id))
+        .for("update");
       const [existing] = await tx
         .select({ id: outboxEvent.id })
         .from(outboxEvent)

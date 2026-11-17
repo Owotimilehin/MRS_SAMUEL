@@ -38,6 +38,16 @@ jobs:
             docker compose up -d --build --remove-orphans
             echo "==> Pruning dangling images"
             docker image prune -f >/dev/null
+            # Build files pile up with every deploy (they reached ~50 GB and
+            # 78% of the disk in Nov 2026). Keep the last 3 days so the next
+            # build stays fast; drop the rest. Never fail the deploy on this.
+            echo "==> Pruning build files older than 3 days"
+            docker builder prune -f --filter "until=72h" >/dev/null 2>&1 || echo "builder prune skipped"
+            USED=$(df --output=pcent / | tail -1 | tr -dc '0-9')
+            echo "Disk: ${USED}% used"
+            if [ "${USED:-0}" -ge 85 ]; then
+              echo "::warning::Server disk is ${USED}% full. A full disk stops the database."
+            fi
             echo "==> Health"
             sleep 8
             for i in 1 2 3 4 5 6; do

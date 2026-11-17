@@ -1064,8 +1064,8 @@ describe("Phase 3 customer-site online order flow", () => {
         { method: "POST" },
       );
       expect(ok.status).toBe(200);
-      const okBody = (await ok.json()) as { redirect_url: string };
-      expect(okBody.redirect_url).toContain("sandboxcashier.opaycheckout.com/resume-");
+      const okBody = (await ok.json()) as { data: { redirect_url: string } };
+      expect(okBody.data.redirect_url).toContain("sandboxcashier.opaycheckout.com/resume-");
 
       // Wrong phone → 404 (no enumeration).
       const wrong = await fetch(

@@ -34,6 +34,7 @@ import { verifyTurnstileToken } from "../lib/turnstile.js";
 import { env } from "../env.js";
 import { verifyAndReconcile } from "../payments/reconcile.js";
 import { logger } from "../logger.js";
+import { Sentry } from "../sentry.js";
 
 const CreateOnlineOrder = z.object({
   branch_id: z.string().uuid(),
@@ -141,6 +142,54 @@ function maxScheduleDateStr(ms: number): string {
 const TrackQuery = z.object({
   phone: z.string().min(7),
 });
+
+/**
+ * The checkout response. `redirectUrl` is OPay's payment page, or null when the
+ * order exists but no payment page could be opened for it; the storefront then
+ * sends the customer to the order's page, whose "Complete payment" button opens
+ * a fresh OPay session (POST /:orderNumber/opay-session).
+ */
+function placedOrderBody(o: typeof saleOrder.$inferSelect, redirectUrl: string | null) {
+  return {
+    data: {
+      id: o.id,
+      order_number: o.orderNumber,
+      total_ngn: o.totalNgn,
+      // True when any line is out of stock at the branch or is a
+      // preorder-only size. The customer checkout uses this to show a
+      // gracious "made to order — we'll WhatsApp you" confirmation before
+      // payment. Authoritative: same flag the order was created with.
+      is_preorder: o.isPreorder,
+      payment: { provider: "opay" as const, reference: o.orderNumber, redirect_url: redirectUrl },
+    },
+  };
+}
+
+/**
+ * Whether a checkout request asks for exactly the lines an existing order has.
+ * A request line names a variant, or (older callers) only a product.
+ */
+function sameBasket(
+  requested: ReadonlyArray<{
+    variant_id?: string | undefined;
+    product_id?: string | undefined;
+    quantity: number;
+  }>,
+  existing: ReadonlyArray<{ productId: string; variantId: string | null; quantity: number }>,
+): boolean {
+  if (requested.length !== existing.length) return false;
+  const unmatched = [...existing];
+  for (const r of requested) {
+    const i = unmatched.findIndex(
+      (e) =>
+        e.quantity === r.quantity &&
+        (r.variant_id != null ? e.variantId === r.variant_id : e.productId === r.product_id),
+    );
+    if (i === -1) return false;
+    unmatched.splice(i, 1);
+  }
+  return true;
+}
 
 export function publicOrderRoutes(db: DbClient) {
   const r = new Hono();
@@ -255,6 +304,59 @@ export function publicOrderRoutes(db: DbClient) {
     const idempotencyKey = c.req.header("idempotency-key");
     if (!idempotencyKey) {
       throw new BusinessError("validation_failed", "idempotency-key header required", 400);
+    }
+
+    // A retry of a checkout whose order is already saved. A checkout that
+    // completed is replayed by the idempotency middleware and never gets here;
+    // this is the attempt that saved the order and then did not finish (cut off
+    // mid-request), whose abandoned key a retry has taken over.
+    // sale_order.idempotency_key is unique, so running on could only fail at
+    // the insert: hand back the SAME order instead, never a second one. Done
+    // before the bot check: a Turnstile token cannot be verified twice.
+    const [prior] = await db
+      .select()
+      .from(saleOrder)
+      .where(and(eq(saleOrder.idempotencyKey, idempotencyKey), eq(saleOrder.channel, "online")));
+    if (prior) {
+      // It must be the same checkout: the same phone (as on the tracking page,
+      // so a guessed key reveals nothing) and the same basket. Anything else is
+      // a different order that happens to present this key.
+      const [priorCustomer] = prior.customerId
+        ? await db.select().from(customer).where(eq(customer.id, prior.customerId))
+        : [null];
+      const priorItems = await db
+        .select({
+          productId: saleOrderItem.productId,
+          variantId: saleOrderItem.variantId,
+          quantity: saleOrderItem.quantity,
+        })
+        .from(saleOrderItem)
+        .where(eq(saleOrderItem.saleOrderId, prior.id));
+      if (
+        !priorCustomer?.phone ||
+        !phonesMatch(priorCustomer.phone, body.customer.phone) ||
+        (body.items !== undefined && !sameBasket(body.items, priorItems))
+      ) {
+        throw new BusinessError(
+          "idempotency_key_reused",
+          "idempotency key reused with different payload",
+          409,
+        );
+      }
+      // Only an order still awaiting payment can be handed back as "placed"
+      // (the same two statuses the resume-payment endpoint accepts). One that
+      // has since been paid, cancelled or expired must not send the customer
+      // to a payment page.
+      if (prior.status !== "confirmed" && prior.status !== "reconcile_needed") {
+        throw new BusinessError(
+          "order_closed",
+          "This order was already completed or has expired. Please start a new order.",
+          409,
+        );
+      }
+      // The order owns the cart contents, exactly as on the normal path below.
+      await clearCartForCookie(db, c);
+      return c.json(placedOrderBody(prior, null), 201);
     }
 
     // Bot check (Cloudflare Turnstile). No-op unless TURNSTILE_SECRET is set, and
@@ -607,37 +709,34 @@ export function publicOrderRoutes(db: DbClient) {
 
     // Hand the customer OPay's hosted cashier URL. Payment is confirmed
     // server-side (OPay cashier/status) via the webhook / sweep / on-view verify.
-    const handoff = await createCheckout(db, {
-      provider: "opay",
-      amountNgn: created.order.totalNgn,
-      reference: created.order.orderNumber,
-      email: created.customerEmail ?? "no-email@example.com",
-      customerName: body.customer.name,
-      customerPhone: body.customer.phone,
-    });
+    //
+    // The order is already saved (stock held, owner alerted, cart emptied), so
+    // OPay being unreachable must NOT turn this into an error: the customer
+    // would retry and get a second order while the first sat unpaid. Return
+    // the order without a payment URL instead; the storefront sends the
+    // customer to its page to complete payment there. Because this is a
+    // success, the idempotency middleware stores it, and a retry with the same
+    // key gets this same order back.
+    let redirectUrl: string | null = null;
+    try {
+      const handoff = await createCheckout(db, {
+        provider: "opay",
+        amountNgn: created.order.totalNgn,
+        reference: created.order.orderNumber,
+        email: created.customerEmail ?? "no-email@example.com",
+        customerName: body.customer.name,
+        customerPhone: body.customer.phone,
+      });
+      redirectUrl = handoff.redirectUrl;
+    } catch (err) {
+      logger.error(
+        { err, orderNumber: created.order.orderNumber },
+        "checkout: opay session could not be created; order returned without a payment URL",
+      );
+      Sentry.captureException(err, { extra: { orderNumber: created.order.orderNumber } });
+    }
 
-    const payment = {
-      provider: "opay" as const,
-      reference: created.order.orderNumber,
-      redirect_url: handoff.redirectUrl,
-    };
-
-    return c.json(
-      {
-        data: {
-          id: created.order.id,
-          order_number: created.order.orderNumber,
-          total_ngn: created.order.totalNgn,
-          // True when any line is out of stock at the branch or is a
-          // preorder-only size. The customer checkout uses this to show a
-          // gracious "made to order — we'll WhatsApp you" confirmation before
-          // payment. Authoritative: same flag the order was created with.
-          is_preorder: created.order.isPreorder,
-          payment,
-        },
-      },
-      201,
-    );
+    return c.json(placedOrderBody(created.order, redirectUrl), 201);
   });
 
   /**
@@ -839,7 +938,10 @@ export function publicOrderRoutes(db: DbClient) {
     if (handoff.provider !== "opay") {
       throw new BusinessError("internal_error", "expected opay handoff", 500);
     }
-    return c.json({ redirect_url: handoff.redirectUrl });
+    // Wrapped in `data` like every other response: the storefront's API client
+    // returns only `data`, so the bare object reached it as undefined and
+    // "Complete payment" silently did nothing.
+    return c.json({ data: { redirect_url: handoff.redirectUrl } });
   });
 
   return r;

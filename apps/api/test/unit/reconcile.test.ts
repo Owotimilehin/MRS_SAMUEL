@@ -43,9 +43,11 @@ function fakeTx(order: any, opts?: { casWins?: boolean; existingCancelAlert?: bo
                     ? [{ id: "existing-alert" }]
                     : []
                   : [];
-          // Promise-like so both `await where()` and `where().limit(n)` work.
+          // Promise-like so `await where()`, `where().limit(n)` and
+          // `where().for("update")` all work.
           const p: any = Promise.resolve(rows);
           p.limit = () => Promise.resolve(rows);
+          p.for = () => Promise.resolve(rows);
           return p;
         },
       }),

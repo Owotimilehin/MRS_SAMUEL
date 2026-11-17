@@ -153,6 +153,22 @@ describe("sync engine under bad networks", () => {
     expect(row?.last_error).toBe("insufficient stock");
   });
 
+  it("409 idempotency_in_flight is NOT a rejection: the sale stays pending and retries later", async () => {
+    mockFetch(() =>
+      jsonResponse(409, {
+        error: { code: "idempotency_in_flight", message: "request still in flight" },
+      }),
+    );
+    await local.outbox.put(saleRow({ id: "s4b" }));
+
+    await flushOutbox();
+
+    const row = await local.outbox.get("s4b");
+    expect(row?.status).toBe("pending"); // never dead-lettered
+    expect(row?.attempt_count).toBe(1);
+    expect(row?.next_attempt_at).toBeGreaterThan(Date.now());
+  });
+
   it("session lapsed (401): renews the login and retries so the sale lodges — never dead-lettered", async () => {
     // The access cookie lives 30 minutes; a till left idle/backgrounded past that
     // sends a sale with no cookie and the server answers 401 "missing session".

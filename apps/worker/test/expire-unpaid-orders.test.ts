@@ -17,9 +17,10 @@ import {
 } from "@ms/db";
 import { expireUnpaidOrders } from "../src/jobs/expire-unpaid-orders.js";
 
-/** No-op re-verify: the default hits the api over HTTP, unavailable in unit
- *  tests. Existing cases assert cancellation behaviour, not reconciliation. */
-const noRefire = async () => {};
+/** Re-verify that completes and finds nothing paid: the default hits the api
+ *  over HTTP, unavailable in unit tests. Existing cases assert cancellation
+ *  behaviour, not reconciliation. */
+const noRefire = async () => true;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, "../../../packages/db/migrations");
@@ -213,6 +214,7 @@ describe("expireUnpaidOrders", () => {
           .set({ status: "paid", paymentStatus: "paid" })
           .where(eq(saleOrder.id, rescuedId));
       }
+      return true;
     };
 
     const n = await expireUnpaidOrders(db, now, refire);
@@ -231,5 +233,142 @@ describe("expireUnpaidOrders", () => {
       .from(stockReservation)
       .where(eq(stockReservation.saleOrderId, rescuedId));
     expect(resv).toHaveLength(1);
+  });
+
+  // P1: the last re-check itself can fail (OPay or our api down). We then do
+  // not know whether the customer paid, so the order must not be cancelled.
+  it.each([
+    ["the check throws (api unreachable)", async () => Promise.reject(new Error("ECONNREFUSED"))],
+    ["the check reports failure (status query errored)", async () => false],
+  ] as const)("does NOT cancel when %s; the next sweep that can check does", async (_label, failing) => {
+    const now = new Date();
+    const id = await makeOrder({
+      channel: "online",
+      status: "confirmed",
+      paymentStatus: "pending",
+      createdAt: new Date(now.getTime() - 61 * 60_000),
+      withReservation: true,
+    });
+
+    expect(await expireUnpaidOrders(db, now, failing)).toBe(0);
+    const [open] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
+    expect(open!.status).toBe("confirmed");
+    expect(open!.cancelledAt).toBeNull();
+    expect(
+      await db.select().from(stockReservation).where(eq(stockReservation.saleOrderId, id)),
+    ).toHaveLength(1);
+
+    // Five minutes later the provider answers ("not paid"): now it is cancelled.
+    const later = new Date(now.getTime() + 5 * 60_000);
+    expect(await expireUnpaidOrders(db, later, noRefire)).toBe(1);
+    const [closed] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
+    expect(closed!.status).toBe("cancelled");
+    expect(closed!.cancelReason).toBe("payment_expired");
+  });
+
+  it("cancels only the orders whose check completed", async () => {
+    const now = new Date();
+    const old = new Date(now.getTime() - 61 * 60_000);
+    const mk = () =>
+      makeOrder({ channel: "online", status: "confirmed", paymentStatus: "pending", createdAt: old });
+    const checkedId = await mk();
+    const uncheckedId = await mk();
+    const [unchecked] = await db.select().from(saleOrder).where(eq(saleOrder.id, uncheckedId));
+
+    const n = await expireUnpaidOrders(db, now, async (orderNumber) => {
+      if (orderNumber === unchecked!.orderNumber) throw new Error("opay timeout");
+      return true;
+    });
+    expect(n).toBe(1);
+    const [a] = await db.select().from(saleOrder).where(eq(saleOrder.id, checkedId));
+    const [b] = await db.select().from(saleOrder).where(eq(saleOrder.id, uncheckedId));
+    expect(a!.status).toBe("cancelled");
+    expect(b!.status).toBe("confirmed");
+  });
+
+  it("an order cannot stay open forever: after 6h of failing checks it is cancelled anyway", async () => {
+    const now = new Date();
+    const failing = async () => false;
+    const justUnder = await makeOrder({
+      channel: "online",
+      status: "confirmed",
+      paymentStatus: "pending",
+      createdAt: new Date(now.getTime() - (6 * 60 - 1) * 60_000),
+    });
+    const over = await makeOrder({
+      channel: "online",
+      status: "confirmed",
+      paymentStatus: "pending",
+      createdAt: new Date(now.getTime() - (6 * 60 + 1) * 60_000),
+      withReservation: true,
+    });
+
+    expect(await expireUnpaidOrders(db, now, failing)).toBe(1);
+    const [stillOpen] = await db.select().from(saleOrder).where(eq(saleOrder.id, justUnder));
+    const [capped] = await db.select().from(saleOrder).where(eq(saleOrder.id, over));
+    expect(stillOpen!.status).toBe("confirmed");
+    expect(capped!.status).toBe("cancelled");
+    expect(capped!.cancelReason).toBe("payment_expired");
+    expect(
+      await db.select().from(stockReservation).where(eq(stockReservation.saleOrderId, over)),
+    ).toHaveLength(0);
+  });
+
+  it("is time-boxed: orders the run could not reach stay open and go first next time", async () => {
+    const now = new Date();
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      ids.push(
+        await makeOrder({
+          channel: "online",
+          status: "confirmed",
+          paymentStatus: "pending",
+          // Distinct ages, oldest first in the batch.
+          createdAt: new Date(now.getTime() - (120 - i) * 60_000),
+        }),
+      );
+    }
+    const numberToId = new Map<string, string>();
+    for (const o of await db.select().from(saleOrder)) numberToId.set(o.orderNumber, o.id);
+
+    // Every check "takes" 8 seconds; a run may spend 16: two checks per run.
+    let t = 5_000_000;
+    const asked: string[] = [];
+    const refire = async (orderNumber: string): Promise<boolean> => {
+      asked.push(numberToId.get(orderNumber)!);
+      t += 8_000;
+      return true;
+    };
+    const opts = { log: new Map<string, number>(), budgetMs: 16_000, clock: () => t };
+
+    expect(await expireUnpaidOrders(db, now, refire, opts)).toBe(2);
+    expect(asked).toEqual([ids[0], ids[1]]);
+    const stillOpen = (await db.select().from(saleOrder)).filter((o) => o.status === "confirmed");
+    expect(stillOpen.map((o) => o.id).sort()).toEqual([ids[2], ids[3], ids[4]].sort());
+
+    // Next run starts with the ones that were not reached.
+    expect(await expireUnpaidOrders(db, now, refire, opts)).toBe(2);
+    expect(asked.slice(2)).toEqual([ids[2], ids[3]]);
+    expect(await expireUnpaidOrders(db, now, refire, opts)).toBe(1);
+    expect(asked.slice(4)).toEqual([ids[4]]);
+  });
+
+  it("stops checking when the api is unreachable (3 throws in a row) and cancels nothing unchecked", async () => {
+    const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      await makeOrder({
+        channel: "online",
+        status: "confirmed",
+        paymentStatus: "pending",
+        createdAt: new Date(now.getTime() - 90 * 60_000),
+      });
+    }
+    let calls = 0;
+    const down = async (): Promise<boolean> => {
+      calls++;
+      throw new Error("ECONNREFUSED");
+    };
+    expect(await expireUnpaidOrders(db, now, down, { log: new Map() })).toBe(0);
+    expect(calls).toBe(3);
   });
 });
