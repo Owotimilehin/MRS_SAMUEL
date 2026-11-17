@@ -15,6 +15,7 @@
     "@ms/shared": "workspace:*",
     "@tanstack/react-query": "5.51.23",
     "@tanstack/react-router": "1.49.1",
+    "@twilio/voice-sdk": "2.18.5",
     "dexie": "4.0.8",
     "dexie-react-hooks": "1.1.7",
     "lucide-react": "^0.575.0",

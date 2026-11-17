@@ -1,4 +1,5 @@
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
+import { type CSSProperties, type ReactNode, lazy, Suspense, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useOnlineOrderSignal } from "../hooks/useOnlineOrderSignal.js";
 import {
@@ -34,6 +35,9 @@ import {
   Inbox,
   Hourglass,
   ShoppingBag,
+  MessagesSquare,
+  BarChart3,
+  SlidersHorizontal,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -41,7 +45,12 @@ import { useAuthUser } from "../lib/auth.js";
 import { useRailOpen } from "../lib/rail.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
 import { api } from "../lib/api.js";
+import { inboxApi, inboxKeys } from "../lib/inbox-api.js";
 import type { Capability } from "@ms/shared";
+
+// The phone bar (and the Twilio SDK behind it) only loads for people who take
+// or make calls.
+const CallBar = lazy(() => import("./inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 // One falling droplet's CSS vars, typed for the custom properties the
 // .water-field__drop rule reads.
@@ -63,6 +72,11 @@ const NAV_OVERVIEW: NavLink[] = [
   { to: "/owner/dashboard", label: "Dashboard", Icon: LayoutDashboard, cap: "reports.view" },
   { to: "/owner/analytics", label: "Analytics", Icon: TrendingUp, cap: "reports.view" },
   { to: "/owner/review", label: "Needs review", Icon: Bell, cap: "orders.manage" },
+];
+const NAV_INBOX: NavLink[] = [
+  { to: "/inbox", label: "Inbox", Icon: MessagesSquare, cap: "inbox.view" },
+  { to: "/inbox/reports", label: "Inbox reports", Icon: BarChart3, cap: "inbox.reports" },
+  { to: "/inbox/settings", label: "Inbox settings", Icon: SlidersHorizontal, cap: "inbox.settings" },
 ];
 const NAV_SALES: NavLink[] = [
   { to: "/owner/orders", label: "Orders", Icon: ReceiptText, cap: "sales.view" },
@@ -146,6 +160,20 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Unread WhatsApp chats for the Inbox badge. Cached across pages and polled
+  // gently; the inbox page itself refreshes it live.
+  const inboxUnread = useQuery({
+    queryKey: inboxKeys.unread,
+    enabled: can("inbox.view"),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: false,
+    queryFn: async () => {
+      const page = await inboxApi.conversations({ status: "open", view: "all" });
+      return page.data.reduce((sum, r) => sum + r.unread, 0);
+    },
+  });
+
   // Live online-order signal — drives nav badge + new-order banner.
   const signal = useOnlineOrderSignal({ enabled: can("sales.view") });
 
@@ -158,11 +186,14 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
         {visible.map((item) => {
           const isReview = item.to === "/owner/review";
           const isOnlineOrders = item.to === "/owner/online-orders";
+          const isInbox = item.to === "/inbox";
           const badge = (isReview && reviewCount != null && reviewCount > 0)
             ? reviewCount
             : (isOnlineOrders && signal.count > 0)
               ? signal.count
-              : null;
+              : (isInbox && (inboxUnread.data ?? 0) > 0)
+                ? inboxUnread.data
+                : null;
           return (
             <Link
               key={item.to}
@@ -240,6 +271,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
 
         <nav className="app-nav">
           {renderSection("Overview", NAV_OVERVIEW)}
+          {renderSection("Customer messages", NAV_INBOX)}
           {renderSection("Sales & customers", NAV_SALES)}
           {renderSection("Products & stock", NAV_PRODUCTS)}
           {renderSection("Finance", NAV_FINANCE)}
@@ -358,6 +390,11 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
         )}
         <div className="app-body">{children}</div>
       </main>
+      {(can("calls.answer") || can("calls.outbound")) && (
+        <Suspense fallback={null}>
+          <CallBar />
+        </Suspense>
+      )}
     </div>
   );
 }
