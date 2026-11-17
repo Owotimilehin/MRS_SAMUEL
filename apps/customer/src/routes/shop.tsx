@@ -35,7 +35,7 @@ function Page() {
     <SiteShell>
       <PageHero
         eyebrow="Shop"
-        title={<>Every flavour,<br /><span className="text-[color:var(--brand-orange)]">ready when you are.</span></>}
+        title={<>Every flavour,<br /><span className="text-[color:var(--brand-orange)]">ready when you&nbsp;are.</span></>}
         subtitle="Cold-pressed in Lagos, nothing added. Add any bottle straight to your cart — or scroll down for bundles built for the way you actually drink."
         decor={bottleSunrise}
       />
@@ -130,13 +130,13 @@ function Page() {
               <h3 className="mt-3 font-display text-2xl text-[color:var(--brand)]">{b.name}</h3>
               <p className="mt-2 text-sm text-[color:var(--brand)]/70 leading-relaxed">{b.desc}</p>
               <div className="mt-4 text-xs text-[color:var(--brand)]/60">{b.items}</div>
-              <div className="mt-5 flex items-center justify-between">
+              <div className="mt-auto pt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
                 <div className="font-display text-2xl font-semibold text-[color:var(--brand)]">{formatNaira(b.price)}</div>
                 <a
                   href={`https://wa.me/2349019512246?text=${encodeURIComponent(`Hi Mrs. Samuel — I'd like to order the ${b.name} (${formatNaira(b.price)}).`)}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full bg-[color:var(--brand)] text-white px-4 py-2 text-sm font-semibold hover:bg-[color:var(--brand-orange)] transition"
+                  className="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-[color:var(--brand)] text-white px-4 py-2 text-sm font-semibold hover:bg-[color:var(--brand-orange)] transition"
                 >
                   Order on WhatsApp <ArrowRight className="h-3.5 w-3.5" />
                 </a>
@@ -147,8 +147,8 @@ function Page() {
       </section>
 
       {/* Wholesale */}
-      <section className="px-5 sm:px-10 pb-20">
-        <div className="mx-auto max-w-5xl rounded-[2rem] bg-[color:var(--brand)] text-white px-8 sm:px-12 py-12 grid grid-cols-1 md:grid-cols-[1.3fr_1fr] gap-8 items-center">
+      <section className="px-5 sm:px-10 max-w-7xl mx-auto pb-20">
+        <div className="rounded-[2rem] bg-[color:var(--brand)] text-white px-8 sm:px-12 py-12 grid grid-cols-1 md:grid-cols-[1.3fr_1fr] gap-8 items-center">
           <div>
             <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-white/70">
               <Building2 className="h-3.5 w-3.5" /> Wholesale & Events

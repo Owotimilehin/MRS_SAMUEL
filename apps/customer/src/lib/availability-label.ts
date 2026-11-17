@@ -55,7 +55,7 @@ export function deliveryPromise(size: Size, available: number, now: Date = new D
   }
 
   const win = t.fixedWindow ? ` (${WINDOW_LABEL[t.fixedWindow]})` : "";
-  return `Get it ${day}${inStock ? "" : win}`;
+  return `Delivery ${day}${inStock ? "" : win}`;
 }
 
 /** Real branch stock count line, e.g. "12 in stock". Null when out of stock. */

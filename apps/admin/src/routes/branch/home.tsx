@@ -86,19 +86,37 @@ export function BranchHomePage({ branchId }: { branchId: string }): JSX.Element 
       ]} />
       <div className="branch-home">
 
-        <section className="branch-home__tiles">
+        {/* Compact shortcuts: icon beside the text, two per row on a phone
+            (five across on desktop), so Recent sales stays on the first screen.
+            The border is set here so a tapped tile keeps it on touch screens. */}
+        <section style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           {TILES.map((t) => (
-            <Link key={t.to} to={t.to} className="branch-tile">
-              <span className="branch-tile__icon" aria-hidden>
+            <Link
+              key={t.to}
+              to={t.to}
+              className="branch-tile"
+              style={{
+                flex: "1 1 150px",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 14px",
+                borderRadius: 16,
+                border: "1px solid var(--line)",
+              }}
+            >
+              <span className="branch-tile__icon" aria-hidden style={{ fontSize: 24 }}>
                 {t.icon}
               </span>
-              <span className="branch-tile__label">{t.label}</span>
-              <span className="branch-tile__desc">{t.desc}</span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span className="branch-tile__label" style={{ fontSize: 16 }}>{t.label}</span>
+                <span className="branch-tile__desc">{t.desc}</span>
+              </span>
             </Link>
           ))}
         </section>
 
-        <section className="card" style={{ marginTop: 16 }}>
+        <section className="card">
           <header
             style={{
               display: "flex",

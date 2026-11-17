@@ -19,7 +19,7 @@ interface ServerBalance {
 }
 
 const sizeLabel = (ml: number | null): string =>
-  ml == null ? "Unsized" : ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`;
+  ml == null ? "No size set" : ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`;
 
 export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element {
   const products = useLiveQuery(() => local.products.toArray(), [], [] as ProductRow[]);
@@ -82,7 +82,7 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
 
   const stockChips: StatChip[] = [
     { label: "On hand", value: onHandTotal ?? 0 },
-    { label: "Size lines", value: rows.length ?? 0 },
+    { label: "Items listed", value: rows.length ?? 0 },
   ];
   if (oosCount > 0) {
     stockChips.push({ label: "Out of stock", value: oosCount, tone: "danger" });
@@ -90,9 +90,9 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
     stockChips.push({ label: "Out of stock", value: oosCount, tone: "good" });
   }
   if (lowCount > 0) {
-    stockChips.push({ label: "Low (≤5)", value: lowCount, tone: "warn" });
+    stockChips.push({ label: "Low (5 or less)", value: lowCount, tone: "warn" });
   } else {
-    stockChips.push({ label: "Low (≤5)", value: lowCount });
+    stockChips.push({ label: "Low (5 or less)", value: lowCount });
   }
 
   function enterAdjust(): void {
@@ -165,7 +165,7 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
       <StatHero
         eyebrow="Branch"
         title="Stock"
-        sub="Per-size on-hand quantities for this branch."
+        sub="How many bottles of each flavour and size this branch has right now."
         loading={loading}
         chips={stockChips}
       />
@@ -177,9 +177,16 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
       {canAdjust && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "14px 0" }}>
           {!adjusting ? (
-            <button type="button" className="btn btn--subtle btn--sm" onClick={enterAdjust} disabled={loading || rows.length === 0}>
-              Adjust stock
-            </button>
+            <>
+              <button type="button" className="btn btn--subtle btn--sm" onClick={enterAdjust} disabled={loading || rows.length === 0}>
+                Adjust stock
+              </button>
+              {!loading && rows.length === 0 && (
+                <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+                  Nothing to adjust yet. This turns on once the branch has received stock.
+                </span>
+              )}
+            </>
           ) : (
             <>
               <select className="select" style={{ maxWidth: 220 }} value={reasonCode} onChange={(e) => setReasonCode(e.target.value)} disabled={saving}>
@@ -197,7 +204,7 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
                 Cancel
               </button>
               <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
-                Enter new on-hand per size. Selling continues from the new count.
+                Type the new count for each size. Selling carries on from the new count.
               </span>
             </>
           )}
@@ -207,7 +214,10 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
       {loading ? (
         <InlineLoader />
       ) : rows.length === 0 ? (
-        <div className="empty">No stock recorded yet for this branch.</div>
+        <div className="empty">
+          <div className="empty__title">No stock yet</div>
+          Stock shows here once a transfer from the factory has been received.
+        </div>
       ) : (
         <div className="table-wrap">
           <table className="table">
@@ -262,7 +272,7 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
                       {r.unsized && r.balance !== 0 ? (
                         <span className="pill pill--warning">Assign a size</span>
                       ) : tone === "danger" ? (
-                        <span className="pill pill--danger">OOS</span>
+                        <span className="pill pill--danger">Out of stock</span>
                       ) : tone === "warning" ? (
                         <span className="pill pill--warning">Low</span>
                       ) : null}
@@ -274,10 +284,13 @@ export function BranchStockPage({ branchId }: { branchId: string }): JSX.Element
           </table>
         </div>
       )}
-      <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 14 }}>
-        Stock is now tracked per can size. An <strong>Unsized</strong> line is older stock not yet
-        assigned to a size — reconcile it with an inventory adjustment so per-size counts are exact.
-      </p>
+      {rows.some((r) => r.unsized) && (
+        <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 14 }}>
+          A line marked <strong>No size set</strong> is older stock that was recorded before bottle
+          sizes were counted separately. Ask the owner to move it to the right size so the counts
+          for each size are exact.
+        </p>
+      )}
     </BranchShell>
   );
 }

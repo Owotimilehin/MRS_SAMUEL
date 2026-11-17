@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { Shell } from "../../components/Shell.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
@@ -127,6 +127,7 @@ export function OrdersPage(): JSX.Element {
           type="button"
           className="btn btn--subtle btn--sm"
           disabled={filtered.length === 0}
+          title={filtered.length === 0 ? "Nothing to export yet" : undefined}
           onClick={() =>
             downloadCsv(
               `orders-${new Date().toISOString().slice(0, 10)}`,
@@ -193,8 +194,11 @@ export function OrdersPage(): JSX.Element {
         <button
           type="button"
           className={onlyAwaiting ? "btn btn--primary btn--sm" : "btn btn--subtle btn--sm"}
+          aria-pressed={onlyAwaiting}
+          title={onlyAwaiting ? "Showing only orders awaiting fulfilment. Tap to show all." : "Show only orders awaiting fulfilment"}
           onClick={() => setOnlyAwaiting((v) => !v)}
         >
+          {onlyAwaiting && <Check aria-hidden="true" />}
           Awaiting fulfilment
         </button>
         <select
@@ -243,6 +247,19 @@ export function OrdersPage(): JSX.Element {
 
         {loading ? (
           <InlineLoader />
+        ) : sales.length === 0 ? (
+          <div className="empty">
+            <div className="empty__title">No orders yet</div>
+            Orders from the till and the website appear here.
+          </div>
+        ) : filtered.length === 0 && onlyAwaiting && branchFilter === "all" && statusFilter === "all" && channelFilter === "all" && !q.trim() ? (
+          <div className="empty">
+            <div className="empty__title">No orders awaiting fulfilment</div>
+            <div style={{ marginBottom: 12 }}>Everything has been handed over or delivered.</div>
+            <button type="button" className="btn btn--subtle btn--sm" onClick={() => setOnlyAwaiting(false)}>
+              Show all orders
+            </button>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="empty">
             <div className="empty__title">No matches</div>
@@ -292,7 +309,7 @@ export function OrdersPage(): JSX.Element {
                         <span style={{ color: "var(--ink-soft)" }}>—</span>
                       )}
                     </td>
-                    <td>{formatDateTime(s.createdAtLocal)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{formatDateTime(s.createdAtLocal)}</td>
                     <td>{branchName(s.branchId)}</td>
                     <td style={{ color: "var(--ink-soft)" }}>{s.channel}</td>
                     <td className="table__num" style={{ fontWeight: 700 }}>

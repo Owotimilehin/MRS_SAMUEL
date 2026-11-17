@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
+import { Clock, Phone, Star } from "lucide-react";
 import { Shell } from "../../components/Shell.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
@@ -120,7 +121,9 @@ export function BranchesPage(): JSX.Element {
               </header>
               <div style={{ marginBottom: 8 }}>
                 {b.isOnlineDefault ? (
-                  <span className="pill pill--success">★ Online default</span>
+                  <span className="pill pill--success" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <Star size={12} strokeWidth={2.2} aria-hidden="true" /> Online default
+                  </span>
                 ) : (
                   <button
                     type="button"
@@ -140,17 +143,21 @@ export function BranchesPage(): JSX.Element {
                 {b.phone && (
                   <>
                     <br />
-                    📞 {b.phone}
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <Phone size={13} strokeWidth={2} aria-hidden="true" /> {b.phone}
+                    </span>
                   </>
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
                 {b.opensAt && b.closesAt && (
-                  <span className="pill">
-                    🕐 {b.opensAt.slice(0, 5)}–{b.closesAt.slice(0, 5)}
+                  <span className="pill" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <Clock size={12} strokeWidth={2.2} aria-hidden="true" /> {b.opensAt.slice(0, 5)}–{b.closesAt.slice(0, 5)}
                   </span>
                 )}
-                <span className="pill">{b.deliveryZones.length} zones</span>
+                <span className="pill">
+                  {b.deliveryZones.length} {b.deliveryZones.length === 1 ? "zone" : "zones"}
+                </span>
               </div>
               {b.deliveryZones.length > 0 && (
                 <ul style={{ margin: 0, padding: 0, listStyle: "none", fontSize: 13 }}>

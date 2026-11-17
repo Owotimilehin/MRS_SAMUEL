@@ -21,11 +21,12 @@ interface Branch {
 }
 
 function onlinePill(ageSec: number): JSX.Element {
+  const nowrap = { whiteSpace: "nowrap" } as const;
   if (ageSec < 300)
-    return <span className="pill pill--success">● Online</span>;
+    return <span className="pill pill--success" style={nowrap}>● Online</span>;
   if (ageSec < 1800)
-    return <span className="pill pill--warning">● Idle</span>;
-  return <span className="pill pill--danger">● Offline</span>;
+    return <span className="pill pill--warning" style={nowrap}>● Idle</span>;
+  return <span className="pill pill--danger" style={nowrap}>● Offline</span>;
 }
 
 function relativeAge(ageSec: number): string {
@@ -125,11 +126,20 @@ export function DevicesPage(): JSX.Element {
                 {devices.map((d) => (
                   <tr key={d.device_id}>
                     <td>{onlinePill(d.age_seconds)}</td>
-                    <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>
-                      {d.device_id.slice(0, 12)}…
+                    <td style={{ minWidth: 170 }}>
+                      {/* The API has no device name, so name it after its branch; the ID stays as small print. */}
+                      <div style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                        {d.branch_id ? `${branchName(d.branch_id)} device` : "Unassigned device"}
+                      </div>
+                      <div
+                        style={{ fontSize: 11, color: "var(--ink-soft)", whiteSpace: "nowrap" }}
+                        title={d.device_id}
+                      >
+                        ID {d.device_id.slice(0, 8)}
+                      </div>
                     </td>
-                    <td>{branchName(d.branch_id)}</td>
-                    <td style={{ color: "var(--ink-soft)" }}>
+                    <td style={{ whiteSpace: "nowrap" }}>{branchName(d.branch_id)}</td>
+                    <td style={{ color: "var(--ink-soft)", whiteSpace: "nowrap" }}>
                       {d.app_version ?? "—"}
                     </td>
                     <td
@@ -141,10 +151,10 @@ export function DevicesPage(): JSX.Element {
                     >
                       {d.queue_depth}
                     </td>
-                    <td style={{ color: "var(--ink-soft)" }}>
+                    <td style={{ color: "var(--ink-soft)", whiteSpace: "nowrap" }}>
                       {d.last_sync_at ? formatDateTime(d.last_sync_at) : "—"}
                     </td>
-                    <td style={{ color: "var(--ink-soft)" }}>
+                    <td style={{ color: "var(--ink-soft)", whiteSpace: "nowrap" }}>
                       {relativeAge(d.age_seconds)}
                     </td>
                   </tr>

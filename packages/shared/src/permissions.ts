@@ -62,6 +62,34 @@ export const CAPABILITIES = [
   // in ADMIN_CAPS/MANAGER_CAPS — managers may hold transfers.adjust but cannot
   // decide where variance lands.
   "variance.settle",
+  // ── Unified inbox (WhatsApp + calls) ──
+  // Scope: inbox.view_all = every conversation; inbox.view_team = conversations
+  // of the teams the user belongs to; neither = only their own + unassigned in
+  // their teams. Users without inbox.view_all are further limited to the
+  // business numbers granted to them (inbox_user_number_access).
+  "inbox.view",
+  "inbox.view_team",
+  "inbox.view_all",
+  "inbox.reply",
+  "inbox.assign",
+  "inbox.close",
+  "inbox.notes",
+  // Send approved templates (the only thing WhatsApp allows outside 24h).
+  "inbox.templates",
+  "inbox.export",
+  "calls.answer",
+  "calls.outbound",
+  "recordings.listen",
+  "recordings.download",
+  // Permanently delete a call recording (audio, transcript, summary).
+  "recordings.delete",
+  "transcripts.view",
+  // Owner-only by default: erase a customer's inbox history on request, and
+  // merge duplicate contacts' threads.
+  "inbox.erase",
+  // Numbers, teams, hours, phone menu, quick replies, template sync.
+  "inbox.settings",
+  "inbox.reports",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -92,6 +120,22 @@ const ADMIN_CAPS: Capability[] = [
   "returns.create",
   "stock.adjust",
   "orders.manage",
+  "inbox.view",
+  "inbox.view_all",
+  "inbox.reply",
+  "inbox.assign",
+  "inbox.close",
+  "inbox.notes",
+  "inbox.templates",
+  "inbox.export",
+  "calls.answer",
+  "calls.outbound",
+  "recordings.listen",
+  "recordings.download",
+  "recordings.delete",
+  "transcripts.view",
+  "inbox.settings",
+  "inbox.reports",
 ];
 
 const MANAGER_CAPS: Capability[] = [
@@ -113,6 +157,19 @@ const MANAGER_CAPS: Capability[] = [
   "stock.read",
   "stock.adjust",
   "packaging.view",
+  // Supervisor in the inbox: their teams' conversations.
+  "inbox.view",
+  "inbox.view_team",
+  "inbox.reply",
+  "inbox.assign",
+  "inbox.close",
+  "inbox.notes",
+  "inbox.templates",
+  "calls.answer",
+  "calls.outbound",
+  "recordings.listen",
+  "transcripts.view",
+  "inbox.reports",
 ];
 
 const BRANCH_STAFF_CAPS: Capability[] = [

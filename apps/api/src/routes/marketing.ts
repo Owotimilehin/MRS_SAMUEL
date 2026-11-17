@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   bundle,
@@ -39,6 +39,16 @@ const PatchBundle = z.object({
 export function marketingRoutes(db: DbClient) {
   const r = new Hono();
   r.use("*", requireAuth(), requireCapability("marketing.manage"));
+
+  // List every bundle, hidden ones included, for the owner's Bundles screen.
+  // (The public catalogue route only returns active bundles.)
+  r.get("/bundles", async (c) => {
+    const rows = await db
+      .select()
+      .from(bundle)
+      .orderBy(asc(bundle.displayOrder), asc(bundle.createdAt));
+    return c.json({ data: rows });
+  });
 
   r.post("/bundles", async (c) => {
     const body = CreateBundle.parse(await c.req.json());

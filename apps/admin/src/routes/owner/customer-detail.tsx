@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
-import { ngn, formatDateTime } from "../../lib/format.js";
+import { ngn, formatDate, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 
@@ -65,7 +65,15 @@ export function CustomerDetailPage({ customerId }: { customerId: string }): JSX.
   const title = data?.customer.name ?? data?.customer.phone ?? "Customer";
 
   return (
-    <Shell title={title} crumb="Owner">
+    <Shell
+      title={title}
+      crumb="Customers"
+      actions={
+        <Link to="/owner/customers" className="btn btn--subtle btn--sm">
+          ← All customers
+        </Link>
+      }
+    >
       <StatHero
         eyebrow="Sales"
         title={title}
@@ -77,12 +85,12 @@ export function CustomerDetailPage({ customerId }: { customerId: string }): JSX.
           {
             label: "Last order",
             value: data && data.orders.length > 0
-              ? formatDateTime(data.orders[0]!.createdAtLocal)
+              ? formatDate(data.orders[0]!.createdAtLocal)
               : "—",
           },
           {
             label: "Since",
-            value: data ? formatDateTime(data.customer.createdAt) : "—",
+            value: data ? formatDate(data.customer.createdAt) : "—",
           },
         ]}
       />
@@ -103,7 +111,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }): JSX.
               <Stat label="Email" value={data.customer.email ?? "—"} />
               <Stat label="Orders" value={String(data.orders.length)} />
               <Stat label="Lifetime spend" value={ngn(data.lifetimeNgn)} strong />
-              <Stat label="Since" value={formatDateTime(data.customer.createdAt)} />
+              <Stat label="Since" value={formatDate(data.customer.createdAt)} />
             </div>
             {data.customer.defaultAddress && (
               <p style={{ marginTop: 12, color: "var(--ink-soft)", fontSize: 13 }}>

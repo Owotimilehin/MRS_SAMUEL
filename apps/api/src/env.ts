@@ -23,6 +23,16 @@ const Env = z.object({
   PUBLIC_ADMIN_URL: z.string().url(),
   PUBLIC_CUSTOMER_URL: z.preprocess(emptyToUndef, z.string().url().optional()),
   PORT: z.coerce.number().default(3001),
+  // Unified inbox — all optional so the shop keeps running without them.
+  META_APP_SECRET: z.preprocess(emptyToUndef, z.string().optional()),
+  META_VERIFY_TOKEN: z.preprocess(emptyToUndef, z.string().optional()),
+  META_SYSTEM_USER_TOKEN: z.preprocess(emptyToUndef, z.string().optional()),
+  META_GRAPH_VERSION: z.preprocess(emptyToUndef, z.string().optional()),
+  TWILIO_ACCOUNT_SID: z.preprocess(emptyToUndef, z.string().optional()),
+  TWILIO_API_KEY_SID: z.preprocess(emptyToUndef, z.string().optional()),
+  TWILIO_API_KEY_SECRET: z.preprocess(emptyToUndef, z.string().optional()),
+  TWILIO_AUTH_TOKEN: z.preprocess(emptyToUndef, z.string().optional()),
+  TWILIO_TWIML_APP_SID: z.preprocess(emptyToUndef, z.string().optional()),
 });
 
 export type Env = z.infer<typeof Env>;

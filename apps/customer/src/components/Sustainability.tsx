@@ -49,7 +49,7 @@ export function Sustainability() {
             </a>
           </div>
 
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-2 gap-3 sm:gap-5">
             {stats.map(({ Icon, value, label }, i) => (
               <motion.div
                 key={label}
@@ -57,10 +57,10 @@ export function Sustainability() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.07 }}
-                className="rounded-2xl bg-white/8 ring-1 ring-white/15 backdrop-blur-sm p-5"
+                className="rounded-2xl bg-white/8 ring-1 ring-white/15 backdrop-blur-sm p-4 sm:p-5"
               >
                 <Icon className="h-6 w-6 text-[color:var(--brand-orange)]" />
-                <div className="mt-4 font-display text-3xl font-semibold">{value}</div>
+                <div className="mt-4 font-display text-[1.6rem] sm:text-3xl font-semibold whitespace-nowrap">{value}</div>
                 <div className="mt-1 text-[12px] text-white/70 leading-snug">{label}</div>
               </motion.div>
             ))}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Search } from "lucide-react";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
@@ -88,20 +89,29 @@ export function VendorsPage(): JSX.Element {
         </div>
       )}
 
-      <div style={{ marginBottom: 14 }}>
+      <div className="toolbar__search" style={{ marginBottom: 14, maxWidth: 360, flex: "none" }}>
+        <Search aria-hidden="true" />
         <input
           className="input"
+          type="search"
           placeholder="Search by name…"
+          aria-label="Search vendors by name"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          style={{ maxWidth: 360 }}
         />
       </div>
 
       {loading ? (
         <InlineLoader />
       ) : vendors.length === 0 ? (
-        <div className="empty">No vendors yet.</div>
+        <div className="empty">
+          <div className="empty__title">{q.trim() ? "No matches" : "No vendors yet"}</div>
+          {q.trim()
+            ? "No vendor fits that search."
+            : canWrite
+              ? "Add your first supplier with “Add vendor”."
+              : "Suppliers appear here once they are added."}
+        </div>
       ) : (
         <div className="table-wrap">
           <table className="table">

@@ -106,6 +106,13 @@ const CloseDetailPage = lazyNamed<{ branchId: string; closeId: string }>(
   "CloseDetailPage",
 );
 
+const InboxPage = lazyNamed<{ conversationId?: string }>(
+  () => import("./routes/inbox/index.js"),
+  "InboxPage",
+);
+const InboxSettingsPage = lazyNamed(() => import("./routes/inbox/settings.js"), "InboxSettingsPage");
+const InboxReportsPage = lazyNamed(() => import("./routes/inbox/reports.js"), "InboxReportsPage");
+
 const ProductionRunsPage = lazyNamed(
   () => import("./routes/factory/production-runs.js"),
   "ProductionRunsPage",
@@ -500,6 +507,31 @@ const closeDetailRoute = createRoute({
   },
 });
 
+// ───── Unified inbox (WhatsApp + calls) ─────
+const inboxRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/inbox",
+  component: () => guarded(<L><InboxPage /></L>),
+});
+const inboxConversationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/inbox/$conversationId",
+  component: () => {
+    const params = useParams({ from: "/inbox/$conversationId" });
+    return guarded(<L><InboxPage conversationId={params.conversationId} /></L>);
+  },
+});
+const inboxSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/inbox/settings",
+  component: () => guarded(<L><InboxSettingsPage /></L>),
+});
+const inboxReportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/inbox/reports",
+  component: () => guarded(<L><InboxReportsPage /></L>),
+});
+
 // ───── Factory routes ─────
 const productionRunsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -698,6 +730,11 @@ const routeTree = rootRoute.addChildren([
   checkoutLogRoute,
   closeDetailRoute,
   ownerOnlineOrdersRoute,
+  // inbox
+  inboxRoute,
+  inboxSettingsRoute,
+  inboxReportsRoute,
+  inboxConversationRoute,
   // factory
   productionRunsRoute,
   runDetailRoute,

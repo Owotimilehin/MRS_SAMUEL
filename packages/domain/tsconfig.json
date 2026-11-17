@@ -6,7 +6,8 @@
     "composite": true
   },
   "references": [
-    { "path": "../db" }
+    { "path": "../db" },
+    { "path": "../shared" }
   ],
   "include": ["src/**/*"]
 }

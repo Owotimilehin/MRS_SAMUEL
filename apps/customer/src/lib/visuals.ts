@@ -42,6 +42,13 @@ export const CLUSTERS: Record<Cluster, string> = {
   watermelon: clusterWatermelon,
 };
 
+/**
+ * Decor photos whose fruit runs right up to the edge of the file, so they show
+ * a straight cut when floated on the page like the other cut-outs. Show these
+ * filling a rounded frame instead, so the crop reads as deliberate.
+ */
+export const HARD_EDGED_DECOR: ReadonlySet<string> = new Set([clusterTropical, clusterWatermelon]);
+
 // Default bottle image used when the API has no media URL yet (dev fallback).
 export const DEFAULT_BOTTLE = bottleSunrise;
 // Keep the remaining bottle imports referenced so tree-shaking keeps the assets

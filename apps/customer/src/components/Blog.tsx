@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { ArrowUpRight, Clock } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import type { BlogPostSummary } from "@/lib/api/mappers";
-import { CLUSTERS } from "@/lib/visuals";
+import { CLUSTERS, HARD_EDGED_DECOR } from "@/lib/visuals";
 
 export function Blog({ posts }: { posts: BlogPostSummary[] }) {
   const featured = posts.slice(0, 3);
@@ -40,7 +40,11 @@ export function Blog({ posts }: { posts: BlogPostSummary[] }) {
                   src={CLUSTERS[p.cover]}
                   alt=""
                   aria-hidden
-                  className="absolute inset-0 m-auto h-[88%] w-auto object-contain transition duration-500 group-hover:scale-105"
+                  className={`absolute inset-0 transition duration-500 group-hover:scale-105 ${
+                    HARD_EDGED_DECOR.has(CLUSTERS[p.cover])
+                      ? "h-full w-full object-cover"
+                      : "m-auto h-[88%] w-auto object-contain"
+                  }`}
                 />
                 <span className="absolute top-3 left-3 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--brand)]">
                   {p.category}
@@ -56,7 +60,7 @@ export function Blog({ posts }: { posts: BlogPostSummary[] }) {
                 <p className="mt-2 text-[13px] text-[color:var(--brand)]/70 leading-relaxed line-clamp-2">
                   {p.excerpt}
                 </p>
-                <span className="mt-5 inline-flex items-center gap-1.5 text-xs font-bold text-[color:var(--brand-orange)] group-hover:gap-2 transition-all">
+                <span className="mt-auto pt-5 inline-flex items-center gap-1.5 text-xs font-bold text-[color:var(--brand-orange)] group-hover:gap-2 transition-all">
                   Read Story <ArrowUpRight className="h-3.5 w-3.5" />
                 </span>
               </div>

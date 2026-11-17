@@ -5,6 +5,7 @@ import { FlavourMedia } from "../../components/FlavourMedia.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn } from "../../lib/format.js";
+import { dayRangeLabel, monthLabel } from "../../lib/date-labels.js";
 import { toast } from "../../lib/toast.js";
 import { channelLabel } from "../../lib/analytics-theme.js";
 import { useAuthUser } from "../../lib/auth.js";
@@ -126,13 +127,25 @@ export function AnalyticsPage(): JSX.Element {
     <Shell
       title="Analytics"
       crumb="Owner"
-      actions={
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    >
+      <section className="juice-hero ed-rise">
+        <div className="juice-hero__body">
+          <div className="juice-hero__eyebrow">Analytics</div>
+          <h1 className="juice-hero__title">Business performance</h1>
+          <p className="juice-hero__sub">
+            How revenue, channels, branches and flavours are trending, {dayRangeLabel(from, to)}.
+          </p>
+        </div>
+      </section>
+
+      {/* Date range: lives in the page, not the top bar, so the bar never wraps. */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
           {PRESETS.map((p) => (
             <button
               key={p.days}
               type="button"
               className={`btn btn--sm ${activePreset === p.days ? "btn--primary" : "btn--subtle"}`}
+              aria-pressed={activePreset === p.days}
               onClick={() => {
                 setFrom(nDaysAgo(p.days));
                 setTo(iso(new Date()));
@@ -141,20 +154,10 @@ export function AnalyticsPage(): JSX.Element {
               {p.label}
             </button>
           ))}
-          <input type="date" className="input" style={{ width: 150, height: 36 }} value={from} max={to} onChange={(e) => setFrom(e.target.value)} aria-label="From" />
-          <input type="date" className="input" style={{ width: 150, height: 36 }} value={to} min={from} onChange={(e) => setTo(e.target.value)} aria-label="To" />
-        </div>
-      }
-    >
-      <section className="juice-hero ed-rise">
-        <div className="juice-hero__body">
-          <div className="juice-hero__eyebrow">Analytics</div>
-          <h1 className="juice-hero__title">Business performance</h1>
-          <p className="juice-hero__sub">
-            How revenue, channels, branches and flavours are trending — {from} → {to}.
-          </p>
-        </div>
-      </section>
+          <input type="date" className="input" style={{ width: 160, flex: "1 1 140px", maxWidth: 180 }} value={from} max={to} onChange={(e) => setFrom(e.target.value)} aria-label="From" />
+          <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>to</span>
+          <input type="date" className="input" style={{ width: 160, flex: "1 1 140px", maxWidth: 180 }} value={to} min={from} onChange={(e) => setTo(e.target.value)} aria-label="To" />
+      </div>
 
       {/* KPI band */}
       <div
@@ -234,10 +237,10 @@ export function AnalyticsPage(): JSX.Element {
 
       {/* P&L */}
       <section className="card glass-card">
-        <header className="card__head">
-          <h2 className="t-h2">Profit &amp; loss</h2>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <input type="month" className="input" style={{ width: 160, height: 36 }} value={month} onChange={(e) => setMonth(e.target.value)} aria-label="P&L month" />
+        <header className="card__head" style={{ flexWrap: "wrap", gap: 10 }}>
+          <h2 className="t-h2" style={{ whiteSpace: "nowrap" }}>Profit &amp; loss</h2>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <input type="month" className="input" style={{ width: 190, flex: "0 0 auto" }} value={month} onChange={(e) => setMonth(e.target.value)} aria-label="P&L month" />
             <button type="button" className="btn btn--subtle btn--sm" onClick={() => window.open(`/v1/reports/pnl?month=${month}&format=csv`, "_blank")}>
               Export CSV
             </button>
@@ -248,9 +251,13 @@ export function AnalyticsPage(): JSX.Element {
         ) : (
           <div className="l-split l-split--dash">
             <div>
-              <PnlBars netRevenue={pnl.net_revenue_ngn} expenses={pnl.expenses_total_ngn} net={pnl.net_ngn} />
+              {pnl.net_revenue_ngn === 0 && pnl.expenses_total_ngn === 0 && pnl.net_ngn === 0 ? (
+                <EmptyChart note={`No revenue or expenses recorded for ${monthLabel(pnl.month)}.`} />
+              ) : (
+                <PnlBars netRevenue={pnl.net_revenue_ngn} expenses={pnl.expenses_total_ngn} net={pnl.net_ngn} />
+              )}
               <div style={{ marginTop: 10, fontSize: 13, color: "var(--ink-soft)" }}>
-                Net profit for {pnl.month}:{" "}
+                Net profit for {monthLabel(pnl.month)}:{" "}
                 <strong style={{ color: pnl.net_ngn >= 0 ? "var(--success-ink)" : "var(--danger-ink)" }}>{ngn(pnl.net_ngn)}</strong>
               </div>
             </div>

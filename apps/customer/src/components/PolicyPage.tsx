@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
+import { LinkedText } from "@/components/LinkedText";
 
 /** One block of policy prose: a heading followed by paragraphs and/or bullet points. */
 export interface PolicySection {
@@ -28,7 +29,7 @@ export function PolicyPage({ eyebrow, title, subtitle, decor, accent, lastUpdate
     <SiteShell>
       <PageHero eyebrow={eyebrow} title={title} subtitle={subtitle} decor={decor} accent={accent} />
 
-      <section className="px-5 sm:px-10 max-w-3xl mx-auto pb-8">
+      <section className="px-5 sm:px-10 max-w-3xl mx-auto pb-16">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--brand)]/50">
           Last updated · {lastUpdated}
         </p>
@@ -48,7 +49,7 @@ export function PolicyPage({ eyebrow, title, subtitle, decor, accent, lastUpdate
               </h2>
               {s.body?.map((p, j) => (
                 <p key={j} className="mt-3 text-[15px] leading-relaxed text-[color:var(--brand)]/75">
-                  {p}
+                  <LinkedText text={p} />
                 </p>
               ))}
               {s.bullets && s.bullets.length > 0 && (
@@ -56,7 +57,7 @@ export function PolicyPage({ eyebrow, title, subtitle, decor, accent, lastUpdate
                   {s.bullets.map((b, j) => (
                     <li key={j} className="flex gap-3 text-[15px] leading-relaxed text-[color:var(--brand)]/75">
                       <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--brand-orange)]" />
-                      <span>{b}</span>
+                      <span><LinkedText text={b} /></span>
                     </li>
                   ))}
                 </ul>

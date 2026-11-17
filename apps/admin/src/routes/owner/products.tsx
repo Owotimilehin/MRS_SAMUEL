@@ -151,7 +151,7 @@ export function ProductsPage(): JSX.Element {
                   product={{ slug: p.slug }}
                 />
                 <span className="flav-tag flav-card__cat" style={{ ["--fl-accent" as string]: accent } as CSSProperties}>
-                  {p.category}
+                  {p.category.charAt(0).toUpperCase() + p.category.slice(1)}
                 </span>
                 {isDeactivated && (
                   <span
@@ -179,7 +179,7 @@ export function ProductsPage(): JSX.Element {
                 )}
                 <div className="flav-card__body">
                   <div className="flav-card__name">{p.name}</div>
-                  <div className="flav-card__slug">{p.slug}</div>
+
                   <div className="flav-card__ingr">
                     {p.ingredients.length > 0 ? p.ingredients.join(", ") : "No ingredients listed yet"}
                   </div>
@@ -220,7 +220,7 @@ export function ProductsPage(): JSX.Element {
                     </div>
                   ) : (
                     <div className="flav-card__sizes">
-                      <span className="flav-size__pr--none">No cans yet</span>
+                      <span className="flav-size__pr--none">No sizes yet</span>
                     </div>
                   )}
                   <div className="flav-card__actions">
@@ -388,7 +388,7 @@ function CreateForm({ onSaved }: { onSaved: () => void }): JSX.Element {
         />
       </div>
       <div className="field">
-        <label className="field__label">Web address (slug)</label>
+        <label className="field__label">Web address</label>
         <input
           className="input"
           value={slug}
@@ -429,7 +429,7 @@ function CreateForm({ onSaved }: { onSaved: () => void }): JSX.Element {
       </div>
 
       <div className="field">
-        <label className="field__label">Can sizes &amp; prices</label>
+        <label className="field__label">Bottle sizes &amp; prices</label>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {variants.map((v, i) => (
             <div
@@ -646,8 +646,8 @@ function PricesForm({
   return (
     <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <p style={{ fontSize: 13, color: "var(--ink-soft)", margin: 0 }}>
-        Publishing a new price for a size closes its existing price (sets <code>valid_to</code>) and
-        starts a fresh row. Historical sale lines keep their original snapshot.
+        A new price for a size replaces its current price from the moment you publish it. Past sales
+        keep the price they were sold at.
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {variants.map((v) => (

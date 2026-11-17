@@ -79,7 +79,7 @@ export function BundlesPage(): JSX.Element {
   return (
     <Shell
       title="Bundles"
-      crumb="Storefront"
+      crumb="Products"
       actions={
         <button type="button" className="btn btn--primary btn--sm" onClick={() => setShowNew(true)}>
           + New bundle
@@ -112,7 +112,7 @@ export function BundlesPage(): JSX.Element {
         ]}
       />
 
-      {error && (
+      {error && rows.length > 0 && (
         <div className="card" style={{ borderColor: "rgba(220,38,38,0.25)", color: "var(--danger)", marginBottom: 16 }}>
           {error}
         </div>
@@ -120,6 +120,15 @@ export function BundlesPage(): JSX.Element {
 
       {loading ? (
         <InlineLoader />
+      ) : error && rows.length === 0 ? (
+        // The list failed to load: say so once, instead of also claiming there are no bundles.
+        <div className="empty" style={{ display: "grid", gap: 12, justifyItems: "center" }}>
+          <div className="empty__title">We couldn't load the bundles</div>
+          <div style={{ maxWidth: 420 }}>{error}</div>
+          <button type="button" className="btn btn--primary btn--sm" onClick={() => void load()}>
+            Try again
+          </button>
+        </div>
       ) : rows.length === 0 ? (
         <div className="empty">
           <div className="empty__title">No bundles yet</div>

@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Phone, Mail, MapPin, Clock, Instagram, MessageCircle, Send } from "lucide-react";
+import { Phone, Mail, MapPin, Clock, Instagram, MessageCircle, Send, ChevronDown } from "lucide-react";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { sendContactMessage } from "@/lib/api/server-fns";
@@ -85,7 +85,8 @@ function Page() {
                 <Field label="Email" required><input required type="email" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} placeholder="you@email.com" /></Field>
                 <Field label="Phone (WhatsApp preferred)"><input value={form.phone} onChange={(e) => set("phone", e.target.value)} className={inputCls} placeholder="+234..." /></Field>
                 <Field label="Subject" required>
-                  <select required value={form.subject} onChange={(e) => set("subject", e.target.value)} className={inputCls + " bg-white"}>
+                  <div className="relative">
+                  <select required value={form.subject} onChange={(e) => set("subject", e.target.value)} className={inputCls + " appearance-none pr-10" + (form.subject ? "" : " text-[color:var(--brand)]/40")}>
                     <option value="" disabled>Choose...</option>
                     <option>Order enquiry</option>
                     <option>White label</option>
@@ -94,11 +95,15 @@ function Page() {
                     <option>Press / partnership</option>
                     <option>Just saying hi</option>
                   </select>
+                  <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--brand)]/50" aria-hidden />
+                  </div>
                 </Field>
               </div>
-              <Field label="Message" required>
-                <textarea required rows={5} value={form.message} onChange={(e) => set("message", e.target.value)} className={inputCls + " resize-none"} placeholder="Tell us what you need..." />
-              </Field>
+              <div className="mt-4">
+                <Field label="Message" required>
+                  <textarea required rows={5} value={form.message} onChange={(e) => set("message", e.target.value)} className={inputCls + " resize-none"} placeholder="Tell us what you need..." />
+                </Field>
+              </div>
               {err && <p className="mt-3 text-sm text-red-600">{err}</p>}
               <button type="submit" disabled={sending} className="mt-6 inline-flex items-center gap-2 rounded-full bg-[color:var(--brand)] text-white px-6 py-3 text-sm font-semibold hover:bg-[color:var(--brand-orange)] transition disabled:opacity-50">
                 {sending ? "Sending…" : "Send message"} <Send className="h-3.5 w-3.5" />
@@ -120,9 +125,9 @@ function Page() {
 
           <Detail Icon={Phone} title="Phone" body="0901 951 2246" link="tel:+2349019512246" />
           <Detail Icon={Mail} title="Email" body={EMAIL} link={`mailto:${EMAIL}`} />
-          <Detail Icon={MapPin} title="Lagos kitchen" body="30 Asa-Afariogun St, opposite Access Bank, ajao estate" />
+          <Detail Icon={MapPin} title="Lagos kitchen" body="30 Asa Afariogun Street, opposite Access Bank, Ajao Estate, Lagos" />
           <Detail Icon={Instagram} title="Instagram" body="@Mrs_samuelfruitjuice" link="https://instagram.com/Mrs_samuelfruitjuice" />
-          <Detail Icon={Clock} title="Hours" body="Mon–Sat · 8am–8pm · Sun · 10am–8pm" />
+          <Detail Icon={Clock} title="Hours" body={<>Mon–Sat · 8am–8pm<br />Sun · 10am–8pm</>} />
         </div>
       </section>
 
@@ -130,7 +135,9 @@ function Page() {
       <section className="px-5 sm:px-10 pb-20">
         <div className="mx-auto max-w-4xl rounded-[2rem] bg-[color:var(--brand)] text-white p-10 text-center">
           <h2 className="font-display text-3xl">Quick questions?</h2>
-          <p className="mt-2 text-white/80 text-sm max-w-lg mx-auto">Delivery zones, shelf life, returning glass bottles — most answers live on the FAQ on our home page.</p>
+          <p className="mt-2 text-white/80 text-sm max-w-lg mx-auto">Delivery zones, shelf life, returning glass bottles — most answers live in the{" "}
+            <Link to="/" hash="faq" className="font-semibold text-white underline underline-offset-2 hover:text-[color:var(--brand-orange)]">FAQ on our home page</Link>.
+          </p>
         </div>
       </section>
     </SiteShell>
@@ -138,11 +145,11 @@ function Page() {
 }
 
 const inputCls =
-  "w-full rounded-xl border border-black/10 bg-[color:var(--cream)]/40 px-4 py-3 text-sm text-[color:var(--brand)] placeholder:text-[color:var(--brand)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-orange)]/40";
+  "w-full rounded-xl border border-black/10 bg-[color:var(--cream)]/40 px-4 py-3 text-base sm:text-sm text-[color:var(--brand)] placeholder:text-[color:var(--brand)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-orange)]/40";
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
-    <label className="block mt-4 first:mt-0">
+    <label className="block">
       <span className="text-xs font-semibold text-[color:var(--brand)]/70">
         {label}{required && <span className="text-[color:var(--brand-orange)]"> *</span>}
       </span>
@@ -151,22 +158,22 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
-function Detail({ Icon, title, body, link }: { Icon: typeof Phone; title: string; body: string; link?: string }) {
+function Detail({ Icon, title, body, link }: { Icon: typeof Phone; title: string; body: React.ReactNode; link?: string }) {
   const inner = (
     <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5 hover:shadow-md transition flex items-start gap-4">
-      <span className="grid h-10 w-10 place-items-center rounded-full bg-[color:var(--brand-orange)]/10 text-[color:var(--brand-orange)]">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[color:var(--brand-orange)]/10 text-[color:var(--brand-orange)]">
         <Icon className="h-4 w-4" />
       </span>
-      <div>
+      <div className="min-w-0">
         <div className="text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--brand)]/60">{title}</div>
-        <div className="mt-1 text-[color:var(--brand)] font-semibold">{body}</div>
+        <div className="mt-1 text-[color:var(--brand)] font-semibold break-words">{body}</div>
       </div>
     </div>
   );
   if (!link) return inner;
   const external = /^https?:/i.test(link);
   return (
-    <a href={link} {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>
+    <a href={link} className="block" {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>
       {inner}
     </a>
   );

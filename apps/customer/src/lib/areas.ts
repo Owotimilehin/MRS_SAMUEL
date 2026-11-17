@@ -44,7 +44,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     localNotes: [
       "Closest to our kitchen, so this is our fastest delivery area. In-stock orders arrive the same morning or the next morning, depending on when you order.",
       "Prefer to collect? Walk in at Asa Afariogun Street, Ajao Estate. We're open Monday to Saturday 8am–8pm and Sunday 10am–8pm.",
-      "Offices around Ikeja can order in bulk for staff, meetings and events. See our bulk orders page for crate pricing.",
+      "Offices around Ikeja can order in bulk for staff, meetings and events. Request a quote on our bulk orders page.",
     ],
   },
 

@@ -35,7 +35,7 @@ export function StepProcess() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.07 }}
-              className="relative flex flex-col items-center text-center"
+              className="relative flex flex-col items-center text-center last:col-span-2 md:last:col-span-1"
             >
               <span className="relative grid h-28 w-28 place-items-center rounded-full bg-[#fdf1cf] text-[color:var(--brand)] ring-1 ring-[color:var(--brand)]/10 shadow-sm">
                 <Icon className="h-11 w-11" />

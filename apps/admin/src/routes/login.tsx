@@ -125,8 +125,12 @@ export function LoginPage(): JSX.Element {
           </span>
           <span className="login__metasep" />
           <span className="login__clock">{clock} · WAT</span>
-          <span className="login__metasep" />
-          <span className="login__date">{today}</span>
+          {/* The separator lives inside the date so both hide together on a phone
+              (no dangling dot after the clock). */}
+          <span className="login__date inline-flex items-center gap-[14px]">
+            <span className="login__metasep" />
+            {today}
+          </span>
         </footer>
       </aside>
 

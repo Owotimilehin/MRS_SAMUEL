@@ -350,7 +350,7 @@ export function Hero({ products }: { products: Product[] }) {
           <button
             onClick={prev}
             aria-label="Previous flavour"
-            className="absolute left-[-14px] sm:left-[-22px] top-1/2 -translate-y-1/2 z-40
+            className="absolute left-0 sm:left-[-22px] top-1/2 -translate-y-1/2 z-40
               h-11 w-11 rounded-full bg-white/90 backdrop-blur-sm
               ring-1 ring-[color:var(--brand)]/15
               grid place-items-center shadow-md group
@@ -363,7 +363,7 @@ export function Hero({ products }: { products: Product[] }) {
           <button
             onClick={next}
             aria-label="Next flavour"
-            className="absolute right-[-14px] sm:right-[-22px] top-1/2 -translate-y-1/2 z-40
+            className="absolute right-0 sm:right-[-22px] top-1/2 -translate-y-1/2 z-40
               h-11 w-11 rounded-full bg-white/90 backdrop-blur-sm
               ring-1 ring-[color:var(--brand)]/15
               grid place-items-center shadow-md group
@@ -416,7 +416,8 @@ export function Hero({ products }: { products: Product[] }) {
         </motion.div>
 
         {/* ── INDICATOR DOTS ── */}
-        <div className="mt-5 flex items-center gap-1.5 z-30">
+        {/* Each dot keeps its 8px look but sits in a 40px-tall tap target. */}
+        <div className="mt-1 flex items-center z-30">
           {products.map((_, i) => (
             <button
               key={i}
@@ -430,13 +431,18 @@ export function Hero({ products }: { products: Product[] }) {
                   navigating.current = false;
                 }, 520);
               }}
-              className={`rounded-full transition-all duration-300
+              aria-current={i === activeIndex ? "true" : undefined}
+              className="group grid h-10 place-items-center px-[3px]"
+            >
+              <span
+                className={`block rounded-full transition-all duration-300
                 ${
                   i === activeIndex
                     ? "w-5 h-2 bg-[color:var(--brand-orange)]"
-                    : "w-2 h-2 bg-[color:var(--brand)]/20 hover:bg-[color:var(--brand)]/40"
+                    : "w-2 h-2 bg-[color:var(--brand)]/20 group-hover:bg-[color:var(--brand)]/40"
                 }`}
-            />
+              />
+            </button>
           ))}
         </div>
       </motion.div>

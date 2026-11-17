@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useAuthUser } from "../lib/auth.js";
-import { visibleTabs, type BranchTab } from "./branch-tabs.js";
+import { activeTab, visibleTabs, type BranchTab } from "./branch-tabs.js";
 
 /** Sub-page tab strip rendered under a grouped page's header. */
 export function BranchTabs({ items }: { items: BranchTab[] }): JSX.Element | null {
@@ -8,10 +8,11 @@ export function BranchTabs({ items }: { items: BranchTab[] }): JSX.Element | nul
   const path = useRouterState({ select: (s) => s.location.pathname });
   const tabs = visibleTabs(items, user.capabilities);
   if (tabs.length <= 1) return null;
+  const current = activeTab(tabs, path);
   return (
     <nav className="branch-tabs" style={{ display: "flex", gap: 6, margin: "0 0 14px", flexWrap: "wrap" }}>
       {tabs.map((t) => {
-        const active = path === t.to || path.startsWith(t.to + "/");
+        const active = current?.to === t.to;
         return (
           <Link
             key={t.to}

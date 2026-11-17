@@ -1,0 +1,311 @@
+/* Unified inbox — layout only; colours and type come from the app tokens in
+   index.css (cards, pills, buttons) so the inbox reads like the rest of admin. */
+
+.ibx {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr) minmax(260px, 300px);
+  gap: 14px;
+  /* Fill the screen exactly: --ibx-top (where the panes start) and --ibx-pad
+     (the page's bottom padding) are measured in routes/inbox/index.tsx. At
+     least 52px stays free underneath so the floating call pill never sits on
+     the reply box. */
+  height: calc(100vh - var(--ibx-top, 98px) - 52px);
+  height: calc(100dvh - var(--ibx-top, 98px) - 52px);
+  margin-bottom: min(0px, calc(52px - var(--ibx-pad, 48px)));
+  min-height: 420px;
+}
+.ibx--no-side { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
+.ibx__pane {
+  background: var(--ms-surface, #fff);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card, 16px);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.ibx__empty-main { display: grid; place-items: center; color: var(--ink-soft); padding: 24px; text-align: center; }
+
+/* List */
+.ibx-list__head { padding: 12px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+.ibx-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth; }
+.ibx-tabs::-webkit-scrollbar { display: none; }
+/* A fade on whichever side has more tabs to scroll to (set in ConversationList). */
+.ibx-tabs.more-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+.ibx-tabs.more-left { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent); }
+.ibx-tabs.more-left.more-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); }
+/* Same look as the app's small pill buttons: beige, green when chosen. */
+.ibx-tab {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: none;
+  height: 32px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--surface-soft);
+  color: var(--ink); font: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; white-space: nowrap;
+}
+.ibx-tab svg { flex: none; }
+.ibx-tab:hover { background: #ECEEF1; }
+.ibx-tab.is-active, .ibx-tab.is-active:hover { background: var(--accent); color: #fff; }
+/* The list tabs share the pane width so all five show without scrolling. */
+.ibx-tabs--fit { gap: 4px; }
+.ibx-tabs--fit .ibx-tab { flex: 1 0 auto; padding: 0 8px; }
+.ibx-filters { display: flex; gap: 6px; }
+.ibx-filters .select { flex: 1; min-width: 0; font-size: 12px; height: 36px; }
+.ibx-list__body { overflow-y: auto; flex: 1; }
+.ibx-list__body > .empty { margin: 12px; padding: 32px 18px; }
+.ibx-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 10px 12px;
+  border: 0; border-bottom: 1px solid var(--line); cursor: pointer; background: transparent; width: 100%;
+  text-align: left; border-left: 3px solid transparent; font: inherit; color: inherit;
+}
+.ibx-row:hover { background: var(--surface-soft, rgba(0,0,0,0.03)); }
+.ibx-row.is-active { background: var(--surface-sunken); border-left-color: var(--accent); }
+.ibx-row__name { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibx-row__time { font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+.ibx-row__preview { font-size: 13px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibx-row__preview, .ibx-row__unread { height: 20px; line-height: 20px; }
+.ibx-row__unread { display: flex; align-items: center; justify-content: flex-end; }
+.ibx-row.is-unread .ibx-row__preview { color: var(--ink); font-weight: 600; }
+/* One line, always: chips and the assignee shorten rather than wrap, so every row is the same height. */
+.ibx-row__meta { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--ink-soft); min-width: 0; min-height: 20px; overflow: hidden; white-space: nowrap; }
+.ibx-row__who { margin-left: auto; flex: 0 1 auto; min-width: 48px; overflow: hidden; text-overflow: ellipsis; }
+.ibx-badge {
+  background: var(--success, #1f9e74); color: #fff; font-size: 11px; font-weight: 700; border-radius: 999px;
+  min-width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px;
+}
+/* Small badge, same lettering as the app's .pill badges. */
+.ibx-chip {
+  display: inline-flex; align-items: center; gap: 4px; flex: none; max-width: 100%;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1;
+  padding: 4px 8px; border-radius: 999px; background: var(--surface-soft); color: var(--ink); white-space: nowrap;
+}
+.ibx-chip svg { flex: none; }
+.ibx-chip--warn { background: rgba(245,158,11,0.16); color: #92400E; }
+
+/* Conversation */
+.ibx-conv__head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap;
+}
+.ibx-conv__title { flex: 1 1 160px; min-width: 0; }
+.ibx-conv__who { display: block; max-width: 100%; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; color: inherit; font: inherit; }
+.ibx-conv__name { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibx-conv__sub { font-size: 12px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibx-conv__labels { display: flex; gap: 4px; margin-top: 4px; overflow: hidden; }
+.ibx-conv__actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; flex: 1 1 100%; min-width: 0; }
+.ibx-conv__break { display: none; }
+/* Every control in the header is one 32px beige pill (36px on a phone). */
+.ibx-conv__head .btn { height: 32px; padding: 0 12px; font-size: 12px; }
+.ibx-conv__head .btn--ghost { border: 0; background: var(--surface-soft); color: var(--ink); }
+.ibx-conv__head .btn--call { background: #16a34a; color: #fff; }
+.ibx-conv__head .pill { height: 32px; }
+.ibx-select {
+  appearance: none; -webkit-appearance: none; height: 32px; width: auto; min-width: 0; max-width: 200px;
+  padding: 0 28px 0 12px; border: 0; border-radius: 999px; color: var(--ink); font: inherit; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.02em; cursor: pointer; text-overflow: ellipsis;
+  background: var(--surface-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23333' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center;
+}
+.ibx-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ibx-select:disabled { opacity: 0.55; cursor: not-allowed; }
+.ibx-back { display: none; }
+/* Opens the contact panel when it isn't already on screen (below 1280px). */
+.ibx-contact-btn { display: none; }
+.ibx-timeline { flex: 1; overflow-y: auto; padding: 12px 14px; background: var(--surface-sunken); display: flex; flex-direction: column; gap: 6px; }
+.ibx-day { align-self: center; font-size: 11px; font-weight: 700; color: var(--ink-soft); background: var(--ms-surface, #fff); border-radius: 999px; padding: 3px 10px; margin: 8px 0 4px; box-shadow: var(--shadow-card); }
+.ibx-msg { max-width: min(78%, 520px); padding: 8px 10px 6px; border-radius: 14px; font-size: 14px; line-height: 1.4; box-shadow: 0 1px 1px rgba(0,0,0,0.06); word-wrap: break-word; white-space: pre-wrap; }
+.ibx-msg--in { align-self: flex-start; background: #fff; border-top-left-radius: 4px; }
+.ibx-msg--out { align-self: flex-end; background: #dcf8c6; border-top-right-radius: 4px; }
+.ibx-msg--failed { background: #fde8e8; border: 1px solid rgba(220,38,38,0.35); }
+.ibx-msg--unconfirmed { background: #fef3c7; border: 1px solid rgba(245,158,11,0.5); }
+.ibx-msg__warn { color: var(--warning-ink, #b45309); font-size: 12px; margin-top: 4px; white-space: normal; }
+.ibx-earlier { align-self: center; flex-shrink: 0; }
+.ibx-msg__meta { display: flex; justify-content: flex-end; gap: 6px; font-size: 11px; color: var(--ink-soft); margin-top: 3px; white-space: nowrap; }
+.ibx-msg__ticks--read { color: #34b7f1; font-weight: 700; }
+.ibx-msg__error { color: var(--danger-ink, #b91c1c); font-size: 12px; margin-top: 4px; white-space: normal; }
+.ibx-msg img.ibx-media { max-width: 100%; max-height: 320px; border-radius: 10px; display: block; cursor: zoom-in; }
+.ibx-msg audio, .ibx-msg video { max-width: 100%; display: block; }
+.ibx-note { align-self: center; width: min(92%, 560px); background: #fff8d6; border: 1px dashed #e8c547; border-radius: 12px; padding: 8px 12px; font-size: 13px; white-space: pre-wrap; }
+.ibx-note__tag { font-size: 11px; font-weight: 600; color: #8a6d00; margin-bottom: 2px; }
+.ibx-call { align-self: center; width: min(92%, 560px); background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+.ibx-call__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ibx-call details { margin-top: 6px; }
+.ibx-call summary { cursor: pointer; font-weight: 600; font-size: 12px; color: var(--accent); }
+.ibx-typing { font-size: 12px; color: var(--ink-soft); padding: 2px 14px 6px; font-style: italic; min-height: 20px; background: var(--surface-sunken); }
+
+/* Composer */
+.ibx-comp { border-top: 1px solid var(--line); padding: 8px 10px 10px; display: grid; gap: 6px; }
+/* Fixed height so the tabs don't move when the right-hand hint changes. */
+.ibx-comp__top { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 32px; }
+.ibx-comp__status { display: flex; align-items: center; height: 16px; overflow: hidden; white-space: nowrap; }
+.ibx-comp__window { font-size: 12px; line-height: 16px; display: flex; align-items: center; gap: 6px; }
+.ibx-comp__window svg { flex: none; }
+.ibx-comp__window--open { color: var(--success-ink); }
+.ibx-comp__window--closed { color: var(--warning-ink); }
+.ibx-comp__hint { font-size: 12px; line-height: 16px; color: #8a6d00; white-space: nowrap; }
+.ibx-comp__modes { display: flex; gap: 4px; }
+/* Both states of the box share one cell, so switching tabs never moves the tab row. */
+.ibx-comp__body { display: grid; }
+.ibx-comp__body > * { grid-area: 1 / 1; min-width: 0; }
+.ibx-comp__row { display: flex; gap: 6px; align-items: flex-end; }
+.ibx-comp__body .ibx-comp__row .textarea { align-self: stretch; }
+.ibx-comp__row .textarea { flex: 1; min-width: 0; min-height: 42px; max-height: 160px; resize: vertical; }
+.ibx-comp__row .btn--ghost { border: 0; background: var(--surface-soft); color: var(--ink); width: 32px; padding: 0; }
+.ibx-comp--note .textarea { background: #fffbe6; }
+/* Reply window closed: the reason on the left, the one thing you can do on the right. */
+.ibx-comp__closed { display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; background: rgba(245,158,11,0.10); border-radius: 12px; padding: 10px 12px; }
+.ibx-comp__closed-text { flex: 1 1 240px; min-width: 0; font-size: 13px; line-height: 1.4; color: var(--ink); }
+.ibx-attach { font-size: 12px; display: flex; align-items: center; gap: 8px; background: var(--surface-sunken); border-radius: 10px; padding: 6px 8px; }
+
+/* Contact side panel */
+.ibx-side { padding: 14px; overflow-y: auto; display: grid; gap: 14px; align-content: start; }
+.ibx-side--empty { align-content: center; justify-items: center; text-align: center; color: var(--ink-soft); padding: 24px; }
+.ibx-side__manage { display: grid; gap: 8px; justify-items: start; border-top: 1px solid var(--line); padding-top: 12px; }
+.ibx-side__manage .btn { max-width: 100%; }
+
+/* Call bar. Idle it is one small pill in the bottom corner; a ringing or live
+   call opens a card above it. */
+.callbar {
+  position: fixed; right: 16px; bottom: 8px; z-index: 60; display: grid; gap: 8px; justify-items: end;
+  max-width: calc(100vw - 32px); pointer-events: none;
+}
+.callbar > * { pointer-events: auto; }
+.callbar__pill {
+  display: flex; align-items: center; gap: 8px; background: var(--ms-surface, #fff); border: 1px solid var(--line);
+  border-radius: 999px; padding: 6px 8px 6px 12px; box-shadow: 0 6px 16px -8px rgba(20,24,31,0.35); font-size: 13px; font-weight: 600;
+}
+.callbar__pill--idle { height: 36px; padding: 0 4px 0 10px; gap: 6px; font-size: 12px; }
+.callbar__avail { display: flex; align-items: center; gap: 7px; height: 100%; cursor: pointer; white-space: nowrap; }
+.callbar__dial { height: 28px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--surface-soft); color: var(--ink); font: inherit; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.callbar__dial:hover { background: #ECEEF1; }
+@media (max-width: 768px) { .callbar__dial { height: 30px; min-width: 30px; } }
+/* The on/off switch for "take calls" (a checkbox underneath). */
+.callbar__switch {
+  appearance: none; -webkit-appearance: none; flex: none; width: 30px; height: 18px; margin: 0; border-radius: 999px;
+  background: #c4c9cf; position: relative; cursor: pointer; transition: background 140ms ease;
+}
+.callbar__switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.3); transition: transform 140ms ease;
+}
+.callbar__switch:checked { background: #16a34a; }
+.callbar__switch:checked::after { transform: translateX(12px); }
+.callbar__switch.is-busy { background: #e8951c; }
+.callbar__switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.callbar__card {
+  background: var(--ms-surface, #fff); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-float);
+  padding: 14px; width: 300px; max-width: 100%; display: grid; gap: 10px;
+}
+.callbar__card--ringing { border-color: #16a34a; animation: callbar-pulse 1.4s ease-in-out infinite; }
+@keyframes callbar-pulse { 0%, 100% { box-shadow: var(--shadow-float); } 50% { box-shadow: 0 0 0 6px rgba(22,163,74,0.18), var(--shadow-float); } }
+.callbar__who { font-size: 16px; font-weight: 800; }
+.callbar__btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.callbar__btns .btn { flex: 1; }
+.callbar__keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.btn--call { background: #16a34a; color: #fff; border-color: #16a34a; }
+
+/* Settings + reports helpers */
+.ibx-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 12px; }
+.ibx-checks label { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.ibx-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ibx-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.ibx-stats > * { min-width: 0; }
+/* "None yet" in place of a number: smaller, so it reads as a note not a figure. */
+.ibx-stats .is-none .stat-card__value { font-size: 20px; color: var(--ink-soft); }
+
+/* Card heading with one action: the button drops under the text rather than being squeezed. */
+.ibx-cardhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.ibx-cardhead > div { flex: 1 1 220px; min-width: 0; }
+.ibx-cardhead > .btn { flex: none; }
+.ibx-cardrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+/* Row buttons side by side on one line, same height, same baseline. */
+.ibx-actions { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+/* One look for every small "Edit"-type button in settings, on white or beige. */
+.ibx-settings .btn--subtle.btn--sm { background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+.ibx-settings .btn--subtle.btn--sm:hover:not(:disabled) { background: var(--surface-soft); }
+.ibx-settings, .ibx-settings .card, .ibx-report, .ibx-report .card { min-width: 0; max-width: 100%; }
+.ibx-raw { font-size: 11px; color: var(--ink-soft); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.ibx-formrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 12px; }
+.ibx-formrow > .field { min-width: 0; }
+.ibx-formrow > .btn { flex: none; }
+.ibx-hours { display: grid; grid-template-columns: minmax(84px, 110px) minmax(0, 1fr); gap: 2px 10px; font-size: 13px; }
+
+/* Reports: cards may shrink, wide tables scroll inside their own card. */
+.ibx-report .l-split--dash { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.ibx-report .l-split > * { min-width: 0; }
+.ibx-report .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.ibx-report__bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+.ibx-report__bar .field { min-width: 0; }
+.ibx-report__bar .ibx-tabs { align-items: center; height: 40px; flex-wrap: wrap; overflow: visible; }
+
+/* Laptop and tablet: no room for three panes, so the contact panel opens in a
+   dialog from the "Contact" button (keep 1439px in step with routes/inbox/index.tsx). */
+@media (max-width: 1439px) {
+  .ibx { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
+  .ibx > .ibx-side-pane { display: none; }
+  .ibx-contact-btn { display: inline-flex; }
+}
+@media (max-width: 1023px) {
+  .ibx { grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .ibx-report .l-split--dash { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Phone: one pane at a time — list, or the open conversation */
+@media (max-width: 768px) {
+  .ibx, .ibx--no-side {
+    grid-template-columns: minmax(0, 1fr); gap: 0; min-height: 360px;
+    height: calc(100vh - var(--ibx-top, 80px) - 46px);
+    height: calc(100dvh - var(--ibx-top, 80px) - 46px);
+    margin-bottom: min(0px, calc(46px - var(--ibx-pad, 40px)));
+  }
+  .ibx.has-open > .ibx-list-pane { display: none; }
+  .ibx:not(.has-open) > .ibx-main-pane { display: none; }
+  .ibx-back { display: inline-flex; }
+  .ibx-msg { max-width: 88%; }
+  .ibx-grid2 { grid-template-columns: 1fr; }
+  .ibx-tab { height: 36px; }
+
+  /* Compact header: [back] name [Contact] [Call] on one line, then the four controls on the next. */
+  .ibx-conv__head { padding: 8px 10px; gap: 6px; }
+  .ibx-conv__title { flex: 1 1 0; }
+  .ibx-conv__labels { margin-top: 2px; }
+  .ibx-conv__head .btn, .ibx-conv__head .pill { height: 36px; }
+  .ibx-conv__head .ibx-back { width: 36px; padding: 0; }
+  .ibx-conv__head .btn { padding: 0 10px; gap: 5px; }
+  .ibx-conv__head .ibx-call-btn { width: 36px; padding: 0; }
+  /* Second line: who has it, which team, labels, close. */
+  .ibx-conv__actions { display: contents; }
+  .ibx-conv__break { display: block; flex: 0 0 100%; height: 0; margin-top: -6px; order: 2; }
+  .ibx-conv__head .ibx-select { order: 3; flex: 1 1 0; width: 0; height: 36px; font-size: 16px; font-weight: 600; letter-spacing: 0; padding-left: 10px; max-width: none; }
+  .ibx-conv__head .ibx-select + .ibx-select { flex-grow: 2; }
+  .ibx-conv__head .ibx-close-btn { order: 4; }
+  .ibx-conv__head .ibx-close-btn svg { display: none; }
+  /* Labels (an icon here) and Call sit on the first line, after Contact. */
+  .ibx-conv__head .ibx-labels-btn { order: 0; width: 36px; padding: 0; }
+  .ibx-conv__head .ibx-call-btn { order: 1; }
+  .ibx-hide-phone { display: none; }
+  .ibx-timeline { padding: 10px; }
+
+  .ibx-cardhead > .btn { margin-left: auto; }
+  .ibx-actions { justify-content: flex-start; }
+  .ibx-formrow > .field { flex: 1 1 140px; }
+
+  .callbar { right: 8px; left: 8px; bottom: calc(4px + env(safe-area-inset-bottom, 0px)); justify-items: stretch; }
+  .callbar__card { width: auto; }
+  .callbar__pill { justify-self: end; }
+}
+
+/* Phone: settings tables become one block per row, so every value and button is on screen. */
+@media (max-width: 640px) {
+  .ibx-settings .table-wrap { overflow: visible; }
+  .table.ibx-stack, .table.ibx-stack tbody, .table.ibx-stack tbody tr, .table.ibx-stack tbody td { display: block; width: 100%; }
+  .table.ibx-stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .table.ibx-stack tbody tr { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .table.ibx-stack tbody tr:last-child { border-bottom: 0; }
+  .table.ibx-stack tbody td { padding: 3px 0; border: 0; text-align: left; }
+  .table.ibx-stack tbody td[data-label] { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: right; }
+  .table.ibx-stack tbody td[data-label]::before {
+    content: attr(data-label); flex: none; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-soft);
+  }
+  .table.ibx-stack tbody td.ibx-stack__actions { padding-top: 8px; }
+  .table.ibx-stack tbody td.ibx-stack__actions[style] { text-align: left !important; }
+}

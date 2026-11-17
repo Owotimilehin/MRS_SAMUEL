@@ -40,7 +40,7 @@ export function Categories() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.05 }}
-              className="group flex flex-col items-center text-center"
+              className="group flex flex-col items-center text-center last:col-span-2 sm:last:col-span-1"
             >
               <span
                 className="grid h-36 w-36 place-items-center rounded-full overflow-hidden shadow-md transition group-hover:scale-105 group-hover:shadow-lg"

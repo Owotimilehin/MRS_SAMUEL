@@ -301,10 +301,10 @@ export function ProductionRunsPage(): JSX.Element {
               gap: 14,
             }}
           >
+            {/* "Produced today" lives in the banner above, so it is not repeated here. */}
             {bottleStock.map((b) => (
               <Stat key={b.material_id} label={`${b.size_ml}ml bottles`} value={String(b.balance)} />
             ))}
-            <Stat label="Produced today" value={String(producedToday)} tone="accent" />
           </div>
         )}
       </section>
@@ -317,16 +317,17 @@ export function ProductionRunsPage(): JSX.Element {
           <div className="empty">No factories configured. Ask the owner to add one.</div>
         ) : (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            {/* Side by side on desktop, stacked on a phone so the factory name is not cut off. */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 12 }}>
               <div className="field">
-                <label className="field__label">Factory</label>
-                <select className="select" value={factoryId} onChange={(e) => setFactoryId(e.target.value)}>
+                <label className="field__label" htmlFor="run-factory">Factory</label>
+                <select id="run-factory" className="select" value={factoryId} onChange={(e) => setFactoryId(e.target.value)}>
                   {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
               </div>
               <div className="field">
-                <label className="field__label">Run date</label>
-                <input className="input" type="date" value={runDate} onChange={(e) => setRunDate(e.target.value)} />
+                <label className="field__label" htmlFor="run-date">Run date</label>
+                <input id="run-date" className="input" type="date" value={runDate} onChange={(e) => setRunDate(e.target.value)} />
               </div>
             </div>
 
@@ -338,7 +339,7 @@ export function ProductionRunsPage(): JSX.Element {
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <div>
-                    <span className={run.status === "completed" ? "pill pill--success" : "pill pill--warning"}>{run.status}</span>
+                    <span className={run.status === "completed" ? "pill pill--success" : "pill pill--warning"}>{run.status === "completed" ? "Completed" : "Draft"}</span>
                     <span style={{ marginLeft: 8, color: "var(--ink-soft)", fontSize: 13 }}>
                       {formatDate(run.runDate)} · {flavourCount(run.items)} flavour{flavourCount(run.items) === 1 ? "" : "s"}
                     </span>
@@ -428,7 +429,7 @@ export function ProductionRunsPage(): JSX.Element {
                         </select>
                       </div>
                       <div className="field">
-                        <label className="field__label">Total produced (cans)</label>
+                        <label className="field__label">Total produced (bottles)</label>
                         <input
                           className="input" type="number" min={0} step="1"
                           placeholder="e.g. 200"
@@ -449,7 +450,7 @@ export function ProductionRunsPage(): JSX.Element {
                       // Single-line strip: "Divide into bottles" + a per-size input
                       // each, the bottled-vs-total tally, and the add button.
                       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                        <span className="field__label" style={{ whiteSpace: "nowrap" }}>Divide into bottles</span>
+                        <span className="field__label" style={{ whiteSpace: "nowrap" }}>Split by size</span>
                         {draftVariants.map((v) => (
                           <label key={v.id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                             <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: "nowrap" }}>
@@ -467,8 +468,8 @@ export function ProductionRunsPage(): JSX.Element {
                           </label>
                         ))}
                         <span style={{ fontSize: 13, color: overAllocated ? "var(--danger)" : "var(--ink-soft)", whiteSpace: "nowrap" }}>
-                          Allocated <strong style={{ color: overAllocated ? "var(--danger)" : "var(--ink)" }}>{allocatedCans.toLocaleString()} cans</strong>
-                          {totalCans > 0 ? ` / ${totalCans.toLocaleString()} cans` : ""}
+                          Allocated <strong style={{ color: overAllocated ? "var(--danger)" : "var(--ink)" }}>{allocatedCans.toLocaleString()} bottles</strong>
+                          {totalCans > 0 ? ` / ${totalCans.toLocaleString()} bottles` : ""}
                           {totalCans > 0 && (overAllocated ? ` · ${Math.abs(remainingCans).toLocaleString()} over` : ` · ${remainingCans.toLocaleString()} left`)}
                         </span>
                         <button
@@ -519,7 +520,7 @@ export function ProductionRunsPage(): JSX.Element {
                     <tr key={h.id}>
                       <td>{formatDate(h.runDate)}</td>
                       <td>
-                        <span className={h.status === "completed" ? "pill pill--success" : "pill pill--warning"}>{h.status}</span>
+                        <span className={h.status === "completed" ? "pill pill--success" : "pill pill--warning"}>{h.status === "completed" ? "Completed" : "Draft"}</span>
                       </td>
                       <td className="table__num">{flavourCount(h.items)}</td>
                       <td>

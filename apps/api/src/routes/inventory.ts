@@ -12,7 +12,7 @@ import {
 } from "@ms/db";
 import { requireAuth, requireCapability, requireAnyCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
-import { BusinessError } from "../lib/errors.js";
+import { BusinessError, pgErrorCode, pgErrorText } from "../lib/errors.js";
 import { enqueueOutbox } from "../lib/notify.js";
 
 const AdjustBody = z
@@ -131,8 +131,8 @@ export function inventoryRoutes(db: DbClient) {
               : body.reason_code,
           });
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          if (/check_violation|negative/i.test(message)) {
+          const message = pgErrorText(err);
+          if (pgErrorCode(err) === "23514" || /check_violation|negative/i.test(message)) {
             // ErrorCode taxonomy doesn't have a dedicated "would_go_negative"
             // entry; map to conflict (status 422) with the offending product
             // in details so the UI can render a precise inline error.

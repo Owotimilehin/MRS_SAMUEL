@@ -22,17 +22,17 @@ export function ProductCard({ product, onClick, index }: Props) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-50px" }}
       transition={{ duration: 0.5, delay: (index % 4) * 0.06 }}
-      className="group flex flex-col overflow-hidden rounded-[1.25rem] bg-white shadow-[0_4px_20px_rgba(20,20,10,0.10)] ring-1 ring-black/5 transition-all hover:shadow-[0_20px_50px_-8px_rgba(20,20,10,0.22)] hover:-translate-y-1"
+      className="group flex h-full flex-col overflow-hidden rounded-[1.25rem] bg-white shadow-[0_4px_20px_rgba(20,20,10,0.10)] ring-1 ring-black/5 transition-all hover:shadow-[0_20px_50px_-8px_rgba(20,20,10,0.22)] hover:-translate-y-1"
     >
       <button
         onClick={onClick}
-        className="relative h-64 w-full overflow-hidden text-left"
+        className="relative h-44 sm:h-64 w-full shrink-0 overflow-hidden text-left"
         style={{ background: palette.surface }}
         aria-label={`View ${product.name}`}
       >
         {product.category === "Special" && (
           <span
-            className="absolute top-3 left-3 z-20 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-white"
+            className="absolute top-2 left-2 sm:top-3 sm:left-3 z-20 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-white"
             style={{ background: palette.accent }}
           >
             Special
@@ -50,7 +50,7 @@ export function ProductCard({ product, onClick, index }: Props) {
           src={product.image}
           alt={product.name}
           loading="lazy"
-          className="absolute left-3 sm:left-4 bottom-3 h-[92%] w-auto object-contain object-bottom drop-shadow-[0_18px_22px_rgba(40,20,10,0.22)] z-10"
+          className="absolute left-2 sm:left-4 bottom-3 h-[92%] w-auto object-contain object-bottom drop-shadow-[0_18px_22px_rgba(40,20,10,0.22)] z-10"
           animate={{ y: [0, -6, 0] }}
           transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: index * 0.2 }}
         />
@@ -59,16 +59,16 @@ export function ProductCard({ product, onClick, index }: Props) {
           alt=""
           aria-hidden
           loading="lazy"
-          className="absolute right-3 bottom-3 w-[48%] max-w-[150px] object-contain object-bottom drop-shadow-[0_14px_18px_rgba(40,20,10,0.20)] z-[5] pointer-events-none transition-transform duration-500 group-hover:translate-y-[-4px] group-hover:scale-[1.04]"
+          className="absolute right-2 sm:right-3 bottom-3 w-[48%] max-w-[150px] object-contain object-bottom drop-shadow-[0_14px_18px_rgba(40,20,10,0.20)] z-[5] pointer-events-none transition-transform duration-500 group-hover:translate-y-[-4px] group-hover:scale-[1.04]"
         />
       </button>
 
-      <div className="flex flex-col gap-3 p-5">
+      <div className="flex flex-1 flex-col gap-2 sm:gap-3 p-3 sm:p-5">
         <div>
-          <h3 className="font-display text-[19px] font-semibold leading-tight text-[color:var(--brand)]">
+          <h3 className="font-display text-[16px] sm:text-[19px] font-semibold leading-tight text-[color:var(--brand)]">
             {product.name}
           </h3>
-          <p className="mt-1 text-[13px] leading-snug text-[color:var(--brand)]/65 line-clamp-2">
+          <p className="mt-1 text-[12px] sm:text-[13px] leading-snug text-[color:var(--brand)]/65 line-clamp-2">
             {product.tagline}
           </p>
           <p
@@ -76,21 +76,21 @@ export function ProductCard({ product, onClick, index }: Props) {
             style={{ color: featuredStock > 0 ? "var(--brand)" : palette.accent }}
           >
             {featuredStock > 0
-              ? `${featuredSize}: ${featuredStock} in stock`
-              : `${featuredSize}: ${deliveryPromise(featuredSize, 0)}`}
+              ? `${featuredSize} · ${featuredStock} in stock`
+              : `${featuredSize} · ${deliveryPromise(featuredSize, 0)}`}
           </p>
         </div>
-        <div className="mt-1 flex items-center justify-between">
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1">
           <div
-            className="font-display text-xl font-semibold"
+            className="font-display text-lg sm:text-xl font-semibold"
             style={{ color: palette.accent }}
           >
             ₦{product.prices[quickAddSize(product)].toLocaleString("en-NG")}
           </div>
           <button
             onClick={onClick}
-            className="grid h-10 w-10 place-items-center rounded-full transition hover:scale-105"
-            style={{ background: palette.surface, color: palette.accent }}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white transition hover:scale-105 active:scale-95"
+            style={{ background: palette.accent }}
             aria-label={`Add ${product.name} to cart`}
           >
             <ShoppingCart className="h-4 w-4" />

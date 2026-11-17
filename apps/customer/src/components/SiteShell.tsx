@@ -47,12 +47,17 @@ function Newsletter() {
           onSubmit={(e) => e.preventDefault()}
           className="flex items-center gap-2 rounded-full bg-white p-1.5 pl-5 text-[color:var(--brand)]"
         >
+          <label htmlFor="newsletter-email" className="sr-only">
+            Email address
+          </label>
           <input
+            id="newsletter-email"
             type="email"
+            autoComplete="email"
             placeholder="Enter your email"
-            className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--brand)]/45 py-3"
+            className="h-11 min-w-0 flex-1 bg-transparent outline-none text-base sm:text-sm placeholder:text-[color:var(--brand)]/45"
           />
-          <button className="inline-flex items-center gap-2 rounded-full bg-[color:var(--brand)] text-white pl-5 pr-3 py-3 text-sm font-semibold hover:opacity-90 transition" aria-label="Subscribe">
+          <button className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-[color:var(--brand)] text-white pl-5 pr-3 text-sm font-semibold hover:opacity-90 transition" aria-label="Subscribe">
             Subscribe
             <span className="grid h-6 w-6 place-items-center rounded-full bg-white/15">
               <Send className="h-3 w-3" />
@@ -73,8 +78,8 @@ function Footer() {
           <p className="mt-4 text-sm max-w-xs text-white/70">
             Pure. Fresh. Real. Cold-pressed Nigerian fruit juice, pressed every morning in Lagos.
           </p>
-          <a href="https://instagram.com/Mrs_samuelfruitjuice" target="_blank" rel="noreferrer" className="mt-5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-[color:var(--brand-orange)] transition">
-            <Instagram className="h-4 w-4" />
+          <a href="https://instagram.com/Mrs_samuelfruitjuice" target="_blank" rel="noreferrer" aria-label="Mrs. Samuel Fruit Juice on Instagram" className="mt-5 inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/10 hover:bg-[color:var(--brand-orange)] transition">
+            <Instagram className="h-4 w-4" aria-hidden />
           </a>
         </div>
         <div>
@@ -86,6 +91,7 @@ function Footer() {
             <li><Link to="/white-label" className="hover:text-white">White Label</Link></li>
             <li><Link to="/bulk-orders" className="hover:text-white">Bulk Orders</Link></li>
             <li><Link to="/blog" className="hover:text-white">Blog</Link></li>
+            <li><Link to="/track" className="hover:text-white">Track Order</Link></li>
           </ul>
         </div>
         <div>
@@ -105,7 +111,7 @@ function Footer() {
               <li><a href="https://wa.me/2349019512246" target="_blank" rel="noreferrer" className="hover:text-white">WhatsApp · 0901 951 2246</a></li>
               <li><a href="mailto:info@mrssamuel.com" className="hover:text-white">info@mrssamuel.com</a></li>
               <li>@Mrs_samuelfruitjuice</li>
-              <li>30 Asa-Afariogun St, opposite Access Bank, ajao estate</li>
+              <li>30 Asa Afariogun Street, opposite Access Bank, Ajao Estate, Lagos</li>
               <li className="text-white/60 text-xs pt-2">Mon–Sat · 8am–8pm<br />Sun · 10am–8pm</li>
             </ul>
           </div>

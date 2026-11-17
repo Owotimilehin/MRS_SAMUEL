@@ -67,6 +67,7 @@ export function CustomersPage(): JSX.Element {
           type="button"
           className="btn btn--subtle btn--sm"
           disabled={filtered.length === 0}
+          title={filtered.length === 0 ? "Nothing to export yet" : undefined}
           onClick={() =>
             downloadCsv(
               `customers-${new Date().toISOString().slice(0, 10)}`,
@@ -92,7 +93,7 @@ export function CustomersPage(): JSX.Element {
         loading={loading}
         chips={[
           {
-            label: "Total",
+            label: "With orders",
             value: rows.length,
           },
           {
@@ -116,32 +117,23 @@ export function CustomersPage(): JSX.Element {
           <input
             className="input"
             type="search"
-            placeholder="Search name, phone or order number…"
+            placeholder="Search customers…"
+            aria-label="Search by name, phone or order number"
+            title="Search by name, phone or order number"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
         </span>
         <span className="toolbar__spacer" />
-        <div className="t-tabs" role="tablist">
+        <div className="t-tabs" role="tablist" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {(["all", "repeat", "new7d"] as const).map((f) => (
               <button
                 key={f}
                 type="button"
                 role="tab"
                 aria-selected={filter === f}
-                className={filter === f ? "is-active" : ""}
+                className={filter === f ? "btn btn--sm btn--primary is-active" : "btn btn--sm btn--subtle"}
                 onClick={() => setFilter(f)}
-                style={{
-                  padding: "6px 14px",
-                  border: "1px solid var(--line)",
-                  borderRadius: 999,
-                  background: filter === f ? "var(--ink)" : "transparent",
-                  color: filter === f ? "#fff" : "var(--ink)",
-                  marginRight: 6,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
               >
                 {f === "all" ? "All" : f === "repeat" ? "Repeat (2+)" : "New (7 days)"}
               </button>
@@ -156,10 +148,16 @@ export function CustomersPage(): JSX.Element {
 
         {loading ? (
           <InlineLoader />
+        ) : rows.length === 0 ? (
+          <div className="empty">
+            <div className="empty__title">No customers with orders yet</div>
+            This list shows people once they have placed an order. People who have only messaged or
+            called are in the Inbox.
+          </div>
         ) : filtered.length === 0 ? (
           <div className="empty">
-            <div className="empty__title">No customers yet</div>
-            Customers appear here once a sale is rung up with their phone or name.
+            <div className="empty__title">No matches</div>
+            No customer fits this search or filter.
           </div>
         ) : (
           <div className="table-wrap">
@@ -187,7 +185,7 @@ export function CustomersPage(): JSX.Element {
                     <td className="table__num" style={{ fontWeight: 700 }}>
                       {ngn(r.lifetimeNgn)}
                     </td>
-                    <td>
+                    <td style={{ whiteSpace: "nowrap" }}>
                       {formatDateTime(r.lastOrderAt)}
                       <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
                         · {r.lastOrderNumber}
