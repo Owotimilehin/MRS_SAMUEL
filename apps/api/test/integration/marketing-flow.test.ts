@@ -64,6 +64,17 @@ describe("marketing admin CRUD + leads", () => {
     expect(patch.status).toBe(200);
     expect(((await patch.json()) as { data: { badge: string } }).data.badge).toBe("Limited");
 
+    // The owner's Bundles screen lists every bundle, hidden ones included.
+    const hide = await authed(`/v1/marketing/bundles/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: false }),
+    });
+    expect(hide.status).toBe(200);
+    const list = await authed("/v1/marketing/bundles");
+    expect(list.status).toBe(200);
+    const listed = ((await list.json()) as { data: { id: string }[] }).data;
+    expect(listed.some((b) => b.id === id)).toBe(true);
+
     const del = await authed(`/v1/marketing/bundles/${id}`, { method: "DELETE" });
     expect(del.status).toBe(200);
   });
