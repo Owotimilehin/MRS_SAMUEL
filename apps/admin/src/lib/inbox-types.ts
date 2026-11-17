@@ -93,6 +93,11 @@ export interface TimelineMessage {
   media_filename: string | null;
   template_name: string | null;
   status: MessageStatus;
+  /**
+   * With status "failed": WhatsApp never answered, so the message may have been
+   * delivered anyway. Shown in amber, not red. Absent on older servers.
+   */
+  unconfirmed?: boolean;
   error_message: string | null;
   sender_name: string | null;
   created_at: string;
@@ -108,6 +113,7 @@ export interface CallSummary {
 export interface TimelineRecording {
   id: string;
   kind: "call" | "voicemail";
+  /** "pending" | "ready" | "failed" | "deleted" (audio, transcript and summary removed). */
   status: string;
   duration_s: number | null;
   playable: boolean;
@@ -139,6 +145,29 @@ export type TimelineItem =
   | { kind: "message"; at: string; data: TimelineMessage }
   | { kind: "call"; at: string; data: TimelineCall }
   | { kind: "note"; at: string; data: TimelineNote };
+
+/** One page of a conversation's timeline, oldest → newest. */
+export interface TimelinePage {
+  data: TimelineItem[];
+  has_more: boolean;
+  /** Pass as `before` to fetch the page just before this one. */
+  next_before: string | null;
+}
+
+/** A contact found by the "merge with another contact" search. */
+export interface ContactSearchHit {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  conversations: number;
+}
+
+export interface EraseResult {
+  conversations: number;
+  messages: number;
+  calls: number;
+  recordings: number;
+}
 
 export interface InboxTemplate {
   id: string;
@@ -196,6 +225,9 @@ export interface PhoneNumberRow {
   hoursProfileId: string | null;
   ivrMenuId: string | null;
   afterHoursText: string | null;
+  /** Uploaded recording callers hear after hours (instead of the computer voice). */
+  afterHoursAudioKey?: string | null;
+  after_hours_audio_key?: string | null;
   isActive: boolean;
   calls_in_progress: number;
 }
@@ -233,12 +265,18 @@ export interface IvrOptionRow {
   action: "ring_team" | "voicemail" | "play";
   teamId: string | null;
   playText: string | null;
+  /** Uploaded recording for action "play". */
+  audioKey?: string | null;
+  audio_key?: string | null;
 }
 
 export interface IvrMenuRow {
   id: string;
   name: string;
   greetingText: string;
+  /** Uploaded greeting recording; the typed text is the fallback. */
+  greetingAudioKey?: string | null;
+  greeting_audio_key?: string | null;
   options: IvrOptionRow[];
 }
 

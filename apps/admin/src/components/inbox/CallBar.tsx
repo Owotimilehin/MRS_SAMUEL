@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Phone, PhoneOff, Mic, MicOff, Grid3x3, PhoneOutgoing, X } from "lucide-react";
+import { Phone, PhoneOff, Mic, MicOff, Grid3x3, PhoneOutgoing, PhoneForwarded, Pause, Play, X } from "lucide-react";
 import { useCan } from "../../lib/auth.js";
 import {
   acceptIncoming,
@@ -11,7 +11,9 @@ import {
   sendDigits,
   setAvailable,
   startCall,
+  toggleHold,
   toggleMute,
+  transferActive,
   useVoice,
 } from "../../lib/inbox-voice.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
@@ -46,6 +48,7 @@ export function CallBar(): JSX.Element | null {
   const v = useVoice();
   const [keypad, setKeypad] = useState(false);
   const [dialOpen, setDialOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [, tick] = useState(0);
 
   // Answerers who left themselves "available" get the phone back on every load.
@@ -62,7 +65,10 @@ export function CallBar(): JSX.Element | null {
   }, [v.active?.state]);
 
   useEffect(() => {
-    if (!v.active) setKeypad(false);
+    if (!v.active) {
+      setKeypad(false);
+      setTransferOpen(false);
+    }
   }, [v.active]);
 
   const callerPhone = v.incoming?.from ?? (v.active?.direction === "in" ? v.active.who : null);
@@ -107,8 +113,13 @@ export function CallBar(): JSX.Element | null {
                 : v.active.state === "ringing"
                   ? "Ringing…"
                   : formatDuration(v.active.startedAt ? (Date.now() - v.active.startedAt) / 1000 : 0)}
-              {v.active.muted ? " · muted" : ""}
+              {v.active.held ? " · on hold" : v.active.muted ? " · muted" : ""}
             </div>
+            {v.active.held && (
+              <div style={{ fontSize: 12, color: "var(--warning-ink)" }}>
+                The customer hears silence and can't hear you. Press Resume to talk again.
+              </div>
+            )}
             {caller.data && v.active.direction === "in" && (
               <Link to="/inbox/$conversationId" params={{ conversationId: caller.data.id }} style={{ fontSize: 12 }}>
                 Open their chat
@@ -125,8 +136,15 @@ export function CallBar(): JSX.Element | null {
             </div>
           )}
           <div className="callbar__btns">
-            <button type="button" className="btn btn--subtle btn--sm" onClick={toggleMute} aria-pressed={v.active.muted}>
-              {v.active.muted ? <MicOff size={15} /> : <Mic size={15} />} {v.active.muted ? "Unmute" : "Mute"}
+            <button
+              type="button"
+              className="btn btn--subtle btn--sm"
+              onClick={toggleMute}
+              aria-pressed={v.active.muted}
+              disabled={v.active.held}
+              title={v.active.held ? "The call is on hold" : undefined}
+            >
+              {v.active.muted ? <MicOff size={15} /> : <Mic size={15} />} {v.active.muted && !v.active.held ? "Unmute" : "Mute"}
             </button>
             <button type="button" className="btn btn--subtle btn--sm" onClick={() => setKeypad((k) => !k)} aria-pressed={keypad}>
               <Grid3x3 size={15} /> Keypad
@@ -135,14 +153,31 @@ export function CallBar(): JSX.Element | null {
               <PhoneOff size={15} /> Hang up
             </button>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn btn--ghost btn--sm" disabled title="Coming soon">
-              Hold (soon)
+          <div className="callbar__btns">
+            <button
+              type="button"
+              className="btn btn--subtle btn--sm"
+              onClick={toggleHold}
+              aria-pressed={v.active.held}
+              disabled={v.active.state !== "open"}
+              title="Customer hears silence"
+            >
+              {v.active.held ? <Play size={15} /> : <Pause size={15} />} {v.active.held ? "Resume" : "Hold"}
             </button>
-            <button type="button" className="btn btn--ghost btn--sm" disabled title="Coming soon">
-              Transfer (soon)
+            <button
+              type="button"
+              className="btn btn--subtle btn--sm"
+              onClick={() => setTransferOpen((o) => !o)}
+              aria-expanded={transferOpen}
+              disabled={v.active.state !== "open"}
+            >
+              <PhoneForwarded size={15} /> Transfer
             </button>
           </div>
+          {!v.active.held && v.active.state === "open" && (
+            <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>Hold: the customer hears silence, not music.</div>
+          )}
+          {transferOpen && v.active.state === "open" && <TransferPicker onDone={() => setTransferOpen(false)} />}
         </div>
       )}
 
@@ -189,6 +224,62 @@ export function CallBar(): JSX.Element | null {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Pick a team to hand the caller to. Our side of the call ends once it's done. */
+function TransferPicker({ onDone }: { onDone: () => void }): JSX.Element {
+  const teams = useQuery({ queryKey: inboxKeys.teams, queryFn: inboxApi.teams, staleTime: 5 * 60_000 });
+  const active = (teams.data ?? []).filter((t) => t.isActive);
+  const [teamId, setTeamId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const chosen = active.find((t) => t.id === teamId) ?? null;
+
+  if (teams.isLoading) return <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>Loading teams…</div>;
+  if (teams.error) {
+    return (
+      <button type="button" className="btn btn--subtle btn--sm" onClick={() => void teams.refetch()}>
+        Couldn't load teams — try again
+      </button>
+    );
+  }
+  if (active.length === 0) {
+    return <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>There are no teams to transfer to yet.</div>;
+  }
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <label className="field">
+        <span className="field__label">Transfer to team</span>
+        <select className="select" value={teamId} disabled={busy} onChange={(e) => setTeamId(e.target.value)}>
+          <option value="">Pick a team…</option>
+          {active.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <span className="field__hint">The customer rings that team and your side of the call ends.</span>
+      </label>
+      <div className="callbar__btns">
+        <button type="button" className="btn btn--subtle btn--sm" disabled={busy} onClick={onDone}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn btn--primary btn--sm"
+          disabled={!chosen || busy}
+          onClick={async () => {
+            if (!chosen) return;
+            setBusy(true);
+            const ok = await transferActive(chosen.id, chosen.name);
+            setBusy(false);
+            if (ok) onDone();
+          }}
+        >
+          {busy ? "Transferring…" : "Transfer call"}
+        </button>
+      </div>
     </div>
   );
 }

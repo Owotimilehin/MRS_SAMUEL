@@ -13,9 +13,10 @@ import { Composer } from "../../components/inbox/Composer.js";
 import { ContactPanel } from "../../components/inbox/ContactPanel.js";
 import "../../components/inbox/inbox.css";
 import { useAuthUser } from "../../lib/auth.js";
-import { ApiError } from "../../lib/api.js";
+import { ApiError, humanizeError } from "../../lib/api.js";
+import { toast } from "../../lib/toast.js";
 import { CONTACTS_CSV_URL, inboxApi, inboxKeys } from "../../lib/inbox-api.js";
-import { inboxTabsFor, type InboxTabKey } from "../../lib/inbox-logic.js";
+import { applyEarlierPage, applyNewestPage, inboxTabsFor, type InboxTabKey, type LoadedTimeline } from "../../lib/inbox-logic.js";
 import { useInboxEvents } from "../../lib/inbox-stream.js";
 import { useInboxUi } from "../../lib/inbox-ui.js";
 import type { InboxEvent } from "../../lib/inbox-types.js";
@@ -44,11 +45,34 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
     queryFn: () => inboxApi.conversation(conversationId!),
     enabled: !!conversationId && me.isSuccess,
   });
+  // The cache holds everything loaded so far (newest page + any earlier pages
+  // the person asked for). A refetch only fetches the newest page and folds it
+  // in, so live updates never throw the earlier pages away.
   const timeline = useQuery({
     queryKey: inboxKeys.timeline(conversationId ?? ""),
-    queryFn: () => inboxApi.timeline(conversationId!),
+    queryFn: async (): Promise<LoadedTimeline> => {
+      const key = inboxKeys.timeline(conversationId!);
+      const page = await inboxApi.timeline(conversationId!);
+      return applyNewestPage(qc.getQueryData<LoadedTimeline>(key), page);
+    },
     enabled: !!conversationId && me.isSuccess,
   });
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const loadEarlier = useCallback(async () => {
+    if (!conversationId) return;
+    const key = inboxKeys.timeline(conversationId);
+    const before = qc.getQueryData<LoadedTimeline>(key)?.nextBefore;
+    if (!before) return;
+    setLoadingEarlier(true);
+    try {
+      const page = await inboxApi.timeline(conversationId, before);
+      qc.setQueryData<LoadedTimeline>(key, (prev) => applyEarlierPage(prev, page));
+    } catch (err) {
+      toast.error(`Couldn't load earlier messages: ${humanizeError(err)}`);
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }, [conversationId, qc]);
 
   // ── Mark read on open (and when new messages arrive while it's on screen) ──
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -141,6 +165,22 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
     refreshLists();
   }, [conversationId, qc, refreshLists]);
 
+  // The customer's inbox history is gone: forget it and go back to the list.
+  const afterErase = useCallback(() => {
+    setContactOpen(false);
+    if (conversationId) {
+      qc.removeQueries({ queryKey: inboxKeys.timeline(conversationId) });
+      qc.removeQueries({ queryKey: inboxKeys.conversation(conversationId) });
+    }
+    void navigate({ to: "/inbox" }).then(() => qc.invalidateQueries({ queryKey: inboxKeys.all }));
+  }, [conversationId, navigate, qc]);
+
+  // The chats now belong to another contact: reload so the panel shows them.
+  const afterMerge = useCallback(() => {
+    setContactOpen(false);
+    void qc.invalidateQueries({ queryKey: inboxKeys.all });
+  }, [qc]);
+
   const forbidden = me.error instanceof ApiError && me.error.status === 403;
   const typingName = typing && typing.convId === conversationId ? typing.name : null;
 
@@ -226,7 +266,16 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
                         </DataState>
                       </div>
                     ) : (
-                      <Timeline items={timeline.data ?? []} canDownload={can("recordings.download")} />
+                      <Timeline
+                        key={conversationId}
+                        items={timeline.data?.items ?? []}
+                        canDownload={can("recordings.download")}
+                        canDeleteRecordings={can("recordings.delete")}
+                        hasMore={!!timeline.data?.hasMore && !!timeline.data.nextBefore}
+                        loadingEarlier={loadingEarlier}
+                        onLoadEarlier={() => void loadEarlier()}
+                        onChanged={afterChange}
+                      />
                     )}
                     <TypingLine name={typingName} />
                     <Composer conv={conv.data} can={can} onSent={afterChange} />
@@ -236,7 +285,13 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
 
               <aside className="ibx__pane ibx-side-pane ibx-side" aria-label="Contact">
                 {conv.data?.customer ? (
-                  <ContactPanel customerId={conv.data.customer.id} currentConversationId={conv.data.id} can={can} />
+                  <ContactPanel
+                    customerId={conv.data.customer.id}
+                    currentConversationId={conv.data.id}
+                    can={can}
+                    onErased={afterErase}
+                    onMerged={afterMerge}
+                  />
                 ) : (
                   <div style={{ color: "var(--ink-soft)", fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}>
                     <UserRound size={15} /> Contact details show here.
@@ -250,7 +305,13 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
       {contactOpen && conv.data?.customer && (
         <Modal title="Contact" onClose={() => setContactOpen(false)}>
           <div style={{ display: "grid", gap: 14 }}>
-            <ContactPanel customerId={conv.data.customer.id} currentConversationId={conv.data.id} can={can} />
+            <ContactPanel
+                    customerId={conv.data.customer.id}
+                    currentConversationId={conv.data.id}
+                    can={can}
+                    onErased={afterErase}
+                    onMerged={afterMerge}
+                  />
           </div>
         </Modal>
       )}

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Download, FileText, Voicemail } from "lucide-react";
+import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Download, FileText, Trash2, Voicemail } from "lucide-react";
+import { ConfirmModal } from "../ConfirmModal.js";
 import { inboxApi } from "../../lib/inbox-api.js";
 import { humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
@@ -10,7 +11,10 @@ import {
   groupTimelineByDay,
   mediaKind,
   messageTicks,
+  sendProblem,
+  timelineKey,
   timeOfDay,
+  UNCONFIRMED_TEXT,
 } from "../../lib/inbox-logic.js";
 import type { TimelineCall, TimelineItem, TimelineMessage, TimelineNote, TimelineRecording } from "../../lib/inbox-types.js";
 
@@ -27,19 +31,52 @@ async function openSigned(getUrl: () => Promise<string>): Promise<void> {
   }
 }
 
-export function Timeline({ items, canDownload }: { items: TimelineItem[]; canDownload: boolean }): JSX.Element {
+interface TimelineProps {
+  items: TimelineItem[];
+  canDownload: boolean;
+  /** May permanently delete call recordings. */
+  canDeleteRecordings: boolean;
+  /** There are older items on the server than the oldest one shown. */
+  hasMore: boolean;
+  loadingEarlier: boolean;
+  onLoadEarlier: () => void;
+  /** Something in the timeline changed on the server (e.g. a recording was deleted). */
+  onChanged: () => void;
+}
+
+export function Timeline({
+  items,
+  canDownload,
+  canDeleteRecordings,
+  hasMore,
+  loadingEarlier,
+  onLoadEarlier,
+  onChanged,
+}: TimelineProps): JSX.Element {
   const days = useMemo(() => groupTimelineByDay(items), [items]);
   const ref = useRef<HTMLDivElement | null>(null);
   const stick = useRef(true);
   const lastCount = useRef(0);
+  const lastFirst = useRef<string | null>(null);
+  const firstKey = items[0] ? timelineKey(items[0]) : null;
 
   // Stay pinned to the newest message unless the person scrolled up to read.
+  // When older messages are added on top, keep what they were reading in place:
+  // the content above grew, so move the scroll down by exactly that much.
+  const heightBefore = useRef(0);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (stick.current || lastCount.current === 0) el.scrollTop = el.scrollHeight;
+    const prepended = lastCount.current > 0 && firstKey !== lastFirst.current && items.length > lastCount.current;
+    if (prepended && !stick.current) {
+      el.scrollTop += el.scrollHeight - heightBefore.current;
+    } else if (stick.current || lastCount.current === 0) {
+      el.scrollTop = el.scrollHeight;
+    }
     lastCount.current = items.length;
-  }, [items.length]);
+    lastFirst.current = firstKey;
+    heightBefore.current = el.scrollHeight;
+  }, [items.length, firstKey]);
 
   return (
     <div
@@ -48,8 +85,27 @@ export function Timeline({ items, canDownload }: { items: TimelineItem[]; canDow
       onScroll={(e) => {
         const el = e.currentTarget;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        heightBefore.current = el.scrollHeight;
       }}
     >
+      {hasMore && (
+        <button
+          type="button"
+          className="btn btn--subtle btn--sm ibx-earlier"
+          disabled={loadingEarlier}
+          onClick={() => {
+            // Reading history: don't jump to the newest message when it loads.
+            const el = ref.current;
+            if (el) {
+              stick.current = false;
+              heightBefore.current = el.scrollHeight;
+            }
+            onLoadEarlier();
+          }}
+        >
+          {loadingEarlier ? "Loading…" : "Load earlier messages"}
+        </button>
+      )}
       {days.length === 0 && (
         <div style={{ margin: "auto", color: "var(--ink-soft)", fontSize: 14 }}>No messages yet.</div>
       )}
@@ -60,7 +116,13 @@ export function Timeline({ items, canDownload }: { items: TimelineItem[]; canDow
             it.kind === "message" ? (
               <MessageBubble key={`m${it.data.id}`} m={it.data} />
             ) : it.kind === "call" ? (
-              <CallCard key={`c${it.data.id}`} call={it.data} canDownload={canDownload} />
+              <CallCard
+                key={`c${it.data.id}`}
+                call={it.data}
+                canDownload={canDownload}
+                canDelete={canDeleteRecordings}
+                onChanged={onChanged}
+              />
             ) : (
               <NoteCard key={`n${it.data.id}`} note={it.data} />
             ),
@@ -72,10 +134,11 @@ export function Timeline({ items, canDownload }: { items: TimelineItem[]; canDow
 }
 
 function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
-  const failed = m.status === "failed";
-  const ticks = messageTicks(m.status);
+  const problem = sendProblem(m);
+  const ticks =
+    problem === "unconfirmed" ? { marks: "?", read: false, label: "Not confirmed" } : messageTicks(m.status);
   return (
-    <div className={`ibx-msg ibx-msg--${m.direction}${failed ? " ibx-msg--failed" : ""}`}>
+    <div className={`ibx-msg ibx-msg--${m.direction}${problem ? ` ibx-msg--${problem}` : ""}`}>
       {m.direction === "out" && m.sender_name && (
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{m.sender_name}</div>
       )}
@@ -89,7 +152,8 @@ function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
           {m.type === "reaction" ? "Reacted to a message" : m.type === "location" ? "📍 Shared a location" : `Unsupported message (${m.type})`}
         </div>
       )}
-      {failed && <div className="ibx-msg__error">Not sent{m.error_message ? `: ${m.error_message}` : ""}</div>}
+      {problem === "failed" && <div className="ibx-msg__error">Not sent{m.error_message ? `: ${m.error_message}` : ""}</div>}
+      {problem === "unconfirmed" && <div className="ibx-msg__warn">{UNCONFIRMED_TEXT}</div>}
       <div className="ibx-msg__meta">
         <span>{timeOfDay(m.created_at)}</span>
         {m.direction === "out" && ticks.marks && (
@@ -149,7 +213,17 @@ function MessageMedia({ m }: { m: TimelineMessage }): JSX.Element {
   return <video controls preload="metadata" src={url} />;
 }
 
-function CallCard({ call, canDownload }: { call: TimelineCall; canDownload: boolean }): JSX.Element {
+function CallCard({
+  call,
+  canDownload,
+  canDelete,
+  onChanged,
+}: {
+  call: TimelineCall;
+  canDownload: boolean;
+  canDelete: boolean;
+  onChanged: () => void;
+}): JSX.Element {
   const missed = call.outcome === "missed" || call.outcome === "after_hours" || call.outcome === "failed";
   const Icon = missed ? PhoneMissed : call.outcome === "voicemail" ? Voicemail : call.direction === "in" ? PhoneIncoming : PhoneOutgoing;
   return (
@@ -168,16 +242,51 @@ function CallCard({ call, canDownload }: { call: TimelineCall; canDownload: bool
         {call.ivr_choice ? ` · Pressed ${call.ivr_choice}` : null}
       </div>
       {call.recordings.map((r) => (
-        <RecordingBlock key={r.id} rec={r} canDownload={canDownload} />
+        <RecordingBlock key={r.id} rec={r} canDownload={canDownload} canDelete={canDelete} onChanged={onChanged} />
       ))}
     </div>
   );
 }
 
-function RecordingBlock({ rec, canDownload }: { rec: TimelineRecording; canDownload: boolean }): JSX.Element {
+function RecordingBlock({
+  rec,
+  canDownload,
+  canDelete,
+  onChanged,
+}: {
+  rec: TimelineRecording;
+  canDownload: boolean;
+  canDelete: boolean;
+  onChanged: () => void;
+}): JSX.Element {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const label = rec.kind === "voicemail" ? "voicemail" : "recording";
+
+  async function remove(): Promise<void> {
+    setDeleting(true);
+    try {
+      await inboxApi.deleteRecording(rec.id);
+      setSrc(null);
+      setConfirming(false);
+      toast.success(`The ${label} was deleted.`);
+      onChanged();
+    } catch {
+      /* toast shown by api() */
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  if (rec.status === "deleted") {
+    return (
+      <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-soft)", fontStyle: "italic" }}>
+        {rec.kind === "voicemail" ? "Voicemail deleted" : "Recording deleted"}
+      </div>
+    );
+  }
 
   async function play(): Promise<void> {
     setLoading(true);
@@ -215,7 +324,28 @@ function RecordingBlock({ rec, canDownload }: { rec: TimelineRecording; canDownl
             <Download size={14} /> Download
           </button>
         )}
+        {canDelete && rec.status !== "pending" && (
+          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setConfirming(true)}>
+            <Trash2 size={14} /> Delete
+          </button>
+        )}
       </div>
+      {confirming && (
+        <ConfirmModal
+          title={`Delete this ${label}?`}
+          confirmLabel={`Delete ${label}`}
+          busyLabel="Deleting…"
+          tone="danger"
+          busy={deleting}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void remove()}
+        >
+          <p style={{ margin: 0 }}>This permanently deletes the audio, transcript and summary.</p>
+          <p style={{ margin: "8px 0 0", color: "var(--ink-soft)", fontSize: 13 }}>
+            The call itself stays in the chat history. This can't be undone.
+          </p>
+        </ConfirmModal>
+      )}
       {rec.summary && (
         <details>
           <summary>Call summary (AI)</summary>

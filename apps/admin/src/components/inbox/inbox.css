@@ -66,6 +66,9 @@
 .ibx-msg--in { align-self: flex-start; background: #fff; border-top-left-radius: 4px; }
 .ibx-msg--out { align-self: flex-end; background: #dcf8c6; border-top-right-radius: 4px; }
 .ibx-msg--failed { background: #fde8e8; border: 1px solid rgba(220,38,38,0.35); }
+.ibx-msg--unconfirmed { background: #fef3c7; border: 1px solid rgba(245,158,11,0.5); }
+.ibx-msg__warn { color: var(--warning-ink, #b45309); font-size: 12px; margin-top: 4px; white-space: normal; }
+.ibx-earlier { align-self: center; flex-shrink: 0; }
 .ibx-msg__meta { display: flex; justify-content: flex-end; gap: 6px; font-size: 11px; color: var(--ink-soft); margin-top: 3px; white-space: nowrap; }
 .ibx-msg__ticks--read { color: #34b7f1; font-weight: 700; }
 .ibx-msg__error { color: var(--danger-ink, #b91c1c); font-size: 12px; margin-top: 4px; white-space: normal; }

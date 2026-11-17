@@ -3,7 +3,7 @@
  * unit-tested: list tabs per capability, timeline day grouping, reconnect
  * backoff, template variables, and the small label/format helpers.
  */
-import type { CallOutcome, MessageStatus, TimelineItem } from "./inbox-types.js";
+import type { CallOutcome, MessageStatus, TimelineItem, TimelinePage } from "./inbox-types.js";
 
 /** Business time zone; staff are in Nigeria. */
 export const INBOX_TZ = "Africa/Lagos";
@@ -130,6 +130,65 @@ export function groupTimelineByDay(items: readonly TimelineItem[], now: Date = n
   return days;
 }
 
+// ── Timeline paging ──────────────────────────────────────────────────────────
+
+/** Everything loaded so far for one conversation, oldest → newest. */
+export interface LoadedTimeline {
+  items: TimelineItem[];
+  /** True when there are older items on the server than the oldest one loaded. */
+  hasMore: boolean;
+  /** `before` cursor for the next "Load earlier messages". */
+  nextBefore: string | null;
+}
+
+/** Stable identity of a timeline item (ids are only unique per kind). */
+export function timelineKey(item: TimelineItem): string {
+  return `${item.kind}:${item.data.id}`;
+}
+
+function sortedUnique(items: readonly TimelineItem[]): TimelineItem[] {
+  // Later entries win, so callers put the fresher copy last.
+  const byKey = new Map<string, TimelineItem>();
+  for (const it of items) byKey.set(timelineKey(it), it);
+  return [...byKey.values()].sort((a, b) => a.at.localeCompare(b.at) || timelineKey(a).localeCompare(timelineKey(b)));
+}
+
+/**
+ * Fold a fresh "newest" page (first load or a live refetch) into what is
+ * already loaded, so earlier pages the person fetched are kept.
+ *
+ *  - The fresh page is the truth for the stretch of time it covers: loaded
+ *    items inside that stretch that the server no longer returns (a deleted
+ *    note, say) are dropped; everything in the page replaces the older copy.
+ *  - If the page reports nothing older (`has_more: false`) it IS the whole
+ *    timeline, so it replaces everything.
+ *  - If so much arrived that the page no longer touches what was loaded, the
+ *    loaded items are dropped rather than showing a silent gap in the chat.
+ */
+export function applyNewestPage(prev: LoadedTimeline | undefined, page: TimelinePage): LoadedTimeline {
+  const fresh: LoadedTimeline = { items: sortedUnique(page.data), hasMore: page.has_more, nextBefore: page.next_before };
+  if (!prev || prev.items.length === 0 || !page.has_more || fresh.items.length === 0) return fresh;
+  const pageStart = fresh.items[0]!.at;
+  const prevNewest = prev.items[prev.items.length - 1]!.at;
+  if (pageStart > prevNewest) return fresh;
+  const older = prev.items.filter((it) => it.at <= pageStart);
+  // Nothing loaded reaches back past this page: the page's own cursor applies.
+  if (older.length === 0 || prev.items[0]!.at >= pageStart) {
+    return { ...fresh, items: sortedUnique([...older, ...fresh.items]) };
+  }
+  return { items: sortedUnique([...older, ...fresh.items]), hasMore: prev.hasMore, nextBefore: prev.nextBefore };
+}
+
+/** Put an older page (from "Load earlier messages") in front of what is loaded. */
+export function applyEarlierPage(prev: LoadedTimeline | undefined, page: TimelinePage): LoadedTimeline {
+  return {
+    // Loaded items go last so they win over a stale duplicate in the older page.
+    items: sortedUnique([...page.data, ...(prev?.items ?? [])]),
+    hasMore: page.has_more,
+    nextBefore: page.next_before,
+  };
+}
+
 /** "45s", "2m 05s", "1h 02m". */
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return "—";
@@ -172,6 +231,60 @@ export function messageTicks(status: MessageStatus): { marks: string; read: bool
     default:
       return { marks: "", read: false, label: "" };
   }
+}
+
+export type SendProblem = "failed" | "unconfirmed" | null;
+
+/**
+ * What went wrong with a message, if anything. "unconfirmed" = we never heard
+ * back from WhatsApp, so it may have reached the customer (amber, not red).
+ */
+export function sendProblem(m: { status: MessageStatus; unconfirmed?: boolean | null }): SendProblem {
+  if (m.status !== "failed") return null;
+  return m.unconfirmed ? "unconfirmed" : "failed";
+}
+
+export const UNCONFIRMED_TEXT = "Not confirmed — it may have been delivered. Check with the customer before sending again.";
+
+/** Digits only, for comparing phone numbers typed with spaces, dashes or a +. */
+export function phoneDigits(s: string | null | undefined): string {
+  return (s ?? "").replace(/\D/g, "");
+}
+
+/** The typed number matches the customer's (ignoring spaces, dashes and "+"). */
+export function phoneConfirmMatches(typed: string, phone: string | null | undefined): boolean {
+  const want = phoneDigits(phone);
+  return want.length > 0 && phoneDigits(typed) === want;
+}
+
+// ── Greeting recordings ──────────────────────────────────────────────────────
+
+export const GREETING_MAX_BYTES = 5 * 1024 * 1024;
+export type GreetingContentType = "audio/mpeg" | "audio/wav" | "audio/x-wav";
+
+/**
+ * The content type to upload a greeting as, or null when it isn't MP3/WAV.
+ * Browsers disagree ("audio/mp3", "audio/wave", or nothing at all), so fall
+ * back to the file extension.
+ */
+export function greetingContentType(filename: string, type: string): GreetingContentType | null {
+  const t = type.toLowerCase().split(";")[0]!.trim();
+  if (t === "audio/mpeg" || t === "audio/mp3") return "audio/mpeg";
+  if (t === "audio/x-wav") return "audio/x-wav";
+  if (t === "audio/wav" || t === "audio/wave" || t === "audio/vnd.wave") return "audio/wav";
+  if (t && t !== "application/octet-stream") return null;
+  const ext = filename.toLowerCase().split(".").pop();
+  if (ext === "mp3") return "audio/mpeg";
+  if (ext === "wav") return "audio/wav";
+  return null;
+}
+
+/** Why this file can't be used as a greeting, in plain English, or null. */
+export function greetingFileProblem(f: { name: string; type: string; size: number }): string | null {
+  if (!greetingContentType(f.name, f.type)) return "Use an MP3 or WAV file.";
+  if (f.size <= 0) return "That file is empty.";
+  if (f.size > GREETING_MAX_BYTES) return "That recording is too big. Keep it under 5 MB.";
+  return null;
 }
 
 export function callOutcomeLabel(outcome: CallOutcome, direction: "in" | "out"): string {
@@ -317,6 +430,8 @@ export interface MenuOptionDraft {
   action: "ring_team" | "voicemail" | "play";
   team_id: string | null;
   play_text: string | null;
+  /** Uploaded recording played instead of reading `play_text` out. */
+  audio_key?: string | null;
 }
 
 /** Mirrors the server's checks so staff see the problem before saving. */
@@ -331,7 +446,9 @@ export function validateMenu(m: { name: string; greeting_text: string; options: 
     seen.add(o.digit);
     if (!o.label.trim()) return `Key ${o.digit} needs a label.`;
     if (o.action === "ring_team" && !o.team_id) return `Key ${o.digit}: pick which team to ring.`;
-    if (o.action === "play" && !o.play_text?.trim()) return `Key ${o.digit}: add the message to read out.`;
+    if (o.action === "play" && !o.play_text?.trim() && !o.audio_key) {
+      return `Key ${o.digit}: add the message to read out, or upload a recording.`;
+    }
   }
   return null;
 }

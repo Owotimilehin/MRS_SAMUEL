@@ -11,7 +11,14 @@
  *   POST /presence {available}  → heartbeat every 30s while available
  *   POST /calls/:ref/accepted   → ref = customParameters.callId (fallback CallSid);
  *                                  409 = someone else answered first
+ *   POST /calls/:ref/transfer {team_id} → our leg ends, the customer rings that
+ *                                  team; 409 = this call can't be transferred
  *   Outbound: device.connect({ params: { To, callerNumberId } })
+ *
+ * Hold is done in this browser only (the phone provider is not told): the
+ * microphone is muted and the customer's incoming audio is switched off, so
+ * neither side hears the other. There is no hold music — the customer hears
+ * silence — and the call keeps being recorded.
  */
 import { create } from "zustand";
 import type { Call, Device } from "@twilio/voice-sdk";
@@ -36,6 +43,10 @@ export interface ActiveInfo {
   state: "connecting" | "ringing" | "open";
   startedAt: number | null;
   muted: boolean;
+  /** On hold: neither side hears the other (the customer hears silence). */
+  held: boolean;
+  /** Server reference for this call (customParameters.callId), when known. */
+  ref?: string;
 }
 
 interface VoiceState {
@@ -89,6 +100,8 @@ let initPromise: Promise<void> | null = null;
 let incomingCall: Call | null = null;
 let activeCall: Call | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
+/** Whether the microphone was muted before Hold, so Resume puts it back. */
+let mutedBeforeHold = false;
 
 async function fetchToken(): Promise<string> {
   const res = await api<{ data: { token: string; identity: string; ttl: number } }>("/inbox/voice/token");
@@ -214,7 +227,15 @@ export async function acceptIncoming(): Promise<void> {
   incomingCall = null;
   set({ incoming: null });
   call.accept();
-  trackActive(call, { direction: "in", who: info.from, state: "connecting", startedAt: null, muted: false });
+  trackActive(call, {
+    direction: "in",
+    who: info.from,
+    state: "connecting",
+    startedAt: null,
+    muted: false,
+    held: false,
+    ...(info.ref ? { ref: info.ref } : {}),
+  });
   if (!info.ref) return;
   try {
     await api(`/inbox/voice/calls/${encodeURIComponent(info.ref)}/accepted`, { method: "POST" }, { silentError: true });
@@ -249,7 +270,15 @@ export async function startCall(opts: { to: string; numberId: string; who: strin
   }
   try {
     const call = await device.connect({ params: { To: opts.to, callerNumberId: opts.numberId } });
-    trackActive(call, { direction: "out", who: opts.who, numberId: opts.numberId, state: "connecting", startedAt: null, muted: false });
+    trackActive(call, {
+      direction: "out",
+      who: opts.who,
+      numberId: opts.numberId,
+      state: "connecting",
+      startedAt: null,
+      muted: false,
+      held: false,
+    });
     call.on("ringing", () => patchActive(call, { state: "ringing" }));
   } catch (err) {
     toast.error(`Couldn't start the call: ${humanizeError(err)}`);
@@ -269,9 +298,14 @@ function trackActive(call: Call, info: ActiveInfo): void {
   set({ active: info });
   call.on("accept", () => patchActive(call, { state: "open", startedAt: Date.now() }));
   call.on("mute", (muted: boolean) => patchActive(call, { muted }));
+  // A network blip can swap the customer's audio track; keep a held call silent.
+  call.on("reconnected", () => {
+    if (activeCall === call && get().active?.held) setRemoteAudio(call, false);
+  });
   const end = (): void => {
     if (activeCall === call) {
       activeCall = null;
+      mutedBeforeHold = false;
       set({ active: null });
     }
   };
@@ -288,8 +322,73 @@ export function hangUp(): void {
 }
 
 export function toggleMute(): void {
-  if (!activeCall) return;
+  if (!activeCall || get().active?.held) return;
   activeCall.mute(!activeCall.isMuted());
+}
+
+/**
+ * Switch the customer's audio on or off for this staff member. The SDK plays
+ * the call's remote MediaStream through its own <audio> elements; a disabled
+ * track renders as silence, so this silences every speaker it is routed to.
+ * Returns false when there is no remote audio yet (call still connecting).
+ */
+function setRemoteAudio(call: Call, enabled: boolean): boolean {
+  const tracks = call.getRemoteStream()?.getAudioTracks() ?? [];
+  for (const t of tracks) t.enabled = enabled;
+  return tracks.length > 0;
+}
+
+/**
+ * Hold / resume, done in the browser: mute our microphone and silence the
+ * customer's audio. The customer hears silence (no hold music).
+ */
+export function toggleHold(): void {
+  const call = activeCall;
+  const cur = get().active;
+  if (!call || !cur || cur.state !== "open") return;
+  if (!cur.held) {
+    if (!setRemoteAudio(call, false)) {
+      toast.error("Couldn't put the call on hold. Try again in a moment.");
+      return;
+    }
+    mutedBeforeHold = call.isMuted();
+    call.mute(true);
+    patchActive(call, { held: true });
+  } else {
+    setRemoteAudio(call, true);
+    call.mute(mutedBeforeHold);
+    patchActive(call, { held: false });
+  }
+}
+
+/**
+ * Hand the customer to another team. On success the server ends our leg and
+ * rings that team, so there is nothing to hang up here. Returns true if it worked.
+ */
+export async function transferActive(teamId: string, teamName: string): Promise<boolean> {
+  const call = activeCall;
+  if (!call) return false;
+  const ref = get().active?.ref || call.customParameters.get("callId") || call.parameters.CallSid || "";
+  if (!ref) {
+    toast.error("This call can't be transferred.");
+    return false;
+  }
+  try {
+    await api(
+      `/inbox/voice/calls/${encodeURIComponent(ref)}/transfer`,
+      { method: "POST", body: JSON.stringify({ team_id: teamId }) },
+      { silentError: true },
+    );
+    toast.success(`Transferred to ${teamName}.`);
+    return true;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 409) {
+      toast.error("This call can't be transferred. Stay on the line with the customer.");
+    } else {
+      toast.error(`Couldn't transfer the call: ${humanizeError(err)}`);
+    }
+    return false;
+  }
 }
 
 export function sendDigits(digits: string): void {

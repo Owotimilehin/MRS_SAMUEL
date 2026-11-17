@@ -7,14 +7,16 @@ import { api, ApiError, humanizeError } from "./api.js";
 import { toast } from "./toast.js";
 import type {
   ContactInfo,
+  ContactSearchHit,
   ConversationDetail,
   ConversationPage,
+  EraseResult,
   InboxMe,
   InboxTeamLite,
   InboxTemplate,
   QuickReply,
   StaffMember,
-  TimelineItem,
+  TimelinePage,
 } from "./inbox-types.js";
 
 export const inboxKeys = {
@@ -41,16 +43,19 @@ export interface ConversationFilters {
 }
 
 /**
- * POST a message. A send WhatsApp refuses comes back as 502 with the failed
- * message in the body (it still shows in the timeline, in red), so give that
- * its own wording instead of the generic gateway error.
+ * POST a message. A send that fails comes back as 502 with the failed message
+ * in the body (it still shows in the timeline: red when WhatsApp refused it,
+ * amber when WhatsApp never answered), so give that its own wording instead of
+ * the generic gateway error.
  */
 async function postMessage(id: string, payload: Record<string, unknown>): Promise<unknown> {
   try {
     return await api(`/inbox/conversations/${id}/messages`, { method: "POST", body: JSON.stringify(payload) }, { silentError: true });
   } catch (err) {
     if (err instanceof ApiError && err.status === 502) {
-      toast.error("WhatsApp didn't accept that message. It's marked in red in the chat.");
+      // The body is the failed message itself, which api() doesn't hand back, so
+      // we can't tell "refused" (red) from "no answer" (amber) here — the chat shows which.
+      toast.error("That message didn't go through normally. Check how it's marked in the chat before sending again.");
     } else {
       toast.error(humanizeError(err));
     }
@@ -77,7 +82,16 @@ export const inboxApi = {
       `/inbox/conversations${qs({ status: f.status, view: f.view, number: f.number, label: f.label, q: f.q, before })}`,
     ),
   conversation: async (id: string) => (await api<{ data: ConversationDetail }>(`/inbox/conversations/${id}`)).data,
-  timeline: async (id: string) => (await api<{ data: TimelineItem[] }>(`/inbox/conversations/${id}/timeline`)).data,
+  /**
+   * One page of the timeline, oldest → newest. No `before` = the newest items
+   * (the server's default is 100); pass a page's `next_before` for the one before it.
+   */
+  timeline: async (id: string, before?: string, limit?: number): Promise<TimelinePage> => {
+    const res = await api<Partial<TimelinePage> & { data: TimelinePage["data"] }>(
+      `/inbox/conversations/${id}/timeline${qs({ before, limit: limit ? String(limit) : undefined })}`,
+    );
+    return { data: res.data, has_more: res.has_more === true, next_before: res.next_before ?? null };
+  },
 
   markRead: (id: string) =>
     api(`/inbox/conversations/${id}/read`, { method: "POST" }, { silentError: true }),
@@ -131,6 +145,9 @@ export const inboxApi = {
   recordingUrl: async (recordingId: string, download = false) =>
     (await api<{ data: { url: string } }>(`/inbox/recordings/${recordingId}/url${download ? "?download=1" : ""}`)).data.url,
 
+  /** Permanently removes the audio, transcript and summary (recordings.delete). */
+  deleteRecording: (recordingId: string) => api<{ ok: true }>(`/inbox/recordings/${recordingId}`, { method: "DELETE" }),
+
   templates: async () => (await api<{ data: InboxTemplate[] }>("/inbox/templates")).data,
   syncTemplates: async () => (await api<{ data: { synced: number } }>("/inbox/templates/sync", { method: "POST" })).data,
   quickReplies: async () => (await api<{ data: QuickReply[] }>("/inbox/quick-replies")).data,
@@ -143,6 +160,24 @@ export const inboxApi = {
   contact: async (customerId: string) => (await api<{ data: ContactInfo }>(`/inbox/contacts/${customerId}`)).data,
   patchContact: (customerId: string, b: { name?: string; notes?: string | null }) =>
     api(`/inbox/contacts/${customerId}`, { method: "PATCH", body: JSON.stringify(b) }),
+  searchContacts: async (q: string) =>
+    (await api<{ data: ContactSearchHit[] }>(`/inbox/contacts/search${qs({ q })}`)).data,
+  /** Permanently removes this customer's chats, calls, recordings and notes (inbox.erase). Orders stay. */
+  eraseContact: async (customerId: string, confirmPhone: string) =>
+    (
+      await api<{ data: EraseResult }>(`/inbox/contacts/${customerId}/erase`, {
+        method: "POST",
+        body: JSON.stringify({ confirm_phone: confirmPhone }),
+      })
+    ).data,
+  /** Moves this contact's chats and calls onto another contact (inbox.erase). */
+  mergeContact: async (customerId: string, intoCustomerId: string) =>
+    (
+      await api<{ data: { moved_conversations: number } }>(`/inbox/contacts/${customerId}/merge`, {
+        method: "POST",
+        body: JSON.stringify({ into_customer_id: intoCustomerId }),
+      })
+    ).data,
 };
 
 /** Plain link (cookies ride along) — the browser downloads the CSV. */

@@ -1,5 +1,6 @@
 /** Calls for /v1/inbox/settings and /v1/inbox/reports. */
 import { api } from "./api.js";
+import type { GreetingContentType } from "./inbox-logic.js";
 import type {
   HolidayRow,
   HoursProfileRow,
@@ -35,18 +36,24 @@ export interface NumberInput {
   hours_profile_id: string | null;
   ivr_menu_id: string | null;
   after_hours_text: string | null;
+  /** Uploaded recording callers hear after hours; null = read the text out. */
+  after_hours_audio_key: string | null;
   is_active: boolean;
 }
 
 export interface MenuInput {
   name: string;
   greeting_text: string;
+  /** Uploaded greeting recording; null = read `greeting_text` out. */
+  greeting_audio_key: string | null;
   options: Array<{
     digit: string;
     label: string;
     action: "ring_team" | "voicemail" | "play";
     team_id: string | null;
     play_text: string | null;
+    /** Uploaded recording for action "play"; null = read `play_text` out. */
+    audio_key: string | null;
   }>;
 }
 
@@ -87,6 +94,23 @@ export const settingsApi = {
   ivr: async () => (await api<{ data: IvrMenuRow[] }>(`${S}/ivr`)).data,
   createIvr: (b: MenuInput) => api(`${S}/ivr`, json("POST", b)),
   updateIvr: (id: string, b: MenuInput) => api(`${S}/ivr/${id}`, json("PUT", b)),
+
+  /**
+   * Presign, then PUT a greeting recording (MP3/WAV, max 5 MB) straight to
+   * storage. Returns the key to save on a menu, option or number.
+   */
+  uploadGreeting: async (file: File, contentType: GreetingContentType): Promise<string> => {
+    const res = await api<{ data: { upload_url: string; object_key: string } }>(
+      `${S}/greetings/upload`,
+      json("POST", { filename: file.name, content_type: contentType, size_bytes: file.size }),
+    );
+    const put = await fetch(res.data.upload_url, { method: "PUT", body: file, headers: { "content-type": contentType } });
+    if (!put.ok) throw new Error("The recording didn't upload. Check your connection and try again.");
+    return res.data.object_key;
+  },
+  /** Short-lived link to listen to an uploaded greeting. */
+  greetingUrl: async (key: string) =>
+    (await api<{ data: { url: string } }>(`${S}/greetings/url?key=${encodeURIComponent(key)}`)).data.url,
 
   report: async (p: { from: string; to: string; number?: string }) => {
     const sp = new URLSearchParams({ from: p.from, to: p.to });

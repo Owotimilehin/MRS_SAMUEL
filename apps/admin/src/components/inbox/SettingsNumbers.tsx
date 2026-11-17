@@ -7,6 +7,7 @@ import { ConfirmModal } from "../ConfirmModal.js";
 import { settingsApi, settingsKeys, type NumberInput } from "../../lib/inbox-settings-api.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import { toast } from "../../lib/toast.js";
+import { GreetingUpload } from "./GreetingUpload.js";
 import type { PhoneNumberRow } from "../../lib/inbox-types.js";
 
 const CHANNEL_LABEL = { both: "WhatsApp + calls", whatsapp: "WhatsApp only", voice: "Calls only" } as const;
@@ -176,6 +177,7 @@ function NumberForm({
     hours_profile_id: row?.hoursProfileId ?? "",
     ivr_menu_id: row?.ivrMenuId ?? "",
     after_hours_text: row?.afterHoursText ?? "",
+    after_hours_audio_key: row?.afterHoursAudioKey ?? row?.after_hours_audio_key ?? (null as string | null),
     is_active: row?.isActive ?? true,
   });
   const [busy, setBusy] = useState(false);
@@ -203,6 +205,7 @@ function NumberForm({
       hours_profile_id: blankToNull(f.hours_profile_id),
       ivr_menu_id: blankToNull(f.ivr_menu_id),
       after_hours_text: blankToNull(f.after_hours_text),
+      after_hours_audio_key: voice ? f.after_hours_audio_key : null,
       is_active: f.is_active,
     };
     setBusy(true);
@@ -336,6 +339,16 @@ function NumberForm({
             onChange={(e) => set("after_hours_text", e.target.value)}
           />
         </label>
+        {voice && (
+          <div className="field">
+            <span className="field__label">After-hours recording for callers</span>
+            <GreetingUpload
+              audioKey={f.after_hours_audio_key}
+              onChange={(k) => set("after_hours_audio_key", k)}
+              what="the after-hours message"
+            />
+          </div>
+        )}
         <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="checkbox" checked={f.is_active} onChange={(e) => set("is_active", e.target.checked)} />
           <span>Number is in use</span>

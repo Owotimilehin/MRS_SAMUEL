@@ -4,6 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { DataState } from "../DataState.js";
 import { Modal } from "../Modal.js";
 import { settingsApi, settingsKeys, type MenuInput } from "../../lib/inbox-settings-api.js";
+import { GreetingUpload } from "./GreetingUpload.js";
 import {
   WEEKDAYS,
   rulesToWeek,
@@ -341,7 +342,9 @@ export function SettingsIvr(): JSX.Element {
                   Edit
                 </button>
               </div>
-              <div style={{ fontSize: 13, fontStyle: "italic", marginBottom: 6 }}>"{m.greetingText}"</div>
+              <div style={{ fontSize: 13, fontStyle: "italic", marginBottom: 6 }}>
+                {(m.greetingAudioKey ?? m.greeting_audio_key) ? "Plays a recorded greeting" : `"${m.greetingText}"`}
+              </div>
               <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
                 {m.options.map((o) => (
                   <li key={o.id}>
@@ -381,15 +384,21 @@ function IvrEditor({
 }): JSX.Element {
   const [name, setName] = useState(row?.name ?? "");
   const [greeting, setGreeting] = useState(row?.greetingText ?? "Welcome to Mrs. Samuel.");
+  // Rows come back camelCase like the rest of the settings; accept snake_case too.
+  const [greetingAudio, setGreetingAudio] = useState<string | null>(row?.greetingAudioKey ?? row?.greeting_audio_key ?? null);
   const [options, setOptions] = useState<MenuOptionDraft[]>(
     () =>
-      row?.options.map((o) => ({ digit: o.digit, label: o.label, action: o.action, team_id: o.teamId, play_text: o.playText })) ?? [
-        { digit: "1", label: "Orders", action: "ring_team", team_id: teams[0]?.id ?? null, play_text: null },
-      ],
+      row?.options.map((o) => ({
+        digit: o.digit,
+        label: o.label,
+        action: o.action,
+        team_id: o.teamId,
+        play_text: o.playText,
+        audio_key: o.audioKey ?? o.audio_key ?? null,
+      })) ?? [{ digit: "1", label: "Orders", action: "ring_team", team_id: teams[0]?.id ?? null, play_text: null, audio_key: null }],
   );
   const [busy, setBusy] = useState(false);
-  const input: MenuInput = { name: name.trim(), greeting_text: greeting.trim(), options };
-  const problem = validateMenu(input);
+  const problem = validateMenu({ name, greeting_text: greeting, options });
   const patch = (i: number, p: Partial<MenuOptionDraft>): void => setOptions((os) => os.map((o, j) => (j === i ? { ...o, ...p } : o)));
   const nextDigit = (): string => ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].find((d) => !options.some((o) => o.digit === d)) ?? "";
 
@@ -397,12 +406,16 @@ function IvrEditor({
     setBusy(true);
     try {
       const body: MenuInput = {
-        ...input,
+        name: name.trim(),
+        greeting_text: greeting.trim(),
+        greeting_audio_key: greetingAudio,
         options: options.map((o) => ({
-          ...o,
+          digit: o.digit,
           label: o.label.trim(),
+          action: o.action,
           team_id: o.action === "ring_team" ? o.team_id : null,
           play_text: o.action === "play" ? (o.play_text ?? "").trim() : null,
+          audio_key: o.action === "play" ? (o.audio_key ?? null) : null,
         })),
       };
       if (row) await settingsApi.updateIvr(row.id, body);
@@ -427,6 +440,7 @@ function IvrEditor({
           <span className="field__label">Greeting (read out to callers)</span>
           <textarea className="textarea" rows={3} value={greeting} maxLength={1000} onChange={(e) => setGreeting(e.target.value)} />
         </label>
+        <GreetingUpload audioKey={greetingAudio} onChange={setGreetingAudio} what="the greeting" />
         <div className="t-eyebrow">Options</div>
         {options.map((o, i) => (
           <div key={i} className="card card--soft" style={{ display: "grid", gap: 8 }}>
@@ -482,10 +496,13 @@ function IvrEditor({
               </label>
             )}
             {o.action === "play" && (
-              <label className="field">
-                <span className="field__label">Message to read out</span>
-                <textarea className="textarea" rows={2} maxLength={1000} value={o.play_text ?? ""} onChange={(e) => patch(i, { play_text: e.target.value })} />
-              </label>
+              <>
+                <label className="field">
+                  <span className="field__label">Message to read out</span>
+                  <textarea className="textarea" rows={2} maxLength={1000} value={o.play_text ?? ""} onChange={(e) => patch(i, { play_text: e.target.value })} />
+                </label>
+                <GreetingUpload audioKey={o.audio_key ?? null} onChange={(k) => patch(i, { audio_key: k })} what="this message" />
+              </>
             )}
           </div>
         ))}
@@ -494,7 +511,7 @@ function IvrEditor({
             type="button"
             className="btn btn--subtle btn--sm"
             style={{ justifySelf: "start" }}
-            onClick={() => setOptions((os) => [...os, { digit: nextDigit(), label: "", action: "voicemail", team_id: null, play_text: null }])}
+            onClick={() => setOptions((os) => [...os, { digit: nextDigit(), label: "", action: "voicemail", team_id: null, play_text: null, audio_key: null }])}
           >
             <Plus size={13} /> Add option
           </button>
