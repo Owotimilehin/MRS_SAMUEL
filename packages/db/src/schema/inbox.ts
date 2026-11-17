@@ -232,6 +232,7 @@ export const inboxMessage = pgTable(
     mediaKey: text("media_key"),
     mediaMime: text("media_mime"),
     mediaFilename: text("media_filename"),
+    mediaAttempts: integer("media_attempts").notNull().default(0),
     templateName: text("template_name"),
     waMessageId: text("wa_message_id").unique(),
     status: inboxMessageStatus("status").notNull(),

@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS "inbox_message" (
   "media_key" text,
   "media_mime" text,
   "media_filename" text,
+  "media_attempts" integer DEFAULT 0 NOT NULL,
   "template_name" text,
   "wa_message_id" text UNIQUE,
   "status" "inbox_message_status" NOT NULL,
@@ -156,6 +157,8 @@ CREATE TABLE IF NOT EXISTS "inbox_message" (
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_inbox_msg_conv" ON "inbox_message" ("conversation_id","created_at");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_inbox_msg_media_pending" ON "inbox_message" ("created_at") WHERE "media_id" IS NOT NULL AND "media_key" IS NULL;
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "inbox_note" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
