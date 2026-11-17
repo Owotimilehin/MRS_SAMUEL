@@ -111,6 +111,14 @@ export async function findOrCreateCustomer(
   return { id: row!.id, created: true };
 }
 
+/**
+ * A Date as a SQL parameter inside a raw sql`` fragment. The driver only
+ * serialises Dates for typed columns, so raw fragments need text + a cast.
+ */
+export function ts(d: Date) {
+  return sql`${d.toISOString()}::timestamptz`;
+}
+
 const REOPEN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type ConversationRow = typeof inboxConversation.$inferSelect;
@@ -165,12 +173,12 @@ export async function touchConversation(
     .update(inboxConversation)
     .set({
       // Forward-only, so a late retry of an old event can't move things back.
-      lastActivityAt: sql`greatest(${inboxConversation.lastActivityAt}, ${at})`,
+      lastActivityAt: sql`greatest(${inboxConversation.lastActivityAt}, ${ts(at)})`,
       ...(patch.preview !== undefined
-        ? { lastPreview: sql`case when ${at} >= ${inboxConversation.lastActivityAt} then ${patch.preview} else ${inboxConversation.lastPreview} end` }
+        ? { lastPreview: sql`case when ${ts(at)} >= ${inboxConversation.lastActivityAt} then ${patch.preview} else ${inboxConversation.lastPreview} end` }
         : {}),
       ...(patch.inboundWa
-        ? { lastInboundWaAt: sql`greatest(coalesce(${inboxConversation.lastInboundWaAt}, '-infinity'::timestamptz), ${patch.inboundWa})` }
+        ? { lastInboundWaAt: sql`greatest(coalesce(${inboxConversation.lastInboundWaAt}, '-infinity'::timestamptz), ${ts(patch.inboundWa)})` }
         : {}),
       ...(patch.unreadIncrement ? { unreadCount: sql`${inboxConversation.unreadCount} + 1` } : {}),
       // A new inbound message on a pending/closed-but-reopened thread is open work.

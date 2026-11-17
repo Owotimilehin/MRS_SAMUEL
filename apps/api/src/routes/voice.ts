@@ -45,6 +45,7 @@ import {
 import {
   canSeeConversation,
   findOrCreateCustomer,
+  ts,
   findOrOpenConversation,
   publishInboxEvent,
   signalFor,
@@ -261,7 +262,7 @@ export async function onlineStaffFor(
           // A phone with the app installed rings even when closed (Twilio push).
           sql`exists (select 1 from ${inboxPushToken} where ${inboxPushToken.userId} = ${adminUser.id}
                 and ${inboxPushToken.platform} in ('ios','android')
-                and ${inboxPushToken.lastSeenAt} > ${new Date(now.getTime() - MOBILE_REACHABLE_MS)})`,
+                and ${inboxPushToken.lastSeenAt} > ${ts(new Date(now.getTime() - MOBILE_REACHABLE_MS))})`,
         ),
         eq(adminUser.isActive, true),
         isNull(adminUser.deletedAt),

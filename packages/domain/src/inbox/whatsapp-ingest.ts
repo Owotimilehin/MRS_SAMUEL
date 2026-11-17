@@ -10,7 +10,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { inboxConversation, inboxMessage, inboxPhoneNumber, inboxWebhookEvent, type DbExecutor } from "@ms/db";
 import { messagePreview, toE164 } from "@ms/shared";
-import { findOrCreateCustomer, findOrOpenConversation, publishInboxEvent, signalFor, touchConversation } from "./core.js";
+import { findOrCreateCustomer, findOrOpenConversation, publishInboxEvent, signalFor, touchConversation, ts } from "./core.js";
 
 /**
  * A delivery status arrived for a message we haven't finished saving (Meta can
@@ -289,7 +289,7 @@ async function applyStatus(db: DbExecutor, s: WaStatus): Promise<boolean> {
     .set({
       status: s.status as "sent" | "delivered" | "read",
       ...(s.status === "delivered" ? { deliveredAt: at } : {}),
-      ...(s.status === "read" ? { readAt: at, deliveredAt: sql`coalesce(${inboxMessage.deliveredAt}, ${at})` } : {}),
+      ...(s.status === "read" ? { readAt: at, deliveredAt: sql`coalesce(${inboxMessage.deliveredAt}, ${ts(at)})` } : {}),
     })
     .where(and(eq(inboxMessage.waMessageId, s.id), inArray(inboxMessage.status, lower)))
     .returning({ id: inboxMessage.id, conversationId: inboxMessage.conversationId });
