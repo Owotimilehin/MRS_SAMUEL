@@ -122,6 +122,79 @@ Steps 1 to 3 produce the standalone application with today's features. Steps 5 t
 
 The inbox pull request stays as it is, so the screen fixes and the Bundles fix are not held up. The suite is built on a new branch on top of it, `work/olu/suite-app`. If Tes prefers not to release the inbox inside the admin app at all, step 2 can land before that pull request is merged and the inbox would first appear in the suite.
 
+## Update: the owner's Meta Business Messaging Platform brief (17 Nov 2026)
+
+The owner supplied a brief listing the services to build on the existing Meta app (WhatsApp Cloud API enabled, test number working, business verification pending). Its services are now in the feature list (`2026-11-17-suite-features.md`, rows marked "brief"). This section records how the brief fits what already exists.
+
+### Where the brief and the existing code already agree
+
+| The brief asks for | What exists |
+|---|---|
+| Node.js with TypeScript, Postgres, Redis | The shop is built on exactly this |
+| Webhook answers fast, checks Meta's signature, ignores duplicates | Built and tested for WhatsApp |
+| Messages stored, media downloaded before Meta's links expire | Built (media goes to Cloudflare storage) |
+| 24-hour window logic, templates, delivery ticks | Built and tested |
+| Background workers with retries | Built: the shop's worker, with the suite's jobs in their own loop |
+| Live dashboard updates | Built |
+| Roles, audit log, contact export and delete | Built |
+| Secrets only in server settings | Already the rule here |
+
+So the brief's "Phase 0" is done, and about half of its "Phase 1" (the WhatsApp inbox) is done. Nothing has to be restarted from scratch.
+
+### Where they differ
+
+| Topic | The brief | What I found | What I will do |
+|---|---|---|---|
+| Dashboard technology | Next.js | The shop's staff apps use Vite and React | Keep Vite and React, so the suite shares code and one way of building with the admin app |
+| Queue | BullMQ or Celery | A database-backed job loop already runs the suite's jobs | Keep it; add a proper queue only if volume demands it |
+| Payments | Paystack or Flutterwave | The shop takes payment through OPay | Build payment links behind one interface, OPay first |
+| Cost of replies | Replies inside 24 hours are free | Meta's pricing page, read on 17 Nov, says replies are charged since 1 Oct 2026, with 1,000 free per number per month | Treat as charged until the owner's own WhatsApp Manager shows otherwise; build the usage counter |
+| Free window after an ad click | 72 hours | Meta's pages disagree: 72 hours on one, "up to 7 days" on another | Read the expiry from each message instead of assuming |
+| First marketing limit | About 250 customers a day | Same | Agreed |
+| AI | An agent that answers customers by itself | The earlier recommendation was suggestions to staff first | Build both: the agent is the brief's centrepiece, but it stays off until the owner switches it on, per channel and hours |
+| Instagram shopping tags, Facebook Shop | One catalogue powers them | Not confirmed as available in Nigeria | Sync the catalogue for WhatsApp and ads; add shop tags only if the account offers them |
+| Calls | Not in the brief | Asked for earlier: virtual numbers, call tracking, AI on calls | Keep them in the suite |
+
+### Added build steps
+
+These join the plan after step 12, or earlier where the owner asks.
+
+| # | Step | Size | Touches a live system? |
+|---|---|---|---|
+| 13 | **AI agent.** Knowledge base, the eight tools (search, product lookup, cart, payment link, order status, booking, lead, hand-over), memory, escalation, test area, transcript review | Large | **Live:** an AI provider key; every answer costs money |
+| 14 | **Forms and bookings** with WhatsApp Flows | Medium | **Live:** Flows published in the Meta account |
+| 15 | **Social:** comment-to-message, comment rules, story mentions, post scheduler | Large | **Live:** Meta app review for Instagram and Page permissions |
+| 16 | **Ads engine:** create click-to-chat ads, daily results, rules, audiences | Large | **Live, and it spends money:** needs Meta's highest ads access |
+| 17 | **Notifications and connections:** one-time codes, a private send address for other systems, outgoing notices, Sheets and CRM links | Medium | **Live:** each connected tool |
+| 18 | **Several businesses in one suite**, if chosen | Large | Changes the database for every table in the suite |
+
+### The decision that shapes everything: one business or several
+
+The brief describes a platform that could serve several businesses (it names Diagofit as an example and says "multi-business, SaaS-ready"). The suite as planned serves Mrs Samuel only and shares the shop's database.
+
+| Option | What it means | Cost |
+|---|---|---|
+| **A. Mrs Samuel only** | As planned. One new web app over the shop's API | Smallest. Fastest to live |
+| **B. Several of the owner's own businesses** | Each business has its own numbers, staff, contacts and catalogue inside one suite. Mrs Samuel stays connected to its shop; the others connect to their own systems or none | Every suite table gains a "which business" column and every screen and check respects it. Much cheaper to do before go-live than after |
+| **C. A product sold to other companies** | Option B plus sign-up, billing, each client connecting their own Meta account, and Meta's Tech Provider programme | A separate product. It should not share the shop's database or server |
+
+Option B or C also changes two earlier decisions: the suite should then have its own API and database rather than living inside the shop's, and a health business brings stricter rules (health details are sensitive under Nigerian law, results must never be sent in a chat, and the AI must not answer clinical questions).
+
+**Recommendation:** decide this before step 1. If there is any real chance of a second business within a year, build the "which business" column in from the start (Option B's data shape) while launching with Mrs Samuel alone.
+
+### Questions from the brief, and what is already answered
+
+| # | Question | Status |
+|---|---|---|
+| 1 | Which business first: Diagofit, e-commerce, or a platform for many? | **Open.** See above |
+| 2 | Node.js or Python; hosting | Answered by what exists: Node.js, the current DigitalOcean server |
+| 3 | Who uses the dashboard | **Open:** only the Mrs Samuel team, or other teams too |
+| 4 | Payment provider | OPay today. **Open:** add Paystack or Flutterwave? |
+| 5 | AI provider and monthly budget | Claude is already wired in for call summaries. **Open:** the monthly budget |
+| 6 | Existing systems to connect | The shop itself. **Open:** any CRM, calendar or spreadsheet |
+| 7 | Languages for the AI | **Open.** The brief lists English, Pidgin, Yoruba, Hausa, Igbo, French |
+| 8 | Real WhatsApp number: new, or keep the phone app on the same number | **Open.** A new number is simpler and is required for WhatsApp calls |
+
 ## What could go wrong
 
 1. **The server's disk fills up, or a deploy starves the shop.** See "The server" below: the disk is 78% full, mostly old build files that no deploy clears, and there is no swap. We would notice as a failed deploy, or the shop's database stopping when the disk is full. Mitigation: clear the build files and add the clean-up to the deploy script before the suite is added; add swap; cap the new container's memory.

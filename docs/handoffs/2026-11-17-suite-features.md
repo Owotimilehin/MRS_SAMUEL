@@ -1,6 +1,6 @@
 # The business suite: what it contains and what it is for
 
-Draft for the owner's approval, 17 Nov 2026, by Olu with Claude. It lists every feature proposed for the suite, section by section. The build order is in `2026-11-17-suite-app-plan.md`; what Meta allows in Nigeria, with sources, is in `2026-11-17-business-suite-scope.md`.
+Draft for the owner's approval, 17 Nov 2026, by Olu with Claude. It lists every feature proposed for the suite, section by section. Updated the same day with the services in the owner's Meta Business Messaging Platform brief; rows from the brief are marked **(brief)**. The build order is in `2026-11-17-suite-app-plan.md`; what Meta allows in Nigeria, with sources, is in `2026-11-17-business-suite-scope.md`.
 
 Status key: **Built** = written and tested on the branch, not yet live, never run against real WhatsApp or a real phone line. **Planned** = not started. **Blocked** = Meta or the phone networks do not allow it for a Nigerian business today.
 
@@ -45,6 +45,10 @@ Status key: **Built** = written and tested on the branch, not yet live, never ru
 | Website contact, bulk-order and white-label forms arriving as conversations | Planned |
 | Rules: route by channel, number, hours, keyword or customer label; auto-label; auto-reply outside hours | Planned |
 | Customer satisfaction question after a conversation closes | Planned |
+| Typing indicator shown to the customer while staff or the assistant writes; mark as read | Planned (brief). Mark as read is built |
+| Messenger and Instagram extras: quick replies, button and carousel messages, a persistent menu, a "Get started" button, ice-breaker questions | Planned (brief) |
+| WhatsApp business profile edited from the suite: about, description, address, email, website, photo | Planned (brief) |
+| Hand a conversation between the assistant, a person and another app without losing it | Planned (brief) |
 
 ## 2. Calls and virtual numbers
 
@@ -106,6 +110,10 @@ Status key: **Built** = written and tested on the branch, not yet live, never ru
 | Start an order for the customer from the conversation, with stock shown | Planned |
 | Automatic WhatsApp updates: order confirmed, paid, out for delivery, delivered, preorder ready | Planned |
 | Quotes and invoices for bulk orders, sent in the chat | Planned |
+| Payment links in the chat through the shop's payment provider, with the order marked paid when the payment lands | Planned (brief). The shop uses OPay today; the brief names Paystack and Flutterwave. Built behind one interface so a provider can be added |
+| Automatic receipt after payment | Planned (brief) |
+| Abandoned-cart reminder while the free reply window is open | Planned (brief) |
+| Catalogue kept in step from a spreadsheet or another store as well as the shop | Planned (brief), only if a second source is needed |
 | A catalogue for adverts that hides sold-out juices automatically | Planned |
 | Paying inside WhatsApp | **Blocked** in Nigeria |
 | Facebook and Instagram Shops with Meta checkout, and product tags on posts | **Blocked** or not confirmed for Nigeria |
@@ -125,6 +133,14 @@ Status key: **Built** = written and tested on the branch, not yet live, never ru
 | Tone and spelling check before sending | Planned |
 | Optional auto-answer outside hours for simple questions, always with "talk to a person" | Planned. Owner decision; off by default |
 | Weekly digest for the owner: top reasons for contact, complaints by topic, what customers ask for that is not on the menu | Planned |
+| **AI agent that answers customers by itself, day and night,** using real data: it can search the knowledge base, look up a product, build a cart, create a payment link, check an order, take a booking, record a lead, and hand over to a person | Planned (brief). Owner decision; off until switched on, per channel and per hours |
+| Knowledge base: FAQs, price lists, delivery rules and policies the assistant answers from, edited in the suite | Planned (brief) |
+| Memory per customer: what they ordered, asked and were promised | Planned (brief) |
+| Hands over to a person when it is unsure, when the customer is upset, or when they ask for a human | Planned (brief) |
+| Answers in English, Pidgin, Yoruba, Hausa, Igbo and French | Planned (brief). Quality in each language must be tested before it is switched on |
+| Assistant controls: editable instructions, a test area to try questions before going live, review of every transcript, thumbs up or down to improve answers | Planned (brief) |
+| Share of conversations handled by the assistant alone, by a person, or handed over | Planned (brief) |
+| Never gives medical, legal or financial advice; personal details hidden in logs | Planned (brief) |
 | Quality review: calls and chats that need a manager's look | Planned |
 | Guardrails: no chat content used to train any model; no card details in chat; every AI action logged | Planned. Required by Meta's terms |
 | A general-purpose chatbot on WhatsApp | **Blocked** by Meta's terms; AI for the business's own customer service is allowed |
@@ -140,7 +156,15 @@ Status key: **Built** = written and tested on the branch, not yet live, never ru
 | Adverts that open a WhatsApp, Instagram or Messenger chat tracked through to the order | Planned |
 | Customer lists shared with Meta for adverts, with consent | Planned |
 | Lead forms from Meta adverts arriving in the inbox | Planned, unconfirmed |
-| Creating and editing ad campaigns | Not planned. Meta's Ads Manager does this |
+| Double opt-in and a consent log; "STOP" honoured at once | Planned (brief) |
+| A/B tests of two versions of a message | Planned (brief) |
+| Sequences: welcome series, win-back, after-purchase follow-up | Planned (brief) |
+| Cost estimate before sending, by country and message type | Planned (brief) |
+| Quality-rating watch that pauses sends before Meta restricts the number | Planned (brief) |
+| **Adverts created in the suite:** click-to-WhatsApp, Messenger and Instagram ads with picture or video, audience, budget and a pre-filled first message | Planned (brief). Needs Meta's highest ads access. Every ad confirmed by a person, with a daily cap only the owner can raise |
+| Daily spend, cost per conversation and cost per sale, by advert | Planned (brief) |
+| Rules such as "pause this ad if a sale costs more than ₦X" | Planned (brief) |
+| Lookalike audiences built from customer groups | Planned (brief) |
 
 ## 8. Reports
 
@@ -155,6 +179,9 @@ Status key: **Built** = written and tested on the branch, not yet live, never ru
 | Reasons for contact and outcomes, from the AI tags | Planned |
 | Team view: load per person, reply times, open conversations | Built in part |
 | One owner dashboard combining shop sales with service and marketing | Planned |
+| The full path: advert click, conversation, lead, order, paid | Planned (brief) |
+| Resolution time; template results and opt-out rate | Planned (brief) |
+| Daily summary sent to the owner on WhatsApp | Planned (brief) |
 | Export to a spreadsheet; scheduled email of the weekly summary | Built in part (contacts export) |
 
 ## 9. Settings and control
@@ -171,6 +198,12 @@ Status key: **Built** = written and tested on the branch, not yet live, never ru
 | AI settings: what it may answer, tone, what it must hand to a person | Planned |
 | Recording policy and spoken notice; data deletion requests from Meta | Planned |
 | Privacy policy and data-deletion page (Meta's review requires both) | Planned. The storefront has neither today |
+| A view-only role | Planned (brief) |
+| How long messages, recordings and transcripts are kept, set per type | Planned (brief). Recordings are kept until deleted, by the owner's choice |
+| A permanent Meta access token held as a server setting, with the least access it needs | Planned (brief). Needed before go-live; the test token expires |
+| Keep the existing WhatsApp Business phone app on the same number ("coexistence") | Planned (brief). Unconfirmed for Nigerian numbers; calls do not work on a coexistence number |
+| Replay a webhook that failed, from a list of recent ones | Planned (brief). Failed ones are already kept and retried |
+| Several businesses in one suite, each with its own numbers, staff and data | **Decision needed.** See the plan |
 
 ## 10. Phone app
 
@@ -179,6 +212,37 @@ Status key: **Built** = written and tested on the branch, not yet live, never ru
 | Inbox, replies, notes, calls and notifications on iPhone and Android | Built, never run on a device |
 | Transfer, hold, merge and the newer inbox features | Planned |
 | Everything else in this document on the phone | Planned, after the web app |
+
+## 11. Social (Instagram and Facebook)
+
+| Feature | Status |
+|---|---|
+| Comment-to-message: a keyword in a comment sends the customer a private reply and moves them to WhatsApp | Planned (brief) |
+| Auto-reply to common comments; hide spam automatically | Planned (brief) |
+| Thank-you message when a customer mentions the business in a story | Planned (brief) |
+| Schedule and publish Instagram posts, reels and carousels from the suite | Planned (brief) |
+| AI help writing captions | Planned (brief) |
+| Mood of comments on the business's own posts | Planned (brief) |
+| Account and post statistics | Planned (brief) |
+
+## 12. Forms and bookings (WhatsApp Flows)
+
+| Feature | Status |
+|---|---|
+| In-chat forms: delivery address, preorder, bulk-order enquiry, complaint | Planned |
+| Booking with live availability, for example a delivery slot or a pickup time; reminders and rescheduling | Planned (brief) |
+| Surveys and satisfaction scores; feedback forms | Planned (brief) |
+| Lead and sign-up forms; simple identity checks | Planned (brief) |
+
+## 13. Notifications and connections
+
+| Feature | Status |
+|---|---|
+| One-time codes by WhatsApp (copy-code and one-tap) for sign-in or order confirmation | Planned (brief) |
+| Order, delivery, payment and appointment alerts | Planned |
+| A private address other systems can call to send a message (for example the till or the wholesale site) | Planned (brief) |
+| Outgoing notices to other tools when something happens (new lead, new order, missed call) | Planned (brief) |
+| Connections: Google Sheets, a CRM such as HubSpot or Zoho, Zapier or Make, Slack and email alerts | Planned (brief), each built only when asked for |
 
 ## Limits to plan around
 
