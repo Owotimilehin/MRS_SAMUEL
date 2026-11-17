@@ -1,6 +1,14 @@
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, inArray, lt } from "drizzle-orm";
 import { saleOrder, stockReservation, type DbClient } from "@ms/db";
-import { refireProviderWebhook, providerOf, type PaymentProvider } from "./refire-webhook.js";
+import {
+  refireProviderWebhook,
+  checkInRotation,
+  type RefireFn,
+  type CheckLog,
+  type CheckRunOptions,
+} from "./refire-webhook.js";
+
+export type { RefireFn };
 
 const WINDOW_MS = 60 * 60_000;
 
@@ -15,13 +23,13 @@ const WINDOW_MS = 60 * 60_000;
  */
 const UNCHECKED_LIMIT_MS = 6 * 60 * 60_000;
 
-/**
- * Re-verify one order with the provider. Resolves true only when the check
- * completed (whatever the provider said); false or a throw means we still do
- * not know whether the order was paid. Injectable so tests can drive it
- * without real HTTP.
- */
-export type RefireFn = (orderNumber: string, provider: PaymentProvider) => Promise<boolean>;
+/** How long one run may spend on last-chance checks. Each can take several
+ *  seconds and the worker runs every job on one loop. Orders not reached stay
+ *  open and go first next time. */
+const CHECK_BUDGET_MS = 40_000;
+
+/** Which open orders this process has asked about, and when (rotation). */
+const expiryCheckLog: CheckLog = new Map();
 
 /**
  * Cancel unpaid 'confirmed' online orders that are past the 60-minute payment
@@ -53,6 +61,7 @@ export async function expireUnpaidOrders(
   db: DbClient,
   now: Date = new Date(),
   refire: RefireFn = refireProviderWebhook,
+  opts: Partial<Pick<CheckRunOptions, "log" | "budgetMs" | "clock">> = {},
 ): Promise<number> {
   const cutoff = new Date(now.getTime() - WINDOW_MS);
   const uncheckedCutoff = new Date(now.getTime() - UNCHECKED_LIMIT_MS);
@@ -76,18 +85,20 @@ export async function expireUnpaidOrders(
     })
     .from(saleOrder)
     .where(matches)
-    .limit(100);
+    // Oldest first, so the ones nearest the cap are always in the batch.
+    .orderBy(asc(saleOrder.createdAtLocal))
+    .limit(500);
 
-  const cancellable: string[] = [];
-  for (const c of candidates) {
-    let checked = false;
-    try {
-      checked = (await refire(c.orderNumber, providerOf(c.paymentProvider))) === true;
-    } catch {
-      // The check did not complete; `checked` stays false.
-    }
-    if (checked || c.createdAtLocal < uncheckedCutoff) cancellable.push(c.id);
-  }
+  // Fair and bounded (see checkInRotation): an order that cannot be checked is
+  // skipped, and whatever the budget did not reach goes first next run.
+  const checked = await checkInRotation(candidates, refire, {
+    log: opts.log ?? expiryCheckLog,
+    budgetMs: opts.budgetMs ?? CHECK_BUDGET_MS,
+    ...(opts.clock ? { clock: opts.clock } : {}),
+  });
+  const cancellable = candidates
+    .filter((c) => checked.has(c.id) || c.createdAtLocal < uncheckedCutoff)
+    .map((c) => c.id);
   if (cancellable.length === 0) return 0;
 
   return db.transaction(async (tx) => {

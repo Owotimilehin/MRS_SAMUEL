@@ -367,23 +367,93 @@ describe("payment reconcile sweep", () => {
       expect(firedRefs()).toEqual(["EX-MINE"]);
     });
 
-    it("stops the sweep after 3 failed checks in a row (provider down), and survives a single failure", async () => {
+    it("stops only when the api itself is unreachable (3 checks in a row throw)", async () => {
       for (let i = 0; i < 6; i++) {
         await makeCancelled({ orderNumber: `EX-DOWN-${i}`, cancelledHoursAgo: 1 + i });
       }
       const { sweepExpiredOrdersForLatePayment } = await import("../src/jobs/payment-reconcile.js");
-
       const down = vi.fn(async (): Promise<boolean> => {
         throw new Error("ECONNREFUSED");
       });
-      expect(await sweepExpiredOrdersForLatePayment(db, new Date(), down)).toBe(0);
+      expect(await sweepExpiredOrdersForLatePayment(db, new Date(), down, { log: new Map() })).toBe(0);
       expect(down).toHaveBeenCalledTimes(3);
+    });
 
-      // One bad answer in the middle does not abort the rest.
-      let n = 0;
-      const flaky = vi.fn(async (): Promise<boolean> => ++n !== 2);
-      expect(await sweepExpiredOrdersForLatePayment(db, new Date(), flaky)).toBe(5);
-      expect(flaky).toHaveBeenCalledTimes(6);
+    it("a cluster of uncheckable orders is skipped, not allowed to starve the older ones", async () => {
+      // The five NEWEST expiries cannot be checked (the api answers non-2xx for
+      // them, e.g. OPay does not know the reference). Two older ones can.
+      for (let i = 0; i < 5; i++) {
+        await makeCancelled({ orderNumber: `EX-STUCK-${i}`, cancelledHoursAgo: 1 + i * 0.1 });
+      }
+      await makeCancelled({ orderNumber: "EX-OLDER-A", cancelledHoursAgo: 20 });
+      await makeCancelled({ orderNumber: "EX-OLDER-B", cancelledHoursAgo: 40 });
+      const { sweepExpiredOrdersForLatePayment } = await import("../src/jobs/payment-reconcile.js");
+
+      const asked: string[] = [];
+      const refire = async (orderNumber: string): Promise<boolean> => {
+        asked.push(orderNumber);
+        return !orderNumber.startsWith("EX-STUCK");
+      };
+      expect(await sweepExpiredOrdersForLatePayment(db, new Date(), refire, { log: new Map() })).toBe(2);
+      expect(asked).toHaveLength(7);
+      expect(asked).toContain("EX-OLDER-A");
+      expect(asked).toContain("EX-OLDER-B");
+    });
+
+    it("more expiries than one run can check are all reached, in rotation, before any is asked twice", async () => {
+      const all: string[] = [];
+      for (let i = 0; i < 7; i++) {
+        const n = `EX-ROT-${i}`;
+        all.push(n);
+        await makeCancelled({ orderNumber: n, cancelledHoursAgo: 1 + i });
+      }
+      const { sweepExpiredOrdersForLatePayment } = await import("../src/jobs/payment-reconcile.js");
+
+      // Every check "takes" 8 seconds and a run may spend 24: three per run.
+      let t = 1_000_000;
+      const clock = () => t;
+      const asked: string[] = [];
+      const refire = async (orderNumber: string): Promise<boolean> => {
+        asked.push(orderNumber);
+        t += 8_000;
+        return orderNumber !== "EX-ROT-0"; // the newest one can never be checked
+      };
+      const opts = { log: new Map<string, number>(), budgetMs: 24_000, clock };
+
+      await sweepExpiredOrdersForLatePayment(db, new Date(), refire, opts);
+      expect(asked).toEqual(["EX-ROT-0", "EX-ROT-1", "EX-ROT-2"]); // newest first
+      await sweepExpiredOrdersForLatePayment(db, new Date(), refire, opts);
+      await sweepExpiredOrdersForLatePayment(db, new Date(), refire, opts);
+
+      // Nine checks over three runs: all seven reached once before the first
+      // two come round again. The uncheckable newest did not hog the front.
+      expect(asked.slice(0, 7).sort()).toEqual(all);
+      expect(asked.slice(7)).toEqual(["EX-ROT-0", "EX-ROT-1"]);
+    });
+
+    it("has no cap on the window: 130 expired orders are all checked when time allows", async () => {
+      const createdAt = new Date(Date.now() - 3 * HOUR);
+      await db.insert(saleOrder).values(
+        Array.from({ length: 130 }, (_, i) => ({
+          orderNumber: `EX-MANY-${i}`,
+          branchId,
+          channel: "online" as const,
+          status: "cancelled" as const,
+          subtotalNgn: 1000,
+          totalNgn: 1000,
+          paymentMethod: "card" as const,
+          paymentStatus: "pending" as const,
+          cancelReason: "payment_expired",
+          cancelledAt: new Date(Date.now() - 2 * HOUR - i * 1000),
+          createdAtLocal: createdAt,
+          createdAt,
+          idempotencyKey: randomUUID(),
+        })),
+      );
+      const { sweepExpiredOrdersForLatePayment } = await import("../src/jobs/payment-reconcile.js");
+      const refire = vi.fn(async (): Promise<boolean> => true);
+      expect(await sweepExpiredOrdersForLatePayment(db, new Date(), refire, { log: new Map() })).toBe(130);
+      expect(refire).toHaveBeenCalledTimes(130);
     });
   });
 });
