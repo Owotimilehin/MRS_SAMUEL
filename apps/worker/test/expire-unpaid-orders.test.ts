@@ -313,4 +313,62 @@ describe("expireUnpaidOrders", () => {
       await db.select().from(stockReservation).where(eq(stockReservation.saleOrderId, over)),
     ).toHaveLength(0);
   });
+
+  it("is time-boxed: orders the run could not reach stay open and go first next time", async () => {
+    const now = new Date();
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      ids.push(
+        await makeOrder({
+          channel: "online",
+          status: "confirmed",
+          paymentStatus: "pending",
+          // Distinct ages, oldest first in the batch.
+          createdAt: new Date(now.getTime() - (120 - i) * 60_000),
+        }),
+      );
+    }
+    const numberToId = new Map<string, string>();
+    for (const o of await db.select().from(saleOrder)) numberToId.set(o.orderNumber, o.id);
+
+    // Every check "takes" 8 seconds; a run may spend 16: two checks per run.
+    let t = 5_000_000;
+    const asked: string[] = [];
+    const refire = async (orderNumber: string): Promise<boolean> => {
+      asked.push(numberToId.get(orderNumber)!);
+      t += 8_000;
+      return true;
+    };
+    const opts = { log: new Map<string, number>(), budgetMs: 16_000, clock: () => t };
+
+    expect(await expireUnpaidOrders(db, now, refire, opts)).toBe(2);
+    expect(asked).toEqual([ids[0], ids[1]]);
+    const stillOpen = (await db.select().from(saleOrder)).filter((o) => o.status === "confirmed");
+    expect(stillOpen.map((o) => o.id).sort()).toEqual([ids[2], ids[3], ids[4]].sort());
+
+    // Next run starts with the ones that were not reached.
+    expect(await expireUnpaidOrders(db, now, refire, opts)).toBe(2);
+    expect(asked.slice(2)).toEqual([ids[2], ids[3]]);
+    expect(await expireUnpaidOrders(db, now, refire, opts)).toBe(1);
+    expect(asked.slice(4)).toEqual([ids[4]]);
+  });
+
+  it("stops checking when the api is unreachable (3 throws in a row) and cancels nothing unchecked", async () => {
+    const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      await makeOrder({
+        channel: "online",
+        status: "confirmed",
+        paymentStatus: "pending",
+        createdAt: new Date(now.getTime() - 90 * 60_000),
+      });
+    }
+    let calls = 0;
+    const down = async (): Promise<boolean> => {
+      calls++;
+      throw new Error("ECONNREFUSED");
+    };
+    expect(await expireUnpaidOrders(db, now, down, { log: new Map() })).toBe(0);
+    expect(calls).toBe(3);
+  });
 });

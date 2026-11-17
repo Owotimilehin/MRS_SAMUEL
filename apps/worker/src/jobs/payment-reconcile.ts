@@ -1,7 +1,14 @@
 import { eq, and, lt, gt, desc, sql } from "drizzle-orm";
 import { saleOrder, outboxEvent, type DbClient } from "@ms/db";
 import pino from "pino";
-import { refireProviderWebhook, providerOf, type PaymentProvider } from "./refire-webhook.js";
+import {
+  refireProviderWebhook,
+  providerOf,
+  checkInRotation,
+  type RefireFn,
+  type CheckLog,
+  type CheckRunOptions,
+} from "./refire-webhook.js";
 
 const logger = pino({ base: { service: "ms-worker", part: "payment-reconcile" } });
 
@@ -96,10 +103,13 @@ export async function sweepStuckPaymentOrders(db: DbClient, now: Date = new Date
  *  customer left the cashier. */
 const LATE_PAYMENT_HOURS = 48;
 
-/** Give up on a sweep after this many checks in a row fail: the provider or our
- *  api is down, and hammering it once per order helps nobody. The next sweep
- *  starts again from the top. */
-const MAX_CONSECUTIVE_FAILURES = 3;
+/** How long one late-payment sweep may spend. Each check can take several
+ *  seconds and the worker runs every job on one loop, so a sweep that cannot
+ *  finish in this time stops and the next one carries on from there. */
+const LATE_PAYMENT_BUDGET_MS = 60_000;
+
+/** Which expired orders this process has asked about, and when (rotation). */
+const latePaymentLog: CheckLog = new Map();
 
 /**
  * Catch a payment that lands AFTER the order was auto-cancelled for non-payment.
@@ -117,6 +127,10 @@ const MAX_CONSECUTIVE_FAILURES = 3;
  * arriving as well changes nothing; and an order that already has the alert is
  * skipped here, so it is not asked about again.
  *
+ * Fair and bounded (see checkInRotation): least recently checked first, an
+ * order that cannot be checked is skipped rather than ending the sweep, and a
+ * sweep stops after LATE_PAYMENT_BUDGET_MS.
+ *
  * Only `payment_expired` cancellations are in scope: an order staff cancelled
  * by hand is their decision, not an expiry we should second-guess.
  *
@@ -125,7 +139,8 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 export async function sweepExpiredOrdersForLatePayment(
   db: DbClient,
   now: Date = new Date(),
-  refire: (orderNumber: string, provider: PaymentProvider) => Promise<boolean> = refireProviderWebhook,
+  refire: RefireFn = refireProviderWebhook,
+  opts: Partial<Pick<CheckRunOptions, "log" | "budgetMs" | "clock">> = {},
 ): Promise<number> {
   const since = new Date(now.getTime() - LATE_PAYMENT_HOURS * 3600 * 1000);
 
@@ -149,35 +164,21 @@ export async function sweepExpiredOrdersForLatePayment(
         )`,
       ),
     )
-    // Newest cancellations first: they are the likeliest to still settle.
-    .orderBy(desc(saleOrder.cancelledAt))
-    .limit(100);
+    // Newest cancellations first: they are the likeliest to still settle. This
+    // is only the starting order; checkInRotation then puts the least recently
+    // checked first, so every order in the window gets its turn however many
+    // there are and however many of them cannot be checked.
+    .orderBy(desc(saleOrder.cancelledAt));
 
-  let checked = 0;
-  let failuresInARow = 0;
-  for (const o of candidates) {
-    const provider = providerOf(o.paymentProvider);
-    let ok = false;
-    try {
-      ok = await refire(o.orderNumber, provider);
-    } catch (err) {
+  const completed = await checkInRotation(candidates, refire, {
+    log: opts.log ?? latePaymentLog,
+    budgetMs: opts.budgetMs ?? LATE_PAYMENT_BUDGET_MS,
+    ...(opts.clock ? { clock: opts.clock } : {}),
+    onUnreachable: (o, err) =>
       logger.warn(
-        { orderId: o.id, orderNumber: o.orderNumber, provider, err },
+        { orderId: o.id, orderNumber: o.orderNumber, err },
         "late-payment check: webhook re-fire failed",
-      );
-    }
-    if (ok) {
-      checked++;
-      failuresInARow = 0;
-      continue;
-    }
-    if (++failuresInARow >= MAX_CONSECUTIVE_FAILURES) {
-      logger.warn(
-        { candidates: candidates.length, checked },
-        "late-payment check: provider checks keep failing, stopping this sweep",
-      );
-      break;
-    }
-  }
-  return checked;
+      ),
+  });
+  return completed.size;
 }
