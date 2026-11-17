@@ -18,7 +18,7 @@ It is all switched off until the Meta and Twilio settings below are filled in. T
 | 4 | Point the Meta and Twilio webhooks at the URLs below | Tes / Olu | Clear the webhook URLs |
 | 5 | In Inbox settings: add the team(s), the number(s), hours and the phone menu; grant staff access | Owner | Edit in the same screens |
 
-**Migration 0070 is additive only.** It creates new tables and types. It does not change or read any existing table. Customers are matched to existing `customer` rows by phone number. A row is only added when no customer matches, and the only change ever made to an existing customer is filling a blank name.
+**Migration 0070 is additive only.** It creates new tables and types. It does not change or read any existing table. Customers are matched to existing `customer` rows by phone number. A row is only added when no customer matches, and the inbox never changes an existing customer row. A per-phone lock stops two messages arriving together from creating duplicates.
 
 ## Env vars (names only)
 
