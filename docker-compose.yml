@@ -96,6 +96,10 @@ services:
       SHIPBUBBLE_PKG_HEIGHT_CM: ${SHIPBUBBLE_PKG_HEIGHT_CM:-}
       # Shared secret gating the internal delivery-reconcile endpoint. The worker
       # sends it as X-Internal-Token. Empty = open (Payaza-webhook parity).
+      # The storefront (customer service) sends the same header so the rate
+      # limiter trusts its X-Shopper-IP and gives each shopper their own
+      # bucket. Empty = that header is ignored and all storefront shoppers
+      # share ONE rate-limit bucket.
       INTERNAL_RECONCILE_TOKEN: ${INTERNAL_RECONCILE_TOKEN:-}
       # Image uploads (Cloudflare R2). Empty = uploads disabled.
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
@@ -204,6 +208,10 @@ services:
       # The customer container always reaches the api over the compose network,
       # where it is `http://api:3001` in both dev and prod.
       PUBLIC_API_URL: http://api:3001
+      # Same value as the api service. Sent to the API as X-Internal-Token with
+      # the shopper's address (X-Shopper-IP) so each shopper is rate-limited
+      # individually. Empty = nothing is sent and all shoppers share one bucket.
+      INTERNAL_RECONCILE_TOKEN: ${INTERNAL_RECONCILE_TOKEN:-}
     ports:
       - "${HOST_BIND:-0.0.0.0}:3002:3000"
     depends_on:

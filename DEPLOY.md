@@ -29,8 +29,18 @@ nano .env
 # Generate strong values:
 openssl rand -hex 32   # → JWT_SIGNING_KEY
 openssl rand -hex 24   # → POSTGRES_PASSWORD
+openssl rand -hex 32   # → INTERNAL_RECONCILE_TOKEN
 docker compose up -d
 ```
+
+`INTERNAL_RECONCILE_TOKEN` must be set for per-shopper rate limiting. The
+storefront's server calls the API for every shopper from one address; with the
+token set it also tells the API each shopper's address, so each shopper gets
+their own limit. Left empty, all storefront shoppers share a single limit of 30
+requests a minute and checkout fails with "too many requests" under light load.
+The shopper's address is taken from Cloudflare's `CF-Connecting-IP`, so the
+storefront (port 3002) must only be reachable through the tunnel: set
+`HOST_BIND=127.0.0.1` so the ports are not also open on the VPS's public IP.
 
 Wait ~30s. Smoke test:
 

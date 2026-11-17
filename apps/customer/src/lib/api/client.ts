@@ -53,6 +53,15 @@ function backoff(attempt: number): Promise<void> {
   return new Promise((r) => setTimeout(r, base + Math.random() * 200));
 }
 
+// Extra headers for every API call, supplied by the SSR entry (server.ts) so
+// the API can tell shoppers apart. A hook rather than an import because this
+// module is also pulled into the browser bundle (for ApiError), where the
+// server-only source of these headers must not follow.
+let extraHeaders: () => Record<string, string> = () => ({});
+export function setApiHeaderSource(source: () => Record<string, string>): void {
+  extraHeaders = source;
+}
+
 /**
  * Fetch an API endpoint and return the unwrapped `data` payload. Throws an
  * ApiError for the `{ error }` envelope or any non-2xx / non-JSON response.
@@ -70,7 +79,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     try {
       res = await fetch(`${API_BASE}${path}`, {
         ...init,
-        headers: { accept: "application/json", ...(init?.headers ?? {}) },
+        headers: { accept: "application/json", ...extraHeaders(), ...(init?.headers ?? {}) },
       });
     } catch (err) {
       if (last) throw new ApiError("network_error", err instanceof Error ? err.message : "network error", 0);
