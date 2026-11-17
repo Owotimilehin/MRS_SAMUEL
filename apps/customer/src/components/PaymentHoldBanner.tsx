@@ -19,6 +19,8 @@ export function PaymentHoldBanner({
   // Set when redirecting to OPay's cashier — mounts the redirect overlay with a
   // flaky-network manual link, same as the checkout page.
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+  // Why "Complete payment" did not open the payment page, in plain words.
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   // Preorders carry no reservation; the hold concept ("bottles held") doesn't
   // apply, but they still need to pay — so show a resume button without a timer.
@@ -45,6 +47,7 @@ export function PaymentHoldBanner({
     const rp = order.resume_payment;
     if (!rp) return;
     setBusy(true);
+    setResumeError(null);
 
     // Mint a fresh cashier session (the original URL has expired) and do a
     // full-page redirect. Returning to this tracking page re-verifies on view.
@@ -61,6 +64,10 @@ export function PaymentHoldBanner({
         setRedirectUrl(redirect_url);
         setTimeout(() => { window.location.href = redirect_url; }, 50);
       } catch {
+        // Never fail silently: the customer pressed "pay" and nothing happened.
+        setResumeError(
+          "We couldn't open the payment page. Your order is safe. Please try again in a moment.",
+        );
         setBusy(false);
       }
   }
@@ -92,6 +99,11 @@ export function PaymentHoldBanner({
           <>Complete payment — {formatNaira(order.total_ngn)}</>
         )}
       </button>
+      {resumeError && (
+        <p role="alert" className="mt-2 text-sm font-semibold text-red-700">
+          {resumeError}
+        </p>
+      )}
     </div>
     </>
   );
