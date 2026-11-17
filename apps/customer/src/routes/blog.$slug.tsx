@@ -3,7 +3,7 @@ import { ArrowLeft, Clock } from "lucide-react";
 import { fetchBlogPost, fetchBlogPosts } from "@/lib/api/server-fns";
 import { renderMarkdown } from "@/lib/markdown";
 import { SiteShell } from "@/components/SiteShell";
-import { CLUSTERS } from "@/lib/visuals";
+import { CLUSTERS, HARD_EDGED_DECOR } from "@/lib/visuals";
 import { seo, articleLd, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/blog/$slug")({
@@ -72,7 +72,16 @@ function Page() {
         </div>
 
         <div className="relative mt-10 h-72 sm:h-96 rounded-[2rem] overflow-hidden bg-[color:var(--cream)]">
-          <img src={CLUSTERS[p.cover as keyof typeof CLUSTERS]} alt="" aria-hidden className="absolute inset-0 m-auto h-[88%] w-auto object-contain" />
+          <img
+            src={CLUSTERS[p.cover as keyof typeof CLUSTERS]}
+            alt=""
+            aria-hidden
+            className={
+              HARD_EDGED_DECOR.has(CLUSTERS[p.cover as keyof typeof CLUSTERS])
+                ? "absolute inset-0 h-full w-full object-cover"
+                : "absolute inset-0 m-auto h-[88%] w-auto object-contain"
+            }
+          />
         </div>
 
         <div className="prose-content mt-10 space-y-6 text-[17px] leading-[1.75] text-[color:var(--brand)]/85">

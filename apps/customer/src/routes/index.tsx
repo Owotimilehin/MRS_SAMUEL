@@ -25,24 +25,15 @@ import { Blog } from "@/components/Blog";
 import { seo, faqPageLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/")({
-  head: () => {
-    const base = seo({
+  // Brand fonts are loaded for every page in routes/__root.tsx.
+  head: () =>
+    seo({
       title: "Fresh Fruit Juice in Lagos — Delivered Cold | Mrs. Samuel",
       description:
         "Fresh, 100% natural fruit juice made daily in Lagos: zobo, pineapple, orange, green juice and more. No added sugar, no preservatives. Order online for cold delivery.",
       path: "/",
       jsonLd: [faqPageLd(faqs)],
-    });
-    return {
-      ...base,
-      links: [
-        ...base.links,
-        { rel: "preconnect", href: "https://fonts.googleapis.com" },
-        { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "" },
-        { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,300..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" },
-      ],
-    };
-  },
+    }),
   loader: async () => {
     const [products, posts, banner, instagram] = await Promise.all([
       fetchProducts(),
@@ -92,13 +83,13 @@ function Page() {
           </Link>
         </motion.div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
           {classics.map((p, i) => (
             <ProductCard key={p.id} product={p} index={i} onClick={() => setSelected(p)} />
           ))}
         </div>
 
-        <div className="mt-16 mb-8 flex items-end justify-between gap-6">
+        <div className="mt-12 sm:mt-16 mb-8 flex items-end justify-between gap-6">
           <div>
             <div className="flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand-orange)]">
               <span className="h-px w-6 bg-[color:var(--brand-orange)]/60" /> Mrs. Samuel Specials
@@ -107,14 +98,21 @@ function Page() {
               Limited bottles, pressed weekly.
             </h2>
           </div>
-          <span className="hidden sm:inline-flex font-display text-2xl font-semibold text-[color:var(--brand-orange)]">
-            ₦4,500
-          </span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
           {specials.map((p, i) => (
             <ProductCard key={p.id} product={p} index={i} onClick={() => setSelected(p)} />
           ))}
+        </div>
+
+        {/* Phone: the header link is hidden, so offer the full menu here. */}
+        <div className="mt-8 flex justify-center sm:hidden">
+          <Link
+            to="/juices"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-[color:var(--brand)] ring-1 ring-[color:var(--brand)]/15"
+          >
+            View all juices →
+          </Link>
         </div>
       </section>
 

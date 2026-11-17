@@ -86,18 +86,28 @@ export function Testimonials({ instagram = [] }: { instagram?: IgPost[] }) {
                       className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                     />
                   ) : (
-                    <span className="flex h-full w-full flex-col justify-between bg-gradient-to-br from-[color:var(--brand)] to-[#0f8a4c] p-4 text-white">
+                    <span className="flex h-full w-full flex-col justify-between gap-2 bg-gradient-to-br from-[color:var(--brand)] to-[#0f8a4c] p-4 text-white">
                       <Instagram className="h-5 w-5 opacity-80" aria-hidden />
-                      <span className="text-[13px] font-medium leading-snug line-clamp-5">{captionLine(t.caption, 160)}</span>
+                      <span className="text-[13px] font-medium leading-snug line-clamp-4 sm:line-clamp-5">{captionLine(t.caption, 160)}</span>
                       <span className="text-[11px] font-bold uppercase tracking-[0.18em] opacity-80">
                         {t.isVideo ? "Watch reel" : "View post"} →
                       </span>
                     </span>
                   )}
+                  {/* On a photo the play button sits in the middle. On a text tile it
+                      moves to the top corner so it never covers the caption. */}
                   {t.isVideo && (
-                    <span className="pointer-events-none absolute inset-0 grid place-items-center">
-                      <span className="grid h-12 w-12 place-items-center rounded-full bg-white/90 text-[color:var(--brand)] shadow-lg transition group-hover:scale-110">
-                        <Play className="h-5 w-5 fill-current" aria-hidden />
+                    <span
+                      className={`pointer-events-none absolute grid place-items-center ${
+                        t.image ? "inset-0" : "right-3 top-3"
+                      }`}
+                    >
+                      <span
+                        className={`grid place-items-center rounded-full bg-white/90 text-[color:var(--brand)] shadow-lg transition group-hover:scale-110 ${
+                          t.image ? "h-12 w-12" : "h-9 w-9"
+                        }`}
+                      >
+                        <Play className={`fill-current ${t.image ? "h-5 w-5" : "h-4 w-4"}`} aria-hidden />
                       </span>
                     </span>
                   )}

@@ -5,7 +5,7 @@ import bottleRuby from "@/assets/bottle-ruby.png";
 import clusterCitrus from "@/assets/decor/cluster-citrus.png";
 
 const paragraphs = [
-  "Mrs. Samuel Fruit Juice began in September of last year — in a small Lagos kitchen, with one cold press, two believers, and the quiet conviction that Nigerians deserved juice they could actually trust.",
+  "Mrs. Samuel Fruit Juice began in September 2024 — in a small Lagos kitchen, with one cold press, two believers, and the quiet conviction that Nigerians deserved juice they could actually trust.",
   "There was no warehouse. No investors. No shortcuts. Only sun-ripened fruit sourced directly from Nigerian farmers, pressed before sunrise, and delivered the same morning to the first handful of families who said yes.",
   "What started as a single bottle on a single counter has grown into more than forty thousand bottles shared across homes, offices, gyms and quiet weekday breakfasts — every one of them traceable to the farm it came from.",
   "Today, Mrs. Samuel is preparing for its biggest chapter yet: new production lines capable of pressing up to five thousand bottles a day, partnerships with fruit cooperatives across the country, and a continued commitment to zero added sugar, zero preservatives, and zero waste.",
@@ -26,7 +26,7 @@ export function Story() {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.3fr] gap-12 lg:gap-16 items-center">
           {/* Bottle composition */}
           <div className="relative h-[460px] sm:h-[560px] w-full order-2 lg:order-1">
-            <img src={clusterCitrus} alt="" aria-hidden className="absolute -left-6 bottom-2 w-[55%] opacity-80" />
+            <img src={clusterCitrus} alt="" aria-hidden className="absolute left-0 sm:-left-6 bottom-2 w-[55%] opacity-80" />
             <div
               className="absolute inset-0 m-auto h-[78%] w-[78%] rounded-full blur-3xl opacity-70"
               style={{ background: "radial-gradient(circle, #ffd071 0%, transparent 65%)" }}

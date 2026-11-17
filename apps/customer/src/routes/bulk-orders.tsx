@@ -5,6 +5,7 @@ import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { EnquiryForm } from "@/components/EnquiryForm";
 import { seo, breadcrumbLd } from "@/lib/seo";
+import clusterWatermelon from "@/assets/decor/cluster-watermelon.png";
 
 export const Route = createFileRoute("/bulk-orders")({
   head: () =>
@@ -40,6 +41,8 @@ function Page() {
         eyebrow="Bulk Orders"
         title={<>Juice for<br /><span className="text-[color:var(--brand-orange)]">a full room.</span></>}
         subtitle="Crates of cold-pressed juice for events, offices and trade — pressed to order and delivered chilled across Lagos."
+        decor={clusterWatermelon}
+        accent="#f7a8b0"
       />
 
       <section className="px-5 sm:px-10 max-w-7xl mx-auto pb-16">

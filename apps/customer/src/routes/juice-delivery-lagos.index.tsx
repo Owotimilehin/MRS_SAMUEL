@@ -27,7 +27,7 @@ const FAQS: LocalFaq[] = [
   },
   {
     q: "Can I order juice in bulk for an office or event?",
-    a: "Yes. We supply offices, parties, weddings and corporate events across Lagos. See our bulk orders page for pricing.",
+    a: "Yes. We supply offices, parties, weddings and corporate events across Lagos. Request a quote on our bulk orders page.",
   },
 ];
 
@@ -68,7 +68,7 @@ function Page() {
       notes={[
         "The delivery fee is calculated from your address and shown at checkout before you pay.",
         "Not sure if we reach you? Send us a WhatsApp message with your area and we'll confirm before you order.",
-        "Ordering for an office, wedding or event? Bulk orders get crate pricing.",
+        "Ordering for an office, wedding or event? Request a quote on our bulk orders page.",
       ]}
       products={products}
       faqs={FAQS}
@@ -77,15 +77,18 @@ function Page() {
       {PUBLISHED_AREAS.length > 0 && (
         <section className="px-5 sm:px-10 max-w-5xl mx-auto pb-12">
           <h2 className="font-display text-3xl font-semibold text-[color:var(--brand)]">Delivery areas</h2>
-          <ul className="mt-4 flex flex-wrap gap-3">
+          <ul className="mt-4 flex flex-wrap gap-2.5 sm:gap-3">
             {PUBLISHED_AREAS.map((a) => (
               <li key={a.slug}>
                 <Link
                   to="/juice-delivery-lagos/$area"
                   params={{ area: a.slug }}
-                  className="inline-flex rounded-full bg-white px-4 py-2 text-sm font-semibold text-[color:var(--brand)] ring-1 ring-black/10 hover:bg-black/5"
+                  className="inline-flex min-h-11 items-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-[color:var(--brand)] ring-1 ring-black/10 hover:bg-black/5"
                 >
-                  Fresh juice in {a.name}
+                  {/* Phone shows just the area so chips fit in rows; the full
+                      phrase stays in the link text for screen readers and search. */}
+                  <span className="sr-only sm:not-sr-only">Fresh juice in&nbsp;</span>
+                  {a.name}
                 </Link>
               </li>
             ))}

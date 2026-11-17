@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
+import { HARD_EDGED_DECOR } from "@/lib/visuals";
 
 interface Props {
   eyebrow: string;
@@ -44,7 +45,14 @@ export function PageHero({ eyebrow, title, subtitle, decor, accent }: Props) {
                 background: `radial-gradient(circle at 50% 50%, ${accent ?? "#ffb142"} 0%, transparent 65%)`,
               }}
             />
-            <img src={decor} alt="" aria-hidden className="absolute inset-0 m-auto h-full w-auto object-contain drop-shadow-[0_20px_24px_rgba(40,20,10,0.18)]" />
+            {HARD_EDGED_DECOR.has(decor) ? (
+              // Edge-to-edge photo: crop it in a circle so the cut looks intended.
+              <div className="absolute inset-0 m-auto aspect-square h-full max-w-full overflow-hidden rounded-full bg-white/60 ring-1 ring-black/5 shadow-[0_20px_40px_-18px_rgba(40,20,10,0.35)]">
+                <img src={decor} alt="" aria-hidden className="h-full w-full scale-110 object-cover" />
+              </div>
+            ) : (
+              <img src={decor} alt="" aria-hidden className="absolute inset-0 m-auto h-full w-auto object-contain drop-shadow-[0_20px_24px_rgba(40,20,10,0.18)]" />
+            )}
           </motion.div>
         )}
       </div>

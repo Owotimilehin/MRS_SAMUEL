@@ -72,6 +72,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
       { rel: "apple-touch-icon", href: "/favicon.png" },
+      // Brand fonts (Fraunces + Plus Jakarta Sans) for every page, not just home.
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,300..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
+      },
     ],
     scripts: [
       { type: "application/ld+json", children: JSON.stringify(organizationLd()) },
