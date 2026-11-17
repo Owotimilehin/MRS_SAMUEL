@@ -310,4 +310,63 @@ describe("unified inbox — WhatsApp", () => {
     });
     expect(res.status).toBe(403);
   });
+  it("pages the timeline backwards", async () => {
+    const owner = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
+    const from = "2347066660001";
+    const base = Math.floor(Date.now() / 1000) - 600;
+    for (let n = 0; n < 5; n++) {
+      await postWebhook(inboundPayload({ wamid: `wamid.page.${n}`, from, text: `m${n}`, ts: base + n * 10 }));
+    }
+    const [msg] = await db.select().from(inboxMessage).where(eq(inboxMessage.waMessageId, "wamid.page.0"));
+    const url = `${baseUrl}/v1/inbox/conversations/${msg!.conversationId}/timeline`;
+    type Page = { data: { at: string; data: { body: string } }[]; has_more: boolean; next_before: string | null };
+    const p1 = (await (await fetch(`${url}?limit=2`, { headers: { cookie: owner } })).json()) as Page;
+    expect(p1.data.map((d) => d.data.body)).toEqual(["m3", "m4"]);
+    expect(p1.has_more).toBe(true);
+    const p2 = (await (await fetch(`${url}?limit=2&before=${encodeURIComponent(p1.next_before!)}`, { headers: { cookie: owner } })).json()) as Page;
+    expect(p2.data.map((d) => d.data.body)).toEqual(["m1", "m2"]);
+    const p3 = (await (await fetch(`${url}?limit=2&before=${encodeURIComponent(p2.next_before!)}`, { headers: { cookie: owner } })).json()) as Page;
+    expect(p3.data.map((d) => d.data.body)).toEqual(["m0"]);
+    expect(p3.has_more).toBe(false);
+  });
+
+  it("merges a duplicate contact's thread into another contact, leaving customer rows alone", async () => {
+    const owner = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
+    await postWebhook(inboundPayload({ wamid: "wamid.merge.a", from: "2347066660002", text: "from A", name: "Dup A" }));
+    await postWebhook(inboundPayload({ wamid: "wamid.merge.b", from: "2347066660003", text: "from B", name: "Dup B" }));
+    const [a] = await db.select().from(customer).where(eq(customer.phone, "+2347066660002"));
+    const [b] = await db.select().from(customer).where(eq(customer.phone, "+2347066660003"));
+    const res = await fetch(`${baseUrl}/v1/inbox/contacts/${a!.id}/merge`, {
+      method: "POST",
+      headers: { cookie: owner, "content-type": "application/json" },
+      body: JSON.stringify({ into_customer_id: b!.id }),
+    });
+    expect(res.status).toBe(200);
+    expect(await db.select().from(inboxConversation).where(eq(inboxConversation.customerId, a!.id))).toHaveLength(0);
+    const bConvs = await db.select().from(inboxConversation).where(eq(inboxConversation.customerId, b!.id));
+    expect(bConvs).toHaveLength(1); // both live threads on the same number folded into one
+    const msgs = await db.select().from(inboxMessage).where(eq(inboxMessage.conversationId, bConvs[0]!.id));
+    expect(msgs.map((m) => m.body).sort()).toEqual(["from A", "from B"]);
+    expect((await db.select().from(customer).where(eq(customer.id, a!.id)))[0]!.name).toBe("Dup A"); // untouched
+  });
+
+  it("erases a customer's inbox history only with the matching phone, and only for inbox.erase", async () => {
+    const owner = await loginAs(baseUrl, "owner@example.com", "ownerpassword123");
+    const agent = await loginAs(baseUrl, "agent@example.com", "userpassword123");
+    await postWebhook(inboundPayload({ wamid: "wamid.erase.1", from: "2347066660004", text: "please forget me" }));
+    const [cust] = await db.select().from(customer).where(eq(customer.phone, "+2347066660004"));
+    const url = `${baseUrl}/v1/inbox/contacts/${cust!.id}/erase`;
+    const post = (cookie: string, phone: string) =>
+      fetch(url, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ confirm_phone: phone }) });
+    expect((await post(agent, "07066660004")).status).toBe(403);
+    expect((await post(owner, "07000000000")).status).toBe(400);
+    const ok = await post(owner, "0706 666 0004");
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { data: { messages: number } }).data.messages).toBe(1);
+    expect(await db.select().from(inboxConversation).where(eq(inboxConversation.customerId, cust!.id))).toHaveLength(0);
+    expect(await db.select().from(inboxMessage).where(eq(inboxMessage.waMessageId, "wamid.erase.1"))).toHaveLength(0);
+    expect(await db.select().from(customer).where(eq(customer.id, cust!.id))).toHaveLength(1); // the shop's record stays
+    const events = await db.select().from(inboxWebhookEvent);
+    expect(events.some((e) => JSON.stringify(e.payload).includes("2347066660004"))).toBe(false);
+  });
 });
