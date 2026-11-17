@@ -378,7 +378,7 @@ export function shouldSendTyping(lastSentAt: number | null, now: number, interva
 export function contactName(name: string | null | undefined, phone: string | null | undefined): string {
   const n = name?.trim();
   if (n) return n;
-  return phone?.trim() || "Unknown customer";
+  return prettyPhone(phone) || "Unknown customer";
 }
 
 // ── Business hours editor ────────────────────────────────────────────────────
@@ -492,4 +492,116 @@ export function formatSpan(seconds: number | null | undefined): string {
 /** Lagos-calendar YYYY-MM-DD `days` before today. */
 export function lagosDaysAgo(days: number, now: Date = new Date()): string {
   return shiftDay(lagosDayKey(now), -days);
+}
+
+// ── Display helpers (wording only; nothing here changes what is stored) ──────
+
+/**
+ * A readable phone number: "+2349033330003" → "+234 903 333 0003",
+ * "08031234567" → "0803 123 4567". Anything that isn't a plain number comes
+ * back unchanged.
+ */
+export function prettyPhone(phone: string | null | undefined): string {
+  const raw = phone?.trim() ?? "";
+  if (!raw) return "";
+  const compact = raw.replace(/[\s().-]/g, "");
+  if (!/^\+?\d{7,15}$/.test(compact)) return raw;
+  const plus = compact.startsWith("+");
+  const d = plus ? compact.slice(1) : compact;
+  const tail = (s: string): string => `${s.slice(0, 3)} ${s.slice(3, 6)} ${s.slice(6)}`;
+  if (plus && d.length > 10) return `+${d.slice(0, d.length - 10)} ${tail(d.slice(-10))}`;
+  if (!plus && d.length === 13 && d.startsWith("234")) return `+234 ${tail(d.slice(3))}`;
+  if (!plus && d.length === 11 && d.startsWith("0")) return `${d.slice(0, 4)} ${d.slice(4, 7)} ${d.slice(7)}`;
+  return raw;
+}
+
+/**
+ * Name to show for a member of staff. People without a display name come back
+ * from the server as their email; show the part before the @ instead.
+ */
+export function staffLabel(name: string | null | undefined, fallback = "Staff"): string {
+  const n = name?.trim();
+  if (!n) return fallback;
+  if (/^[^\s@]+@[^\s@]+$/.test(n)) return n.slice(0, n.indexOf("@"));
+  return n;
+}
+
+/** "2026-12-25" → "25 Dec 2026". Anything else comes back unchanged. */
+export function humanDay(day: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(day)) return day;
+  const d = new Date(`${day.slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return day;
+  return d.toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
+}
+
+/** "missed_call_followup" → "Missed call follow-up". */
+export function humanTemplateName(name: string): string {
+  const words = name.replace(/[_-]+/g, " ").trim().replace(/\bfollowup\b/gi, "follow-up").replace(/\bwhatsapp\b/gi, "WhatsApp");
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : name;
+}
+
+/** "en" → "English", "en_US" → "American English". Unknown codes come back unchanged. */
+export function languageName(code: string): string {
+  try {
+    const name = new Intl.DisplayNames(["en"], { type: "language" }).of(code.replace(/_/g, "-"));
+    return name && name !== code ? name : code;
+  } catch {
+    return code;
+  }
+}
+
+const TEMPLATE_CATEGORY: Record<string, string> = {
+  UTILITY: "Service update",
+  MARKETING: "Marketing",
+  AUTHENTICATION: "Login code",
+};
+
+/** WhatsApp's template category in plain words. */
+export function templateCategoryLabel(category: string | null | undefined): string {
+  const c = (category ?? "").trim();
+  if (!c) return "Not set";
+  return TEMPLATE_CATEGORY[c.toUpperCase()] ?? sentenceCase(c);
+}
+
+/** "owner" → "Owner", "branch_manager" → "Branch manager". */
+export function sentenceCase(value: string): string {
+  const s = value.replace(/[_-]+/g, " ").trim().toLowerCase();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : value;
+}
+
+/** WhatsApp's messaging limit ("TIER_1K") as a sentence staff can read. */
+export function messagingLimitLabel(limit: string | null | undefined): string | null {
+  const v = (limit ?? "").trim().toUpperCase();
+  if (!v) return null;
+  if (v.includes("UNLIMITED")) return "No daily limit on new chats";
+  const m = /(\d+(?:\.\d+)?)\s*(K|M)?$/.exec(v.replace(/_/g, ""));
+  if (!m) return `Limit: ${sentenceCase(v).toLowerCase()}`;
+  const n = Number(m[1]) * (m[2] === "K" ? 1000 : m[2] === "M" ? 1_000_000 : 1);
+  return `Up to ${n.toLocaleString("en-NG")} new chats a day`;
+}
+
+/** Empty-list wording that fits the tab the person is on. */
+export function emptyListText(tab: InboxTabKey, searching: boolean): { title: string; hint: string } {
+  if (searching) return { title: "No matches", hint: "Nobody matches that name or number." };
+  switch (tab) {
+    case "mine":
+      return { title: "Nothing assigned to you", hint: "Chats you take or are given show here." };
+    case "unassigned":
+      return { title: "Nothing waiting", hint: "New chats nobody has taken yet show here." };
+    case "team":
+      return { title: "No open team chats", hint: "Open chats for your team show here." };
+    case "closed":
+      return { title: "No closed chats yet", hint: "Chats you close are kept here." };
+    default:
+      return { title: "No open chats", hint: "Every open chat shows here." };
+  }
+}
+
+/** Up to `max` evenly spaced days, always ending on the last one, for a shared chart axis. */
+export function axisDays(days: readonly string[], max = 6): string[] {
+  if (days.length <= max) return [...days];
+  const step = Math.ceil((days.length - 1) / (max - 1));
+  const out: string[] = [];
+  for (let i = days.length - 1; i >= 0; i -= step) out.unshift(days[i]!);
+  return out;
 }

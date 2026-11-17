@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { BranchShell } from "../../components/BranchShell.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
@@ -154,7 +155,7 @@ export function BranchPreordersPage({ branchId }: { branchId: string }): JSX.Ele
         loading={loading}
         chips={[
           { label: "Awaiting", value: rows.length, tone: rows.length > 0 ? "danger" : "good" },
-          { label: "Cans", value: rows.reduce((s, r) => s + r.items.reduce((n, i) => n + i.quantity, 0), 0) },
+          { label: "Bottles", value: rows.reduce((s, r) => s + r.items.reduce((n, i) => n + i.quantity, 0), 0) },
           { label: "Prepaid", value: ngn(rows.reduce((s, r) => s + r.total_ngn, 0)) },
         ]}
       />
@@ -163,13 +164,17 @@ export function BranchPreordersPage({ branchId }: { branchId: string }): JSX.Ele
         { to: "/branch/preorders", label: "Preorders", cap: "pos.preorder" },
       ]} />
 
-      <input
-        className="input"
-        placeholder="Search order #, name, phone, flavour, date…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ margin: "14px 0" }}
-      />
+      <div className="toolbar__search" style={{ margin: "14px 0" }}>
+        <Search aria-hidden />
+        <input
+          className="input"
+          type="search"
+          aria-label="Search preorders"
+          placeholder="Search order #, name, phone, flavour, date…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
 
       {loading ? (
         <InlineLoader />

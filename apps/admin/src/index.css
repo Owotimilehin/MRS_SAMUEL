@@ -181,6 +181,10 @@ h1, h2, h3, h4,
   cursor: pointer;
   transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease, filter 160ms ease;
   white-space: nowrap;
+  /* Never clip the label: the button grows to fit it instead of shrinking
+     (.btn--primary has overflow: hidden, which would otherwise let it shrink). */
+  min-width: max-content;
+  flex-shrink: 0;
 }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 .btn--primary {
@@ -217,7 +221,7 @@ h1, h2, h3, h4,
   color: var(--ink);
 }
 .btn--icon:hover:not(:disabled) { background: #ECEEF1; }
-.btn svg { width: 16px; height: 16px; }
+.btn svg { width: 16px; height: 16px; flex: none; }
 
 /* ─────────────────────────── Cards & panels ─────────────────────────── */
 .card {
@@ -397,6 +401,8 @@ h1, h2, h3, h4,
 .table tbody tr:hover { background: var(--surface-sunken); }
 .table tbody tr.is-clickable { cursor: pointer; }
 .table__num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Numeric headings line up over their right-aligned numbers. */
+.table thead th.table__num { text-align: right; }
 
 /* Filter toolbar — search + selects + actions in one rounded bar */
 .toolbar {
@@ -803,7 +809,7 @@ h1, h2, h3, h4,
 /* ── Heroes wrap + shed their bottle on small screens ── */
 @media (max-width: 768px) {
   .juice-hero { flex-direction: column; align-items: flex-start; gap: 14px; padding: 22px 20px; }
-  .juice-hero::after { right: -40px; width: 200px; height: 200px; }
+  .juice-hero::after { display: none; } /* splash sat over the title on phones */
   .juice-hero__bottle { display: none; }
   .juice-hero__aside { margin-left: 0; flex-wrap: wrap; gap: 10px; }
   .flav-hero { flex-direction: column; align-items: flex-start; gap: 16px; padding: 22px 20px; }
@@ -1570,7 +1576,9 @@ h1, h2, h3, h4,
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @keyframes js-floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-@keyframes js-splash { 0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.8; } 50% { transform: scale(1.06) rotate(3deg); opacity: 1; } }
+/* Opacity pulses around each element's own --splash-o, so the keyframes never
+   force a faint decoration up to full strength (they used to pin 0.8–1). */
+@keyframes js-splash { 0%, 100% { transform: scale(1) rotate(0deg); opacity: calc(var(--splash-o, 0.4) * 0.8); } 50% { transform: scale(1.06) rotate(3deg); opacity: var(--splash-o, 0.4); } }
 @keyframes js-drip {
   0%   { transform: translateY(0) rotate(180deg) scale(0.6); opacity: 0; }
   8%   { opacity: 0.8; }
@@ -1672,7 +1680,7 @@ h1, h2, h3, h4,
 .juice-hero::after {
   content: ""; position: absolute; right: 8%; top: -30px; width: 280px; height: 280px;
   background: url("/flavours/decor/splash-orange.png") center/contain no-repeat;
-  opacity: 0.4; animation: js-splash 9s ease-in-out infinite; pointer-events: none;
+  --splash-o: 0.12; opacity: 0.12; animation: js-splash 9s ease-in-out infinite; pointer-events: none;
 }
 .juice-hero__body { position: relative; z-index: 1; }
 .juice-hero__eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold, #f6b545); font-weight: 700; }
@@ -1717,7 +1725,7 @@ h1, h2, h3, h4,
   width: 46%; height: 9px; background: rgba(0,0,0,0.15); border-radius: 50%; filter: blur(3px);
 }
 .flav-media--chip::after { display: none; }
-.flav-media__splash { position: absolute; width: 78%; opacity: 0.45; animation: js-splash 8s ease-in-out infinite; pointer-events: none; }
+.flav-media__splash { position: absolute; width: 78%; --splash-o: 0.56; opacity: 0.45; animation: js-splash 8s ease-in-out infinite; pointer-events: none; }
 .flav-media__bottle { position: relative; z-index: 1; filter: drop-shadow(0 12px 12px rgba(0,0,0,0.2)); animation: js-floaty 5.5s ease-in-out infinite; }
 .flav-media__fruit { position: absolute; right: 8%; top: 8%; z-index: 2; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.28)); }
 .flav-media__silhouette {
@@ -1812,3 +1820,99 @@ h1, h2, h3, h4,
 .till-total__value { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 26px; color: var(--brand); }
 
 :root { --gold: #f6b545; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SHARED FIT FIXES (screen review 2026-11-17). Kept last so they win over the
+   base and skin rules above without touching route markup.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── One control height for filter rows (S7). Small buttons, inputs and selects
+   that sit side by side in the top bar, a .toolbar, .page-head__actions or any
+   row tagged .control-row all share --control-h. ── */
+:root { --control-h: 36px; }
+.app-burger { width: var(--control-h); height: var(--control-h); }
+.app-head__search .input { height: var(--control-h); }
+:is(.app-head, .toolbar, .page-head__actions, .control-row) :is(.btn--sm, .input, .select),
+/* …and any row that directly holds a small button next to a field. */
+:has(> .btn--sm):has(> :is(.input, .select)) > :is(.btn--sm, .input, .select) {
+  height: var(--control-h);
+}
+.app-head__refresh-icon { font-size: 15px; line-height: 1; }
+
+/* ── Sidebar menu: fade the cut-off bottom edge instead of slicing an item in
+   half; the padding lets the last item scroll clear of the fade. ── */
+.app-nav {
+  padding-bottom: 28px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+}
+
+/* ── Room for the floating call bar (.callbar, fixed bottom-right, ~56px tall +
+   16px offset) so the last row of any page can scroll clear of it. ── */
+.app-body { padding-bottom: 104px; }
+
+/* ── Tables scroll sideways inside their own box, never the page (S3).
+   .table-wrap is the usual wrapper; the :has() rule catches a .table placed
+   straight inside a card or section. The background layers are a scroll hint:
+   a soft shadow shows on whichever edge still has columns hidden. ── */
+.table-wrap,
+:where(div, section, article):has(> .table) {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-wrap,
+.card:not(.card--soft):has(> .table) {
+  background-image:
+    linear-gradient(to right, var(--shell) 40%, rgba(255,255,255,0)),
+    linear-gradient(to left, var(--shell) 40%, rgba(255,255,255,0)),
+    linear-gradient(to right, rgba(14,63,31,0.22), rgba(14,63,31,0)),
+    linear-gradient(to left, rgba(14,63,31,0.22), rgba(14,63,31,0));
+  background-position: left center, right center, left center, right center;
+  background-repeat: no-repeat;
+  background-size: 36px 100%, 36px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+/* The header row is opaque, so it would hide the hint: let it show through. */
+.table-wrap .table thead th,
+.card:not(.card--soft):has(> .table) > .table thead th {
+  background: rgba(255, 248, 237, 0.82);
+}
+
+@media (max-width: 1023px) {
+  /* Safety net: nothing inside the page may widen it. */
+  .app-main { overflow-x: clip; }
+  .app-body { padding-bottom: 96px; }
+}
+
+/* ── Phone top bar (S4): row 1 is always burger · title · refresh · avatar;
+   page actions flow onto one tidy row beneath. The avatar never sits alone. ── */
+@media (max-width: 640px) {
+  .app-head { gap: 0 8px; align-items: center; }
+  .app-head__spacer { display: none; }
+  .app-head__crumb { display: none; }
+  .app-head__titles,
+  .app-head > .app-head__title { flex: 1 1 0; min-width: 0; order: 0; }
+  .app-head__title { font-size: 18px; overflow-wrap: anywhere; }
+  .app-head__refresh { order: 1; padding: 0; width: var(--control-h); }
+  .app-head__refresh-label { display: none; }
+  .app-head__user { order: 1; }
+  /* Forced line break before the page actions; it takes no height itself. */
+  .app-head::after { content: ""; order: 2; flex: 0 0 100%; height: 0; }
+  .app-head > :not(.app-burger, .app-head__titles, .app-head__title, .app-head__spacer, .app-head__search, .app-head__refresh, .app-head__user) {
+    order: 3;
+    margin-top: 8px;
+  }
+}
+
+/* ── iPhones zoom the page when a focused field is under 16px (S5). ── */
+@media (max-width: 768px) {
+  input:not([type="checkbox"], [type="radio"], [type="range"]),
+  select,
+  textarea,
+  .input,
+  .select,
+  .textarea,
+  .login__input,
+  .qty-step input { font-size: 16px !important; } /* !important: must also beat inline font sizes */
+}

@@ -9,9 +9,11 @@ import {
   callOutcomeLabel,
   formatDuration,
   groupTimelineByDay,
+  humanTemplateName,
   mediaKind,
   messageTicks,
   sendProblem,
+  staffLabel,
   timelineKey,
   timeOfDay,
   UNCONFIRMED_TEXT,
@@ -140,10 +142,10 @@ function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
   return (
     <div className={`ibx-msg ibx-msg--${m.direction}${problem ? ` ibx-msg--${problem}` : ""}`}>
       {m.direction === "out" && m.sender_name && (
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{m.sender_name}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{staffLabel(m.sender_name)}</div>
       )}
       {m.template_name && (
-        <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 2 }}>Template: {m.template_name}</div>
+        <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 2 }}>Template: {humanTemplateName(m.template_name)}</div>
       )}
       {(m.has_media || m.media_pending) && <MessageMedia m={m} />}
       {m.body && <div>{m.body}</div>}
@@ -387,10 +389,10 @@ function RecordingBlock({
 function NoteCard({ note }: { note: TimelineNote }): JSX.Element {
   return (
     <div className="ibx-note">
-      <div className="ibx-note__tag">Internal note — not sent to the customer</div>
+      <div className="ibx-note__tag">Internal note · not sent to the customer</div>
       <div>{note.body}</div>
       <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 4 }}>
-        {note.author_name ?? "Staff"} · {timeOfDay(note.created_at)}
+        {staffLabel(note.author_name)} · {timeOfDay(note.created_at)}
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
+import { monthLabel } from "../../lib/date-labels.js";
 import { ngn, formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { useAuthUser } from "../../lib/auth.js";
@@ -115,7 +116,7 @@ export function BookkeepingPage(): JSX.Element {
 
   const marginPct = pnl && pnl.net_revenue_ngn > 0
     ? Math.round((pnl.net_ngn / pnl.net_revenue_ngn) * 100)
-    : 0;
+    : null;
 
   return (
     <Shell
@@ -151,7 +152,7 @@ export function BookkeepingPage(): JSX.Element {
       <StatHero
         eyebrow="Finance"
         title="Bookkeeping"
-        sub={canFinance ? `Revenue, expenses and profit for ${month}.` : `Expense records for ${month}.`}
+        sub={canFinance ? `Revenue, expenses and profit for ${monthLabel(month)}.` : `Expense records for ${monthLabel(month)}.`}
         loading={loading}
         chips={
           canFinance
@@ -159,7 +160,7 @@ export function BookkeepingPage(): JSX.Element {
                 { label: "Revenue", value: pnl ? ngn(pnl.net_revenue_ngn) : "—" },
                 { label: "Expenses", value: pnl ? ngn(pnl.expenses_total_ngn) : "—" },
                 { label: "Profit", value: pnl ? ngn(pnl.net_ngn) : "—", tone: pnl ? (pnl.net_ngn >= 0 ? "good" : "danger") : "default" },
-                { label: "Margin", value: pnl ? `${marginPct}%` : "—" },
+                { label: "Margin", value: pnl && marginPct !== null ? `${marginPct}%` : "—" },
               ]
             : []
         }
@@ -173,18 +174,20 @@ export function BookkeepingPage(): JSX.Element {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
         <button
           type="button"
           className="btn btn--subtle btn--sm"
+          aria-label="Previous month"
           onClick={() => setMonth(shiftMonth(month, -1))}
         >
           ◀
         </button>
-        <strong style={{ minWidth: 120, textAlign: "center" }}>{month}</strong>
+        <strong style={{ minWidth: 128, textAlign: "center", whiteSpace: "nowrap" }}>{monthLabel(month)}</strong>
         <button
           type="button"
           className="btn btn--subtle btn--sm"
+          aria-label="Next month"
           onClick={() => setMonth(shiftMonth(month, 1))}
         >
           ▶
@@ -194,9 +197,9 @@ export function BookkeepingPage(): JSX.Element {
           className="btn btn--ghost btn--sm"
           onClick={() => setMonth(new Date().toISOString().slice(0, 7))}
         >
-          Today
+          This month
         </button>
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: "1 1 0" }} />
         {activeTab === "expenses" && (
           <button
             type="button"
@@ -358,7 +361,7 @@ function PnlPanel({ pnl }: { pnl: Pnl | null }): JSX.Element {
   return (
     <>
       <div
-        style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 18 }}
+        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 18 }}
       >
         <BigCard label="Revenue" value={ngn(pnl.net_revenue_ngn)} />
         <BigCard label="Expenses" value={ngn(pnl.expenses_total_ngn)} />
@@ -387,7 +390,7 @@ function PnlPanel({ pnl }: { pnl: Pnl | null }): JSX.Element {
                   key={row.category_code}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "180px 1fr 140px",
+                    gridTemplateColumns: "minmax(90px, 180px) minmax(40px, 1fr) auto",
                     gap: 12,
                     alignItems: "center",
                   }}

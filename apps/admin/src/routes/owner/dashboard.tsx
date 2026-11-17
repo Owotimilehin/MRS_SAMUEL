@@ -7,6 +7,7 @@ import { StatHero } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { useCan } from "../../lib/auth.js";
 import { ngn } from "../../lib/format.js";
+import { dayLabel } from "../../lib/date-labels.js";
 import { downloadCsv } from "../../lib/csv.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
@@ -316,7 +317,7 @@ export function DashboardPage(): JSX.Element {
       crumb="Owner"
       actions={
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {([
               ["today", "Today"],
               ["week", "This week"],
@@ -326,7 +327,8 @@ export function DashboardPage(): JSX.Element {
               <button
                 key={key}
                 type="button"
-                className={period === key ? "btn btn--sm" : "btn btn--sm btn--ghost"}
+                className={period === key ? "btn btn--sm btn--primary" : "btn btn--sm btn--subtle"}
+                aria-pressed={period === key}
                 onClick={() => applyPeriod(key)}
               >
                 {label}
@@ -374,7 +376,7 @@ export function DashboardPage(): JSX.Element {
 
       {showFinance && (
         <section className="card" style={{ marginBottom: 26 }}>
-          <header className="card__head">
+          <header className="card__head" style={{ flexWrap: "wrap" }}>
             <h2 className="t-h2">Financials</h2>
             <span className="t-eyebrow" style={{ color: "var(--ink-soft)" }}>
               {daily ? rangeLabel(daily.from, daily.to) : rangeLabel(from, to)}
@@ -541,7 +543,7 @@ export function DashboardPage(): JSX.Element {
           }}
           className="ed-rise"
         >
-          <Stat label="Net revenue" value={ngn(totals.net)} hint={`${from} → ${to}`} tone="accent" />
+          <Stat label="Net revenue" value={ngn(totals.net)} hint={rangeLabel(from, to)} tone="accent" />
           <Stat label="Gross" value={ngn(totals.gross)} hint={`${totals.orders} orders`} />
           <Stat label="Refunds" value={ngn(totals.refunds)} tone={totals.refunds > 0 ? "warn" : "default"} />
         </div>
@@ -549,13 +551,8 @@ export function DashboardPage(): JSX.Element {
 
       {overview && (
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-            gap: 16,
-            marginBottom: 26,
-          }}
-          className="ed-rise"
+          style={{ gap: 16, marginBottom: 26 }}
+          className="ed-rise grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
         >
           <Stat
             label="Units sold today"
@@ -584,10 +581,14 @@ export function DashboardPage(): JSX.Element {
             hint={overview.fulfilment.pending_transfers > 0 ? "Awaiting receipt" : "All received"}
           />
           <Stat
-            label="Low stock — factory"
+            label="Low stock at the factory"
             value={String(overview.stock.low_stock_factory)}
             tone={overview.stock.low_stock_factory > 0 ? "bad" : "good"}
-            hint={`Branch: ${overview.stock.low_stock_branch} low`}
+            hint={
+              overview.stock.low_stock_branch > 0
+                ? `${overview.stock.low_stock_branch} also low at branches`
+                : "Nothing low at the branches"
+            }
           />
           <Stat
             label="Needs review"
@@ -601,13 +602,14 @@ export function DashboardPage(): JSX.Element {
       {showFinance && (
       <div className="l-split l-split--dash" style={{ marginBottom: 18 }}>
         <section className="card">
-          <header className="card__head">
-            <h2 className="t-h2">Branch performance</h2>
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <header className="card__head" style={{ flexWrap: "wrap", alignItems: "center" }}>
+            <h2 className="t-h2" style={{ whiteSpace: "nowrap" }}>Branch performance</h2>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", whiteSpace: "nowrap" }}>
               <button
                 type="button"
                 className="btn btn--subtle btn--sm"
                 disabled={revenue.length === 0}
+                title={revenue.length === 0 ? "Nothing to export yet" : undefined}
                 onClick={() =>
                   downloadCsv(
                     `revenue-${from}-to-${to}`,
@@ -707,13 +709,14 @@ export function DashboardPage(): JSX.Element {
 
       {showFinance && (
       <section className="card">
-        <header className="card__head">
-          <h2 className="t-h2">Recent variances</h2>
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+        <header className="card__head" style={{ flexWrap: "wrap", alignItems: "center" }}>
+          <h2 className="t-h2" style={{ whiteSpace: "nowrap" }}>Recent variances</h2>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", whiteSpace: "nowrap" }}>
             <button
               type="button"
               className="btn btn--subtle btn--sm"
               disabled={variances.length === 0}
+              title={variances.length === 0 ? "Nothing to export yet" : undefined}
               onClick={() =>
                 downloadCsv(
                   `variances-${from}-to-${to}`,
@@ -728,7 +731,7 @@ export function DashboardPage(): JSX.Element {
               Export CSV
             </button>
             <Link to="/owner/closes" style={{ fontSize: 13, color: "var(--accent)", fontWeight: 600 }}>
-              All closes →
+              All shift-end reports →
             </Link>
           </div>
         </header>
@@ -750,7 +753,7 @@ export function DashboardPage(): JSX.Element {
               <tbody>
                 {variances.slice(0, 8).map((v) => (
                   <tr key={v.daily_close_id}>
-                    <td>{v.business_date}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{dayLabel(v.business_date)}</td>
                     <td>{branchName(v.branch_id)}</td>
                     <td
                       className="table__num"

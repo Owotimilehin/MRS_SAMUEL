@@ -10,7 +10,7 @@ import "../../components/inbox/inbox.css";
 import { useCan } from "../../lib/auth.js";
 import { CONTACTS_CSV_URL, inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import { settingsApi } from "../../lib/inbox-settings-api.js";
-import { fillDays, formatDuration, formatSpan, lagosDaysAgo } from "../../lib/inbox-logic.js";
+import { axisDays, fillDays, formatDuration, formatSpan, lagosDaysAgo, staffLabel } from "../../lib/inbox-logic.js";
 import { COLOR_AXIS, COLOR_GRID, SERIES_COLORS, shortDate } from "../../lib/analytics-theme.js";
 
 const tooltipStyle = {
@@ -61,9 +61,9 @@ export function InboxReportsPage(): JSX.Element {
   const staffRows = useMemo(() => {
     if (!r) return [];
     const nameOf = (id: string | null): string =>
-      (id && staff.data?.find((s) => s.id === id)?.name) || r.staff.find((s) => s.user_id === id)?.name || "Unknown";
+      staffLabel((id && staff.data?.find((s) => s.id === id)?.name) || r.staff.find((s) => s.user_id === id)?.name, "Unknown");
     const rows = new Map<string, { id: string; name: string; replies: number; calls: number; talk_s: number }>();
-    for (const s of r.staff) rows.set(s.user_id, { id: s.user_id, name: s.name, replies: s.replies, calls: s.calls ?? 0, talk_s: s.talk_s ?? 0 });
+    for (const s of r.staff) rows.set(s.user_id, { id: s.user_id, name: staffLabel(s.name), replies: s.replies, calls: s.calls ?? 0, talk_s: s.talk_s ?? 0 });
     for (const c of r.staff_calls) {
       if (!c.user_id || rows.has(c.user_id)) continue;
       rows.set(c.user_id, { id: c.user_id, name: nameOf(c.user_id), replies: 0, calls: c.calls, talk_s: c.talk_s });
@@ -86,6 +86,11 @@ export function InboxReportsPage(): JSX.Element {
   const totalCalls = calls.reduce((s, d) => s + d.total, 0);
   const missedCalls = calls.reduce((s, d) => s + d.missed + d.after_hours, 0);
   const resp = r?.response;
+  // Both charts cover the same days, so they share the same date marks.
+  const ticks = axisDays(messages.map((d) => d.day), 6);
+  const today = lagosDaysAgo(0);
+  const noReplies = resp?.median_first_response_s == null;
+  const noneClosed = resp?.median_resolution_s == null;
 
   return (
     <Shell
@@ -93,8 +98,8 @@ export function InboxReportsPage(): JSX.Element {
       crumb="Inbox"
       actions={
         can("inbox.export") ? (
-          <a className="btn btn--subtle btn--sm" href={CONTACTS_CSV_URL} download>
-            <Download size={14} /> Contacts CSV
+          <a className="btn btn--subtle btn--sm" href={CONTACTS_CSV_URL} download title="Download every contact as a spreadsheet (CSV)">
+            <Download size={14} /> Export contacts
           </a>
         ) : undefined
       }
@@ -111,7 +116,8 @@ export function InboxReportsPage(): JSX.Element {
         ]}
       />
 
-      <div className="toolbar" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 16 }}>
+      <div className="ibx-report">
+      <div className="toolbar ibx-report__bar">
         <label className="field">
           <span className="field__label">From</span>
           <input className="input" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
@@ -133,12 +139,15 @@ export function InboxReportsPage(): JSX.Element {
             </select>
           </label>
         )}
-        <div className="ibx-tabs">
-          {PRESETS.map((p) => (
+        <div className="ibx-tabs" role="group" aria-label="Quick date ranges">
+          {PRESETS.map((p) => {
+            const on = to === today && from === lagosDaysAgo(p.days);
+            return (
             <button
               key={p.label}
               type="button"
-              className="ibx-tab"
+              className={`ibx-tab${on ? " is-active" : ""}`}
+              aria-pressed={on}
               onClick={() => {
                 setFrom(lagosDaysAgo(p.days));
                 setTo(lagosDaysAgo(0));
@@ -146,7 +155,8 @@ export function InboxReportsPage(): JSX.Element {
             >
               {p.label}
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -155,44 +165,64 @@ export function InboxReportsPage(): JSX.Element {
           <>
             <div className="ibx-stats">
               <Stat label="New conversations" value={String(resp?.conversations ?? 0)} />
-              <Stat
-                label="Got a reply"
-                value={resp && resp.conversations > 0 ? `${Math.round((resp.responded / resp.conversations) * 100)}%` : "—"}
-                {...(resp ? { hint: `${resp.responded} of ${resp.conversations}` } : {})}
-                tone="good"
-              />
-              <Stat label="Typical first reply" value={formatSpan(resp?.median_first_response_s)} hint="Median time to first answer" tone="accent" />
-              <Stat label="Typical time to close" value={formatSpan(resp?.median_resolution_s)} hint="Median, closed chats only" />
+              {resp && resp.conversations > 0 ? (
+                <Stat
+                  label="Got a reply"
+                  value={`${Math.round((resp.responded / resp.conversations) * 100)}%`}
+                  hint={`${resp.responded} of ${resp.conversations} new conversations had a reply from staff`}
+                  tone="good"
+                />
+              ) : (
+                <div className="is-none" style={{ display: "contents" }}>
+                  <Stat label="Got a reply" value="None yet" hint="No new conversations in these dates" tone="good" />
+                </div>
+              )}
+              <div className={noReplies ? "is-none" : undefined} style={{ display: "contents" }}>
+                <Stat
+                  label="Typical first reply"
+                  value={noReplies ? "None yet" : formatSpan(resp?.median_first_response_s)}
+                  hint={noReplies ? "No new conversation has had a staff reply in these dates" : "Median time to first answer"}
+                  tone="accent"
+                />
+              </div>
+              <div className={noneClosed ? "is-none" : undefined} style={{ display: "contents" }}>
+                <Stat
+                  label="Typical time to close"
+                  value={noneClosed ? "None yet" : formatSpan(resp?.median_resolution_s)}
+                  hint={noneClosed ? "No new conversation has been closed in these dates" : "Median, closed chats only"}
+                />
+              </div>
             </div>
 
             <div className="l-split l-split--dash" style={{ marginBottom: 16 }}>
               <section className="card">
-                <h2 className="t-h2" style={{ marginBottom: 8 }}>WhatsApp messages per day</h2>
+                <h2 className="t-h2" style={{ marginBottom: 2 }}>WhatsApp messages per day</h2>
+                <p style={{ color: "var(--ink-soft)", fontSize: 12, margin: "0 0 8px" }}>"From us" counts staff replies and automatic messages.</p>
                 <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={messages} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <BarChart data={messages} margin={{ top: 8, right: 22, left: -12, bottom: 0 }}>
                     <CartesianGrid stroke={COLOR_GRID} vertical={false} />
-                    <XAxis dataKey="day" tickFormatter={shortDate} tick={{ fontSize: 11, fill: COLOR_AXIS }} tickLine={false} axisLine={false} minTickGap={20} />
+                    <XAxis dataKey="day" ticks={ticks} interval={0} tickFormatter={shortDate} tick={{ fontSize: 11, fill: COLOR_AXIS }} tickLine={false} axisLine={false} />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: COLOR_AXIS }} tickLine={false} axisLine={false} width={40} />
                     <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} labelFormatter={(l) => shortDate(String(l))} cursor={{ fill: "rgba(31,122,68,0.06)" }} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="inbound" name="From customers" stackId="m" fill={SERIES_COLORS[0]} />
-                    <Bar dataKey="outbound" name="From staff" stackId="m" fill={SERIES_COLORS[2]} radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="inbound" name="From customers" stackId="m" fill={SERIES_COLORS[0]} isAnimationActive={false} maxBarSize={36} />
+                    <Bar dataKey="outbound" name="From us" stackId="m" fill={SERIES_COLORS[2]} radius={[6, 6, 0, 0]} isAnimationActive={false} maxBarSize={36} />
                   </BarChart>
                 </ResponsiveContainer>
               </section>
               <section className="card">
                 <h2 className="t-h2" style={{ marginBottom: 8 }}>Incoming calls per day</h2>
                 <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={calls} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <BarChart data={calls} margin={{ top: 8, right: 22, left: -12, bottom: 0 }}>
                     <CartesianGrid stroke={COLOR_GRID} vertical={false} />
-                    <XAxis dataKey="day" tickFormatter={shortDate} tick={{ fontSize: 11, fill: COLOR_AXIS }} tickLine={false} axisLine={false} minTickGap={20} />
+                    <XAxis dataKey="day" ticks={ticks} interval={0} tickFormatter={shortDate} tick={{ fontSize: 11, fill: COLOR_AXIS }} tickLine={false} axisLine={false} />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: COLOR_AXIS }} tickLine={false} axisLine={false} width={40} />
                     <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} labelFormatter={(l) => shortDate(String(l))} cursor={{ fill: "rgba(31,122,68,0.06)" }} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="answered" name="Answered" stackId="c" fill={SERIES_COLORS[0]} />
-                    <Bar dataKey="missed" name="Missed / voicemail" stackId="c" fill={SERIES_COLORS[1]} />
-                    <Bar dataKey="after_hours" name="After hours" stackId="c" fill={SERIES_COLORS[5]} />
-                    <Bar dataKey="other" name="Other" stackId="c" fill="#b8c2bb" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="answered" name="Answered" stackId="c" fill={SERIES_COLORS[0]} isAnimationActive={false} maxBarSize={36} />
+                    <Bar dataKey="missed" name="Missed / voicemail" stackId="c" fill={SERIES_COLORS[1]} isAnimationActive={false} maxBarSize={36} />
+                    <Bar dataKey="after_hours" name="After hours" stackId="c" fill={SERIES_COLORS[5]} isAnimationActive={false} maxBarSize={36} />
+                    <Bar dataKey="other" name="Other" stackId="c" fill="#b8c2bb" radius={[6, 6, 0, 0]} isAnimationActive={false} maxBarSize={36} />
                   </BarChart>
                 </ResponsiveContainer>
               </section>
@@ -220,7 +250,7 @@ export function InboxReportsPage(): JSX.Element {
                             <td style={{ fontWeight: 600 }}>{s.name}</td>
                             <td className="table__num">{s.replies}</td>
                             <td className="table__num">{s.calls}</td>
-                            <td className="table__num">{s.talk_s ? formatDuration(s.talk_s) : "—"}</td>
+                            <td className="table__num">{s.talk_s ? formatDuration(s.talk_s) : "None"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -259,6 +289,7 @@ export function InboxReportsPage(): JSX.Element {
           </>
         )}
       </DataState>
+      </div>
     </Shell>
   );
 }

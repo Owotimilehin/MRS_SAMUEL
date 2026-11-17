@@ -103,7 +103,7 @@ export function AdjustmentsPage(): JSX.Element {
   const negativeAdj = rows.filter((r) => r.lines.every((l) => l.delta <= 0) && r.lines.some((l) => l.delta < 0)).length;
 
   return (
-    <Shell title="Adjustments history">
+    <Shell title="Adjustments">
       <StatHero
         eyebrow="Products"
         title="Adjustments"
@@ -111,7 +111,7 @@ export function AdjustmentsPage(): JSX.Element {
         loading={loading}
         chips={[
           { label: "In range", value: rows.length },
-          { label: "Net delta (cans)", value: (netDelta >= 0 ? "+" : "") + netDelta },
+          { label: "Net change (bottles)", value: (netDelta >= 0 ? "+" : "") + netDelta },
           { label: "Increases", value: positiveAdj, tone: "good" },
           { label: "Decreases", value: negativeAdj, tone: negativeAdj > 0 ? "warn" : "good" },
         ]}

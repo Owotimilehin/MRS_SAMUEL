@@ -6,6 +6,7 @@ import { ngn, formatDateTime } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 import { BranchTabs } from "../../components/BranchTabs.js";
+import { StatHero } from "../../components/StatHero.js";
 
 // Shape returned by GET /online-orders/active — snake_case, matching the API.
 interface ActiveOrder {
@@ -81,13 +82,16 @@ export function BranchOnlineOrdersPage({ branchId }: { branchId: string }): JSX.
 
   return (
     <BranchShell branchId={branchId} title="Online orders">
-      <div style={{ marginBottom: 16 }}>
-        <h2 className="t-h2" style={{ marginBottom: 4 }}>Online orders</h2>
-        <p style={{ fontSize: 13, color: "var(--ink-soft)" }}>
-          Online orders at this branch — newest first. Awaiting-payment orders are shown so you
-          can follow up; only paid orders can be handed over or delivered.
-        </p>
-      </div>
+      <StatHero
+        eyebrow="Branch"
+        title="Online orders"
+        sub="Newest first. Unpaid orders are listed so you can follow up; only paid orders can be handed over or delivered."
+        loading={loading}
+        chips={[
+          { label: "Awaiting payment", value: awaitingPayment.length, tone: awaitingPayment.length > 0 ? "danger" : "good" },
+          { label: "Ready", value: ready.length },
+        ]}
+      />
       <BranchTabs items={[
         { to: "/branch/online-orders", label: "Online", cap: "sales.view" },
         { to: "/branch/preorders", label: "Preorders", cap: "pos.preorder" },
@@ -97,7 +101,7 @@ export function BranchOnlineOrdersPage({ branchId }: { branchId: string }): JSX.
         <InlineLoader />
       ) : orders.length === 0 ? (
         <div className="empty">
-          <div className="empty__title">No online orders right now.</div>
+          <div className="empty__title">No online orders right now</div>
           New orders will appear here as they come in.
         </div>
       ) : (

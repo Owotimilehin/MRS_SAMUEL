@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useOnlineOrderSignal } from "../hooks/useOnlineOrderSignal.js";
 import {
   Menu,
@@ -115,6 +115,31 @@ const NAV_ADMIN: NavLink[] = [
   { to: "/owner/settings", label: "Settings", Icon: Settings, cap: "branches.manage" },
 ];
 
+const ALL_NAV: NavLink[] = [
+  ...NAV_OVERVIEW,
+  ...NAV_INBOX,
+  ...NAV_SALES,
+  ...NAV_PRODUCTS,
+  ...NAV_FINANCE,
+  ...NAV_MARKETING,
+  ...NAV_ADMIN,
+];
+
+/**
+ * The single menu item to highlight for a path: the one whose route is the
+ * longest prefix of it. So /inbox/reports lights "Inbox reports" only, while
+ * /inbox/<conversation> still lights "Inbox".
+ */
+function activeNavTo(pathname: string): string | undefined {
+  let best: string | undefined;
+  for (const { to } of ALL_NAV) {
+    if ((pathname === to || pathname.startsWith(to + "/")) && (!best || to.length > best.length)) {
+      best = to;
+    }
+  }
+  return best;
+}
+
 interface ShellProps {
   children: ReactNode;
   title: string;
@@ -131,6 +156,8 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
   // "drawn-out" text rail on md; inert on desktop where the rail is always full.
   const rail = useRailOpen();
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const activeTo = activeNavTo(pathname);
 
   // Needs-review badge: total items awaiting owner attention (transfer variances +
   // return approvals + payment attention). Fetched once per Shell mount; best-effort
@@ -197,8 +224,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
               to={item.to}
               title={item.label}
               onClick={rail.close}
-              className="app-nav__link"
-              activeProps={{ className: "app-nav__link is-active" }}
+              className={`app-nav__link${activeTo === item.to ? " is-active" : ""}`}
             >
               <span className="app-nav__icon">
                 <item.Icon strokeWidth={1.9} />
@@ -330,7 +356,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
             ) : null}
             <div className="app-head__title">{title}</div>
           </div>
-          <div style={{ flex: 1 }} />
+          <div className="app-head__spacer" style={{ flex: 1 }} />
           <label className="app-head__search">
             <Search />
             <input className="input" type="search" placeholder="Search…" aria-label="Search" />

@@ -4,6 +4,7 @@ import { Shell } from "../../components/Shell.js";
 import { StatHero, type StatChip } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { ngn, formatDateTime } from "../../lib/format.js";
+import { dayLabel } from "../../lib/date-labels.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
 
@@ -159,7 +160,7 @@ export function CloseDetailPage({
 
   return (
     <Shell
-      title={data ? `Shift end · ${data.businessDate}` : "Shift end"}
+      title={data ? `Shift end · ${dayLabel(data.businessDate)}` : "Shift end"}
       actions={
         <Link to="/owner/closes" className="btn btn--subtle btn--sm">
           ← All reports
@@ -189,8 +190,8 @@ export function CloseDetailPage({
         return (
           <StatHero
             eyebrow="Finance"
-            title={data ? `Shift end · ${data.businessDate}` : "Shift end"}
-            sub={data ? `Branch shift end · ${data.businessDate}` : "Loading…"}
+            title={data ? `Shift end · ${dayLabel(data.businessDate)}` : "Shift end"}
+            sub={data ? `Branch shift end · ${dayLabel(data.businessDate)}` : "Loading…"}
             loading={loading}
             chips={chips}
           />
@@ -290,7 +291,7 @@ export function CloseDetailPage({
             </h2>
             <div style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 12 }}>
               The {data.cash_sales.length} transfer {data.cash_sales.length === 1 ? "sale" : "sales"} on{" "}
-              {data.businessDate} that add up to {ngn(data.systemCashTotalNgn)}.
+              {dayLabel(data.businessDate)} that add up to {ngn(data.systemCashTotalNgn)}.
             </div>
             {data.cash_sales.length === 0 ? (
               <div className="empty">No transfer sales recorded for this day.</div>

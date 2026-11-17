@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Paperclip, Send, MessageSquareText, FileText, X, StickyNote, Clock } from "lucide-react";
+import { Paperclip, MessageCircle, MessageSquareText, FileText, X, StickyNote, Clock } from "lucide-react";
 import { waWindowRemainingMs } from "@ms/shared";
 import { Modal } from "../Modal.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
@@ -9,6 +9,8 @@ import { toast } from "../../lib/toast.js";
 import {
   countTemplateParams,
   fillTemplate,
+  humanTemplateName,
+  languageName,
   sendTypeForMime,
   shouldSendTyping,
   templateBodyText,
@@ -125,9 +127,25 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
     }
   }
 
+  // Shown instead of the reply box once WhatsApp's 24-hour window has closed.
+  const windowClosed = canReply && waNumber && !win.open;
+  const closedNotice = (hidden: boolean): JSX.Element => (
+        <div className="ibx-comp__closed" aria-hidden={hidden || undefined} style={hidden ? { visibility: "hidden" } : undefined}>
+          <div className="ibx-comp__closed-text">
+            It's more than 24 hours since the customer last wrote, so WhatsApp only accepts a template.{" "}
+            {can("inbox.templates") ? "Send one to restart the chat." : "Ask a supervisor to send one."}
+          </div>
+          {can("inbox.templates") && (
+            <button type="button" className="btn btn--primary btn--sm" onClick={() => setShowTemplates(true)}>
+              Send a template
+            </button>
+          )}
+        </div>
+  );
+
   return (
     <div className={`ibx-comp${mode === "note" ? " ibx-comp--note" : ""}`}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <div className="ibx-comp__top">
         <div className="ibx-comp__modes" role="tablist" aria-label="Reply or note">
           {canReply && waNumber && (
             <button
@@ -137,7 +155,7 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
               className={`ibx-tab${mode === "reply" ? " is-active" : ""}`}
               onClick={() => setMode("reply")}
             >
-              <Send size={12} /> WhatsApp reply
+              <MessageCircle size={13} aria-hidden /> WhatsApp reply
             </button>
           )}
           {canNote && (
@@ -148,16 +166,20 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
               className={`ibx-tab${mode === "note" ? " is-active" : ""}`}
               onClick={() => setMode("note")}
             >
-              <StickyNote size={12} /> Internal note
+              <StickyNote size={13} aria-hidden /> Internal note
             </button>
           )}
         </div>
-        {replyMode && (
+      </div>
+      {/* One status line in both tabs, so the box is the same height whichever is open. */}
+      <div className="ibx-comp__status">
+        {mode === "note" ? (
+          <span className="ibx-comp__hint">Only staff can see notes.</span>
+        ) : replyMode ? (
           <span className={`ibx-comp__window ibx-comp__window--${win.open ? "open" : "closed"}`}>
-            <Clock size={13} aria-hidden /> {win.text}
+            <Clock size={13} aria-hidden /> {win.open ? win.text : "Reply window closed"}
           </span>
-        )}
-        {mode === "note" && <span style={{ fontSize: 12, color: "#8a6d00" }}>Only staff can see notes.</span>}
+        ) : null}
       </div>
       {!waNumber && mode === "reply" && (
         <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>This number is for calls only — WhatsApp replies aren't possible.</div>
@@ -178,19 +200,16 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
         </div>
       )}
 
-      {freeTextBlocked ? (
-        <div className="ibx-comp__row" style={{ alignItems: "center" }}>
-          <div style={{ flex: 1, fontSize: 13, color: "var(--ink-soft)" }}>
-            WhatsApp only allows free messages within 24 hours of the customer's last message.
-          </div>
-          {can("inbox.templates") ? (
-            <button type="button" className="btn btn--primary btn--sm" onClick={() => setShowTemplates(true)}>
-              Send a template
-            </button>
-          ) : (
-            <span style={{ fontSize: 12 }}>Ask a supervisor to send a template.</span>
-          )}
+      <div className="ibx-comp__body">
+      {/* Kept (invisibly) behind the note box too, so the box is the same height in both tabs. */}
+      {windowClosed && !freeTextBlocked && closedNotice(true)}
+      {freeTextBlocked && (
+        <div className="ibx-comp__row" aria-hidden style={{ visibility: "hidden" }}>
+          <textarea className="textarea" rows={2} tabIndex={-1} readOnly />
         </div>
+      )}
+      {freeTextBlocked ? (
+        closedNotice(false)
       ) : (
         <div className="ibx-comp__row">
           {replyMode && (
@@ -222,7 +241,7 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
           <textarea
             className="textarea"
             rows={2}
-            placeholder={mode === "note" ? "Write a note for your team…" : file ? "Add a caption (optional)…" : "Type a reply…"}
+            placeholder={mode === "note" ? "Write a note only staff can see…" : file ? "Add a caption (optional)…" : "Type a reply…"}
             value={text}
             onChange={(e) => onType(e.target.value)}
             onKeyDown={onKey}
@@ -239,6 +258,7 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
           </button>
         </div>
       )}
+      </div>
 
       {showQuick && (
         <QuickReplyPicker
@@ -350,8 +370,9 @@ function TemplatePicker({ conv, onClose, onSent }: { conv: ConversationDetail; o
               onClick={() => choose(t)}
             >
               <div style={{ fontWeight: 700 }}>
-                {t.name} <span className="pill" style={{ fontSize: 10 }}>{t.language}</span>
+                {humanTemplateName(t.name)} <span className="pill" style={{ fontSize: 10 }}>{languageName(t.language)}</span>
               </div>
+              <div className="ibx-raw">{t.name}</div>
               <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>{(templateBodyText(t.components) ?? "").slice(0, 160)}</div>
             </button>
           ))}

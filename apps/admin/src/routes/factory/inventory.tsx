@@ -1,19 +1,28 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Shell } from "../../components/Shell.js";
 import { StatHero } from "../../components/StatHero.js";
 import type { StatChip } from "../../components/StatHero.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { toast } from "../../lib/toast.js";
+import { useAuthUser } from "../../lib/auth.js";
+import { hasCapability } from "@ms/shared";
 
 interface Factory { id: string; name: string }
 interface Product { id: string; name: string; category: string }
+
+/** "regular" → "Regular", "made_to_order" → "Made to order". */
+function categoryLabel(raw: string): string {
+  const words = raw.replace(/[_-]+/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "—";
+}
 
 export function FactoryInventoryPage(): JSX.Element {
   const [factories, setFactories] = useState<Factory[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [stock, setStock] = useState<Record<string, Record<string, number>>>({});
   const [loading, setLoading] = useState(true);
+  const canAdjust = hasCapability(useAuthUser().capabilities, "stock.adjust");
 
   useEffect(() => {
     let cancelled = false;
@@ -75,7 +84,7 @@ export function FactoryInventoryPage(): JSX.Element {
     <Shell title="Factory inventory">
       <StatHero
         eyebrow="Factory"
-        title="Inventory"
+        title="Factory inventory"
         sub="Finished-goods balances across all factory locations."
         loading={loading}
         chips={inventoryChips}
@@ -93,24 +102,46 @@ export function FactoryInventoryPage(): JSX.Element {
             </h2>
             <div className="table-wrap" style={{ border: 0 }}>
               <table className="table">
+                {/* Category is a heading row above its products rather than a
+                    column, so product names keep the full width on a phone. */}
                 <thead>
                   <tr>
-                    <th>Category</th>
                     <th>Product</th>
-                    <th className="table__num">On hand</th>
+                    <th className="table__num" style={{ width: "1%", whiteSpace: "nowrap" }}>On hand</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedProducts.map((p) => {
+                  {sortedProducts.map((p, i) => {
                     const qty = stock[f.id]?.[p.id] ?? 0;
+                    const newCategory = i === 0 || sortedProducts[i - 1]!.category !== p.category;
                     return (
-                      <tr key={p.id}>
-                        <td style={{ color: "var(--ink-soft)" }}>{p.category}</td>
-                        <td>{p.name}</td>
-                        <td className="table__num" style={{ fontWeight: 700 }}>
-                          {qty}
-                        </td>
-                      </tr>
+                      <Fragment key={p.id}>
+                        {newCategory && (
+                          <tr>
+                            <th
+                              colSpan={2}
+                              scope="rowgroup"
+                              style={{
+                                textAlign: "left",
+                                padding: "8px 18px",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: "var(--ink-soft)",
+                                background: "var(--surface-sunken)",
+                                borderBottom: "1px solid var(--line)",
+                              }}
+                            >
+                              {categoryLabel(p.category)}
+                            </th>
+                          </tr>
+                        )}
+                        <tr>
+                          <td>{p.name}</td>
+                          <td className="table__num" style={{ fontWeight: 700 }}>
+                            {qty}
+                          </td>
+                        </tr>
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -120,10 +151,12 @@ export function FactoryInventoryPage(): JSX.Element {
         ))
       )}
 
-      <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 14 }}>
-        Read-only view. Only the owner can adjust stock — they do that from
-        Owner → Inventory.
-      </p>
+      {!canAdjust && (
+        <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 14 }}>
+          You can view these numbers but not change them. Only the owner can adjust stock, from
+          Owner → Inventory.
+        </p>
+      )}
     </Shell>
   );
 }

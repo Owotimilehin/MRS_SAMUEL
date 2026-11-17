@@ -3,9 +3,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DataState } from "../DataState.js";
 import { Modal } from "../Modal.js";
 import { ConfirmModal } from "../ConfirmModal.js";
-import { settingsApi, settingsKeys } from "../../lib/inbox-settings-api.js";
+import { resolveCapabilities, type AdminRole, type Capability } from "@ms/shared";
+import { settingsApi, settingsKeys, type AdminUserLite } from "../../lib/inbox-settings-api.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import { toast } from "../../lib/toast.js";
+import { sentenceCase, staffLabel } from "../../lib/inbox-logic.js";
 import type { QuickReply, TeamWithMembers } from "../../lib/inbox-types.js";
 
 // ── Teams ────────────────────────────────────────────────────────────────────
@@ -23,7 +25,7 @@ export function SettingsTeams(): JSX.Element {
 
   return (
     <section className="card">
-      <div className="card__head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <div className="ibx-cardhead">
         <div>
           <h2 className="t-h2">Teams</h2>
           <p style={{ color: "var(--ink-soft)", fontSize: 13 }}>Group staff so chats and calls reach the right people.</p>
@@ -41,13 +43,15 @@ export function SettingsTeams(): JSX.Element {
         emptyHint="Create a team, e.g. Sales or Deliveries."
       >
         <div className="table-wrap">
-          <table className="table">
+          <table className="table ibx-stack">
             <thead>
               <tr>
                 <th>Team</th>
                 <th>Members</th>
                 <th>Status</th>
-                <th />
+                <th>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -57,19 +61,23 @@ export function SettingsTeams(): JSX.Element {
                     <div style={{ fontWeight: 700 }}>{t.name}</div>
                     {t.description && <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{t.description}</div>}
                   </td>
-                  <td style={{ fontSize: 13 }}>
-                    {t.members.length === 0
-                      ? "Nobody yet"
-                      : t.members.map((m) => `${m.name}${m.is_lead ? " (lead)" : ""}`).join(", ")}
+                  <td style={{ fontSize: 13 }} data-label="Members">
+                    <span>
+                      {t.members.length === 0
+                        ? "Nobody yet"
+                        : t.members.map((m) => `${staffLabel(m.name)}${m.is_lead ? " (lead)" : ""}`).join(", ")}
+                    </span>
                   </td>
-                  <td>{t.isActive ? <span className="pill pill--success">Active</span> : <span className="pill pill--ink">Off</span>}</td>
-                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <button type="button" className="btn btn--subtle btn--sm" style={{ marginRight: 6 }} onClick={() => setMembers(t)}>
-                      Members
-                    </button>
-                    <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEdit(t)}>
-                      Edit
-                    </button>
+                  <td data-label="Status">{t.isActive ? <span className="pill pill--success">Active</span> : <span className="pill pill--ink">Off</span>}</td>
+                  <td className="ibx-stack__actions">
+                    <div className="ibx-actions">
+                      <button type="button" className="btn btn--subtle btn--sm" onClick={() => setMembers(t)}>
+                        Members
+                      </button>
+                      <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEdit(t)}>
+                        Edit
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -171,7 +179,7 @@ function MembersEditor({ team, onClose, onSaved }: { team: TeamWithMembers; onCl
             <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
               <label style={{ display: "flex", gap: 8, alignItems: "center", flex: 1 }}>
                 <input type="checkbox" checked={sel.has(s.id)} onChange={(e) => toggle(s.id, e.target.checked)} />
-                <span>{s.name}</span>
+                <span>{staffLabel(s.name)}</span>
               </label>
               {sel.has(s.id) && (
                 <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, color: "var(--ink-soft)" }}>
@@ -219,6 +227,19 @@ function MembersEditor({ team, onClose, onSaved }: { team: TeamWithMembers; onCl
 }
 
 // ── Who can use which number ─────────────────────────────────────────────────
+
+/** True for people allowed to see every conversation: the server never limits them by number. */
+function seesEveryNumber(u: AdminUserLite): boolean {
+  try {
+    const o = u.permissionOverrides;
+    return resolveCapabilities(u.role as AdminRole, {
+      granted: (o?.granted ?? []) as Capability[],
+      revoked: (o?.revoked ?? []) as Capability[],
+    }).includes("inbox.view_all");
+  } catch {
+    return u.role === "owner";
+  }
+}
 
 export function SettingsAccess(): JSX.Element {
   const qc = useQueryClient();
@@ -269,7 +290,8 @@ export function SettingsAccess(): JSX.Element {
     <section className="card">
       <h2 className="t-h2">Who can use which number</h2>
       <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 12 }}>
-        Staff only see chats and calls for the numbers ticked here. Owners and admins who can see everything aren't limited.
+        Staff only see chats and calls for the numbers ticked here. People who can see every conversation (owners and some
+        admins) always have every number, so their boxes are ticked and locked.
       </p>
       <DataState
         loading={loading}
@@ -288,28 +310,31 @@ export function SettingsAccess(): JSX.Element {
           {people.map((u) => {
             const current = drafts[u.id] ?? granted.get(u.id) ?? new Set<string>();
             const dirty = !!drafts[u.id];
+            // Owners (and anyone allowed to see every conversation) are never limited by this list.
+            const unlimited = seesEveryNumber(u);
             return (
               <div key={u.id} className="card card--soft" style={{ display: "grid", gap: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                   <div>
-                    <div style={{ fontWeight: 700 }}>{u.name?.trim() || u.email}</div>
-                    <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{u.role}</div>
+                    <div style={{ fontWeight: 700 }}>{staffLabel(u.name?.trim() || u.email)}</div>
+                    <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+                      {sentenceCase(u.role)}
+                      {unlimited ? " · can use every number" : ""}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm"
-                    disabled={!dirty || saving === u.id}
-                    onClick={() => void save(u.id)}
-                  >
-                    {saving === u.id ? "Saving…" : "Save"}
-                  </button>
+                  {!unlimited && (dirty || saving === u.id) && (
+                    <button type="button" className="btn btn--primary btn--sm" disabled={saving === u.id} onClick={() => void save(u.id)}>
+                      {saving === u.id ? "Saving…" : "Save changes"}
+                    </button>
+                  )}
                 </div>
                 <div className="ibx-checks">
                   {activeNumbers.map((n) => (
                     <label key={n.id}>
                       <input
                         type="checkbox"
-                        checked={current.has(n.id)}
+                        checked={unlimited || current.has(n.id)}
+                        disabled={unlimited}
                         onChange={(e) =>
                           setDrafts((d) => {
                             const next = new Set(d[u.id] ?? granted.get(u.id) ?? []);
@@ -344,7 +369,7 @@ export function SettingsQuickReplies(): JSX.Element {
 
   return (
     <section className="card">
-      <div className="card__head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <div className="ibx-cardhead">
         <div>
           <h2 className="t-h2">Quick replies</h2>
           <p style={{ color: "var(--ink-soft)", fontSize: 13 }}>Ready-made answers staff can drop into a chat.</p>
@@ -363,17 +388,19 @@ export function SettingsQuickReplies(): JSX.Element {
       >
         <div style={{ display: "grid", gap: 8 }}>
           {(q.data ?? []).map((r) => (
-            <div key={r.id} className="card card--soft" style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
+            <div key={r.id} className="card card--soft" style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 200px", minWidth: 0 }}>
                 <div style={{ fontWeight: 700 }}>{r.title}</div>
                 <div style={{ fontSize: 13, color: "var(--ink-soft)", whiteSpace: "pre-wrap" }}>{r.body}</div>
               </div>
-              <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEdit(r)}>
-                Edit
-              </button>
-              <button type="button" className="btn btn--danger btn--sm" onClick={() => setDel(r)}>
-                Delete
-              </button>
+              <div className="ibx-actions">
+                <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEdit(r)}>
+                  Edit
+                </button>
+                <button type="button" className="btn btn--danger btn--sm" onClick={() => setDel(r)}>
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </div>

@@ -3,6 +3,7 @@ import { Shell } from "../../components/Shell.js";
 import { api, humanizeError } from "../../lib/api.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { StatHero } from "../../components/StatHero.js";
+import { ngn } from "../../lib/format.js";
 import {
   getReceiptStyle,
   setReceiptStyle,
@@ -101,7 +102,7 @@ export function SettingsPage(): JSX.Element {
       <StatHero
         eyebrow="Admin"
         title="Settings"
-        sub="Branch operating hours, contacts, and integrations."
+        sub="Receipt style, homepage banner, branch hours and contacts, and integrations."
       />
 
       {flash && (
@@ -203,8 +204,10 @@ export function SettingsPage(): JSX.Element {
                       </label>
                       <label className="field" style={{ gridColumn: "1 / -1" }}>
                         <span className="field__label">Address</span>
-                        <input
-                          className="input"
+                        <textarea
+                          className="textarea"
+                          rows={2}
+                          style={{ minHeight: 64 }}
                           value={current.address ?? ""}
                           onChange={(ev) => patch(b.id, { address: ev.target.value })}
                         />
@@ -232,16 +235,12 @@ export function SettingsPage(): JSX.Element {
               Refunds above this amount need your approval before they're processed at the
               branch.
             </p>
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <input
-                className="input"
-                type="number"
-                value={5000}
-                disabled
-                style={{ maxWidth: 160 }}
-              />
+            <div style={{ display: "flex", gap: "4px 12px", alignItems: "baseline", flexWrap: "wrap" }}>
+              <span className="tabular-nums" style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>
+                {ngn(5000)}
+              </span>
               <span style={{ color: "var(--ink-soft)", fontSize: 12 }}>
-                Naira · contact support to change this threshold
+                Fixed limit. Contact support to change it.
               </span>
             </div>
           </section>
@@ -386,7 +385,7 @@ function ReceiptStyleCard(): JSX.Element {
         </div>
 
         {/* Live preview */}
-        <div style={{ flex: "0 0 auto" }}>
+        <div style={{ flex: "0 1 auto", minWidth: 0, maxWidth: "100%", overflowX: "auto" }}>
           <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 6 }}>Preview</div>
           <div
             style={{
@@ -479,15 +478,16 @@ function BannerCard(): JSX.Element {
           <label className="field">
             <span className="field__label">Message</span>
             <textarea
-              className="input"
+              className="textarea"
               rows={3}
               maxLength={280}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="330ml is for bulk preorder only. 650ml still available for same-day delivery."
+              placeholder="Type your banner message here"
             />
             <span style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>
               {message.length}/280
+              {message.trim() ? "" : " · Nothing saved yet. Example: “330ml is for bulk preorder only. 650ml still available for same-day delivery.”"}
             </span>
           </label>
           {enabled && message.trim() && (
@@ -537,16 +537,11 @@ function BannerCard(): JSX.Element {
 function ReadRow({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "220px 1fr",
-        gap: 12,
-        alignItems: "center",
-        padding: "6px 0",
-      }}
+      className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-x-3 gap-y-0.5 sm:items-center"
+      style={{ padding: "6px 0" }}
     >
       <span style={{ color: "var(--ink-soft)", fontSize: 13 }}>{label}</span>
-      <span style={{ fontSize: 14, color: "var(--ink)" }}>{value}</span>
+      <span style={{ fontSize: 14, color: "var(--ink)", minWidth: 0, overflowWrap: "anywhere" }}>{value}</span>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmModal } from "../ConfirmModal.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
-import { contactName, listTime, phoneConfirmMatches } from "../../lib/inbox-logic.js";
+import { contactName, listTime, phoneConfirmMatches, prettyPhone } from "../../lib/inbox-logic.js";
 import { toast } from "../../lib/toast.js";
 import type { ContactInfo, ContactSearchHit } from "../../lib/inbox-types.js";
 
@@ -76,7 +76,7 @@ export function ContactPanel({
         <div style={{ fontWeight: 800, fontSize: 16 }}>{contactName(c.name, c.phone)}</div>
         {c.phone && (
           <a href={`tel:${c.phone}`} style={{ fontSize: 14 }}>
-            {c.phone}
+            {prettyPhone(c.phone)}
           </a>
         )}
         {c.email && <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>{c.email}</div>}
@@ -99,9 +99,13 @@ export function ContactPanel({
             <textarea className="textarea" rows={4} value={notes} maxLength={4000} onChange={(e) => setNotes(e.target.value)} />
             <span className="field__hint">Only staff can see these.</span>
           </label>
-          <button type="button" className="btn btn--primary btn--sm" disabled={!dirty || busy} onClick={() => void save()}>
-            {busy ? "Saving…" : "Save"}
-          </button>
+          {dirty || busy ? (
+            <button type="button" className="btn btn--primary btn--sm" style={{ justifySelf: "start" }} disabled={busy} onClick={() => void save()}>
+              {busy ? "Saving…" : "Save changes"}
+            </button>
+          ) : (
+            <span className="field__hint">No unsaved changes.</span>
+          )}
         </div>
       ) : (
         c.notes && <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{c.notes}</div>
@@ -130,18 +134,18 @@ export function ContactPanel({
         )}
       </div>
       {canErase && (
-        <div style={{ display: "grid", gap: 6, justifyItems: "start", borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+        <div className="ibx-side__manage">
           <div className="t-eyebrow">Manage contact</div>
           <button type="button" className="btn btn--subtle btn--sm" onClick={() => setDialog("merge")}>
             Merge with another contact…
           </button>
           <button
             type="button"
-            className="btn btn--ghost btn--sm"
-            style={{ color: "var(--danger-ink, #b91c1c)", textAlign: "left", whiteSpace: "normal" }}
+            className="btn btn--danger btn--sm"
+            title="Permanently delete this customer's messages and calls"
             onClick={() => setDialog("erase")}
           >
-            Delete this customer's messages and calls…
+            Delete messages and calls…
           </button>
         </div>
       )}
@@ -213,14 +217,14 @@ function EraseDialog({ customer, onClose, onDone }: { customer: Customer; onClos
         {customer.phone ? (
           <label className="field">
             <span className="field__label">
-              Type the customer's phone number to confirm: <strong>{customer.phone}</strong>
+              Type the customer's phone number to confirm: <strong>{prettyPhone(customer.phone)}</strong>
             </span>
             <input
               className="input"
               inputMode="tel"
               autoComplete="off"
               value={typed}
-              placeholder={customer.phone}
+              placeholder={prettyPhone(customer.phone)}
               onChange={(e) => setTyped(e.target.value)}
             />
             {typed.trim() && !matches && <span className="field__hint">That doesn't match yet.</span>}
@@ -288,11 +292,11 @@ function MergeDialog({ customer, onClose, onDone }: { customer: Customer; onClos
           <div className="card card--soft" style={{ fontSize: 13, display: "grid", gap: 2 }}>
             <div>
               <strong>From:</strong> {who}
-              {customer.name && customer.phone ? ` (${customer.phone})` : ""}
+              {customer.name && customer.phone ? ` (${prettyPhone(customer.phone)})` : ""}
             </div>
             <div>
               <strong>To:</strong> {contactName(target.name, target.phone)}
-              {target.name && target.phone ? ` (${target.phone})` : ""}
+              {target.name && target.phone ? ` (${prettyPhone(target.phone)})` : ""}
             </div>
           </div>
           <p style={{ margin: 0, color: "var(--ink-soft)", fontSize: 13 }}>This can't be undone from here.</p>
@@ -335,7 +339,7 @@ function MergeDialog({ customer, onClose, onDone }: { customer: Customer; onClos
                 >
                   <div style={{ fontWeight: 700 }}>{contactName(h.name, h.phone)}</div>
                   <div style={{ color: "var(--ink-soft)", fontSize: 13 }}>
-                    {h.name && h.phone ? `${h.phone} · ` : ""}
+                    {h.name && h.phone ? `${prettyPhone(h.phone)} · ` : ""}
                     {plural(h.conversations, "chat")}
                   </div>
                 </button>

@@ -8,6 +8,7 @@ import { settingsApi, settingsKeys, type NumberInput } from "../../lib/inbox-set
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import { toast } from "../../lib/toast.js";
 import { GreetingUpload } from "./GreetingUpload.js";
+import { humanTemplateName, languageName, messagingLimitLabel, prettyPhone, sentenceCase, templateCategoryLabel } from "../../lib/inbox-logic.js";
 import type { PhoneNumberRow } from "../../lib/inbox-types.js";
 
 const CHANNEL_LABEL = { both: "WhatsApp + calls", whatsapp: "WhatsApp only", voice: "Calls only" } as const;
@@ -47,7 +48,7 @@ export function SettingsNumbers(): JSX.Element {
 
   return (
     <section className="card">
-      <div className="card__head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <div className="ibx-cardhead">
         <div>
           <h2 className="t-h2">Business numbers</h2>
           <p style={{ color: "var(--ink-soft)", fontSize: 13 }}>The phone numbers customers WhatsApp and call.</p>
@@ -65,15 +66,17 @@ export function SettingsNumbers(): JSX.Element {
         emptyHint="Add your first business number."
       >
         <div className="table-wrap">
-          <table className="table">
+          <table className="table ibx-stack">
             <thead>
               <tr>
                 <th>Number</th>
                 <th>Used for</th>
                 <th>WhatsApp status</th>
                 <th>Quality</th>
-                <th className="table__num">Calls now</th>
-                <th />
+                <th className="table__num" title="Phone calls happening on this number right now">Live calls</th>
+                <th>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -81,28 +84,33 @@ export function SettingsNumbers(): JSX.Element {
                 <tr key={n.id}>
                   <td>
                     <div style={{ fontWeight: 700 }}>{n.label}</div>
-                    <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{n.e164}</div>
+                    <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{prettyPhone(n.e164)}</div>
                     {!n.isActive && <span className="pill pill--ink">Switched off</span>}
                   </td>
-                  <td>{CHANNEL_LABEL[n.channels]}</td>
-                  <td>
+                  <td data-label="Used for">{CHANNEL_LABEL[n.channels]}</td>
+                  <td data-label="WhatsApp status">
+                    <div>
                     {n.channels === "voice" ? (
-                      "—"
+                      <span style={{ color: "var(--ink-soft)" }}>Not used</span>
                     ) : n.waStatus ? (
                       <span className={`pill ${/connected|registered/i.test(n.waStatus) ? "pill--success" : "pill--warning"}`}>
-                        {n.waStatus.toLowerCase()}
+                        {sentenceCase(n.waStatus)}
                       </span>
                     ) : (
                       <span className="pill pill--ink">Not registered</span>
                     )}
-                    {n.messagingLimit && (
-                      <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>Limit: {n.messagingLimit.replace(/_/g, " ").toLowerCase()}</div>
+                    {n.channels !== "voice" && messagingLimitLabel(n.messagingLimit) && (
+                      <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 2 }}>{messagingLimitLabel(n.messagingLimit)}</div>
                     )}
+                    </div>
                   </td>
-                  <td>{n.channels === "voice" ? "—" : qualityPill(n.qualityRating)}</td>
-                  <td className="table__num">{n.calls_in_progress}</td>
-                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <button type="button" className="btn btn--subtle btn--sm" style={{ marginRight: 6 }} onClick={() => setEdit(n)}>
+                  <td data-label="Quality">
+                    {n.channels === "voice" ? <span style={{ color: "var(--ink-soft)" }}>Not used</span> : qualityPill(n.qualityRating)}
+                  </td>
+                  <td className="table__num" data-label="Live calls">{n.calls_in_progress}</td>
+                  <td className="ibx-stack__actions">
+                    <div className="ibx-actions">
+                    <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEdit(n)}>
                       Edit
                     </button>
                     {n.channels !== "voice" && n.waPhoneNumberId && (
@@ -110,18 +118,18 @@ export function SettingsNumbers(): JSX.Element {
                         <button
                           type="button"
                           className="btn btn--subtle btn--sm"
-                          style={{ marginRight: 6 }}
                           disabled={refreshing === n.id}
                           onClick={() => void refresh(n)}
                           title="Check status with WhatsApp"
                         >
-                          <RefreshCw size={13} /> {refreshing === n.id ? "Checking…" : "Check"}
+                          <RefreshCw size={13} aria-hidden /> {refreshing === n.id ? "Checking…" : "Check status"}
                         </button>
                         <button type="button" className="btn btn--subtle btn--sm" onClick={() => setRegister(n)}>
                           Register on WhatsApp
                         </button>
                       </>
                     )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -420,7 +428,7 @@ export function SettingsTemplates(): JSX.Element {
   const [busy, setBusy] = useState(false);
   return (
     <section className="card">
-      <div className="card__head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <div className="ibx-cardhead">
         <div>
           <h2 className="t-h2">Message templates</h2>
           <p style={{ color: "var(--ink-soft)", fontSize: 13 }}>
@@ -456,7 +464,7 @@ export function SettingsTemplates(): JSX.Element {
         emptyHint="Create templates in WhatsApp Manager, then press Sync."
       >
         <div className="table-wrap">
-          <table className="table">
+          <table className="table ibx-stack">
             <thead>
               <tr>
                 <th>Name</th>
@@ -469,15 +477,18 @@ export function SettingsTemplates(): JSX.Element {
             <tbody>
               {(q.data ?? []).map((t) => (
                 <tr key={t.id}>
-                  <td style={{ fontWeight: 600 }}>{t.name}</td>
-                  <td>{t.language}</td>
-                  <td>{(t.category ?? "—").toLowerCase()}</td>
                   <td>
+                    <div style={{ fontWeight: 600 }}>{humanTemplateName(t.name)}</div>
+                    <div className="ibx-raw" title="The template's name in WhatsApp Manager">{t.name}</div>
+                  </td>
+                  <td data-label="Language">{languageName(t.language)}</td>
+                  <td data-label="Type">{templateCategoryLabel(t.category)}</td>
+                  <td data-label="Status">
                     <span className={`pill ${t.status.toUpperCase() === "APPROVED" ? "pill--success" : t.status.toUpperCase() === "REJECTED" ? "pill--danger" : "pill--warning"}`}>
-                      {t.status.toLowerCase()}
+                      {sentenceCase(t.status)}
                     </span>
                   </td>
-                  <td className="table__num">{t.param_count}</td>
+                  <td className="table__num" data-label="Blanks to fill">{t.param_count}</td>
                 </tr>
               ))}
             </tbody>

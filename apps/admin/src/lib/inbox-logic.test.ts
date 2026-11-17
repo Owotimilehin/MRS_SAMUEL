@@ -409,3 +409,36 @@ describe("validateMenu with recordings", () => {
     ).toMatch(/upload a recording/);
   });
 });
+
+describe("display helpers", () => {
+  it("formats phone numbers readably and leaves anything else alone", async () => {
+    const { prettyPhone } = await import("./inbox-logic.js");
+    expect(prettyPhone("+2349033330003")).toBe("+234 903 333 0003");
+    expect(prettyPhone("08031234567")).toBe("0803 123 4567");
+    expect(prettyPhone("2348031234567")).toBe("+234 803 123 4567");
+    expect(prettyPhone("+14155550123")).toBe("+1 415 555 0123");
+    expect(prettyPhone("Ngozi Eze")).toBe("Ngozi Eze");
+    expect(prettyPhone(null)).toBe("");
+  });
+  it("shows the part before @ for staff who only have an email", async () => {
+    const { staffLabel } = await import("./inbox-logic.js");
+    expect(staffLabel("owner@preview.local")).toBe("owner");
+    expect(staffLabel("Ada Obi")).toBe("Ada Obi");
+    expect(staffLabel(null)).toBe("Staff");
+  });
+  it("turns raw values into wording staff can read", async () => {
+    const m = await import("./inbox-logic.js");
+    expect(m.humanTemplateName("missed_call_followup")).toBe("Missed call follow-up");
+    expect(m.humanDay("2026-12-25")).toBe("25 Dec 2026");
+    expect(m.sentenceCase("owner")).toBe("Owner");
+    expect(m.messagingLimitLabel("TIER_1K")).toBe("Up to 1,000 new chats a day");
+    expect(m.emptyListText("closed", false).title).toBe("No closed chats yet");
+  });
+  it("picks shared chart date marks that end on the last day", async () => {
+    const { axisDays } = await import("./inbox-logic.js");
+    const days = Array.from({ length: 30 }, (_, i) => `d${i}`);
+    const ticks = axisDays(days, 6);
+    expect(ticks.length).toBeLessThanOrEqual(6);
+    expect(ticks[ticks.length - 1]).toBe("d29");
+  });
+});

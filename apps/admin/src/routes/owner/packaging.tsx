@@ -61,8 +61,8 @@ function kindBadge(kind: MaterialKind): JSX.Element {
     other:  { background: "rgba(107,114,128,0.12)", color: "var(--ink-soft)", border: "1px solid rgba(107,114,128,0.2)" },
   };
   return (
-    <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 10, ...styles[kind] }}>
-      {kind}
+    <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 10, whiteSpace: "nowrap", ...styles[kind] }}>
+      {kind.charAt(0).toUpperCase() + kind.slice(1)}
     </span>
   );
 }
@@ -274,7 +274,7 @@ export function PackagingPage(): JSX.Element {
               ) : (
                 stock.map((s) => (
                   <tr key={s.material_id}>
-                    <td>{s.name}</td>
+                    <td style={{ minWidth: 170 }}>{s.name}</td>
                     <td>{kindBadge(s.kind ?? "other")}</td>
                     <td className="table__num" style={{ fontWeight: 700, color: balanceTone(s.balance) }}>
                       {s.balance.toLocaleString()}
@@ -316,12 +316,12 @@ export function PackagingPage(): JSX.Element {
               ) : (
                 purchases.map((p) => (
                   <tr key={p.id}>
-                    <td>{formatDate(p.purchaseDate)}</td>
-                    <td>{materialById.get(p.packagingMaterialId)?.name ?? p.packagingMaterialId.slice(0, 8)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{formatDate(p.purchaseDate)}</td>
+                    <td style={{ minWidth: 170 }}>{materialById.get(p.packagingMaterialId)?.name ?? p.packagingMaterialId.slice(0, 8)}</td>
                     <td className="table__num">{p.quantity.toLocaleString()}</td>
                     <td className="table__num">{ngn(p.unitCostNgn)}</td>
                     <td className="table__num" style={{ fontWeight: 700 }}>{ngn(p.totalCostNgn)}</td>
-                    <td>{p.supplierName ?? "—"}</td>
+                    <td style={{ minWidth: 130 }}>{p.supplierName ?? "—"}</td>
                     <td>{p.businessExpenseId ? <span className="pill pill--success">📒</span> : <span style={{ color: "var(--ink-soft)" }}>—</span>}</td>
                     {canWrite && (
                       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
@@ -355,9 +355,9 @@ export function PackagingPage(): JSX.Element {
               ) : (
                 materials.map((m) => (
                   <tr key={m.id}>
-                    <td style={{ fontWeight: 600 }}>{m.name}</td>
+                    <td style={{ fontWeight: 600, minWidth: 170 }}>{m.name}</td>
                     <td>{kindBadge(m.kind ?? "other")}</td>
-                    <td>{m.unit_label}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{m.unit_label}</td>
                     <td>{m.size_ml ?? "—"}</td>
                     <td>{m.is_active ? "Yes" : "No"}</td>
                     {canWrite && (

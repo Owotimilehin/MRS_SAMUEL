@@ -69,12 +69,14 @@ export function RefreshAppButton(): JSX.Element {
   return (
     <button
       type="button"
-      className="btn btn--subtle btn--sm"
+      className="btn btn--subtle btn--sm app-head__refresh"
       disabled={busy}
       onClick={() => void run()}
+      aria-label="Refresh app"
       title="Clear cached app + re-sync (fixes stale screens after an update)"
     >
-      {busy ? "Refreshing…" : "↻ Refresh app"}
+      <span className="app-head__refresh-icon" aria-hidden="true">↻</span>
+      <span className="app-head__refresh-label">{busy ? "Refreshing…" : "Refresh app"}</span>
     </button>
   );
 }

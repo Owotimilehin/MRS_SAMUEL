@@ -3,7 +3,7 @@ import { ArrowLeft, Phone, Tag, UserRound, CheckCircle2, RotateCcw } from "lucid
 import { toE164 } from "@ms/shared";
 import { Modal } from "../Modal.js";
 import { inboxApi } from "../../lib/inbox-api.js";
-import { contactName, parseLabels } from "../../lib/inbox-logic.js";
+import { contactName, parseLabels, prettyPhone, staffLabel } from "../../lib/inbox-logic.js";
 import { startCall, useVoice } from "../../lib/inbox-voice.js";
 import type { ConversationDetail, InboxTeamLite, StaffMember } from "../../lib/inbox-types.js";
 
@@ -41,104 +41,121 @@ export function ConversationHeader({ conv, meId, staff, teams, can, onBack, onCh
     can("calls.outbound") && conv.can_use_number && conv.number && conv.number.channels !== "whatsapp" && !!conv.customer;
   const customerE164 = toE164(conv.customer?.phone);
 
+  const assigneeSelect = canAssign ? (
+    <select
+      className="ibx-select"
+      aria-label="Assigned to"
+      title="Who is looking after this chat"
+      value={conv.assigneeId ?? ""}
+      disabled={busy}
+      onChange={(e) => void patch({ assignee_id: e.target.value || null })}
+    >
+      <option value="">Unassigned</option>
+      {staff.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.id === meId ? "Me" : staffLabel(s.name)}
+        </option>
+      ))}
+    </select>
+  ) : conv.assigneeId !== meId ? (
+    <button type="button" className="btn btn--subtle btn--sm" disabled={busy} onClick={() => void patch({ assignee_id: meId })}>
+      <UserRound size={14} /> Take it
+    </button>
+  ) : (
+    <span className="pill pill--accent">Assigned to you</span>
+  );
+
   return (
-    <div className="ibx-conv__head">
-      <button type="button" className="btn btn--ghost btn--sm ibx-back" aria-label="Back to conversations" onClick={onBack}>
-        <ArrowLeft size={16} />
-      </button>
-      <div className="ibx-conv__title">
-        <button
-          type="button"
-          onClick={onShowContact}
-          style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer", color: "inherit" }}
-          title="Contact details"
-        >
-          <div className="ibx-conv__name">{name}</div>
-          <div className="ibx-conv__sub">
-            {conv.customer?.phone ?? ""} · {conv.number?.label ?? "—"}
-            {conv.team ? ` · ${conv.team.name}` : ""}
-            {conv.status === "closed" ? " · Closed" : conv.status === "pending" ? " · Pending" : ""}
-          </div>
+    <>
+      <div className="ibx-conv__head">
+        <button type="button" className="btn btn--ghost btn--sm ibx-back" aria-label="Back to conversations" onClick={onBack}>
+          <ArrowLeft size={16} />
         </button>
-        {conv.labels.length > 0 && (
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-            {conv.labels.map((l) => (
-              <span key={l} className="ibx-chip">
-                {l}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="ibx-conv__actions">
-        {canAssign ? (
-          <select
-            className="select"
-            aria-label="Assigned to"
-            value={conv.assigneeId ?? ""}
-            disabled={busy}
-            onChange={(e) => void patch({ assignee_id: e.target.value || null })}
-            style={{ fontSize: 12, maxWidth: 170 }}
-          >
-            <option value="">Unassigned</option>
-            {staff.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.id === meId ? `Me (${s.name})` : s.name}
-              </option>
-            ))}
-          </select>
-        ) : conv.assigneeId !== meId ? (
-          <button type="button" className="btn btn--subtle btn--sm" disabled={busy} onClick={() => void patch({ assignee_id: meId })}>
-            <UserRound size={14} /> Take it
+        <div className="ibx-conv__title">
+          <button type="button" className="ibx-conv__who" onClick={onShowContact} title="Contact details">
+            <div className="ibx-conv__name">{name}</div>
+            <div className="ibx-conv__sub">
+              {[
+                conv.number?.label ?? "",
+                conv.team?.name ?? "",
+                conv.status === "closed" ? "Closed" : conv.status === "pending" ? "Pending" : "",
+                conv.customer?.name?.trim() ? prettyPhone(conv.customer.phone) : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
           </button>
-        ) : (
-          <span className="pill pill--accent">Assigned to you</span>
-        )}
-        {canAssign && teams.length > 0 && (
-          <select
-            className="select"
-            aria-label="Team"
-            value={conv.teamId ?? ""}
-            disabled={busy}
-            onChange={(e) => void patch({ team_id: e.target.value || null })}
-            style={{ fontSize: 12, maxWidth: 150 }}
-          >
-            <option value="">No team</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        )}
-        {can("inbox.reply") && (
-          <button type="button" className="btn btn--subtle btn--sm" onClick={() => setLabelsOpen(true)} title="Labels">
-            <Tag size={14} /> Labels
+          {conv.labels.length > 0 && (
+            <div className="ibx-conv__labels">
+              {conv.labels.map((l) => (
+                <span key={l} className="ibx-chip">
+                  {l}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        {conv.customer && (
+          <button type="button" className="btn btn--subtle btn--sm ibx-contact-btn" onClick={onShowContact} title="Contact details and notes">
+            <UserRound size={14} /> Contact
           </button>
         )}
         {can("inbox.close") &&
           (conv.status === "closed" ? (
-            <button type="button" className="btn btn--subtle btn--sm" disabled={busy} onClick={() => void patch({ status: "open" })}>
-              <RotateCcw size={14} /> Reopen
+            <button type="button" className="btn btn--subtle btn--sm ibx-close-btn" disabled={busy} onClick={() => void patch({ status: "open" })}>
+              <RotateCcw size={14} /> Reopen chat
             </button>
           ) : (
-            <button type="button" className="btn btn--subtle btn--sm" disabled={busy} onClick={() => void patch({ status: "closed" })}>
-              <CheckCircle2 size={14} /> Close
+            <button
+              type="button"
+              className="btn btn--subtle btn--sm ibx-close-btn"
+              disabled={busy}
+              title="Mark this chat as finished"
+              onClick={() => void patch({ status: "closed" })}
+            >
+              <CheckCircle2 size={14} /> Close chat
             </button>
           ))}
         {callable && (
           <button
             type="button"
-            className="btn btn--call btn--sm"
+            className="btn btn--call btn--sm ibx-call-btn"
+            aria-label="Call"
             disabled={onCall}
             title={onCall ? "You're already on a call" : `Call from ${conv.number!.label}`}
             onClick={() =>
               void startCall({ to: customerE164 ?? conv.customer!.id, numberId: conv.number!.id, who: name })
             }
           >
-            <Phone size={14} /> Call
+            <Phone size={14} /> <span className="ibx-hide-phone">Call</span>
           </button>
         )}
+        <span className="ibx-conv__break" aria-hidden />
+        <div className="ibx-conv__actions">
+          {assigneeSelect}
+          {canAssign && teams.length > 0 && (
+            <select
+              className="ibx-select"
+              aria-label="Team"
+              title="Team this chat belongs to"
+              value={conv.teamId ?? ""}
+              disabled={busy}
+              onChange={(e) => void patch({ team_id: e.target.value || null })}
+            >
+              <option value="">No team</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {can("inbox.reply") && (
+            <button type="button" className="btn btn--subtle btn--sm ibx-labels-btn" onClick={() => setLabelsOpen(true)} title="Labels" aria-label="Labels">
+              <Tag size={14} /> <span className="ibx-hide-phone">Labels</span>
+            </button>
+          )}
+        </div>
       </div>
       {labelsOpen && (
         <LabelsModal
@@ -150,7 +167,7 @@ export function ConversationHeader({ conv, meId, staff, teams, can, onBack, onCh
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 

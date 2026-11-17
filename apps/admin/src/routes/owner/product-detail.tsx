@@ -283,7 +283,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
       <StatHero
         eyebrow="Catalogue"
         title={product?.name ?? "Product"}
-        sub={product?.tagline ?? (product ? `/${product.slug}` : "Loading…")}
+        sub={product?.tagline ?? (product ? "Flavour details, sizes and prices." : "Loading…")}
         loading={loading}
         chips={[
           { label: "Sizes", value: product ? product.variants.length : "—" },
@@ -297,7 +297,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
             label: "Status",
             value: product ? (product.isActive ? "Active" : "Hidden") : "—",
           },
-          { label: "Category", value: product?.category ?? "—" },
+          { label: "Category", value: product ? properCase(product.category) : "—" },
         ]}
       />
 
@@ -319,11 +319,10 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
                 />
                 <div className="flav-hero__meta">
                   <span className="flav-tag" style={{ ["--fl-accent" as string]: vis.accent } as React.CSSProperties}>
-                    {product.category}
+                    {properCase(product.category)}
                   </span>
                   <h2 className="flav-hero__name">{product.name}</h2>
                   {product.tagline ? <p className="flav-hero__tagline">{product.tagline}</p> : null}
-                  <div className="flav-hero__slug">/{product.slug}</div>
                 </div>
               </section>
             );
@@ -338,7 +337,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
               marginBottom: 18,
             }}
           >
-            <Stat label="Category" value={product.category} />
+            <Stat label="Category" value={properCase(product.category)} />
             <Stat label="Sizes" value={String(product.variants.length)} />
             <Stat
               label="From"
@@ -352,7 +351,6 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
             <section className="card">
               <div className="card__head"><h2 className="t-h2">Details</h2></div>
               <Field label="Name" value={product.name} />
-              <Field label="Slug" value={product.slug} mono />
               <Field label="Tagline" value={product.tagline ?? "—"} />
               <Field
                 label="Category"
@@ -366,7 +364,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
                           : "pill"
                     }
                   >
-                    {product.category}
+                    {properCase(product.category)}
                   </span>
                 }
               />
@@ -381,9 +379,6 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
                     <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                       <Swatch color={product.palette.surface} title="Primary" />
                       <Swatch color={product.palette.accent} title="Secondary" />
-                      <span style={{ fontSize: 12, color: "var(--ink-soft)", fontFamily: "monospace" }}>
-                        {product.palette.surface} / {product.palette.accent}
-                      </span>
                     </span>
                   ) : (
                     "—"
@@ -391,7 +386,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
                 }
               />
               <Field
-                label="Active"
+                label="Status"
                 value={
                   product.isActive ? (
                     <span className="pill pill--success">Active</span>
@@ -401,6 +396,10 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
                 }
               />
               <Field label="Display order" value={String(product.displayOrder)} />
+              <Field
+                label="Web address"
+                value={<span style={{ fontSize: 12, color: "var(--ink-soft)" }}>/{product.slug}</span>}
+              />
               <Field
                 label="Bottle image"
                 value={
@@ -417,7 +416,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
               />
 
               {/* Lifecycle: deactivate (reversible) / delete (soft) */}
-              <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "space-between", flexWrap: "wrap" }}>
                 <button
                   type="button"
                   className="btn btn--subtle btn--sm"
@@ -438,10 +437,10 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
             </section>
 
             <section className="card">
-              <h2 className="t-h2" style={{ marginBottom: 4 }}>Cans &amp; prices</h2>
+              <h2 className="t-h2" style={{ marginBottom: 4 }}>Bottles &amp; prices</h2>
               <p style={{ color: "var(--ink-soft)", fontSize: 13, margin: 0 }}>
-                Each can size carries its own price. Publishing a new price closes the existing one
-                (sets <code>valid_to</code>); historical sale lines keep their original snapshot.
+                Each bottle size has its own price. A new price replaces the current one from the moment
+                you publish it. Past sales keep the price they were sold at.
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
                 {product.variants.map((v) => (
@@ -500,7 +499,16 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
                         <button
                           type="submit"
                           className="btn btn--primary btn--sm"
-                          disabled={publishingId === v.id || !drafts[v.id]}
+                          disabled={
+                            publishingId === v.id ||
+                            !drafts[v.id] ||
+                            Number(drafts[v.id]) === v.current_price_ngn
+                          }
+                          title={
+                            Number(drafts[v.id]) === v.current_price_ngn
+                              ? "Change the price first"
+                              : undefined
+                          }
                         >
                           {publishingId === v.id ? "…" : "Publish"}
                         </button>
@@ -508,7 +516,7 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
                     )}
                     {v.is_active && (
                       <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 4 }}>
-                        {v.current_price_ngn != null ? ngn(v.current_price_ngn) : "no price set"}
+                        {v.current_price_ngn != null ? `Current price: ${ngn(v.current_price_ngn)}` : "No price set"}
                       </div>
                     )}
                   </div>
@@ -927,6 +935,11 @@ function AssetThumb({ caption, url }: { caption: string; url: string | undefined
       <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 4 }}>{caption}</div>
     </div>
   );
+}
+
+/** "special" → "Special". Category codes are stored lower-case. */
+function properCase(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
 function Swatch({ color, title }: { color: string; title: string }): JSX.Element {

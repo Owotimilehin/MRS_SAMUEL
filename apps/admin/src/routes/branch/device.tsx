@@ -69,7 +69,7 @@ export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Elemen
   return (
     <BranchShell
       branchId={branchId}
-      title="Device health"
+      title="Device"
       actions={
         <button
           type="button"
@@ -77,14 +77,14 @@ export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Elemen
           disabled={syncing}
           onClick={forceSync}
         >
-          {syncing ? "Syncing…" : "Force sync"}
+          {syncing ? "Syncing…" : "Sync now"}
         </button>
       }
     >
       <StatHero
         eyebrow="Branch"
         title="Device"
-        sub="Monitor connection, sync status and device info for this POS terminal."
+        sub="Check this till's connection, what is still waiting to sync, and its details."
       />
       <BranchTabs items={[
         { to: "/branch/device", label: "Device" },
@@ -97,9 +97,9 @@ export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Elemen
             Connection
           </h2>
           <Row label="Status" value={onlinePill} />
-          <Row label="Pending queue" value={`${sync.queued}`} />
+          <Row label="Waiting to sync" value={`${sync.queued}`} />
           <Row
-            label="Failed ops"
+            label="Failed to sync"
             value={
               sync.dead > 0 ? (
                 <span style={{ color: "var(--danger)", fontWeight: 700 }}>
@@ -111,19 +111,20 @@ export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Elemen
             }
           />
           <Row
-            label="Last server pull"
+            label="Last update from server"
             value={lastPull ? formatDateTime(lastPull) : "—"}
           />
-          <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "8px 12px", paddingTop: 12 }}>
             <button
               type="button"
               className="btn btn--ghost btn--sm"
+              style={{ flex: "none" }}
               disabled={resyncing || !sync.online}
               onClick={resyncStockNow}
             >
               {resyncing ? "Refreshing…" : "Resync stock now"}
             </button>
-            <span style={{ color: "var(--ink-soft)", fontSize: 12 }}>
+            <span style={{ color: "var(--ink-soft)", fontSize: 12, flex: "1 1 240px" }}>
               Pulls fresh on-hand counts from the server. Use if a flavour shows the wrong
               number on the till.
             </span>
@@ -134,8 +135,8 @@ export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Elemen
           <h2 className="t-h2" style={{ marginBottom: 12 }}>
             This device
           </h2>
-          <Row label="Device ID" value={deviceId()} mono />
-          <Row label="Branch ID" value={branchId} mono />
+          <Row label="Device ID" value={<CopyId value={deviceId()} />} />
+          <Row label="Branch ID" value={<CopyId value={branchId} />} />
           <Row label="App version" value={APP_VERSION} />
           <Row label="User agent" value={navigator.userAgent} small />
           <Row
@@ -157,19 +158,21 @@ export function BranchDevicePage({ branchId }: { branchId: string }): JSX.Elemen
               fontSize: 14,
               color: "var(--ink-soft)",
               lineHeight: 1.6,
-              paddingLeft: 18,
+              paddingLeft: 20,
+              margin: 0,
+              listStyle: "disc",
             }}
           >
             <li>
-              If <strong>Pending queue</strong> isn't going down, check the WiFi and tap
-              "Force sync."
+              If <strong>Waiting to sync</strong> isn't going down, check the WiFi and tap
+              “Sync now”.
             </li>
             <li>
-              If anything shows under <strong>Failed ops</strong>, open the{" "}
+              If anything shows under <strong>Failed to sync</strong>, open the{" "}
               <a href="/branch/queue" style={{ color: "var(--accent)", fontWeight: 600 }}>
-                queue inspector
+                Sync queue
               </a>{" "}
-              to see what failed.
+              tab to see what failed.
             </li>
             <li>
               Close and reopen the app to refresh the cached menu and prices.
@@ -196,7 +199,8 @@ function Row({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "180px 1fr",
+        // Label column narrows on a phone so the value keeps most of the row.
+        gridTemplateColumns: "clamp(104px, 34%, 180px) minmax(0, 1fr)",
         gap: 12,
         alignItems: "center",
         padding: "8px 0",
@@ -215,5 +219,38 @@ function Row({
         {value}
       </span>
     </div>
+  );
+}
+
+/** A long internal ID shown shortened on one line, with a button to copy all of it. */
+function CopyId({ value }: { value: string }): JSX.Element {
+  const short = value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value;
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Copied.");
+    } catch {
+      toast.error("Couldn't copy. Press and hold the ID to select it instead.");
+    }
+  }
+  return (
+    <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+      <span
+        title={value}
+        style={{
+          fontFamily: "ui-monospace, monospace",
+          fontWeight: 500,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          userSelect: "all",
+        }}
+      >
+        {short}
+      </span>
+      <button type="button" className="btn btn--subtle btn--sm" style={{ flex: "none" }} aria-label={`Copy ${value}`} onClick={() => void copy()}>
+        Copy
+      </button>
+    </span>
   );
 }

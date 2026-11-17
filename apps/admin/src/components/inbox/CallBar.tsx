@@ -17,7 +17,7 @@ import {
   useVoice,
 } from "../../lib/inbox-voice.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
-import { contactName, formatDuration } from "../../lib/inbox-logic.js";
+import { contactName, formatDuration, prettyPhone } from "../../lib/inbox-logic.js";
 import { toE164 } from "@ms/shared";
 import "./inbox.css";
 
@@ -83,8 +83,8 @@ export function CallBar(): JSX.Element | null {
         <div className="callbar__card callbar__card--ringing" role="alertdialog" aria-label="Incoming call">
           <div className="t-eyebrow">Incoming call</div>
           <div>
-            <div className="callbar__who">{callerName ?? v.incoming.from}</div>
-            {callerName && <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>{v.incoming.from}</div>}
+            <div className="callbar__who">{callerName ?? prettyPhone(v.incoming.from)}</div>
+            {callerName && <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>{prettyPhone(v.incoming.from)}</div>}
             {caller.data && (
               <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>On {caller.data.number_label}</div>
             )}
@@ -105,7 +105,7 @@ export function CallBar(): JSX.Element | null {
           <div className="t-eyebrow">{v.active.direction === "in" ? "On a call" : "Calling"}</div>
           <div>
             <div className="callbar__who">
-              {v.active.direction === "in" ? (callerName ?? v.active.who) : v.active.who}
+              {v.active.direction === "in" ? (callerName ?? prettyPhone(v.active.who)) : prettyPhone(v.active.who)}
             </div>
             <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>
               {v.active.state === "connecting"
@@ -198,28 +198,36 @@ export function CallBar(): JSX.Element | null {
       )}
 
       {!v.active && !v.incoming && (
-        <div className="callbar__pill">
+        <div className="callbar__pill callbar__pill--idle">
           {canAnswer && (
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-              <span className={`callbar__dot${v.available && v.status === "ready" ? " callbar__dot--on" : ""}`} />
-              <span>{v.available ? (v.status === "loading" ? "Connecting…" : "Taking calls") : "Not taking calls"}</span>
+            <label
+              className="callbar__avail"
+              title={
+                v.available
+                  ? "Customer calls ring on this device. Switch off to stop taking calls."
+                  : "Switch on to take customer calls on this device."
+              }
+            >
               <input
                 type="checkbox"
+                role="switch"
+                className={`callbar__switch${v.available && v.status === "loading" ? " is-busy" : ""}`}
                 checked={v.available}
                 onChange={(e) => void setAvailable(e.target.checked)}
-                aria-label="Available for calls"
+                aria-label="Take customer calls on this device"
               />
+              <span>{v.available ? (v.status === "loading" ? "Connecting…" : "Taking calls") : "Take calls: off"}</span>
             </label>
           )}
           {canCall && canInbox && (
             <button
               type="button"
-              className="btn btn--subtle btn--sm"
+              className="callbar__dial"
               onClick={() => setDialOpen((o) => !o)}
               aria-expanded={dialOpen}
               title="Call a number"
             >
-              <PhoneOutgoing size={15} /> Dial
+              <PhoneOutgoing size={14} aria-hidden /> Dial
             </button>
           )}
         </div>

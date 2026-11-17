@@ -63,6 +63,8 @@ export interface AdminUserLite {
   name: string | null;
   role: string;
   isActive: boolean;
+  /** Extra or removed permissions on top of the role (sent by /admin/users). */
+  permissionOverrides?: { granted?: string[]; revoked?: string[] } | null;
 }
 
 export const settingsApi = {

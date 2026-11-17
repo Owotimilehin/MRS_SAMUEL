@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, UserRound } from "lucide-react";
@@ -16,7 +16,7 @@ import { useAuthUser } from "../../lib/auth.js";
 import { ApiError, humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
 import { CONTACTS_CSV_URL, inboxApi, inboxKeys } from "../../lib/inbox-api.js";
-import { applyEarlierPage, applyNewestPage, inboxTabsFor, type InboxTabKey, type LoadedTimeline } from "../../lib/inbox-logic.js";
+import { applyEarlierPage, applyNewestPage, inboxTabsFor, staffLabel, type InboxTabKey, type LoadedTimeline } from "../../lib/inbox-logic.js";
 import { useInboxEvents } from "../../lib/inbox-stream.js";
 import { useInboxUi } from "../../lib/inbox-ui.js";
 import type { InboxEvent } from "../../lib/inbox-types.js";
@@ -116,7 +116,7 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
           return;
         case "conversation.typing": {
           if (!open || !e.id || e.id === me.data?.user_id) return;
-          const who = staff.data?.find((s) => s.id === e.id)?.name ?? "A colleague";
+          const who = staffLabel(staff.data?.find((s) => s.id === e.id)?.name, "A colleague");
           setTyping({ convId: e.conversationId!, name: who, until: Date.now() + TYPING_SHOW_MS });
           return;
         }
@@ -181,6 +181,31 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
     void qc.invalidateQueries({ queryKey: inboxKeys.all });
   }, [qc]);
 
+  // Make the three panes fill the screen exactly, whatever the top bar's height
+  // (it wraps on phones), and leave the strip at the bottom free for the call pill.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const hasGrid = !!me.data;
+  useLayoutEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const fit = (): void => {
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const body = el.closest<HTMLElement>(".app-body");
+      const pad = body ? parseFloat(getComputedStyle(body).paddingBottom) || 0 : 0;
+      el.style.setProperty("--ibx-top", `${Math.round(top)}px`);
+      el.style.setProperty("--ibx-pad", `${Math.round(pad)}px`);
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    const head = document.querySelector(".app-head");
+    const ro = typeof ResizeObserver !== "undefined" && head ? new ResizeObserver(fit) : null;
+    if (ro && head) ro.observe(head);
+    return () => {
+      window.removeEventListener("resize", fit);
+      ro?.disconnect();
+    };
+  }, [hasGrid]);
+
   const forbidden = me.error instanceof ApiError && me.error.status === 403;
   const typingName = typing && typing.convId === conversationId ? typing.name : null;
 
@@ -189,8 +214,8 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
       title="Inbox"
       actions={
         can("inbox.export") ? (
-          <a className="btn btn--subtle btn--sm" href={CONTACTS_CSV_URL} download title="Download contacts as CSV">
-            <Download size={14} /> Contacts
+          <a className="btn btn--subtle btn--sm" href={CONTACTS_CSV_URL} download title="Download every contact as a spreadsheet (CSV)">
+            <Download size={14} /> Export contacts
           </a>
         ) : undefined
       }
@@ -203,7 +228,7 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
       ) : (
         <DataState loading={me.isLoading} error={me.error} onRetry={() => void me.refetch()}>
           {me.data && (
-            <div className={`ibx${conversationId ? " has-open" : ""}`}>
+            <div ref={gridRef} className={`ibx${conversationId ? " has-open" : ""}`}>
               <section className="ibx__pane ibx-list-pane" aria-label="Conversations">
                 <ConversationList
                   me={me.data}
@@ -255,8 +280,8 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
                       onBack={() => void navigate({ to: "/inbox" })}
                       onChanged={afterChange}
                       onShowContact={() => {
-                        // The side panel is already visible on wide screens.
-                        if (window.matchMedia?.("(max-width: 1279px)").matches) setContactOpen(true);
+                        // The side panel is already visible on wide screens (same width as inbox.css).
+                        if (window.matchMedia?.("(max-width: 1439px)").matches) setContactOpen(true);
                       }}
                     />
                     {timeline.error ? (
@@ -283,7 +308,7 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
                 )}
               </section>
 
-              <aside className="ibx__pane ibx-side-pane ibx-side" aria-label="Contact">
+              <aside className={`ibx__pane ibx-side-pane ibx-side${conv.data?.customer ? "" : " ibx-side--empty"}`} aria-label="Contact">
                 {conv.data?.customer ? (
                   <ContactPanel
                     customerId={conv.data.customer.id}
@@ -293,8 +318,10 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
                     onMerged={afterMerge}
                   />
                 ) : (
-                  <div style={{ color: "var(--ink-soft)", fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}>
-                    <UserRound size={15} /> Contact details show here.
+                  <div>
+                    <UserRound size={22} aria-hidden style={{ margin: "0 auto 6px", display: "block" }} />
+                    <div className="empty__title">Contact details</div>
+                    The customer's name, notes and other chats show here.
                   </div>
                 )}
               </aside>

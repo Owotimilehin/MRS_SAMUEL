@@ -213,8 +213,8 @@ export function InventoryPage(): JSX.Element {
           productId: p.id,
           productName: p.name,
           variantId: null,
-          label: `${p.name} · (unassigned — recount)`,
-          sizeLabel: "(unassigned — recount)",
+          label: `${p.name} · (no size set, needs recount)`,
+          sizeLabel: "(no size set, needs recount)",
           unassigned: true,
         });
       }
@@ -487,10 +487,10 @@ export function InventoryPage(): JSX.Element {
       <StatHero
         eyebrow="Stock"
         title="Inventory"
-        sub="On-hand stock per can size across branches and the factory."
+        sub="On-hand stock per bottle size across branches and the factory."
         loading={loading}
         chips={[
-          { label: "Cans on hand", value: invStats.cans.toLocaleString() },
+          { label: "Bottles on hand", value: invStats.cans.toLocaleString() },
           { label: "Sizes in stock", value: invStats.inStock },
           { label: "Low-stock sizes", value: invStats.low, tone: invStats.low > 0 ? "danger" : "good" },
           view === "branch"
@@ -508,6 +508,12 @@ export function InventoryPage(): JSX.Element {
         </div>
       )}
 
+      {!loading && (
+        <p style={{ fontSize: 12, color: "var(--ink-soft)", margin: "0 0 12px" }}>
+          Red = out of stock · amber = low (10 or fewer) · pale = getting low (30 or fewer). Each row is one bottle size.
+          {isOwner && " Click any cell to adjust its on-hand. A grey row marked “no size set” is older stock that was never split by bottle size: count it, add it to the right sizes, then set that row to 0."}
+        </p>
+      )}
       {loading ? (
         <InlineLoader />
       ) : view === "branch" ? (
@@ -521,10 +527,6 @@ export function InventoryPage(): JSX.Element {
       ) : (
         renderGrid("factory", factories, factoryHeat)
       )}
-      <p style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 12 }}>
-        Red = out of stock · amber = low (≤10) · pale = caution (≤30). Each row is one can size.
-        {isOwner && " Click any cell to adjust its on-hand. An italic “(unassigned — recount)” row is legacy stock not yet counted into sizes — adjust it too once recounted."}
-      </p>
 
       {flash && (
         <div
@@ -695,7 +697,7 @@ function BulkAdjustModal({
         <header style={{ marginBottom: 14 }}>
           <h2 className="t-h2">Bulk adjust</h2>
           <p style={{ color: "var(--ink-soft)", fontSize: 13, margin: "4px 0 0" }}>
-            Type the new on-hand for each can size that changed. Unchanged rows are skipped.
+            Type the new on-hand for each bottle size that changed. Unchanged rows are skipped.
           </p>
         </header>
 

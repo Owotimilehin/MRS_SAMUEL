@@ -52,6 +52,7 @@ export function InboxSettingsPage(): JSX.Element {
           </button>
         ))}
       </div>
+      <div className="ibx-settings">
       {tab === "numbers" && <SettingsNumbers />}
       {tab === "teams" && <SettingsTeams />}
       {tab === "access" && can("users.manage") && <SettingsAccess />}
@@ -59,6 +60,7 @@ export function InboxSettingsPage(): JSX.Element {
       {tab === "ivr" && <SettingsIvr />}
       {tab === "quick" && <SettingsQuickReplies />}
       {tab === "templates" && <SettingsTemplates />}
+      </div>
     </Shell>
   );
 }

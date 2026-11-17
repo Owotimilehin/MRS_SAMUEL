@@ -129,7 +129,7 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
       actions={
         <button
           type="button"
-          className="btn btn--subtle btn--sm"
+          className="btn btn--primary btn--sm"
           onClick={() => void flushOutbox()}
         >
           Sync now
@@ -138,8 +138,8 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
     >
       <StatHero
         eyebrow="Branch"
-        title="Queue"
-        sub="Offline operations waiting to sync with the server."
+        title="Sync queue"
+        sub="Sales and changes made on this till that are still waiting to reach the server."
         chips={queueChips}
       />
       <BranchTabs items={[
@@ -147,12 +147,10 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
         { to: "/branch/queue", label: "Sync queue" },
       ]} />
       {pending.length === 0 && dead.length === 0 ? (
-        <section className="card">
-          <div className="empty">
-            <div className="empty__title">Everything synced ✓</div>
-            Nothing pending. Sales land on the server the moment they're rung up.
-          </div>
-        </section>
+        <div className="empty">
+          <div className="empty__title">Everything synced ✓</div>
+          Nothing is waiting. Sales reach the server the moment they're rung up.
+        </div>
       ) : (
         <>
           {dead.length > 0 && (
@@ -162,8 +160,8 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
                   Failed ({dead.length})
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--ink-soft)" }}>
-                  These hit the server but came back with an error. Retry once you've fixed the
-                  cause; drop only if you've decided not to ship the operation.
+                  These reached the server but were turned down. Tap Retry once the cause is fixed.
+                  Only tap Drop if it should never be sent.
                 </p>
               </header>
               <QueueTable rows={dead} acting={acting} onRetry={retry} onDrop={drop} />
@@ -174,7 +172,7 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
               <header style={{ marginBottom: 10 }}>
                 <h2 className="t-h2">Pending ({pending.length})</h2>
                 <p style={{ fontSize: 13, color: "var(--ink-soft)" }}>
-                  Waiting to send. These flush automatically when the network comes back.
+                  Waiting to send. These go through by themselves when the network comes back.
                 </p>
               </header>
               <QueueTable rows={pending} acting={acting} onRetry={retry} onDrop={drop} />

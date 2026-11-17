@@ -7,6 +7,7 @@ import { settingsApi, settingsKeys, type MenuInput } from "../../lib/inbox-setti
 import { GreetingUpload } from "./GreetingUpload.js";
 import {
   WEEKDAYS,
+  humanDay,
   rulesToWeek,
   validateMenu,
   validateWeek,
@@ -31,7 +32,7 @@ export function SettingsHours(): JSX.Element {
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <section className="card">
-        <div className="card__head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <div className="ibx-cardhead">
           <div>
             <h2 className="t-h2">Opening hours</h2>
             <p style={{ color: "var(--ink-soft)", fontSize: 13 }}>
@@ -55,13 +56,13 @@ export function SettingsHours(): JSX.Element {
               const week = rulesToWeek(p.rules);
               return (
                 <div key={p.id} className="card card--soft">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div className="ibx-cardrow" style={{ marginBottom: 6 }}>
                     <strong>{p.name}</strong>
                     <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEdit(p)}>
                       Edit
                     </button>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "2px 10px", fontSize: 13 }}>
+                  <div className="ibx-hours">
                     {WEEKDAYS.map((d, i) => (
                       <div key={d} style={{ display: "contents" }}>
                         <span style={{ color: "var(--ink-soft)" }}>{d}</span>
@@ -233,7 +234,7 @@ function Holidays({
     <section className="card">
       <h2 className="t-h2">Holidays</h2>
       <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 12 }}>Days you're closed all day, like Christmas or Eid.</p>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 12 }}>
+      <div className="ibx-formrow">
         <label className="field">
           <span className="field__label">Date</span>
           <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -255,7 +256,7 @@ function Holidays({
             </select>
           </label>
         )}
-        <button type="button" className="btn btn--primary btn--sm" disabled={!date || !label.trim() || busy === "add"} onClick={() => void add()}>
+        <button type="button" className="btn btn--primary" disabled={!date || !label.trim() || busy === "add"} onClick={() => void add()}>
           {busy === "add" ? "Adding…" : "Add holiday"}
         </button>
       </div>
@@ -263,21 +264,22 @@ function Holidays({
         <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>No holidays added.</div>
       ) : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table ibx-stack">
             <tbody>
               {holidays.map((h) => (
                 <tr key={h.id}>
-                  <td style={{ whiteSpace: "nowrap" }}>{h.date}</td>
+                  <td style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{humanDay(h.date)}</td>
                   <td>{h.label}</td>
-                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }} data-label="Applies to">
                     {h.profileId ? profiles.find((p) => p.id === h.profileId)?.name ?? "One schedule" : "Every schedule"}
                   </td>
-                  <td style={{ textAlign: "right" }}>
+                  <td className="ibx-stack__actions" style={{ textAlign: "right" }}>
                     <button
                       type="button"
-                      className="btn btn--ghost btn--sm"
+                      className="btn btn--subtle btn--sm"
                       disabled={busy === h.id}
                       aria-label={`Remove ${h.label}`}
+                      title={`Remove ${h.label}`}
                       onClick={async () => {
                         setBusy(h.id);
                         try {
@@ -290,7 +292,7 @@ function Holidays({
                         }
                       }}
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={14} aria-hidden /> Remove
                     </button>
                   </td>
                 </tr>
@@ -316,7 +318,7 @@ export function SettingsIvr(): JSX.Element {
 
   return (
     <section className="card">
-      <div className="card__head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <div className="ibx-cardhead">
         <div>
           <h2 className="t-h2">Phone menu</h2>
           <p style={{ color: "var(--ink-soft)", fontSize: 13 }}>"Press 1 for orders, 2 for deliveries…" — pick a menu for each number under Numbers.</p>
@@ -336,7 +338,7 @@ export function SettingsIvr(): JSX.Element {
         <div style={{ display: "grid", gap: 10 }}>
           {(q.data ?? []).map((m) => (
             <div key={m.id} className="card card--soft">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <div className="ibx-cardrow" style={{ marginBottom: 4 }}>
                 <strong>{m.name}</strong>
                 <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEdit(m)}>
                   Edit

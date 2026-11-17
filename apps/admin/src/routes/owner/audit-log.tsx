@@ -8,6 +8,7 @@ import {
   humanizeDiff,
   humanizeEntity,
   entityTypeLabel,
+  actionFilterLabel,
   type AuditRow,
   type UserLookup,
   type BranchLookup,
@@ -19,63 +20,6 @@ interface Facets {
   entity_types: string[];
   actions: string[];
 }
-
-const ACTION_LABEL: Record<string, string> = {
-  "auth.login_success": "Sign-ins",
-  "admin_user.invite": "User invites",
-  "admin_user.update": "User updates",
-  "admin_user.reset_password": "Password resets",
-  "branch.create": "Branches created",
-  "branch.update": "Branches updated",
-  "branch.delete": "Branches deleted",
-  "product.create": "Products created",
-  "product.update": "Products updated",
-  "product.delete": "Products deleted",
-  "product_price.publish": "Prices published",
-  "blog_post.create": "Posts drafted",
-  "blog_post.update": "Posts updated",
-  "blog_post.delete": "Posts deleted",
-  "vendor.create": "Vendors added",
-  "vendor.update": "Vendors updated",
-  "vendor.delete": "Vendors removed",
-  "recurring_expense.create": "Recurring expenses added",
-  "recurring_expense.update": "Recurring expenses updated",
-  "recurring_expense.delete": "Recurring expenses deleted",
-  "business_expense.create": "Expenses recorded",
-  "business_expense.update": "Expenses updated",
-  "business_expense.delete": "Expenses deleted",
-  "packaging_material.create": "Packaging materials added",
-  "packaging_material.update": "Packaging materials updated",
-  "packaging_purchase.create": "Packaging purchases",
-  "bundle.create": "Bundles created",
-  "bundle.update": "Bundles updated",
-  "bundle.delete": "Bundles deleted",
-  "media_asset.create": "Images uploaded",
-  "stock_adjustment.create": "Stock adjustments",
-  "production_run.create_draft": "Production runs started",
-  "production_run.complete": "Production runs completed",
-  "production_run.append_items": "Production items added",
-  "production_run.update_item": "Production items edited",
-  "production_run.delete_item": "Production items removed",
-  "stock_transfer.create_draft": "Transfers drafted",
-  "stock_transfer.dispatch": "Transfers sent",
-  "stock_transfer.arrive": "Transfers arrived",
-  "stock_transfer.receive": "Transfers received",
-  "stock_transfer.approve_variance": "Variances approved",
-  "stock_transfer.reject": "Transfers rejected",
-  "stock_transfer.adjust_count": "Transfer counts corrected",
-  "sale.create_draft": "Sales started",
-  "sale.confirm": "Sales confirmed",
-  "sale.pay": "Sales paid",
-  "sale.hand_over": "Sales handed over",
-  "sale.mark_delivered": "Sales delivered",
-  "sale.cancel": "Sales cancelled",
-  "sale_return.create": "Returns created",
-  "sale_return.approve": "Returns approved",
-  "preorder.fulfil": "Preorders fulfilled",
-  "daily_close.submit": "Shift-end reports filed",
-  "daily_close.approve": "Shift-end reports approved",
-};
 
 const filterFieldStyle: CSSProperties ={ gap: 4 };
 const filterLabelStyle: CSSProperties ={ fontSize: 11 };
@@ -152,7 +96,7 @@ export function AuditLogPage(): JSX.Element {
 
   return (
     <Shell
-      title="Activity log"
+      title="Audit log"
       actions={
         <button type="button" className="btn btn--primary btn--sm" onClick={() => void load()}>
           Refresh
@@ -173,17 +117,10 @@ export function AuditLogPage(): JSX.Element {
       />
 
       <div
-        className="card"
-        style={{
-          marginBottom: 16,
-          padding: "12px 14px",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 10,
-          alignItems: "end",
-        }}
+        className="card grid grid-cols-2 sm:flex sm:flex-wrap items-end"
+        style={{ marginBottom: 16, padding: "12px 14px", gap: 10 }}
       >
-        <div className="field" style={{ ...filterFieldStyle, width: 150 }}>
+        <div className="field sm:w-[150px]" style={{ ...filterFieldStyle, minWidth: 0 }}>
           <label className="field__label" style={filterLabelStyle}>What</label>
           <select className="select" style={filterControlStyle} value={entityType} onChange={(e) => setEntityType(e.target.value)}>
             <option value="">Anything</option>
@@ -194,18 +131,18 @@ export function AuditLogPage(): JSX.Element {
             ))}
           </select>
         </div>
-        <div className="field" style={{ ...filterFieldStyle, width: 170 }}>
+        <div className="field sm:w-[200px]" style={{ ...filterFieldStyle, minWidth: 0 }}>
           <label className="field__label" style={filterLabelStyle}>Action</label>
           <select className="select" style={filterControlStyle} value={action} onChange={(e) => setAction(e.target.value)}>
             <option value="">Any action</option>
             {facets.actions.map((a) => (
               <option key={a} value={a}>
-                {ACTION_LABEL[a] ?? a}
+                {actionFilterLabel(a)}
               </option>
             ))}
           </select>
         </div>
-        <div className="field" style={{ ...filterFieldStyle, width: 200 }}>
+        <div className="field col-span-2 sm:w-[200px]" style={{ ...filterFieldStyle, minWidth: 0 }}>
           <label className="field__label" style={filterLabelStyle}>Who</label>
           <select className="select" style={filterControlStyle} value={actorUserId} onChange={(e) => setActorUserId(e.target.value)}>
             <option value="">Anyone</option>
@@ -216,15 +153,15 @@ export function AuditLogPage(): JSX.Element {
             ))}
           </select>
         </div>
-        <div className="field" style={{ ...filterFieldStyle, width: 185 }}>
+        <div className="field col-span-2 sm:w-[185px]" style={{ ...filterFieldStyle, minWidth: 0 }}>
           <label className="field__label" style={filterLabelStyle}>From</label>
           <input className="input" style={filterControlStyle} type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
         </div>
-        <div className="field" style={{ ...filterFieldStyle, width: 185 }}>
+        <div className="field col-span-2 sm:w-[185px]" style={{ ...filterFieldStyle, minWidth: 0 }}>
           <label className="field__label" style={filterLabelStyle}>To</label>
           <input className="input" style={filterControlStyle} type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
-        <button type="button" className="btn btn--primary btn--sm" style={{ flex: 1, minWidth: 100 }} onClick={() => void load()}>
+        <button type="button" className="btn btn--primary btn--sm col-span-2" style={{ minWidth: 100, height: 34 }} onClick={() => void load()}>
           Apply
         </button>
       </div>
@@ -254,11 +191,11 @@ export function AuditLogPage(): JSX.Element {
                   <td style={{ color: "var(--ink-soft)", fontSize: 13, whiteSpace: "nowrap" }}>
                     {formatDateTime(r.occurredAt)}
                   </td>
-                  <td>
+                  <td style={{ minWidth: 180 }}>
                     <div style={{ fontWeight: 600 }}>{humanizeActor(r, users)}</div>
                   </td>
-                  <td>{humanizeAction(r, branches)}</td>
-                  <td style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                  <td style={{ minWidth: 220 }}>{humanizeAction(r, branches)}</td>
+                  <td style={{ color: "var(--ink-soft)", fontSize: 13, minWidth: 160 }}>
                     {humanizeEntity(r)}
                   </td>
                   <td style={{ textAlign: "right" }}>
