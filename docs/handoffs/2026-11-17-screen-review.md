@@ -39,7 +39,7 @@ Only screens with their own problems are listed. All others are fine apart from 
 - **Inbox reports**: page is about 657px wide; the staff and number tables push it sideways. Chart bars are hairlines (check live).
 - **Inbox settings, Hours tab**: page is about 455px wide; the call bar covers the holiday Name field. On Numbers, Edit / Check / Register on WhatsApp are off-screen. Six top-right buttons have cut-off labels.
 - **Open conversation**: the call bar covers "Send a template" (and will cover Send), so staff cannot reply. Nothing visible opens the contact panel: tapping the name does, but nothing shows that. The first message hides under a 190px header.
-- **Till** (`/branch/sell`): the cart and Charge button sit below all 20 products, about 2,500px down, with no sticky total.
+- **Till** (`/branch/sell`): the cart and Charge button sit below all 20 products, about 2,500px down (roughly four screens of scrolling per sale), with no sticky total. On desktop the Charge button is also below the first screen (about 1,000px down on a 900px-tall window), so staff scroll to charge even with an empty cart; it will be worse on a tablet.
 
 ### Broken on desktop (High)
 
