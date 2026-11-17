@@ -16,5 +16,5 @@ module.exports = {
     "react-hooks/rules-of-hooks": "error",
     "react-hooks/exhaustive-deps": "warn"
   },
-  ignorePatterns: ["dist", "node_modules", "migrations", "*.config.*"]
+  ignorePatterns: ["dist", "node_modules", "migrations", "*.config.*", "mobile"]
 };
