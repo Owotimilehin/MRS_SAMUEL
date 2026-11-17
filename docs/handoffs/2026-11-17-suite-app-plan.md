@@ -33,30 +33,27 @@ Draft for approval, 17 Nov 2026, by Olu with Claude. Nothing here is built. It t
 
 | Option | What it means | Verdict |
 |---|---|---|
-| **A. Own app, shared data** | New web app and its own server process and background worker, in this repository, using the same database and staff accounts | **Recommended** |
+| **A. Own web app, shared API and worker** | A new web app in this repository, alongside the admin app and the storefront. It uses the shop's existing API, background worker, database and staff accounts | **Chosen by the owner, 17 Nov** |
 | B. A tab in the admin app | What exists today | Not what was asked; keeps the suite tied to the shop's layout |
 | C. Fully separate product | Own repository, own database, talks to the shop over an API | Not recommended. Customers, orders and stock would be copied between two systems, which is where "the chat says in stock, the shop says sold out" comes from |
 
-Option A gives a separate application in every way a user or operator can see (own address, own screens, own containers, own restarts) while "one customer, one record" stays true.
+Option A makes the suite a third front end, the same way the admin app and the storefront are separate front ends over one API today. It adds exactly one container. "One customer, one record" stays true.
 
 ## How it is put together
 
 ```
-suite.<domain>  ──►  suite web app (new container)
-                         │  /v1/…
-                         ▼
-                     suite server (new container, same code base as the API,
-                         │         runs only the suite's routes and webhooks)
-                         ▼
-                     shared database  ◄── shop API, shop worker (unchanged)
-                         ▲
-                     suite worker (new container: media, recordings, AI,
-                                   catalogue sync, broadcasts)
+www.<domain>    ──►  storefront   ─┐
+admin.<domain>  ──►  admin app    ─┼──►  API  ──►  database
+suite.<domain>  ──►  suite app    ─┘      ▲
+                     (new, the only       │
+                      new container)    worker (shop jobs + suite jobs,
+                                                already separate loops)
 ```
 
 - **Web app:** new `apps/suite`, built with the same tools as the admin app. Its own look, designed around conversations, with shared building blocks in a new `packages/ui` so buttons, tables and forms are made once and cannot drift the way the admin screens did.
-- **Server:** the same code base started in "suite" mode, so Meta's and the phone provider's webhooks land on a process that a shop deploy does not restart. A dropped call during a deploy cannot be retried, so this separation matters.
-- **Worker:** the inbox loop that already exists, started as its own container.
+- **Server:** the shop's existing API. The suite's routes already live in their own files inside it. Nothing new to run.
+- **Worker:** the shop's existing worker. The suite's jobs already run in their own loop inside it, so a slow suite job cannot hold up a shop job.
+- **Known trade-off:** every deploy restarts the API for a few seconds, for the shop and the suite alike. Meta re-sends a missed message for up to 7 days, so nothing is lost there. A phone call arriving in those seconds fails and cannot be retried. If that becomes a real problem once calls are live, the API can later be started a second time for calls only, with no code change.
 - **Accounts and permissions:** the existing staff accounts and the existing permission list. No second user table.
 - **Admin app:** loses its inbox screens and gains a "Customer messages" link and a link from each customer's page.
 - **Phone app:** points at the suite's address.
@@ -83,7 +80,7 @@ Each step ends with something that can be shown working. Nothing reaches custome
 |---|---|---|---|
 | 1 | **Foundation.** Create `apps/suite` and `packages/ui`; sign-in; the suite's menu and layout; containers and web server config; local preview | Medium | No |
 | 2 | **Move the inbox in.** Inbox, reports and settings screens move from the admin app to the suite with the new layout; admin app gets its links; phone app re-pointed | Medium | No |
-| 3 | **Separate server and worker.** "Suite" mode for the server; own containers in the compose file; health checks | Small | **Live at deploy:** Tes adds the tunnel address and the containers start on merge |
+| 3 | **Hosting.** One new container for the suite's web app in the compose file, with its web server config and a memory cap | Small | **Live at deploy:** Tes adds the tunnel address; the container starts on merge |
 | 4 | **First real test.** Meta test number and one phone number on the staging copy | Small | **Live:** Meta test app settings, by Tes or the owner |
 | 5 | **Contacts.** Identities per channel, consent record, orders and spend on the contact, chats and calls on the shop's customer page | Medium | No (adds database tables) |
 | 6 | **Instagram and Messenger.** Messages, story replies, comments and private replies, with Meta's reply-window rules | Large | **Live:** Meta app review |
@@ -102,7 +99,7 @@ The inbox pull request stays as it is, so the screen fixes and the Bundles fix a
 
 ## What could go wrong
 
-1. **The server runs out of memory.** Three more containers on one machine, which also builds every deploy on itself. We would notice as slow deploys, containers restarting, or the till lagging. Mitigation: memory caps on the suite's containers; Tes checks free memory before step 3; a second small server for the suite is the fallback, and this design allows it without code changes.
+1. **The server runs out of memory during a deploy.** The suite adds one small container (static files, a few tens of MB), which is not the concern. The concern is that every deploy builds all the apps on the server itself, and a fourth app makes that build heavier. No container has a memory limit today, so a heavy build can starve the till. We would notice as slow or failed deploys, or the shop stalling while one runs. Mitigation: a memory cap on the new container; Tes checks free memory (`free -h`, `docker stats`) before step 3. The server's size could not be read from here: the guard blocks the DigitalOcean connection, and `DEPLOY.md` describes a Hetzner server while the deploy script says "droplet", so the documents disagree about where it runs.
 2. **Two sign-ins annoy staff.** The suite and the admin app are different addresses, so staff sign in to each. We would notice in the first week of use. Mitigation: one shared sign-in across both is possible later, but it changes how the session cookie is scoped for the admin app and the till, so it is a deliberate change for Tes, not a default.
 3. **Moving the inbox breaks what was just fixed.** The screens were reviewed and fixed inside the admin layout; a new layout can reintroduce fit problems. We would notice in the screenshot check. Mitigation: the same full-screen review (every screen, desktop and phone) is run on the suite before step 2 is called done.
 
@@ -112,7 +109,7 @@ Also: every step from 5 on adds database tables, and a merge applies them to pro
 
 | # | Decision | Who | Recommendation |
 |---|---|---|---|
-| 1 | Approve Option A: own application, shared data | Owner and Tes | Yes |
+| 1 | Option A: own web app, shared API and worker | Owner | **Decided 17 Nov** |
 | 2 | The subdomain name | Owner | Something short staff will say out loud, for example `hub`, `desk` or `connect` |
 | 3 | The product's name on screen | Owner | Match the subdomain |
 | 4 | Separate sign-in to start, or shared sign-in with the admin app | Tes | Separate to start |
