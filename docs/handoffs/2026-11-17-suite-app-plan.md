@@ -195,6 +195,18 @@ Option B or C also changes two earlier decisions: the suite should then have its
 | 7 | Languages for the AI | **Open.** The brief lists English, Pidgin, Yoruba, Hausa, Igbo, French |
 | 8 | Real WhatsApp number: new, or keep the phone app on the same number | **Open.** A new number is simpler and is required for WhatsApp calls |
 
+## Owner's decisions (17 Nov 2026)
+
+| Topic | Decision |
+|---|---|
+| Who it is for | Mrs Samuel only, for now. Option A: one new web app over the shop's API, worker and database |
+| CRM | None to connect. The suite is the business's own CRM and must do what a CRM does: contacts, history, pipeline, tasks, groups, reports |
+| Payments | Stay with OPay |
+| AI languages | English |
+| AI budget | Not fixed yet. No hard cap for now; the suite will show AI spend so a limit can be set later |
+| WhatsApp number | The owner will supply a real number |
+| Calendar, spreadsheet | None now; can be connected later if needed |
+
 ## What could go wrong
 
 1. **The server's disk fills up, or a deploy starves the shop.** See "The server" below: the disk is 78% full, mostly old build files that no deploy clears, and there is no swap. We would notice as a failed deploy, or the shop's database stopping when the disk is full. Mitigation: clear the build files and add the clean-up to the deploy script before the suite is added; add swap; cap the new container's memory.
