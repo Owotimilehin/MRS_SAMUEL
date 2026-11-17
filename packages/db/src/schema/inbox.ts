@@ -235,6 +235,8 @@ export const inboxMessage = pgTable(
     mediaMime: text("media_mime"),
     mediaFilename: text("media_filename"),
     mediaAttempts: integer("media_attempts").notNull().default(0),
+    /** When push notifications for this inbound message were handled. */
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
     templateName: text("template_name"),
     waMessageId: text("wa_message_id").unique(),
     status: inboxMessageStatus("status").notNull(),

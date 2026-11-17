@@ -19,7 +19,7 @@
  * picks them up (apps/worker/src/jobs/inbox-voice.ts).
  */
 import { Hono, type Context } from "hono";
-import { and, asc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   adminUser,
@@ -33,6 +33,7 @@ import {
   inboxIvrOption,
   inboxPhoneNumber,
   inboxPresence,
+  inboxPushToken,
   inboxRecording,
   inboxTeamMember,
   inboxUserNumberAccess,
@@ -234,6 +235,9 @@ async function hasNumberAccess(db: DbExecutor, userId: string, caps: readonly Ca
  * the last 90s, active, holding calls.answer, and (unless inbox.view_all)
  * granted that number.
  */
+/** A phone that opened the app within this window can be rung while closed. */
+const MOBILE_REACHABLE_MS = 12 * 60 * 60 * 1000;
+
 export async function onlineStaffFor(
   db: DbExecutor,
   teamId: string,
@@ -249,7 +253,13 @@ export async function onlineStaffFor(
       and(
         eq(inboxTeamMember.teamId, teamId),
         eq(inboxPresence.available, true),
-        gte(inboxPresence.lastSeenAt, new Date(now.getTime() - PRESENCE_FRESH_MS)),
+        or(
+          gte(inboxPresence.lastSeenAt, new Date(now.getTime() - PRESENCE_FRESH_MS)),
+          // A phone with the app installed rings even when closed (Twilio push).
+          sql`exists (select 1 from ${inboxPushToken} where ${inboxPushToken.userId} = ${adminUser.id}
+                and ${inboxPushToken.platform} in ('ios','android')
+                and ${inboxPushToken.lastSeenAt} > ${new Date(now.getTime() - MOBILE_REACHABLE_MS)})`,
+        ),
         eq(adminUser.isActive, true),
         isNull(adminUser.deletedAt),
       ),
@@ -670,6 +680,14 @@ export function voiceAppRoutes(db: DbClient) {
       throw new BusinessError("service_unavailable", "Phone calls are not configured on this server", 503);
     }
     const identity = voiceIdentityFor(auth.userId);
+    // The mobile app asks with ?platform=ios|android so Twilio can wake a closed phone.
+    const platform = c.req.query("platform");
+    const pushCredentialSid =
+      platform === "ios"
+        ? process.env.TWILIO_PUSH_CREDENTIAL_SID_IOS
+        : platform === "android"
+          ? process.env.TWILIO_PUSH_CREDENTIAL_SID_ANDROID
+          : undefined;
     const token = voiceAccessToken({
       accountSid,
       apiKeySid,
@@ -678,6 +696,7 @@ export function voiceAppRoutes(db: DbClient) {
       outgoingApplicationSid: appSid,
       ttlSeconds: TOKEN_TTL_S,
       incomingAllow: auth.capabilities.includes("calls.answer"),
+      ...(pushCredentialSid ? { pushCredentialSid } : {}),
     });
     return c.json({ data: { token, identity, ttl: TOKEN_TTL_S } });
   });

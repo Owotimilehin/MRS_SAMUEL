@@ -14,6 +14,7 @@ import { runJob } from "./jobs/run-job.js";
 import { retryWebhookEvents, downloadPendingMedia, syncAllTemplates } from "./jobs/inbox-whatsapp.js";
 import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-voice.js";
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
+import { sendMessagePushes } from "./jobs/inbox-push.js";
 
 const logger = pino({ base: { service: "ms-worker" } });
 
@@ -131,6 +132,8 @@ async function loop(): Promise<void> {
         await runJob(logger, "inbox_media", () => downloadPendingMedia(db, logger));
         lastInboxMediaAt = now;
       }
+      // Push notifications to staff phones: every tick (5s) so they feel instant.
+      await runJob(logger, "inbox_push", () => sendMessagePushes(db, logger));
       if (now - lastInboxWebhookRetryAt > INBOX_WEBHOOK_RETRY_MS) {
         await runJob(logger, "inbox_webhook_retry", () => retryWebhookEvents(db, logger));
         lastInboxWebhookRetryAt = now;

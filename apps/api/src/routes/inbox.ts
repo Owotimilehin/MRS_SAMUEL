@@ -9,7 +9,9 @@ import {
   inboxConversation,
   inboxMessage,
   inboxNote,
+  inboxNotifyPref,
   inboxPhoneNumber,
+  inboxPushToken,
   inboxQuickReply,
   inboxRecording,
   inboxTeam,
@@ -186,6 +188,43 @@ export function inboxRoutes(db: DbClient) {
       }
       unsubscribe();
     });
+  });
+
+  // ── Mobile devices and notification settings ──
+  r.post("/devices", async (c) => {
+    const body = z
+      .object({ token: z.string().min(10).max(400), platform: z.enum(["ios", "android", "web"]) })
+      .parse(await c.req.json());
+    const userId = c.get("inboxViewer").userId;
+    // A token belongs to one device; if someone else signs in on it, move it.
+    await db
+      .insert(inboxPushToken)
+      .values({ userId, token: body.token, platform: body.platform, lastSeenAt: new Date() })
+      .onConflictDoUpdate({ target: inboxPushToken.token, set: { userId, platform: body.platform, lastSeenAt: new Date() } });
+    return c.json({ ok: true }, 201);
+  });
+
+  r.delete("/devices", async (c) => {
+    const { token } = z.object({ token: z.string().min(10).max(400) }).parse(await c.req.json());
+    await db
+      .delete(inboxPushToken)
+      .where(and(eq(inboxPushToken.token, token), eq(inboxPushToken.userId, c.get("inboxViewer").userId)));
+    return c.json({ ok: true });
+  });
+
+  r.get("/notifications", async (c) => {
+    const [pref] = await db.select().from(inboxNotifyPref).where(eq(inboxNotifyPref.userId, c.get("inboxViewer").userId));
+    return c.json({ data: { level: pref?.level ?? "assigned" } });
+  });
+
+  r.put("/notifications", async (c) => {
+    const { level } = z.object({ level: z.enum(["all", "assigned", "none"]) }).parse(await c.req.json());
+    const userId = c.get("inboxViewer").userId;
+    await db
+      .insert(inboxNotifyPref)
+      .values({ userId, level })
+      .onConflictDoUpdate({ target: inboxNotifyPref.userId, set: { level } });
+    return c.json({ data: { level } });
   });
 
   // ── Lists for pickers ──

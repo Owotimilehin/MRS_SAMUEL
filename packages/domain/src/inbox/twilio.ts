@@ -234,6 +234,8 @@ export interface VoiceTokenInput {
   outgoingApplicationSid: string;
   ttlSeconds?: number;
   incomingAllow?: boolean;
+  /** Twilio push credential (FCM / APNs VoIP) so a closed phone still rings. */
+  pushCredentialSid?: string;
   /** Seconds since epoch; injectable for tests. */
   nowSeconds?: number;
 }
@@ -254,6 +256,7 @@ export function voiceAccessToken(input: VoiceTokenInput): string {
       voice: {
         incoming: { allow: input.incomingAllow ?? true },
         outgoing: { application_sid: input.outgoingApplicationSid },
+        ...(input.pushCredentialSid ? { push_credential_sid: input.pushCredentialSid } : {}),
       },
     },
   };
