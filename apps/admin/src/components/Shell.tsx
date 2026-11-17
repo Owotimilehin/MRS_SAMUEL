@@ -168,10 +168,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
     staleTime: 30_000,
     refetchInterval: 60_000,
     retry: false,
-    queryFn: async () => {
-      const page = await inboxApi.conversations({ status: "open", view: "all" });
-      return page.data.reduce((sum, r) => sum + r.unread, 0);
-    },
+    queryFn: async () => (await inboxApi.unread()).messages,
   });
 
   // Live online-order signal — drives nav badge + new-order banner.

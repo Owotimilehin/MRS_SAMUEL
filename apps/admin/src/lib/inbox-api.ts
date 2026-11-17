@@ -67,6 +67,8 @@ function qs(params: Record<string, string | undefined>): string {
 
 export const inboxApi = {
   me: async () => (await api<{ data: InboxMe }>("/inbox/me")).data,
+  unread: async () =>
+    (await api<{ data: { messages: number; conversations: number } }>("/inbox/unread")).data,
   staff: async () => (await api<{ data: StaffMember[] }>("/inbox/staff")).data,
   teams: async () => (await api<{ data: InboxTeamLite[] }>("/inbox/teams")).data,
 

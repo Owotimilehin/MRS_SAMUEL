@@ -708,6 +708,12 @@ export function voiceAppRoutes(db: DbClient) {
   });
 
   /** Heartbeat: the web app calls this every 30s while open. */
+  /** What this person last chose, so a new device starts in the same state. */
+  r.get("/presence", requireCapability("calls.answer"), async (c) => {
+    const [row] = await db.select().from(inboxPresence).where(eq(inboxPresence.userId, c.get("auth").userId));
+    return c.json({ data: { available: row?.available ?? false, last_seen_at: row?.lastSeenAt ?? null } });
+  });
+
   r.post("/presence", requireCapability("calls.answer"), async (c) => {
     const auth = c.get("auth");
     const body = PresenceBody.parse(await c.req.json());

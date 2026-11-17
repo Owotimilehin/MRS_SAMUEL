@@ -208,6 +208,18 @@ export function inboxRoutes(db: DbClient) {
     });
   });
 
+  /** Unread count for the nav badge: open conversations the viewer can see. */
+  r.get("/unread", async (c) => {
+    const [row] = await db
+      .select({
+        messages: sql<number>`coalesce(sum(${inboxConversation.unreadCount}), 0)::int`,
+        conversations: sql<number>`count(*) filter (where ${inboxConversation.unreadCount} > 0)::int`,
+      })
+      .from(inboxConversation)
+      .where(and(conversationScope(c.get("inboxViewer")), inArray(inboxConversation.status, ["open", "pending"])));
+    return c.json({ data: row ?? { messages: 0, conversations: 0 } });
+  });
+
   // ── Mobile devices and notification settings ──
   r.post("/devices", async (c) => {
     const body = z

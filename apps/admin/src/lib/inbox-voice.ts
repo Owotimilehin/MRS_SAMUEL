@@ -55,6 +55,13 @@ function readAvailable(): boolean {
     return false;
   }
 }
+function hasStoredAvailable(): boolean {
+  try {
+    return localStorage.getItem(AVAILABLE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
 function writeAvailable(v: boolean): void {
   try {
     localStorage.setItem(AVAILABLE_KEY, v ? "1" : "0");
@@ -132,6 +139,14 @@ export function initVoice(opts: { canAnswer: boolean; canCall: boolean }): Promi
       d.on("incoming", onIncoming);
       device = d;
       set({ status: "ready" });
+      // A browser that never chose: start from what this person last chose elsewhere.
+      if (opts.canAnswer && !hasStoredAvailable()) {
+        const res = await api<{ data: { available: boolean } }>("/inbox/voice/presence", {}, { silentError: true }).catch(() => null);
+        if (res?.data.available) {
+          writeAvailable(true);
+          set({ available: true });
+        }
+      }
       if (opts.canAnswer && get().available) await goAvailable();
     } catch (err) {
       initPromise = null;
