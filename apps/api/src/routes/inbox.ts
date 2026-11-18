@@ -35,11 +35,11 @@ import {
   type InboxViewer,
   type OutboundContent,
 } from "@ms/domain";
-import { resolveCapabilities, waWindowRemainingMs, type AdminRole, type Capability, type PermissionOverrides } from "@ms/shared";
+import { resolveCapabilities, templateNeeds, waWindowRemainingMs, type AdminRole, type Capability, type PermissionOverrides } from "@ms/shared";
 import { requireAuth } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
-import { deleteInboxObjects, presignInboxGet, presignInboxPut } from "../lib/r2.js";
+import { INBOX_UPLOAD_TYPES, deleteInboxObjects, presignInboxGet, presignInboxPut } from "../lib/r2.js";
 import { toCsv } from "../lib/csv.js";
 import { reloadViewer, subscribe } from "../inbox/realtime.js";
 import { logger } from "../logger.js";
@@ -117,13 +117,14 @@ function verifyUploadToken(userId: string, key: string, token: string): boolean 
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
+/** Where POST /uploads puts outgoing files; nothing else may be sent. */
+const OUTGOING_KEY = /^inbox\/outgoing\/\d{4}\/\d{2}\/[0-9a-f-]{36}\.[a-z0-9]{1,6}$/;
+
 const SendBody = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), body: z.string().trim().min(1).max(4096) }),
   z.object({
     type: z.enum(["image", "document", "audio", "video"]),
-    media_key: z
-      .string()
-      .regex(/^inbox\/outgoing\/\d{4}\/\d{2}\/[0-9a-f-]{36}\.[a-z0-9]{1,6}$/, "invalid upload"),
+    media_key: z.string().regex(OUTGOING_KEY, "invalid upload"),
     /** Proof this user got the upload slot (from POST /uploads). */
     media_token: z.string().min(16).max(128),
     mime: z.string().max(200),
@@ -135,6 +136,22 @@ const SendBody = z.discriminatedUnion("type", [
     name: z.string().min(1).max(512),
     language: z.string().min(2).max(15),
     params: z.array(z.string().max(1024)).max(20).default([]),
+    /** The blank in a text heading, when the template has one. */
+    header_param: z.string().trim().min(1).max(60).optional(),
+    /** The picture, video or document for the heading, uploaded via POST /uploads. */
+    header_media: z
+      .object({
+        media_key: z.string().regex(OUTGOING_KEY, "invalid upload"),
+        media_token: z.string().min(16).max(128),
+        mime: z.string().max(200),
+        filename: z.string().max(240).optional(),
+      })
+      .optional(),
+    /** The end of the link for each link button that has a blank; index = the button's position from 0. */
+    button_params: z
+      .array(z.object({ index: z.number().int().min(0).max(9), text: z.string().trim().min(1).max(2000) }))
+      .max(10)
+      .default([]),
   }),
 ]);
 
@@ -427,6 +444,24 @@ export function inboxRoutes(db: DbClient) {
     } else if (body.type === "template") {
       need(c, "inbox.templates");
       content = { type: "template", name: body.name, language: body.language, bodyParams: body.params };
+      if (body.header_param) content.headerText = body.header_param;
+      if (body.button_params.length) content.buttonParams = body.button_params;
+      if (body.header_media) {
+        const hm = body.header_media;
+        if (!verifyUploadToken(v.userId, hm.media_key, hm.media_token)) {
+          throw new BusinessError("forbidden", "That attachment wasn't uploaded by you", 403);
+        }
+        const kind = INBOX_UPLOAD_TYPES[hm.mime]?.kind;
+        if (kind !== "image" && kind !== "video" && kind !== "document") {
+          throw new BusinessError("validation_failed", "That file can't be used with a template. Use a picture, a video or a document", 400);
+        }
+        // Handed to Meta the same way as an ordinary attachment: a short-lived signed link.
+        const link = await presignInboxGet(hm.media_key, { expiresIn: 600 });
+        content.headerMedia = { type: kind, link, ...(hm.filename ? { filename: hm.filename } : {}) };
+        // Kept on the message only if the template really has a place for it (decided in sendFromConversation).
+        mediaKey = hm.media_key;
+        mediaMime = hm.mime;
+      }
     } else {
       if (!verifyUploadToken(v.userId, body.media_key, body.media_token)) {
         throw new BusinessError("forbidden", "That attachment wasn't uploaded by you", 403);
@@ -452,6 +487,9 @@ export function inboxRoutes(db: DbClient) {
       return c.json({ data: msg }, msg.status === "failed" ? 502 : 201);
     } catch (err) {
       if (err instanceof InboxSendError) {
+        if (err.code === "template_incomplete") {
+          throw new BusinessError("validation_failed", err.message, 400, { reason: err.code });
+        }
         const status = err.code === "not_configured" ? 503 : 409;
         throw new BusinessError(status === 503 ? "service_unavailable" : "conflict", err.message, status, { reason: err.code });
       }
@@ -588,16 +626,25 @@ export function inboxRoutes(db: DbClient) {
   r.get("/templates", async (c) => {
     const rows = await db.select().from(inboxTemplate).orderBy(asc(inboxTemplate.name));
     return c.json({
-      data: rows.map((t) => ({
-        id: t.id,
-        name: t.name,
-        language: t.language,
-        category: t.category,
-        status: t.status,
-        components: t.components,
-        param_count: templateParamCount(t.components),
-        waba_id: t.wabaId,
-      })),
+      data: rows.map((t) => {
+        const needs = templateNeeds(t.components, t.category);
+        return {
+          id: t.id,
+          name: t.name,
+          language: t.language,
+          category: t.category,
+          status: t.status,
+          components: t.components,
+          param_count: templateParamCount(t.components),
+          waba_id: t.wabaId,
+          // What the template needs to be sent (additive; older apps ignore it).
+          sendable: needs.sendable,
+          unsendable_reason: needs.reason,
+          header_media: needs.headerMedia,
+          header_param_count: needs.headerParams,
+          url_buttons: needs.urlButtons,
+        };
+      }),
     });
   });
 
@@ -939,6 +986,8 @@ async function buildTimelinePage(
       error_message: inboxMessage.errorMessage,
       unconfirmed: sql<boolean>`${inboxMessage.direction} = 'out' and coalesce((${inboxMessage.payload}->>'unconfirmed')::boolean, false)`,
       sender_name: sql<string | null>`coalesce(${staff.name}, ${staff.email})`,
+      // Sent by the system, not a person: "after_hours" (closed-hours reply) or "system" (e.g. missed-call follow-up).
+      auto: sql<string | null>`case when ${inboxMessage.direction} = 'out' and ${inboxMessage.senderUserId} is null then coalesce(${inboxMessage.payload}->>'auto', 'system') end`,
       created_at: inboxMessage.createdAt,
     })
     .from(inboxMessage)
