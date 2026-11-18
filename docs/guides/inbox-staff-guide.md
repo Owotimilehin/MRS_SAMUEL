@@ -84,7 +84,7 @@ Click a row to open it.
 | **Close chat** | Marks the chat as finished. It moves to the **Closed** list. |
 | **Reopen chat** | Shown on a closed chat. Brings it back to open. |
 
-If the customer writes again after a chat is closed, it comes back by itself.
+If the customer writes again within 7 days of a chat being closed, the same chat reopens by itself. After 7 days, their message starts a new chat, and the old one is listed under **Other conversations**.
 
 ### The messages
 
@@ -111,7 +111,7 @@ With **WhatsApp reply** selected:
 
 | Control | What it does |
 |---|---|
-| **Type a reply…** | Write your message. Press Enter to send. |
+| **Type a reply…** | Write your message. On a computer, press Enter to send (Shift+Enter starts a new line). On a phone, tap **Reply**. |
 | **Paperclip** (Attach a file) | Send a photo or a document. You can add a caption. |
 | **Quick replies** | Opens the list of ready-made answers. Click one to drop it into the box, then edit it if needed. |
 | **Send a template** | Opens the list of approved templates. See "The 24-hour rule" below. |
@@ -171,7 +171,7 @@ When a call comes in, a card shows who is calling with **Answer** and **Decline*
 2. Click the conversation.
 3. Read what they wrote.
 4. Make sure **WhatsApp reply** is selected.
-5. Type your answer and press Enter.
+5. Type your answer and press Enter, or tap **Reply** on a phone.
 
 The chat is now yours and appears under **Mine**.
 
@@ -180,7 +180,7 @@ The chat is now yours and appears under **Mine**.
 1. Open the conversation.
 2. Click **Quick replies**.
 3. Click the answer you want. It appears in the box.
-4. Change anything that needs changing, then press Enter.
+4. Change anything that needs changing, then send it.
 
 ## Send a photo or document
 
@@ -321,7 +321,7 @@ When adding or editing a number you fill in:
 | **WhatsApp Business Account ID** and **Phone number ID** | Two numbers copied from the business's WhatsApp account, entered once |
 | **Team that gets new chats** | Which team new conversations on this number go to |
 | **Opening hours** | Which schedule applies. "Always open" if none. |
-| **After-hours message** | Sent automatically to a customer who writes when the business is closed |
+| **After-hours message** | Read out to customers who phone when the business is closed. WhatsApp messages that arrive out of hours are not answered automatically; they wait in the Inbox for the team. |
 
 Click **Save number** to keep it.
 
@@ -343,7 +343,7 @@ A grid of staff against business numbers. Tick the numbers each person may send 
 
 ## Hours
 
-When the business is open. This decides when the after-hours message is sent and how calls are handled out of hours.
+When the business is open. This decides how phone calls are handled out of hours and what counts as "after hours" in the reports.
 
 | Button | What it does |
 |---|---|
@@ -396,7 +396,7 @@ Messages approved in advance by WhatsApp. They are the only way to message a cus
 |---|---|
 | **Name** | The template's name |
 | **Language** | The language it is written in |
-| **Type** | Service update, marketing, or security code |
+| **Type** | Service update, Marketing, or Login code |
 | **Status** | **Approved** templates can be sent. Others are waiting for WhatsApp or were rejected. |
 | **Blanks to fill** | How many details staff type in when sending, such as a name or order number |
 
