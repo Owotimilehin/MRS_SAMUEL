@@ -6,6 +6,7 @@ import { inboxApi } from "../../lib/inbox-api.js";
 import { humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
 import {
+  autoMessageLabel,
   callOutcomeLabel,
   formatDuration,
   groupTimelineByDay,
@@ -143,6 +144,9 @@ function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
     <div className={`ibx-msg ibx-msg--${m.direction}${problem ? ` ibx-msg--${problem}` : ""}`}>
       {m.direction === "out" && m.sender_name && (
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{staffLabel(m.sender_name)}</div>
+      )}
+      {m.direction === "out" && !m.sender_name && autoMessageLabel(m.auto) && (
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-soft)", marginBottom: 2 }}>{autoMessageLabel(m.auto)}</div>
       )}
       {m.template_name && (
         <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 2 }}>Template: {humanTemplateName(m.template_name)}</div>

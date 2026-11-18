@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Paperclip, MessageCircle, MessageSquareText, FileText, X, StickyNote, Clock } from "lucide-react";
-import { waWindowRemainingMs } from "@ms/shared";
+import { headerMediaLabel, templateNeeds, waWindowRemainingMs } from "@ms/shared";
 import { Modal } from "../Modal.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import { humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
 import {
-  countTemplateParams,
+  addHeaderFileLabel,
+  fillButtonUrl,
   fillTemplate,
+  headerFileProblem,
+  headerFileRule,
   humanTemplateName,
   languageName,
   sendTypeForMime,
   shouldSendTyping,
   templateBodyText,
-  templateParamsComplete,
+  templateDraftProblem,
   windowText,
 } from "../../lib/inbox-logic.js";
 import type { ConversationDetail, InboxTemplate, QuickReply } from "../../lib/inbox-types.js";
@@ -324,31 +327,80 @@ function TemplatePicker({ conv, onClose, onSent }: { conv: ConversationDetail; o
   const approved = (q.data ?? []).filter((t) => t.status.toUpperCase() === "APPROVED");
   const [pick, setPick] = useState<InboxTemplate | null>(null);
   const [params, setParams] = useState<string[]>([]);
+  const [headerParam, setHeaderParam] = useState("");
+  const [buttonParams, setButtonParams] = useState<Record<number, string>>({});
+  const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const count = pick ? Math.max(pick.param_count, countTemplateParams(pick.components)) : 0;
+  const needs = pick ? templateNeeds(pick.components, pick.category) : null;
+  const count = needs?.bodyParams ?? 0;
   const body = pick ? templateBodyText(pick.components) : null;
+  const problem = needs ? templateDraftProblem(needs, { params, headerParam, buttonParams, hasFile: !!file }) : null;
+
+  // A local preview of the chosen picture (never uploaded until Send).
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file || !file.type.startsWith("image/")) {
+      setFilePreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setFilePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   function choose(t: InboxTemplate): void {
+    const n = templateNeeds(t.components, t.category);
+    if (!n.sendable) return;
     setPick(t);
-    const n = Math.max(t.param_count, countTemplateParams(t.components));
     // Pre-fill {{1}} with the customer's first name — the usual greeting slot.
     const first = conv.customer?.name?.trim().split(/\s+/)[0] ?? "";
-    setParams(Array.from({ length: n }, (_, i) => (i === 0 ? first : "")));
+    setParams(Array.from({ length: n.bodyParams }, (_, i) => (i === 0 ? first : "")));
+    setHeaderParam("");
+    setButtonParams({});
+    setFile(null);
+  }
+
+  function onFile(f: File | undefined): void {
+    if (!f || !needs?.headerMedia) return;
+    const why = headerFileProblem(needs.headerMedia, f);
+    if (why) {
+      toast.error(why);
+      return;
+    }
+    setFile(f);
   }
 
   async function send(): Promise<void> {
-    if (!pick) return;
+    if (!pick || !needs || problem) return;
     setBusy(true);
     try {
-      await inboxApi.sendTemplate(conv.id, { name: pick.name, language: pick.language, params: params.slice(0, count) });
+      let headerMedia: { media_key: string; media_token: string; mime: string; filename?: string } | undefined;
+      if (needs.headerMedia && file) {
+        const up = await inboxApi.upload(file);
+        headerMedia = { media_key: up.object_key, media_token: up.media_token, mime: file.type, filename: file.name };
+      }
+      await inboxApi.sendTemplate(conv.id, {
+        name: pick.name,
+        language: pick.language,
+        params: params.slice(0, count),
+        ...(needs.headerParams > 0 ? { header_param: headerParam.trim() } : {}),
+        ...(headerMedia ? { header_media: headerMedia } : {}),
+        ...(needs.urlButtons.length
+          ? { button_params: needs.urlButtons.map((b) => ({ index: b.index, text: (buttonParams[b.index] ?? "").trim() })) }
+          : {}),
+      });
       onSent();
-    } catch {
-      /* toast shown by api() */
+    } catch (err) {
+      // Upload errors (the raw PUT) don't go through api(); the rest already showed a toast.
+      if (!(err instanceof Error && err.name === "ApiError")) toast.error(humanizeError(err));
     } finally {
       setBusy(false);
     }
   }
+
+  const mediaWord = needs?.headerMedia ? headerMediaLabel(needs.headerMedia) : "";
 
   return (
     <Modal title="Send a template" onClose={onClose} maxWidth={560}>
@@ -359,29 +411,80 @@ function TemplatePicker({ conv, onClose, onSent }: { conv: ConversationDetail; o
           <div className="empty__title">No approved templates</div>
           Templates are created in WhatsApp Manager, then synced in Inbox settings.
         </div>
-      ) : !pick ? (
+      ) : !pick || !needs ? (
         <div style={{ display: "grid", gap: 6 }}>
-          {approved.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className="card card--hoverable"
-              style={{ textAlign: "left", padding: 10, cursor: "pointer" }}
-              onClick={() => choose(t)}
-            >
-              <div style={{ fontWeight: 700 }}>
-                {humanTemplateName(t.name)} <span className="pill" style={{ fontSize: 10 }}>{languageName(t.language)}</span>
-              </div>
-              <div className="ibx-raw">{t.name}</div>
-              <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>{(templateBodyText(t.components) ?? "").slice(0, 160)}</div>
-            </button>
-          ))}
+          {approved.map((t) => {
+            const n = templateNeeds(t.components, t.category);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                className={`card${n.sendable ? " card--hoverable" : ""}`}
+                style={{ textAlign: "left", padding: 10, cursor: n.sendable ? "pointer" : "not-allowed", opacity: n.sendable ? 1 : 0.6 }}
+                disabled={!n.sendable}
+                onClick={() => choose(t)}
+              >
+                <div style={{ fontWeight: 700 }}>
+                  {humanTemplateName(t.name)} <span className="pill" style={{ fontSize: 10 }}>{languageName(t.language)}</span>
+                </div>
+                <div className="ibx-raw">{t.name}</div>
+                <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>{(templateBodyText(t.components) ?? "").slice(0, 160)}</div>
+                {!n.sendable ? (
+                  <div style={{ fontSize: 12, fontWeight: 600, marginTop: 4 }}>{n.reason}.</div>
+                ) : n.headerMedia ? (
+                  <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>You'll add a {headerMediaLabel(n.headerMedia)} before sending.</div>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           <button type="button" className="btn btn--ghost btn--sm" style={{ justifySelf: "start" }} onClick={() => setPick(null)}>
             ← Pick another
           </button>
+
+          {needs.headerMedia && (
+            <div className="field">
+              <span className="field__label">{mediaWord.charAt(0).toUpperCase() + mediaWord.slice(1)} for this message</span>
+              <input
+                ref={fileRef}
+                type="file"
+                hidden
+                accept={headerFileRule(needs.headerMedia).accept}
+                onChange={(e) => {
+                  onFile(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+              {file ? (
+                <div className="ibx-attach">
+                  <FileText size={14} aria-hidden />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {file.name} ({Math.max(1, Math.round(file.size / 1024))} KB)
+                  </span>
+                  <button type="button" className="btn btn--ghost btn--sm" aria-label={`Remove ${mediaWord}`} onClick={() => setFile(null)} disabled={busy}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="btn btn--subtle btn--sm" style={{ justifySelf: "start" }} onClick={() => fileRef.current?.click()}>
+                  <Paperclip size={14} aria-hidden /> {addHeaderFileLabel(needs.headerMedia)}
+                </button>
+              )}
+              <span className="field__hint">
+                This template is sent with a {mediaWord} at the top. {headerFileRule(needs.headerMedia).hint}.
+              </span>
+            </div>
+          )}
+
+          {needs.headerParams > 0 && (
+            <label className="field">
+              <span className="field__label">Fill in the blank in the heading</span>
+              <input className="input" value={headerParam} maxLength={60} onChange={(e) => setHeaderParam(e.target.value)} />
+            </label>
+          )}
+
           {params.slice(0, count).map((v, i) => (
             <label key={i} className="field">
               <span className="field__label">Fill in {`{{${i + 1}}}`}</span>
@@ -393,20 +496,62 @@ function TemplatePicker({ conv, onClose, onSent }: { conv: ConversationDetail; o
               />
             </label>
           ))}
+
+          {needs.urlButtons.map((b) => (
+            <label key={b.index} className="field">
+              <span className="field__label">End of the link for the "{b.text}" button</span>
+              <input
+                className="input"
+                value={buttonParams[b.index] ?? ""}
+                maxLength={2000}
+                onChange={(e) => setButtonParams((bp) => ({ ...bp, [b.index]: e.target.value }))}
+              />
+              <span className="field__hint" style={{ wordBreak: "break-all" }}>
+                The button opens {fillButtonUrl(b.url, buttonParams[b.index] ?? "")}
+              </span>
+            </label>
+          ))}
+
           <div className="card card--soft" style={{ whiteSpace: "pre-wrap", fontSize: 14 }}>
             <div className="t-eyebrow" style={{ marginBottom: 4 }}>Preview</div>
+            {needs.headerMedia &&
+              (filePreview ? (
+                <img src={filePreview} alt="" style={{ maxWidth: "100%", maxHeight: 180, borderRadius: 10, display: "block", marginBottom: 6 }} />
+              ) : (
+                <div
+                  style={{
+                    border: "1px dashed var(--line)",
+                    borderRadius: 10,
+                    padding: "14px 10px",
+                    marginBottom: 6,
+                    textAlign: "center",
+                    fontSize: 13,
+                    color: "var(--ink-soft)",
+                  }}
+                >
+                  {file ? file.name : `Your ${mediaWord} goes here`}
+                </div>
+              ))}
+            {needs.headerText && <div style={{ fontWeight: 700, marginBottom: 4 }}>{fillTemplate(needs.headerText, [headerParam])}</div>}
             {body ? fillTemplate(body, params) : `Template "${pick.name}"`}
+            {needs.footerText && <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 6 }}>{needs.footerText}</div>}
+            {needs.buttonLabels.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                {needs.buttonLabels.map((label, i) => (
+                  <span key={i} className="pill">
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
+
+          {problem && <span className="field__hint">{problem}</span>}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <button type="button" className="btn btn--subtle" onClick={onClose} disabled={busy}>
               Cancel
             </button>
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={busy || !templateParamsComplete(params, count)}
-              onClick={() => void send()}
-            >
+            <button type="button" className="btn btn--primary" disabled={busy || !!problem} onClick={() => void send()}>
               {busy ? "Sending…" : "Send template"}
             </button>
           </div>

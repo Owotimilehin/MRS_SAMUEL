@@ -8,7 +8,17 @@ import { settingsApi, settingsKeys, type NumberInput } from "../../lib/inbox-set
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import { toast } from "../../lib/toast.js";
 import { GreetingUpload } from "./GreetingUpload.js";
-import { humanTemplateName, languageName, messagingLimitLabel, prettyPhone, sentenceCase, templateCategoryLabel } from "../../lib/inbox-logic.js";
+import { headerMediaLabel, templateNeeds } from "@ms/shared";
+import {
+  afterHoursHelp,
+  humanTemplateName,
+  languageName,
+  messagingLimitLabel,
+  prettyPhone,
+  sentenceCase,
+  templateBlankCount,
+  templateCategoryLabel,
+} from "../../lib/inbox-logic.js";
 import type { PhoneNumberRow } from "../../lib/inbox-types.js";
 
 const CHANNEL_LABEL = { both: "WhatsApp + calls", whatsapp: "WhatsApp only", voice: "Calls only" } as const;
@@ -346,6 +356,8 @@ function NumberForm({
             placeholder="Thanks for reaching out! We're closed now and will reply when we open."
             onChange={(e) => set("after_hours_text", e.target.value)}
           />
+          <span className="field__hint">{afterHoursHelp(f.channels)}</span>
+          {!f.hours_profile_id && <span className="field__hint">Add opening hours for this to be used.</span>}
         </label>
         {voice && (
           <div className="field">
@@ -475,11 +487,22 @@ export function SettingsTemplates(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {(q.data ?? []).map((t) => (
+              {(q.data ?? []).map((t) => {
+                const needs = templateNeeds(t.components, t.category);
+                return (
                 <tr key={t.id}>
                   <td>
                     <div style={{ fontWeight: 600 }}>{humanTemplateName(t.name)}</div>
                     <div className="ibx-raw" title="The template's name in WhatsApp Manager">{t.name}</div>
+                    {!needs.sendable ? (
+                      <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>
+                        Can't be sent from the inbox. {needs.reason}.
+                      </div>
+                    ) : needs.headerMedia ? (
+                      <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>
+                        Needs a {headerMediaLabel(needs.headerMedia)} added when it's sent.
+                      </div>
+                    ) : null}
                   </td>
                   <td data-label="Language">{languageName(t.language)}</td>
                   <td data-label="Type">{templateCategoryLabel(t.category)}</td>
@@ -488,9 +511,10 @@ export function SettingsTemplates(): JSX.Element {
                       {sentenceCase(t.status)}
                     </span>
                   </td>
-                  <td className="table__num" data-label="Blanks to fill">{t.param_count}</td>
+                  <td className="table__num" data-label="Blanks to fill">{needs.sendable ? templateBlankCount(needs) : "—"}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

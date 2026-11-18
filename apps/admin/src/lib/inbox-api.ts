@@ -110,8 +110,20 @@ export const inboxApi = {
       caption?: string;
     },
   ) => postMessage(id, m),
-  sendTemplate: (id: string, t: { name: string; language: string; params: string[] }) =>
-    postMessage(id, { type: "template", ...t }),
+  sendTemplate: (
+    id: string,
+    t: {
+      name: string;
+      language: string;
+      params: string[];
+      /** The blank in a text heading. */
+      header_param?: string;
+      /** The uploaded picture, video or document for the heading. */
+      header_media?: { media_key: string; media_token: string; mime: string; filename?: string };
+      /** The end of the link for each link button with a blank. */
+      button_params?: { index: number; text: string }[];
+    },
+  ) => postMessage(id, { type: "template", ...t }),
 
   addNote: (id: string, body: string) =>
     api(`/inbox/conversations/${id}/notes`, { method: "POST", body: JSON.stringify({ body }) }),

@@ -100,6 +100,12 @@ export interface TimelineMessage {
   unconfirmed?: boolean;
   error_message: string | null;
   sender_name: string | null;
+  /**
+   * Set when no member of staff sent it: "after_hours" (the reply to customers
+   * who write when closed) or "system" (e.g. the missed-call follow-up).
+   * Absent on older servers.
+   */
+  auto?: string | null;
   created_at: string;
 }
 
@@ -178,6 +184,9 @@ export interface InboxTemplate {
   components: unknown[];
   param_count: number;
   waba_id: string;
+  /** Can the inbox send it? Absent on older servers (the app works it out from `components`). */
+  sendable?: boolean;
+  unsendable_reason?: string | null;
 }
 
 export interface QuickReply {
