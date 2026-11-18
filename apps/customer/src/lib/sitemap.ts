@@ -30,6 +30,7 @@ export const STATIC_ENTRIES: SitemapEntry[] = [
   { path: "/contact", changefreq: "monthly", priority: 0.5 },
   { path: "/returns", changefreq: "yearly", priority: 0.3 },
   { path: "/terms", changefreq: "yearly", priority: 0.3 },
+  { path: "/privacy", changefreq: "yearly", priority: 0.3 },
 ];
 
 export function areaEntries(): SitemapEntry[] {
