@@ -22,6 +22,7 @@ import {
   listTemplates,
   metaConfigFromEnv,
   publishInboxEvent,
+  sendAfterHoursAutoReplies,
   signalFor,
   MetaApiError,
   type WaWebhookPayload,
@@ -146,6 +147,15 @@ export async function downloadPendingMedia(
     }
   }
   return done;
+}
+
+/**
+ * After-hours WhatsApp auto-reply to customers who write when closed. The
+ * rules and the at-most-once guarantee live in @ms/domain (inbox/auto-reply).
+ * No-op when WhatsApp isn't configured.
+ */
+export async function sendAutoReplies(db: DbClient, log: Log, opts: { now?: Date } = {}): Promise<number> {
+  return sendAfterHoursAutoReplies(db, metaConfigFromEnv(), log, opts);
 }
 
 export async function syncAllTemplates(db: DbClient, log: Log): Promise<number> {
