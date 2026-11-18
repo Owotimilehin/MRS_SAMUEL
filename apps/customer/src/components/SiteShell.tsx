@@ -103,6 +103,7 @@ function Footer() {
             <li><Link to="/delivery" className="hover:text-white">Delivery Information</Link></li>
             <li><Link to="/returns" className="hover:text-white">Returns & Refunds</Link></li>
             <li><Link to="/terms" className="hover:text-white">Terms & Conditions</Link></li>
+            <li><Link to="/privacy" className="hover:text-white">Privacy Policy</Link></li>
           </ul>
         </div>
           <div>

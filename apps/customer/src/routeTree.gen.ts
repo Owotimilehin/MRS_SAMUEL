@@ -15,6 +15,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ShopRouteImport } from './routes/shop'
 import { Route as ReturnsRouteImport } from './routes/returns'
 import { Route as QrRouteImport } from './routes/qr'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as JuicesRouteImport } from './routes/juices'
 import { Route as IgRouteImport } from './routes/ig'
 import { Route as DeliveryRouteImport } from './routes/delivery'
@@ -60,6 +61,11 @@ const ReturnsRoute = ReturnsRouteImport.update({
 const QrRoute = QrRouteImport.update({
   id: '/qr',
   path: '/qr',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JuicesRoute = JuicesRouteImport.update({
@@ -153,6 +159,7 @@ export interface FileRoutesByFullPath {
   '/delivery': typeof DeliveryRoute
   '/ig': typeof IgRoute
   '/juices': typeof JuicesRouteWithChildren
+  '/privacy': typeof PrivacyRoute
   '/qr': typeof QrRoute
   '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
@@ -175,6 +182,7 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/delivery': typeof DeliveryRoute
   '/ig': typeof IgRoute
+  '/privacy': typeof PrivacyRoute
   '/qr': typeof QrRoute
   '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
@@ -200,6 +208,7 @@ export interface FileRoutesById {
   '/delivery': typeof DeliveryRoute
   '/ig': typeof IgRoute
   '/juices': typeof JuicesRouteWithChildren
+  '/privacy': typeof PrivacyRoute
   '/qr': typeof QrRoute
   '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
@@ -226,6 +235,7 @@ export interface FileRouteTypes {
     | '/delivery'
     | '/ig'
     | '/juices'
+    | '/privacy'
     | '/qr'
     | '/returns'
     | '/shop'
@@ -248,6 +258,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/delivery'
     | '/ig'
+    | '/privacy'
     | '/qr'
     | '/returns'
     | '/shop'
@@ -272,6 +283,7 @@ export interface FileRouteTypes {
     | '/delivery'
     | '/ig'
     | '/juices'
+    | '/privacy'
     | '/qr'
     | '/returns'
     | '/shop'
@@ -297,6 +309,7 @@ export interface RootRouteChildren {
   DeliveryRoute: typeof DeliveryRoute
   IgRoute: typeof IgRoute
   JuicesRoute: typeof JuicesRouteWithChildren
+  PrivacyRoute: typeof PrivacyRoute
   QrRoute: typeof QrRoute
   ReturnsRoute: typeof ReturnsRoute
   ShopRoute: typeof ShopRoute
@@ -350,6 +363,13 @@ declare module '@tanstack/react-router' {
       path: '/qr'
       fullPath: '/qr'
       preLoaderRoute: typeof QrRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/juices': {
@@ -502,6 +522,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeliveryRoute: DeliveryRoute,
   IgRoute: IgRoute,
   JuicesRoute: JuicesRouteWithChildren,
+  PrivacyRoute: PrivacyRoute,
   QrRoute: QrRoute,
   ReturnsRoute: ReturnsRoute,
   ShopRoute: ShopRoute,
