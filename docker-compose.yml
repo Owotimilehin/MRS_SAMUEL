@@ -219,6 +219,22 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # The business suite (suite.<domain>): customer messages, calls and contacts.
+  # Static files behind nginx, which forwards /v1/ to the api service.
+  suite:
+    build:
+      context: .
+      dockerfile: apps/suite/Dockerfile
+      args:
+        VITE_ADMIN_URL: ${PUBLIC_ADMIN_URL:-}
+    ports:
+      - "${HOST_BIND:-0.0.0.0}:3011:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 128m
+    restart: unless-stopped
+
   customer:
     build:
       context: .

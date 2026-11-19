@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmModal } from "../ConfirmModal.js";
+import { CustomerLink } from "../../lib/app-frame.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import { contactName, listTime, phoneConfirmMatches, prettyPhone } from "../../lib/inbox-logic.js";
 import { toast } from "../../lib/toast.js";
@@ -82,9 +83,9 @@ export function ContactPanel({
         {c.email && <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>{c.email}</div>}
         {can("customers.view") && (
           <div style={{ marginTop: 6 }}>
-            <Link to="/owner/customers/$customerId" params={{ customerId: c.id }} style={{ fontSize: 13 }}>
+            <CustomerLink customerId={c.id} style={{ fontSize: 13 }}>
               Orders &amp; customer profile →
-            </Link>
+            </CustomerLink>
           </div>
         )}
       </div>

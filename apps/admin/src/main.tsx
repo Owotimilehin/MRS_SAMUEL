@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { router } from "./router.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { ToastHost } from "./components/ToastHost.js";
+import { HostAppProvider } from "./lib/app-frame.js";
+import { adminHost } from "./lib/admin-host.js";
 import { installTelemetry } from "./lib/telemetry.js";
 import { browserReloadEnv, reloadOnceForStaleChunk } from "./lib/chunk-reload.js";
 import "./index.css";
@@ -55,7 +57,9 @@ createRoot(rootEl).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <HostAppProvider value={adminHost}>
+          <RouterProvider router={router} />
+        </HostAppProvider>
         <ToastHost />
       </QueryClientProvider>
     </ErrorBoundary>

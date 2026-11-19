@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Shell } from "../../components/Shell.js";
+import { Frame as Shell } from "../../lib/app-frame.js";
 import { StatHero } from "../../components/StatHero.js";
 import { SettingsNumbers, SettingsTemplates } from "../../components/inbox/SettingsNumbers.js";
 import { SettingsAccess, SettingsQuickReplies, SettingsTeams } from "../../components/inbox/SettingsTeams.js";

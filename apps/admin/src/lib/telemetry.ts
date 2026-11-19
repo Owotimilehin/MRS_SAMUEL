@@ -10,7 +10,7 @@ interface ErrorPayload {
   col?: number;
   ts: string;
   ua: string;
-  app: "customer" | "admin";
+  app: "customer" | "admin" | "suite";
 }
 
 const ENDPOINT = "/v1/telemetry/error";
@@ -29,7 +29,7 @@ function withinRate(): boolean {
   return true;
 }
 
-export function installTelemetry(app: "customer" | "admin"): void {
+export function installTelemetry(app: "customer" | "admin" | "suite"): void {
   function send(payload: ErrorPayload): void {
     if (!withinRate()) return;
     if (typeof window === "undefined") return;

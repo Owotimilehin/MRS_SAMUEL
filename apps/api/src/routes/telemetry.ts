@@ -22,7 +22,7 @@ const ClientError = z.object({
   col: z.number().int().optional(),
   ts: z.string().datetime().optional(),
   ua: z.string().max(500).optional(),
-  app: z.enum(["customer", "admin"]),
+  app: z.enum(["customer", "admin", "suite"]),
 });
 
 export function telemetryRoutes(db: DbClient) {

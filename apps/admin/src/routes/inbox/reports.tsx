@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { Download } from "lucide-react";
-import { Shell } from "../../components/Shell.js";
+import { Frame as Shell } from "../../lib/app-frame.js";
 import { StatHero } from "../../components/StatHero.js";
 import { Stat } from "../../components/Stat.js";
 import { DataState } from "../../components/DataState.js";
