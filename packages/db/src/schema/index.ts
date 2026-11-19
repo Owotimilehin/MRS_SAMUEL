@@ -41,4 +41,5 @@ export * from "./checkout-attempt-log.js";
 export * from "./variance-loss.js";
 export * from "./app-setting.js";
 export * from "./inbox.js";
+export * from "./social.js";
 export * from "./channel.js";
