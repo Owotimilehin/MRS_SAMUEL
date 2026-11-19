@@ -2,6 +2,7 @@ import { type CSSProperties, type ReactNode, lazy, Suspense, useEffect, useState
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useOnlineOrderSignal } from "../hooks/useOnlineOrderSignal.js";
+import { useInboxNotifier } from "../hooks/useInboxNotifier.js";
 import {
   Menu,
   ChevronsLeft,
@@ -197,6 +198,9 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
     retry: false,
     queryFn: async () => (await inboxApi.unread()).messages,
   });
+
+  // Sound, pop-up and tab-title alerts when a customer writes, on every page.
+  useInboxNotifier(can("inbox.view"));
 
   // Live online-order signal — drives nav badge + new-order banner.
   const signal = useOnlineOrderSignal({ enabled: can("sales.view") });

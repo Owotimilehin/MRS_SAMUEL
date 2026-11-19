@@ -605,3 +605,49 @@ export function axisDays(days: readonly string[], max = 6): string[] {
   for (let i = days.length - 1; i >= 0; i -= step) out.unshift(days[i]!);
   return out;
 }
+
+// ── New-message alerts ───────────────────────────────────────────────────────
+
+export interface AlertContext {
+  /** The signed-in staff member. */
+  userId: string;
+  /** Their saved choice: every chat they can see, their own and unassigned ones, or none. */
+  level: "all" | "assigned" | "none";
+  /** The conversation open on screen, if any. */
+  openConversationId: string | null;
+  /** Is this tab on screen and in front? */
+  tabActive: boolean;
+}
+
+/**
+ * Should a live event sound and show an alert for this person?
+ *
+ * Only a customer's message alerts. The server has already checked that this
+ * person may see the conversation. "assigned" means their own chats plus ones
+ * nobody has picked up yet, so a new customer is never met with silence.
+ * Nothing fires for the chat they are already reading.
+ */
+export function shouldAlertForEvent(
+  e: { event: string; direction?: "in" | "out"; conversationId?: string; assigneeId?: string | null },
+  ctx: AlertContext,
+): boolean {
+  if (e.event !== "message.created" || e.direction !== "in" || !e.conversationId) return false;
+  if (ctx.level === "none") return false;
+  if (ctx.level === "assigned" && e.assigneeId && e.assigneeId !== ctx.userId) return false;
+  if (ctx.tabActive && ctx.openConversationId === e.conversationId) return false;
+  return true;
+}
+
+/** Tab title while messages are waiting: "(3) Inbox" style, so a pinned tab still shows it. */
+export function titleWithCount(baseTitle: string, waiting: number): string {
+  const clean = baseTitle.replace(/^\(\d+\+?\)\s+/, "");
+  if (waiting <= 0) return clean;
+  return `(${waiting > 99 ? "99+" : waiting}) ${clean}`;
+}
+
+/** The conversation id in an inbox address, e.g. /inbox/1234 → "1234". */
+export function conversationIdFromPath(pathname: string): string | null {
+  const m = /^\/inbox\/([^/]+)\/?$/.exec(pathname);
+  if (!m) return null;
+  return m[1] === "reports" || m[1] === "settings" ? null : m[1]!;
+}

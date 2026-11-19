@@ -169,6 +169,28 @@ describe("unified inbox — WhatsApp", () => {
     expect(cust).toMatchObject({ phone: "+2347011111111", name: "Ada", source: "whatsapp" });
   });
 
+  it("marks the live signal for a customer's message as incoming, so staff apps can alert on it", async () => {
+    const signals: { event: string; direction?: string; conversationId?: string }[] = [];
+    const sub = await db.$client.listen("inbox_events", (raw) => {
+      signals.push(JSON.parse(raw) as (typeof signals)[number]);
+    });
+    try {
+      const payload = inboundPayload({ wamid: "wamid.in.signal", from: "2347011111111", text: "Are you open on Sunday?" });
+      expect((await postWebhook(payload)).status).toBe(200);
+      for (let i = 0; i < 40 && !signals.some((s) => s.event === "message.created"); i++) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    } finally {
+      await sub.unlisten();
+    }
+    const created = signals.filter((s) => s.event === "message.created");
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ direction: "in" });
+    expect(created[0]!.conversationId).toBeTruthy();
+    // Other signals carry no direction, so they can never be mistaken for a customer's message.
+    expect(signals.filter((s) => s.event !== "message.created").every((s) => s.direction === undefined)).toBe(true);
+  });
+
   it("matches an existing customer whose phone was typed in local format", async () => {
     const [existing] = await db.insert(customer).values({ phone: "0702 222 2222", name: "Bola", source: "online" }).returning();
     await postWebhook(inboundPayload({ wamid: "wamid.in.2", from: "2347022222222", text: "Hi", name: "B" }));
