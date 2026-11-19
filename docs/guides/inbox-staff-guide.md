@@ -16,6 +16,8 @@ Owners and admins see every conversation. Managers see the conversations of thei
 
 ## Where to find it
 
+![The three links under Customer messages in the menu](img/menu-customer-messages.jpg)
+
 Sign in to the admin site and look at the green menu on the left. Under the heading **Customer messages** there are three links.
 
 | Link | What it is for | Who uses it |
@@ -32,6 +34,12 @@ If you cannot see **Customer messages**, click **Refresh app** at the top right.
 
 # Part 1: Inbox
 
+![The Inbox: the list on the left, the conversation in the middle, the contact on the right](img/conversation-open.jpg)
+
+![On a phone: the list](img/phone-inbox-list.jpg)
+
+![On a phone: an open conversation](img/phone-conversation.jpg)
+
 The Inbox screen has three columns. On a phone you see one at a time.
 
 | Column | What it shows |
@@ -41,6 +49,8 @@ The Inbox screen has three columns. On a phone you see one at a time.
 | Right: **the contact** | Who the customer is, your notes about them, and their other conversations |
 
 ## The list (left)
+
+![The list, showing All open](img/inbox-list.jpg)
 
 ### The five lists
 
@@ -73,6 +83,8 @@ Click a row to open it.
 
 ### The top bar of a conversation
 
+![The top of a conversation: who it is, who is handling it, and the main buttons](img/conversation-header.jpg)
+
 | Button | What it does |
 |---|---|
 | **← (back arrow)** | On a phone, returns to the list |
@@ -97,6 +109,8 @@ If the customer writes again within 7 days of a chat being closed, the same chat
 - **Load earlier messages**, at the top, brings up older history.
 
 ### The reply box
+
+![The reply box with Internal note selected](img/reply-box-internal-note.jpg)
 
 At the bottom of the conversation are two buttons that decide what you are writing.
 
@@ -123,9 +137,13 @@ The first person to reply to an unassigned chat becomes its owner automatically.
 
 ### "Reply window closed"
 
+![What you see when more than 24 hours have passed](img/reply-box-window-closed.jpg)
+
 If you see **Reply window closed** above the box, more than 24 hours have passed since the customer last wrote. WhatsApp will not accept an ordinary message. Click **Send a template** to restart the chat. See "The 24-hour rule".
 
 ## The contact (right)
+
+![The contact panel](img/contact-panel.jpg)
 
 | Part | What it does |
 |---|---|
@@ -206,6 +224,8 @@ To pass it to another team, use the second dropdown instead.
 
 ## Message a customer after more than 24 hours
 
+![Choosing a template](img/template-picker.jpg)
+
 1. Open the conversation. You will see **Reply window closed**.
 2. Click **Send a template**.
 3. Pick a template. A preview shows what the customer will receive.
@@ -215,6 +235,8 @@ To pass it to another team, use the second dropdown instead.
 When the customer replies, you can write normally again.
 
 ## Label a chat
+
+![Adding labels](img/labels-dialog.jpg)
 
 1. Open the conversation and click **Labels**.
 2. Type the labels separated by commas, for example `complaint, refund`.
@@ -241,6 +263,8 @@ Use the same words each time so the **All labels** filter works. Agree a short l
 ---
 
 # Part 3: Inbox reports
+
+![Inbox reports: dates, the banner numbers and the four cards](img/reports-top.jpg)
 
 This screen shows how the team is doing. Nothing here changes anything; it only reports.
 
@@ -274,12 +298,16 @@ This screen shows how the team is doing. Nothing here changes anything; it only 
 
 ## The charts
 
+![Messages and calls per day](img/reports-charts.jpg)
+
 - **WhatsApp messages per day**: one bar per day. "From customers" are messages received. "From us" are messages the business sent.
 - **Incoming calls per day**: answered, missed or voicemail, and out of hours.
 
 Hover over a bar to see the figure for that day.
 
 ## The tables
+
+![Activity by staff member and by number](img/reports-tables.jpg)
 
 - **By staff member**: WhatsApp replies sent, calls answered and talk time, for each person.
 - **By number**: the same activity split by business number.
@@ -293,6 +321,10 @@ Use these to see who is carrying the load and which number is busiest.
 For the owner and admins. Across the top are seven sections.
 
 ## Numbers
+
+![Settings: Numbers](img/settings-numbers.jpg)
+
+![Adding a business number](img/settings-add-number.jpg)
 
 The phone numbers customers message and call.
 
@@ -327,6 +359,8 @@ Click **Save number** to keep it.
 
 ## Teams
 
+![Settings: Teams](img/settings-teams.jpg)
+
 Teams group staff so chats and calls reach the right people, for example "Customer care" or "Deliveries".
 
 | Button | What it does |
@@ -339,9 +373,13 @@ To appear in the list of people, a member of staff must first be given Inbox acc
 
 ## Who can use which number
 
+![Settings: Who can use which number](img/settings-access.jpg)
+
 A grid of staff against business numbers. Tick the numbers each person may send from and receive on, then save. Owners and admins can use every number; their boxes are ticked and locked.
 
 ## Hours
+
+![Settings: Hours and holidays](img/settings-hours.jpg)
 
 When the business is open. This decides how phone calls are handled out of hours and what counts as "after hours" in the reports.
 
@@ -364,6 +402,8 @@ A number with no schedule is treated as always open.
 
 ## Phone menu
 
+![Settings: Phone menu](img/settings-phone-menu.jpg)
+
 What a caller hears and can choose ("Press 1 for orders, 2 for deliveries"). Used once the phone line is connected.
 
 | Button or field | What it does |
@@ -378,6 +418,8 @@ Without a menu, calls ring straight through to staff who are taking calls.
 
 ## Quick replies
 
+![Settings: Quick replies](img/settings-quick-replies.jpg)
+
 Ready-made answers staff can drop into a chat, such as prices, delivery times or the shop address.
 
 | Button | What it does |
@@ -389,6 +431,8 @@ Ready-made answers staff can drop into a chat, such as prices, delivery times or
 Keep them short and friendly. Staff can edit the text before sending.
 
 ## Templates
+
+![Settings: Templates](img/settings-templates.jpg)
 
 Messages approved in advance by WhatsApp. They are the only way to message a customer who has not written in the last 24 hours.
 

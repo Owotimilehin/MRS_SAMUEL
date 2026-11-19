@@ -2,6 +2,7 @@
 """Assemble the Inbox handbook (one Markdown file and one self-contained HTML ebook)
 from the staff guide, the manager's playbook and the use-case catalogue.
 Standard library only."""
+import base64
 import html
 import re
 import sys
@@ -168,6 +169,8 @@ for block in doc:
 (GUIDES / "inbox-handbook.md").write_text("\n".join(md).rstrip() + "\n")
 
 # ---------- minimal Markdown -> HTML ----------
+SMALL = {"menu-customer-messages", "inbox-list", "contact-panel", "reply-box-internal-note", "reply-box-window-closed", "conversation-header"}
+
 PILLS = {
     "Now": "now",
     "Now + template": "tpl",
@@ -195,6 +198,14 @@ def to_html(text, shift=0):
     while i < len(lines):
         line = lines[i]
         if not line.strip():
+            i += 1
+            continue
+        im = re.match(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$", line.strip())
+        if im:
+            cap, src = im.group(1), im.group(2)
+            data = base64.b64encode((GUIDES / src).read_bytes()).decode()
+            kind = "phone" if Path(src).name.startswith("phone-") else ("small" if Path(src).name.split(".")[0] in SMALL else "wide")
+            out.append(f"<figure class='fig fig--{kind}'><img loading='lazy' alt='{html.escape(cap, quote=True)}' src='data:image/jpeg;base64,{data}'><figcaption>{html.escape(cap)}</figcaption></figure>")
             i += 1
             continue
         m = re.match(r"^(#{2,6}) (.*)$", line)
@@ -241,7 +252,7 @@ def to_html(text, shift=0):
             continue
         para = [line]
         i += 1
-        while i < len(lines) and lines[i].strip() and not re.match(r"^(#{2,6} |\s*- |\s*\d+\. |\s*\|)", lines[i]):
+        while i < len(lines) and lines[i].strip() and not re.match(r"^(#{2,6} |\s*- |\s*\d+\. |\s*\||!\[)", lines[i]):
             para.append(lines[i])
             i += 1
         out.append("<p>" + inline(" ".join(para)) + "</p>")
@@ -330,6 +341,7 @@ td:first-child{min-width:44px}td:nth-child(2){min-width:150px}
 .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
 .pill--now{background:#dff3e4;color:#17603a}.pill--tpl{background:#fdeacc;color:#8a5200}
 .pill--phone{background:#e1ecfb;color:#1d4f91}.pill--soon{background:#ece8f7;color:#54408f}
+.fig{margin:18px 0 26px}.fig img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 24px rgba(20,67,42,.10);background:#fff}.fig figcaption{font-size:13px;color:var(--soft);margin-top:8px;text-align:center}.fig--small img{max-width:min(100%,520px);margin:0 auto}.fig--phone{display:inline-block;width:46%;max-width:270px;vertical-align:top;margin-right:3%}@media print{.fig{break-inside:avoid}.fig img{box-shadow:none}}
 .menu{display:none}
 footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--soft)}
 @media (max-width:900px){.layout{display:block}nav.side{position:fixed;inset:0 auto 0 0;width:84%;max-width:320px;transform:translateX(-102%);transition:transform .2s;z-index:20}
