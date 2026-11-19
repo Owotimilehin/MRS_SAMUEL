@@ -19,3 +19,4 @@ export * from "./social.js";
 export * from "./catalogue.js";
 export * from "./social-post.js";
 export * from "./insights.js";
+export * from "./ads.js";

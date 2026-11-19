@@ -1028,3 +1028,55 @@ Phase B (new branch from the merged Phase A)
 | Q13 | **Foundation gap:** rule 7 forbids unattended actions that spend money. Rules and the safety stop act unattended | They can only pause (reduce spending). Rules need the owner switch `ads_settings.rules_enabled`; the safety stop is on whenever `manage_enabled` is on, and is named here as required by rule 7 |
 | Q14 | `graph()` hides response headers; this spec adds an `onResponse` option to shared code owned by spec 01 | Additive and optional. If spec 01's author prefers, `adsGraph` can instead be a small separate fetch wrapper in `ads.ts` that reuses `MetaApiError` |
 | Q15 | The inbox line (7.8) is added to a shared admin screen and calls `/v1/ads/...`, which exists in the same API for both apps | Keep the call silent on any error |
+
+## Built differently
+
+Departures made while building this spec on `work/olu/suite-12-ads` (stacked on `work/olu/suite-08-catalogue`). Phase A, purchase reporting and Phase B were built in one branch. **No Meta ad account and no browser were used**: work-order tasks 11 and 19, the live checks inside tasks 10 and 18, and the 390 px check were not done, so every **[unverified]** fact in section 3 is still unchecked. The integration tests were run against a local PostgreSQL 16, not Docker. Where the spec and the code or the brief disagreed, the option that cannot spend money, cannot send customer data to Meta and cannot change an advert without a person was taken.
+
+**Data**
+
+1. **Journal `idx` is 74**, `when` is `1787100000000` (later than every entry on the base branch). The integrator renumbers `idx` if needed.
+2. **Foreign keys (ruling 9.2.8).** Every pointer at `admin_user` is `ON DELETE SET NULL` (the spec's SQL had no rule, which would stop the shop deleting a staff account). `ad_action_log.actor_user_id` still has no foreign key, as written.
+3. **The log's trigger also refuses `TRUNCATE`** (a second, statement-level trigger). Its refusal was not executed here (a guard on the build machine blocks that statement); `UPDATE` and `DELETE` are tested.
+
+**Money**
+
+4. **Phase B works only for an ad account in naira.** The spec allowed US dollars; the shop works in whole naira and a dollar budget would need an exchange rate. `budgetToMetaUnits()` in `packages/shared/src/ads.ts` is the one conversion from whole naira to Meta's integer; it refuses any other currency, an unchecked unit, and a fraction of a naira. `assertCanManage`, `PUT /settings` (`manage_enabled`) and `POST /calibration` refuse a non-naira account. Phase A (reading) works for any currency.
+5. **Only WhatsApp adverts can be created.** `ENABLED_DESTINATIONS = ["whatsapp"]` (Q7): the Messenger and Instagram bodies are built and unit-tested as written, but the server refuses a draft for them and the form does not offer them, because C11 and C12 could not be checked live.
+6. **A WhatsApp advert needs exactly one connected Facebook Page.** The draft names the WhatsApp line only; with no Page, or more than one, the suite refuses instead of guessing which Page publishes the advert.
+7. **The cap fails safe in more cases.** A list cut short at 20 pages, a live ad set whose campaign is not listed, and a live ad set with no readable budget all give "We could not check current budgets…". A campaign that holds a lifetime budget counts as that amount over its days left. A budget change must also fit under the cap by itself when the advert is off.
+8. **The typed total is checked inside `@ms/domain`,** from a fresh read of Meta, for turning on and for a budget change (`turnOnAdvert` and `changeDailyBudget` take `{ typed }`). Two read-only routes were added for the dialogs: `GET /adverts/:campaignId/turn-on-preview` and `POST /adsets/:id/budget-preview`.
+9. **The person is checked twice.** Besides `requireCapability("ads.manage")`, `assertActorMayManage` re-reads the person's role and permissions from the database before any create, turn-on, budget change or pause, so a permission taken away after sign-in stops the next action. Owner-only routes re-read the owner role the same way.
+10. **Verification is stricter.** After creating, the campaign and the ad must also read back `PAUSED`, not only the ad set; if anything is not switched off the campaign is paused at once. A budget change that reads back differently pauses the advert and removes "made in the suite"; if the read-back itself fails, the answer is "Meta did not confirm" and nothing more is sent.
+11. **Double clicks** are stopped by claiming the advert's draft row for 30 seconds (`ad_draft.locked_at`), not by counting log rows. A draft left "creating" for 10 minutes can be continued, and is then treated as "needs checking" (look at Meta first).
+12. **One door for writes.** Every write to an ad object goes through `metaWrite()` in `ads-manage.ts`, which first runs `assertWriteAllowed()`: a rule, the safety stop or the system may only send exactly `{ status: "PAUSED" }` to an existing object; a create must be `PAUSED`, with no `ACTIVE`, lifetime budget or bid cap anywhere in it; turning on and a budget change each carry exactly one field.
+13. **The safety stop also runs with "create adverts" switched off,** whenever an ad account is linked, a cap above 0 is set and the suite has made an advert. It can only pause, and switching creation off should not leave running adverts unwatched.
+14. **Linking a different ad account, or unlinking, switches "create adverts" and "rules" off.** The owner turns them on again for the new account.
+
+**Purchase reports**
+
+15. **On needs both the switch and the recorded privacy statement** (`capiAllowed`). The switch is read again from the database before each run. Each order is re-checked just before sending ("do not report", refund or cancel, removed customer, older than 7 days). Un-ticking the statement switches reporting off.
+16. **Failures.** No answer while asking for the dataset is retried (no event was sent yet); no answer to the event itself is `unknown` and never retried. A permission refusal stops the run and alerts the owner once a day. A failure on our side after the claim is also `unknown`.
+17. E9 could not be tested, so the switch is shown (off) rather than hidden.
+
+**Reading**
+
+18. **Advert taps are read by the scan only** (`scanAdTouches`), as the spec says, so `messenger-ingest.ts` and `whatsapp-ingest.ts` are unchanged. The scan does not choose events by the stored `kind` (a label made from the first item only, ruling 9.2.3): it reads every processed Page or Instagram event of the last 3 days whose payload mentions a referral, newest first.
+19. **`extractAdReferrals`** returns `at: Date | null` (the event's own time when it has one; the scan falls back to when the event arrived), also reads `entry.standby`, and skips echoes and events sent by the account itself.
+20. **Sync.** Account-level figures do not ask for the object ID fields. A "busy" usage reading is only believed for 5 minutes (or the wait Meta gave), so it cannot stop every later sync. A refusal that is neither configuration nor temporary is recorded as "Meta refused this: …". `listAdAccounts` falls back to `/{system-user-id}/assigned_ad_accounts` when Meta refuses `me/adaccounts` (A9). Paging links are followed only on the Graph API's own address.
+21. **Attribution.** Ties between two taps at the same instant go to the one recorded last. The erase route also deletes taps that have no conversation; the merge route moves taps to the kept contact and thread.
+
+**Server**
+
+22. **Error codes.** The API's code list is fixed, so this spec's codes (`over_cap`, `meta_refused`, `meta_unknown`, `off`, `wrong_total`, …) travel in `error.details.reason`. A wrong typed total and a budget under Meta's minimum are 400, an invalid draft 422, a missing permission 403, the rest 409.
+23. **`POST /drafts/:id/create` and `/continue` answer 200 with the draft** whatever happened at Meta; the draft's `status` (`created`, `failed`, `needs_check`) and `error_message` say what. `createAdFromDraft(db, cfg, draftId, actor, deps, mode)` takes the picture loader and the shop's position as `deps`.
+24. **Drafts.** A draft's picture must have been uploaded by the same person (an upload token, as inbox uploads). `special_category` other than the literal `false` is 422 before anything else. `GET /destinations` lists the channels the form may offer. Rules: `GET` and `DELETE` work with the master switch off (deleting a rule only reduces what the suite does by itself); `POST` and `PATCH` need it on.
+25. **`ADS_SHOP_LAT` / `ADS_SHOP_LNG`** are read from the environment in the route (not added to `env.ts`, and not passed in `docker-compose.yml`); without them "People near the shop" is not offered and is refused.
+26. **Alerts** are raised by `raiseAdsAlert` in `@ms/domain` and deduplicated on `payload.dedupe`: `ads.config_error` once a day per account, `ads.safety_stop` once per account-day, `ads.rule_fired` every time. All three are in `alertOnce`'s type list and have a case in `outbox.ts`.
+27. **The log.** `request` holds `{ method, path, body }` with the picture's bytes replaced by its size. Extra actions: `upload_image`, and `create_advert` for a creation blocked by the cap. Budget changes are counted from rows that carry a `path` (requests that went to Meta).
+28. **Tests that need a database** are in `apps/api/test/integration/ads-domain.test.ts` (the domain package has none), with the pretend ad account in `ads-fake.ts`. The worker's guard test is `apps/worker/test/ads-jobs.test.ts`.
+
+**Screens**
+
+29. The inbox line is its own small component (`AdSourceLine.tsx`, `lib/ad-source.ts`) with its own single request, so `ContactPanel.tsx` changed by two lines.
+30. Confirm dialogs use the shared `ConfirmModal`, whose second button always reads "Cancel" ("Leave it off", "Keep running" and "Go back" are not shown). The Adverts tab also lists "Adverts not finished" so a draft can be continued. The export for a day lines our Lagos-day counts up with the ad account's day of the same date.

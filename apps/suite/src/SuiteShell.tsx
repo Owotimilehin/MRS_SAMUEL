@@ -18,6 +18,7 @@ import {
   ExternalLink,
   LayoutTemplate,
   LineChart,
+  Megaphone,
   Menu,
   MessageCircle,
   MessagesSquare,
@@ -40,7 +41,7 @@ import { useCommentNotifier } from "./features/comments/useCommentNotifier.js";
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/comments" | "/catalogue" | "/posts" | "/leads" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
+  to: "/inbox" | "/comments" | "/catalogue" | "/posts" | "/leads" | "/ads" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -64,6 +65,7 @@ const NAV: { heading: string; items: NavItem[] }[] = [
     items: [
       { to: "/posts", label: "Posts", Icon: CalendarClock, cap: "social.publish" },
       { to: "/leads", label: "Leads", Icon: ClipboardList, cap: "leads.view" },
+      { to: "/ads", label: "Ads", Icon: Megaphone, cap: "ads.view" },
     ],
   },
   {

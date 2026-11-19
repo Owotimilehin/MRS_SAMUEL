@@ -236,3 +236,36 @@ export async function presignSocialPreview(objectKey: string): Promise<string | 
   if (!env.R2_ACCOUNT_ID || !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY || !env.R2_BUCKET) return null;
   return presignInboxGet(objectKey, { expiresIn: 600 });
 }
+
+// ── Advert pictures (suite spec 12, Phase B) ────────────────────────────────
+
+const AD_IMAGE_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png" };
+const AD_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+
+/** A 15-minute signed PUT for an advert's picture: JPEG or PNG, at most 8 MB, under ads/images/. */
+export async function presignAdImagePut(args: { contentType: string; sizeBytes: number }): Promise<PresignPutResult> {
+  const ext = AD_IMAGE_TYPES[args.contentType];
+  if (!ext) throw new BusinessError("validation_failed", "The picture must be a JPEG or a PNG.", 400);
+  if (!Number.isInteger(args.sizeBytes) || args.sizeBytes <= 0 || args.sizeBytes > AD_IMAGE_MAX_BYTES) {
+    throw new BusinessError("validation_failed", "The picture is too large (limit 8 MB).", 400);
+  }
+  const now = new Date();
+  const key = `ads/images/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${uuid()}.${ext}`;
+  const cmd = new PutObjectCommand({ Bucket: env.R2_BUCKET!, Key: key, ContentType: args.contentType, ContentLength: args.sizeBytes });
+  const url = await getSignedUrl(getClient(), cmd, { expiresIn: 900 });
+  return { upload_url: url, object_key: key };
+}
+
+/** The bytes of an advert picture from our own storage. Only keys under ads/images/ are read. */
+export async function getAdImageBytes(key: string): Promise<Uint8Array> {
+  if (!/^ads\/images\/\d{4}\/\d{2}\/[0-9a-f-]{36}\.(jpg|jpeg|png)$/.test(key)) {
+    throw new BusinessError("validation_failed", "That is not an advert picture.", 400);
+  }
+  const res = await getClient().send(new GetObjectCommand({ Bucket: env.R2_BUCKET!, Key: key }));
+  if (!res.Body) throw new BusinessError("not_found", "The advert's picture was not found. Upload it again.", 404);
+  const bytes = await res.Body.transformToByteArray();
+  if (bytes.length === 0 || bytes.length > AD_IMAGE_MAX_BYTES) {
+    throw new BusinessError("validation_failed", "The advert's picture is empty or too large. Upload it again.", 400);
+  }
+  return bytes;
+}

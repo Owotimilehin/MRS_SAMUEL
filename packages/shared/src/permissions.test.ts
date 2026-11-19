@@ -156,3 +156,19 @@ describe("insights.view", () => {
     expect(resolveCapabilities("branch_staff")).not.toContain("insights.view");
   });
 });
+
+describe("ads permissions (suite spec 12)", () => {
+  it("ads.view is held by owner and admin, not manager or branch staff", () => {
+    expect(resolveCapabilities("owner")).toContain("ads.view");
+    expect(resolveCapabilities("admin")).toContain("ads.view");
+    expect(resolveCapabilities("manager")).not.toContain("ads.view");
+    expect(resolveCapabilities("branch_staff")).not.toContain("ads.view");
+  });
+  it("ads.manage is owner only by default (it spends money)", () => {
+    expect(resolveCapabilities("owner")).toContain("ads.manage");
+    for (const role of ["admin", "manager", "branch_staff"] as const) {
+      expect(ROLE_DEFAULTS[role]).not.toContain("ads.manage");
+      expect(resolveCapabilities(role)).not.toContain("ads.manage");
+    }
+  });
+});

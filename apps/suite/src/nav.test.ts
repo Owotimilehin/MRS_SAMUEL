@@ -92,3 +92,19 @@ describe("Insights in the menu (suite spec 11)", () => {
     expect(firstAllowedPage(["inbox.reports"])).toBe("/inbox/reports");
   });
 });
+
+describe("the Ads page (suite spec 12)", () => {
+  const WITH_ADS = ["/inbox", "/catalogue", "/ads", "/inbox/reports", "/channels", "/inbox/settings"] as const;
+  it("lights Ads on its page, on one advert and on the new-advert form", () => {
+    expect(activeNavTo("/ads", WITH_ADS)).toBe("/ads");
+    expect(activeNavTo("/ads/adverts/120000000000001", WITH_ADS)).toBe("/ads");
+    expect(activeNavTo("/ads/new", WITH_ADS)).toBe("/ads");
+  });
+  it("is where someone with only the see-ad-results permission lands", () => {
+    expect(firstAllowedPage(["ads.view"])).toBe("/ads");
+    expect(firstAllowedPage(["ads.view", "inbox.reports"])).toBe("/ads");
+    expect(firstAllowedPage(["catalogue.manage", "ads.view"])).toBe("/catalogue");
+    // The manage permission alone opens no page: reading results needs ads.view.
+    expect(firstAllowedPage(["ads.manage"])).toBeNull();
+  });
+});

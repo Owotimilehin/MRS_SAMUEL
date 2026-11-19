@@ -108,6 +108,11 @@ export const CAPABILITIES = [
   "insights.view",
   // Leads from Meta lead forms: see, work and report on them (spec 13).
   "leads.view",
+  // See ad spend and results (suite spec 12).
+  "ads.view",
+  // Owner-only by default: create, switch on, pause and change adverts — this spends money.
+  // Deliberately NOT in ADMIN_CAPS/MANAGER_CAPS. Grantable per-user via overrides.
+  "ads.manage",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -161,6 +166,7 @@ const ADMIN_CAPS: Capability[] = [
   "social.publish",
   "insights.view",
   "leads.view",
+  "ads.view",
 ];
 
 const MANAGER_CAPS: Capability[] = [
