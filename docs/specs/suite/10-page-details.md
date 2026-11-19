@@ -392,3 +392,19 @@ Changing the Page's name, username or category; the cover photo; publishing or u
 | Q5 | Should a manager be allowed to edit the Page? | No. `channels.manage` is owner and admin |
 | Q6 | Should the suite also offer "Temporarily closed" (`temporary_status`), useful on public holidays? | Not in this spec; it is one more field on the same route if the owner wants it |
 | Q7 | Meta's pages show Graph `v27.0`; the code default is `v23.0`. | Use `META_GRAPH_VERSION` as set; record the version used in the manual check |
+
+## Built differently
+
+Departures made while building this spec on `work/olu/suite-10-page-details` (stacked on `work/olu/suite-04-chat-setup`, 20 Nov 2026). Work-order tasks 2 (Graph API Explorer check) and 6 (manual check on a test Page) were not done: no Meta account or browser was available. Facts P7, P14, P15, P16, P17 and the `cover.source` sub-field are therefore still **unchecked**, and the integration tests have **not been run** (no Docker). Phase B (profile picture) was not built.
+
+1. **Owner alert** goes through `alertOnce` (spec 02), which dedupes on `payload.account`. The payload carries `account` and `account_id` (both the account row ID) plus `label`, `code`, `message`. `alertOnce`'s event-type list gained `channels.page_config`; the worker case is in `outbox.ts` and also ends with a link to Channels.
+2. **Error codes in the API.** `ErrorCode` has no "stale" or "bad gateway", so a stale save is `409` with `error.code = "conflict"` and `error.details.reason = "stale"` (and `details.view`); 502 and 504 use `service_unavailable`. `describePageDetailsError` (domain) is the one classifier; a refusal that is a configuration problem, a block (`368`) or any other refusal answers 409, a temporary one 502, no answer 504.
+3. **Refused or timed-out saves still read the Page back** (R7), so a request Meta refused can come back as `200` with some fields saved. Result values in the audit row: `saved`, `partly_saved`, `refused` (Meta refused and nothing changed), `unknown` (no answer, or Meta said yes but the read-back shows the old value; shown as "Not confirmed"). If Meta says yes but the read-back cannot be read, the answer is 504, never "saved".
+4. **Always open.** When a save turns Always open on, `hours` is dropped from the request. Turning it off always sends `hours` with it, even if they equal what is stored (R9). On screen Always open and hours are one row ("Opening hours") in the dialog and the history.
+5. **Phone comparison** reduces both sides with `toE164` before taking digits, so a Page that returns `0801 234 5678` equals `+2348012345678`.
+6. **Clearing the address** sends `location` with empty strings (the spec's table does not say); the read-back decides. Clearing is [unverified] like the other fields (P14).
+7. **Strict body.** `expected` and `changes` are strict zod objects, so name, username, category, cover and "published" are `400`, as are different key sets in the two.
+8. **Time fields** in the hours editor are text boxes (`08:00`), not time pickers, because `24:00` is a valid closing time and a time picker cannot hold it.
+9. **The browser sends a save once** (no retry on 502/503/504), like chat set-up's publish. The history rows also return `not_saved`.
+10. **Extra tests**: a switched-off Page still reads; unknown tasks allow editing (R15); busy and permission refusals; a timeout with no effect answers 504; hours are sent as the whole week; a bad phone and a fourth email answer 400. `pageDetailsTimings.readBackDelayMs` (exported by the route) lets tests skip the 1.5 second wait.
+11. **No `channels.manage` change**: it already exists (spec 01), held by owner and admin.

@@ -165,6 +165,13 @@ function ChannelsList(): JSX.Element {
                               >
                                 Chat set-up
                               </Link>
+                              <Link
+                                to="/channels/$accountId/page"
+                                params={{ accountId: row.id }}
+                                className="btn btn--subtle btn--sm"
+                              >
+                                {row.kind === "instagram" ? "Profile" : "Page details"}
+                              </Link>
                               <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEditing(row)}>
                                 Edit
                               </button>

@@ -8,3 +8,4 @@ export { looksLikeBareId } from "./product-name.js";
 export * from "./delivery-schedule.js";
 export * from "./inbox.js";
 export * from "./chat-setup.js";
+export * from "./page-details.js";
