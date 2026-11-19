@@ -88,6 +88,35 @@ export function waWindowRemainingMs(lastInboundAt: Date | string | null | undefi
   return Math.max(0, t + WA_WINDOW_MS - now.getTime());
 }
 
+/** Messenger/Instagram "Human Agent": a person may answer up to 7 days after the customer wrote (spec 02, S5). */
+export const HUMAN_AGENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Milliseconds left of the 7-day human-agent window (0 when closed or never opened). */
+export function humanAgentRemainingMs(lastInboundAt: Date | string | null | undefined, now: Date = new Date()): number {
+  if (!lastInboundAt) return 0;
+  const t = typeof lastInboundAt === "string" ? Date.parse(lastInboundAt) : lastInboundAt.getTime();
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, t + HUMAN_AGENT_WINDOW_MS - now.getTime());
+}
+
+/** How long a reply may be on each channel (spec 02, 3.6). Instagram counts UTF-8 bytes. */
+export const TEXT_LIMIT: Record<"whatsapp" | "messenger" | "instagram", { max: number; unit: "characters" | "bytes" }> = {
+  whatsapp: { max: 4096, unit: "characters" },
+  messenger: { max: 1999, unit: "characters" },
+  instagram: { max: 1000, unit: "bytes" },
+};
+
+/** UTF-8 length of a string, without Node's Buffer (the front ends use this too). */
+export function utf8Bytes(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/** True when `text` fits the channel's limit. */
+export function fitsTextLimit(channel: "whatsapp" | "messenger" | "instagram", text: string): boolean {
+  const lim = TEXT_LIMIT[channel];
+  return (lim.unit === "bytes" ? utf8Bytes(text) : [...text].length) <= lim.max;
+}
+
 export interface HoursRule {
   /** 0 = Sunday … 6 = Saturday, in the profile's time zone. */
   weekday: number;

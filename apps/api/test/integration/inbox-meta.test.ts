@@ -11,11 +11,13 @@ import {
   inboxMessage,
   inboxPhoneNumber,
   inboxTeam,
+  inboxTeamMember,
+  inboxUserNumberAccess,
   inboxWebhookEvent,
   outboxEvent,
 } from "@ms/db";
-import { clearPageTokenCache } from "@ms/domain";
-import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
+import { clearPageTokenCache, InboxSendError, META_SEND_RETRY_DELAYS_MS, metaConfigFromEnv, sendFromConversation } from "@ms/domain";
+import { setupTestDb, seedOwner, seedUser, loginAs } from "./helpers.js";
 
 /**
  * Suite spec 02: Messenger and Instagram direct messages. A messenger line and
@@ -519,7 +521,172 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     expect(ev!.processedAt).not.toBeNull();
     expect(ev!.lastError).toBe("account_inactive");
   });
-});
 
-// Keep imports used by later sections referenced (and type-checked) here.
-void and;
+  // ── Replying ───────────────────────────────────────────────────────────────
+
+  async function reply(conversationId: string, body: unknown, cookie?: string) {
+    return fetch(`${baseUrl}/v1/inbox/conversations/${conversationId}/messages`, {
+      method: "POST",
+      headers: { cookie: cookie ?? (await loginOwner()), "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+  const sendsTo = (recipientId: string) =>
+    graphCalls.filter((g) => g.method === "POST" && g.url.endsWith("/messages") && !g.body?.sender_action && (g.body?.recipient as { id?: string } | undefined)?.id === recipientId);
+
+  it("reply inside 24 hours goes to POST {page}/messages with the page token and RESPONSE", async () => {
+    const from = "24000000000001101";
+    const conv = await threadFor(from);
+    const res = await reply(conv.id, { type: "text", body: "Yes, we deliver to Lekki." });
+    expect(res.status).toBe(201);
+    const [call] = sendsTo(from);
+    expect(call!.url).toBe(`https://graph.facebook.com/v23.0/${PAGE_ID}/messages`);
+    expect(call!.auth).toBe(`Bearer ${PAGE_TOKEN}`);
+    expect(call!.auth).not.toContain(SYSTEM_TOKEN);
+    expect(call!.body).toMatchObject({ recipient: { id: from }, messaging_type: "RESPONSE", message: { text: "Yes, we deliver to Lekki." } });
+    expect((call!.body!.message as { metadata?: string }).metadata).toMatch(/^suite:[0-9a-f-]{36}$/);
+    const { data } = (await res.json()) as { data: { id: string; status: string; channel: string; wa_message_id?: string; waMessageId?: string } };
+    expect(data).toMatchObject({ status: "sent", channel: "messenger" });
+    // The Instagram line sends from the linked Page, with no metadata.
+    const igFrom = "980000000000001101";
+    const ig = await threadFor(igFrom, "instagram");
+    expect((await reply(ig.id, { type: "text", body: "Hello on Instagram" })).status).toBe(201);
+    const [igCall] = sendsTo(igFrom);
+    expect(igCall!.url).toBe(`https://graph.facebook.com/v23.0/${PAGE_ID}/messages`);
+    expect((igCall!.body!.message as { metadata?: string }).metadata).toBeUndefined();
+  });
+
+  it("reply after 24 hours is refused with window_closed; with human agent on it is sent with the tag; an automatic send never uses the tag", async () => {
+    const from = "24000000000001201";
+    const conv = await threadFor(from, "page", Date.now() - 2 * 86_400_000);
+    const closed = await reply(conv.id, { type: "text", body: "Sorry for the wait" });
+    expect(closed.status).toBe(409);
+    const err = (await closed.json()) as { error: { message: string; details?: { reason?: string } } };
+    expect(err.error.details?.reason).toBe("window_closed");
+    expect(err.error.message).toBe("More than 24 hours since the customer last wrote. On Messenger you can reply again once they write.");
+    expect(sendsTo(from)).toHaveLength(0);
+
+    process.env.META_HUMAN_AGENT_ENABLED = "true";
+    try {
+      expect((await reply(conv.id, { type: "text", body: "Sorry for the wait" })).status).toBe(201);
+      const [call] = sendsTo(from);
+      expect(call!.body).toMatchObject({ messaging_type: "MESSAGE_TAG", tag: "HUMAN_AGENT" });
+      const [row] = await db.select().from(inboxMessage).where(and(eq(inboxMessage.conversationId, conv.id), eq(inboxMessage.body, "Sorry for the wait")));
+      expect(row!.payload).toMatchObject({ tag: "HUMAN_AGENT" });
+
+      // No person → no tag, so outside 24 hours it is refused.
+      await expect(
+        sendFromConversation(db, metaConfigFromEnv(), { conversationId: conv.id, userId: null, content: { type: "text", body: "auto" } }),
+      ).rejects.toMatchObject({ code: "window_closed" });
+      // Over 7 days, even a person can't.
+      await db.update(inboxConversation).set({ lastInboundWaAt: new Date(Date.now() - 8 * 86_400_000) }).where(eq(inboxConversation.id, conv.id));
+      expect((await reply(conv.id, { type: "text", body: "too late" })).status).toBe(409);
+    } finally {
+      delete process.env.META_HUMAN_AGENT_ENABLED;
+    }
+  });
+
+  it("a template or a captioned file is refused on Messenger", async () => {
+    const from = "24000000000001301";
+    const conv = await threadFor(from);
+    const before = await db.select().from(inboxMessage).where(eq(inboxMessage.conversationId, conv.id));
+    const tpl = await reply(conv.id, { type: "template", name: "conversation_reopen", language: "en", params: [] });
+    expect(tpl.status).toBe(409);
+    expect(((await tpl.json()) as { error: { message: string } }).error.message).toBe("Templates are only for WhatsApp.");
+    const captioned = sendFromConversation(db, metaConfigFromEnv(), {
+      conversationId: conv.id,
+      userId: null,
+      content: { type: "image", link: "https://files.example.test/a.jpg", caption: "Our menu" },
+    });
+    await expect(captioned).rejects.toBeInstanceOf(InboxSendError);
+    await expect(captioned).rejects.toMatchObject({ code: "not_supported", message: "Messenger can't send a caption with a file. Send the text as its own message." });
+    const after = await db.select().from(inboxMessage).where(eq(inboxMessage.conversationId, conv.id));
+    expect(after).toHaveLength(before.length); // nothing written
+    expect(sendsTo(from)).toHaveLength(0);
+  });
+
+  it("Instagram text over 1000 bytes is refused with too_long", async () => {
+    const from = "980000000000001401";
+    const conv = await threadFor(from, "instagram");
+    const res = await reply(conv.id, { type: "text", body: "é".repeat(600) }); // 600 characters, 1200 bytes
+    expect(res.status).toBe(409);
+    const err = (await res.json()) as { error: { message: string; details?: { reason?: string } } };
+    expect(err.error.details?.reason).toBe("too_long");
+    expect(err.error.message).toBe("That is too long for Instagram. Shorten it or send it in two parts.");
+    expect((await reply(conv.id, { type: "text", body: "é".repeat(500) })).status).toBe(201); // exactly 1000 bytes
+  });
+
+  it("Meta 551 stores the plain sentence and code on the failed message", async () => {
+    const from = "24000000000001501";
+    const conv = await threadFor(from);
+    sendErrors.push({ status: 400, error: { message: "This person isn't available right now.", code: 551, error_subcode: 1545041 } });
+    const res = await reply(conv.id, { type: "text", body: "Hello?" });
+    expect(res.status).toBe(502);
+    const { data } = (await res.json()) as { data: { id: string } };
+    const row = await reload(data.id);
+    expect(row).toMatchObject({
+      status: "failed",
+      errorCode: "551/1545041",
+      errorMessage: "This person can't receive messages from us right now. They may have blocked us or closed their account.",
+    });
+    expect(row.payload).toMatchObject({ retryable: false, meta_message: "This person isn't available right now." });
+  });
+
+  it("Meta 613 is retried twice and then marked retryable", async () => {
+    const from = "24000000000001601";
+    const conv = await threadFor(from);
+    const saved = [...META_SEND_RETRY_DELAYS_MS];
+    META_SEND_RETRY_DELAYS_MS.splice(0, saved.length, 0, 0);
+    try {
+      for (let i = 0; i < 3; i++) sendErrors.push({ status: 400, error: { message: "Calls to this api have exceeded the rate limit.", code: 613 } });
+      const res = await reply(conv.id, { type: "text", body: "Busy?" });
+      expect(res.status).toBe(502);
+      expect(sendsTo(from)).toHaveLength(3);
+      const { data } = (await res.json()) as { data: { id: string } };
+      const row = await reload(data.id);
+      expect(row).toMatchObject({ status: "failed", errorCode: "613", errorMessage: "Messenger is busy. Try again in a minute." });
+      expect(row.payload).toMatchObject({ retryable: true });
+    } finally {
+      META_SEND_RETRY_DELAYS_MS.splice(0, META_SEND_RETRY_DELAYS_MS.length, ...saved);
+      sendErrors.length = 0;
+    }
+  });
+
+  it("Meta 200/2534041 marks the line with a problem and raises one alert; a later success clears it", async () => {
+    const from = "980000000000001701";
+    const conv = await threadFor(from, "instagram");
+    const refusal = { status: 403, error: { message: "Message access is off", code: 200, error_subcode: 2534041 } };
+    sendErrors.push(refusal, refusal);
+    expect((await reply(conv.id, { type: "text", body: "one" })).status).toBe(502);
+    expect((await reply(conv.id, { type: "text", body: "two" })).status).toBe(502);
+    const [line] = await db.select().from(inboxPhoneNumber).where(eq(inboxPhoneNumber.id, instagramLineId));
+    expect(line).toMatchObject({ problemCode: "200/2534041", problemText: "Message access is switched off in the Instagram app. The owner has been told." });
+    const alerts = await db.select().from(outboxEvent).where(eq(outboxEvent.eventType, "inbox.meta_config"));
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.payload).toMatchObject({ account: IG_ID, code: "200/2534041" });
+    // The banner text reaches the conversation detail.
+    const detail = await fetch(`${baseUrl}/v1/inbox/conversations/${conv.id}`, { headers: { cookie: await loginOwner() } });
+    expect(((await detail.json()) as { data: { number: { problem_text: string | null } } }).data.number.problem_text).toContain("Message access is switched off");
+
+    expect((await reply(conv.id, { type: "text", body: "three" })).status).toBe(201);
+    const [cleared] = await db.select().from(inboxPhoneNumber).where(eq(inboxPhoneNumber.id, instagramLineId));
+    expect(cleared).toMatchObject({ problemCode: null, problemText: null, problemAt: null });
+  });
+
+  it("an agent sees and answers only on the lines granted to them", async () => {
+    // Foundation rule 6 has one visibility rule: without inbox.view_all a person sees
+    // only the lines granted to them, so "can read but not reply" on a line cannot
+    // happen; the line they lack is hidden (404) for reading and replying alike.
+    const user = await seedUser(db, { email: "dm-agent@example.com", role: "branch_staff", granted: ["inbox.view", "inbox.view_team", "inbox.reply"] });
+    await db.insert(inboxTeamMember).values({ teamId, userId: user.id });
+    await db.insert(inboxUserNumberAccess).values({ userId: user.id, phoneNumberId: messengerLineId });
+    const cookie = await loginAs(baseUrl, "dm-agent@example.com", "userpassword123");
+
+    const fb = await threadFor("24000000000001801");
+    const ig = await threadFor("980000000000001801", "instagram");
+    expect((await fetch(`${baseUrl}/v1/inbox/conversations/${fb.id}`, { headers: { cookie } })).status).toBe(200);
+    expect((await reply(fb.id, { type: "text", body: "Hi from the agent" }, cookie)).status).toBe(201);
+    expect((await fetch(`${baseUrl}/v1/inbox/conversations/${ig.id}`, { headers: { cookie } })).status).toBe(404);
+    expect((await reply(ig.id, { type: "text", body: "not allowed" }, cookie)).status).toBe(404);
+  });
+});

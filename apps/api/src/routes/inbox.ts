@@ -52,6 +52,7 @@ import { deleteInboxObjects, presignInboxGet, presignInboxPut } from "../lib/r2.
 import { toCsv } from "../lib/csv.js";
 import { reloadViewer, subscribe } from "../inbox/realtime.js";
 import { logger } from "../logger.js";
+import { alertOnce } from "../lib/inbox-alerts.js";
 import { alias } from "drizzle-orm/pg-core";
 import crypto from "node:crypto";
 import { env } from "../env.js";
@@ -568,6 +569,11 @@ export function inboxRoutes(db: DbClient) {
         mediaMime,
       });
       await audit(db, c, "inbox.message_send", "inbox_message", msg.id, { conversation_id: conv.id, type: msg.type, status: msg.status });
+      // Messenger/Instagram configuration problem (spec 02, rule R20): tell the owner once a day per account.
+      const p = (msg.payload ?? {}) as { config?: boolean; account?: string };
+      if (p.config === true && p.account) {
+        await alertOnce(db, "inbox.meta_config", { account: p.account, code: msg.errorCode ?? "", text: msg.errorMessage ?? "" });
+      }
       return c.json({ data: msg }, msg.status === "failed" ? 502 : 201);
     } catch (err) {
       if (err instanceof InboxSendError) {
