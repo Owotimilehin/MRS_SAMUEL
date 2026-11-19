@@ -15,3 +15,4 @@ export * from "./meta/catalogue.js";
 export * from "./meta/catalogue-chat.js";
 export * from "./meta/ads.js";
 export * from "./meta/ads-attribution.js";
+export * from "./meta/ads-manage.js";
