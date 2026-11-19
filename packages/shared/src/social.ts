@@ -4,8 +4,10 @@
  * for something the server would refuse.
  */
 import type { Capability } from "./permissions.js";
+import type { SocialNetwork } from "./social-post.js";
 
-export type SocialNetwork = "facebook" | "instagram";
+// One definition for comments (spec 03) and posts (spec 09): the network type and its wording live in social-post.ts.
+export { networkName, type SocialNetwork } from "./social-post.js";
 export type CommentKind = "comment" | "live" | "mention";
 export type CommentStatus = "visible" | "hidden" | "deleted";
 export type CommentSendStatus = "queued" | "sent" | "failed" | "unknown";
@@ -14,11 +16,6 @@ export type CommentSendStatus = "queued" | "sent" | "failed" | "unknown";
 export const COMMENT_MAX = 1000;
 /** Meta allows one private reply, within this many days of the comment. */
 export const PRIVATE_REPLY_DAYS = 7;
-
-/** "Facebook" or "Instagram", for wording. */
-export function networkName(network: SocialNetwork): string {
-  return network === "instagram" ? "Instagram" : "Facebook";
-}
 
 /** The facts about one comment that decide which buttons it gets. */
 export interface CommentFacts {

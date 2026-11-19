@@ -34,7 +34,8 @@ export async function alertOnce(
     | "inbox.flow_health"
     | "social.comments_config"
     // Raised by the catalogue sync in the worker (raiseCatalogueAlert in @ms/domain) with the same once-a-day rule.
-    | "catalogue.sync_blocked",
+    | "catalogue.sync_blocked"
+    | "social.publish_config_error",
   payload: Record<string, unknown> & { account: string },
 ): Promise<boolean> {
   const [recent] = await db

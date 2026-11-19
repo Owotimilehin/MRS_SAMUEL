@@ -568,6 +568,18 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         chatIds: [owner],
         text: `🛍️ *Catalogue sync stopped*\nMeta refused our access (${String(p["code"] ?? "")}): ${String(p["message"] ?? "")}\n👉 ${SUITE_URL}/catalogue`,
       };
+    case "social.publish_config_error":
+      // Raised by the publishing worker and the Posts routes (suite spec 09) when Meta refuses for a
+      // token or permission reason. At most one per account per 24 hours.
+      return {
+        chatIds: [owner],
+        text:
+          `⚠️ *A post could not go out on ${p["network"] === "instagram" ? "Instagram" : "Facebook"}*\n` +
+          `Meta refused the suite for ${String(p["label"] ?? "an account")}: ${String(p["message"] ?? "no reason given")} ` +
+          `(code ${String(p["code"] ?? "unknown")}). The access token or its permissions need checking. ` +
+          `The post is marked "Did not post" and can be tried again once this is fixed.\n` +
+          `👉 ${SUITE_URL}/posts`,
+      };
     case "channels.chat_setup_config":
       return {
         chatIds: [owner],

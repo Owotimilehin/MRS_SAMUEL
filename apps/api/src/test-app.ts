@@ -60,6 +60,7 @@ import { waFlowRoutes } from "./routes/wa-flows.js";
 import { whatsappFlowsEndpointRoutes } from "./routes/webhooks-whatsapp-flows.js";
 import { catalogueRoutes } from "./routes/catalogue.js";
 import { chatOrderRoutes } from "./routes/inbox-chat-orders.js";
+import { socialPostRoutes } from "./routes/social-posts.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
@@ -157,6 +158,8 @@ export function buildApp(): Hono {
   app.route("/v1/wa-flows", waFlowRoutes(db));
   // Business suite: catalogue sync and selling in chat (suite spec 08).
   app.route("/v1/catalogue", catalogueRoutes(db));
+  // Business suite: posts to Facebook and Instagram (suite spec 09).
+  app.route("/v1/social", socialPostRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));

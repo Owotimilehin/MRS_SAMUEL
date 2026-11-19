@@ -194,3 +194,45 @@ export async function presignTemplateSamplePut(args: {
   const cmd = new PutObjectCommand({ Bucket: env.R2_BUCKET!, Key: key, ContentType: args.contentType, ContentLength: args.sizeBytes });
   return { upload_url: await getSignedUrl(getClient(), cmd, { expiresIn: 300 }), object_key: key };
 }
+
+// ── Posts to Facebook and Instagram (suite spec 09) ──────────────────────────
+
+/** What may be attached to a post. Pictures are always JPEG: the browser converts them before upload. */
+export const SOCIAL_UPLOAD_TYPES: Record<string, { kind: "image" | "video"; maxBytes: number; ext: string }> = {
+  "image/jpeg": { kind: "image", maxBytes: 8 * 1024 * 1024, ext: "jpg" },
+  "video/mp4": { kind: "video", maxBytes: 100 * 1024 * 1024, ext: "mp4" },
+  "video/quicktime": { kind: "video", maxBytes: 100 * 1024 * 1024, ext: "mov" },
+};
+
+/** Presigned PUT under social/posts/YYYY/MM/<uuid>.<ext>, valid 15 minutes. */
+export async function presignSocialPut(args: {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+}): Promise<PresignPutResult & { kind: "image" | "video" }> {
+  const rule = SOCIAL_UPLOAD_TYPES[args.contentType];
+  if (!rule) {
+    throw new BusinessError("validation_failed", "This file type can't be used in a post. Use a JPEG picture or an MP4 or MOV video.", 400);
+  }
+  if (args.sizeBytes <= 0 || args.sizeBytes > rule.maxBytes) {
+    throw new BusinessError("validation_failed", `File is too large (max ${Math.round(rule.maxBytes / 1048576)} MB)`, 400);
+  }
+  const now = new Date();
+  // The extension comes from the file type, not the file name, so the key always fits SOCIAL_MEDIA_KEY_RE.
+  const key = `social/posts/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${uuid()}.${rule.ext}`;
+  const cmd = new PutObjectCommand({
+    Bucket: env.R2_BUCKET!,
+    Key: key,
+    ContentType: args.contentType,
+    ContentLength: args.sizeBytes,
+  });
+  const url = await getSignedUrl(getClient(), cmd, { expiresIn: 900 });
+  return { upload_url: url, object_key: key, kind: rule.kind };
+}
+
+/** A 10-minute signed GET for a post's picture or video, for the staff preview. Null when storage is not set up. */
+export async function presignSocialPreview(objectKey: string): Promise<string | null> {
+  if (!objectKey.startsWith("social/posts/")) return null;
+  if (!env.R2_ACCOUNT_ID || !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY || !env.R2_BUCKET) return null;
+  return presignInboxGet(objectKey, { expiresIn: 600 });
+}

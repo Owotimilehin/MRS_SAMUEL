@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BarChart3,
+  CalendarClock,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
@@ -37,7 +38,7 @@ import { useCommentNotifier } from "./features/comments/useCommentNotifier.js";
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/comments" | "/catalogue" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
+  to: "/inbox" | "/comments" | "/catalogue" | "/posts" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -55,6 +56,10 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   {
     heading: "Selling",
     items: [{ to: "/catalogue", label: "Catalogue", Icon: ShoppingBag, cap: "catalogue.manage" }],
+  },
+  {
+    heading: "Marketing",
+    items: [{ to: "/posts", label: "Posts", Icon: CalendarClock, cap: "social.publish" }],
   },
   {
     heading: "Insight",

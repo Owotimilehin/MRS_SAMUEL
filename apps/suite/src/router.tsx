@@ -10,7 +10,7 @@
  * by those addresses.
  */
 import { lazy, Suspense, useEffect, type ComponentType, type ReactNode } from "react";
-import { createRootRoute, createRoute, createRouter, Outlet, useNavigate, useParams } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, Outlet, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { NotFound } from "@admin/components/NotFound.js";
 import { RouteErrorComponent } from "@admin/components/RouteErrorComponent.js";
 import { PageLoader } from "@admin/components/Spinner.js";
@@ -49,6 +49,10 @@ const CommentsPage = lazyNamed<{ threadId?: string }>(() => import("./features/c
 const TemplatesPage = lazyNamed<{ tab?: "messages" | "forms" }>(() => import("./features/templates/TemplatesPage.js"), "TemplatesPage");
 const TemplateEditorPage = lazyNamed<{ templateId: string }>(() => import("./features/templates/TemplateEditorPage.js"), "TemplateEditorPage");
 const CataloguePage = lazyNamed(() => import("./features/catalogue/CataloguePage.js"), "CataloguePage");
+// Posts to Facebook and Instagram (suite spec 09). These pages need social.publish, not inbox.view.
+const PostsPage = lazyNamed(() => import("./features/posts/PostsPage.js"), "PostsPage");
+const PostComposer = lazyNamed<{ postId?: string; initialDay?: string }>(() => import("./features/posts/PostComposer.js"), "PostComposer");
+const PostDetailPage = lazyNamed<{ postId: string }>(() => import("./features/posts/PostDetailPage.js"), "PostDetailPage");
 
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
@@ -225,6 +229,39 @@ const catalogueRoute = createRoute({
   component: () => page(<CataloguePage />, "catalogue.manage"),
 });
 
+const postsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/posts",
+  component: () => page(<PostsPage />, "social.publish"),
+});
+// ?day=2026-11-24 comes from the calendar: the day the new post is meant for.
+const postNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/posts/new",
+  validateSearch: (search: Record<string, unknown>): { day?: string } =>
+    typeof search.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.day) ? { day: search.day } : {},
+  component: () => {
+    const { day } = useSearch({ from: "/posts/new" });
+    return page(<PostComposer {...(day ? { initialDay: day } : {})} />, "social.publish");
+  },
+});
+const postDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/posts/$postId",
+  component: () => {
+    const params = useParams({ from: "/posts/$postId" });
+    return page(<PostDetailPage postId={params.postId} />, "social.publish");
+  },
+});
+const postEditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/posts/$postId/edit",
+  component: () => {
+    const params = useParams({ from: "/posts/$postId/edit" });
+    return page(<PostComposer postId={params.postId} />, "social.publish");
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -242,6 +279,10 @@ const routeTree = rootRoute.addChildren([
   commentsRoute,
   commentThreadRoute,
   catalogueRoute,
+  postsRoute,
+  postNewRoute,
+  postEditRoute,
+  postDetailRoute,
 ]);
 
 export const router = createRouter({

@@ -23,6 +23,7 @@ import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
 import { backfillComments, fillCommentDetails, pollComments } from "./jobs/social-comments.js";
 import { runCatalogueBatchCheck, runCatalogueReconcile, runCatalogueSync, runChatOrderJobs } from "./jobs/catalogue.js";
+import { publishDuePosts, reconcileUnknownTargets } from "./jobs/social-publish.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -78,6 +79,9 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "catalogue_reconcile", everyMs: 30 * 60_000, last: 0, run: () => runCatalogueReconcile(db, logger) },
     // Automatic cart questions and order updates: each behind an owner switch, off by default.
     { name: "catalogue_chat_orders", everyMs: 10_000, last: 0, run: () => runChatOrderJobs(db, logger) },
+    // Posts to Facebook and Instagram (suite spec 09). Only posts a person approved are ever sent.
+    { name: "social_publish", everyMs: 30_000, last: 0, run: () => publishDuePosts(db, logger) },
+    { name: "social_publish_reconcile", everyMs: 60_000, last: 0, run: () => reconcileUnknownTargets(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {

@@ -21,3 +21,4 @@ export * from "./meta/flow-slots.js";
 export * from "./meta/comments.js";
 export * from "./meta/catalogue.js";
 export * from "./meta/catalogue-chat.js";
+export * from "./meta/publishing.js";

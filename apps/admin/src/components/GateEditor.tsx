@@ -16,6 +16,7 @@ const GROUPS: { heading: string; caps: Capability[] }[] = [
       "inbox.templates", "inbox.export", "calls.answer", "calls.outbound", "recordings.listen", "recordings.download",
       "recordings.delete", "transcripts.view", "inbox.settings", "inbox.reports", "inbox.erase",
       "social.comments", "channels.manage", "templates.manage", "catalogue.manage",
+      "social.publish",
     ],
   },
   { heading: "Branch / POS", caps: ["pos.sell", "pos.preorder", "shift_open.submit", "sales.view", "daily_close.submit", "returns.create", "stock.adjust"] },
@@ -82,6 +83,7 @@ const LABEL: Record<Capability, string> = {
   "channels.manage": "Connect and set up channels (Facebook, Instagram)",
   "templates.manage": "Write, send for approval and delete WhatsApp templates",
   "catalogue.manage": "Connect, sync and repair the WhatsApp catalogue",
+  "social.publish": "Publish posts to Facebook and Instagram",
 };
 
 // Silence unused import warning — CAPABILITIES is used at runtime via GROUPS validation.

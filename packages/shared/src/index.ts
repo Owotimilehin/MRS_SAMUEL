@@ -17,3 +17,4 @@ export * from "./template-wording.js";
 export * from "./wa-flows.js";
 export * from "./social.js";
 export * from "./catalogue.js";
+export * from "./social-post.js";
