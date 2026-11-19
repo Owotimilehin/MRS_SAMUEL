@@ -31,6 +31,12 @@ export interface HostApp {
   Shell: ComponentType<FrameProps>;
   /** A link to the customer's orders and profile in the shop. */
   CustomerLink: ComponentType<CustomerLinkProps>;
+  /**
+   * The address of a comment thread, in an app that has a Comments section
+   * (the suite). Left out where there is none (the admin app), and then a
+   * "private reply to a comment" line in the timeline is plain text.
+   */
+  commentHref?: (threadId: string) => string;
 }
 
 const HostContext = createContext<HostApp | null>(null);
@@ -53,4 +59,9 @@ export function Frame(props: FrameProps): JSX.Element {
 export function CustomerLink(props: CustomerLinkProps): JSX.Element {
   const { CustomerLink: Impl } = useHost();
   return <Impl {...props} />;
+}
+
+/** The address of a comment thread in this app, or null when the app has no Comments section. */
+export function useCommentHref(): ((threadId: string) => string) | null {
+  return useHost().commentHref ?? null;
 }

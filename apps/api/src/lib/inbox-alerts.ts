@@ -10,12 +10,21 @@ import { outboxEvent, type DbExecutor } from "@ms/db";
  * "inbox.template_alert" (suite spec 06) is written by packages/domain (it is raised inside the webhook
  * transaction and by the worker) with payload.account = "<template id>:<kind>", so it dedupes the same way.
  *
+ * "social.comments_config" (suite spec 03) is written by raiseCommentsConfigAlert in packages/domain (the worker
+ * raises it too) with payload.account = the account row ID, so it dedupes the same way.
+ *
  * The WhatsApp "unknown number" alert keeps its own copy of this pattern in
  * webhooks-whatsapp.ts (its payload key differs; WhatsApp behaviour is unchanged).
  */
 export async function alertOnce(
   db: DbExecutor,
-  eventType: "inbox.unknown_channel_account" | "inbox.meta_config" | "inbox.meta_policy" | "channels.page_config" | "inbox.template_alert",
+  eventType:
+    | "inbox.unknown_channel_account"
+    | "inbox.meta_config"
+    | "inbox.meta_policy"
+    | "channels.page_config"
+    | "inbox.template_alert"
+    | "social.comments_config",
   payload: Record<string, unknown> & { account: string },
 ): Promise<boolean> {
   const [recent] = await db

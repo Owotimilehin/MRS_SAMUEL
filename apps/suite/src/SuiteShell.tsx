@@ -16,6 +16,7 @@ import {
   ExternalLink,
   LayoutTemplate,
   Menu,
+  MessageCircle,
   MessagesSquare,
   Share2,
   SlidersHorizontal,
@@ -29,11 +30,13 @@ import { useRailOpen } from "@admin/lib/rail.js";
 import { useInboxNotifier } from "@admin/hooks/useInboxNotifier.js";
 import { ADMIN_URL } from "./suite-host.js";
 import { activeNavTo } from "./nav.js";
+import { commentKeys, commentsApi } from "./features/comments/comments-api.js";
+import { useCommentNotifier } from "./features/comments/useCommentNotifier.js";
 
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
+  to: "/inbox" | "/comments" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -43,7 +46,10 @@ interface NavItem {
 const NAV: { heading: string; items: NavItem[] }[] = [
   {
     heading: "Conversations",
-    items: [{ to: "/inbox", label: "Inbox", Icon: MessagesSquare, cap: "inbox.view" }],
+    items: [
+      { to: "/inbox", label: "Inbox", Icon: MessagesSquare, cap: "inbox.view" },
+      { to: "/comments", label: "Comments", Icon: MessageCircle, cap: "social.comments" },
+    ],
   },
   {
     heading: "Insight",
@@ -80,8 +86,20 @@ export function SuiteShell({ children, title, crumb, actions }: FrameProps): JSX
     queryFn: async () => (await inboxApi.unread()).messages,
   });
 
+  // Comment threads still waiting, for the Comments badge (suite spec 03).
+  const commentsWaiting = useQuery({
+    queryKey: commentKeys.unread,
+    enabled: can("social.comments"),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: false,
+    queryFn: commentsApi.unread,
+  });
+
   // Sound, pop-up and tab-title alerts when a customer writes, on every page.
   useInboxNotifier(can("inbox.view"));
+  // The same for a new comment. The live stream only opens for people with the Inbox (ruling 9.2.12).
+  useCommentNotifier(can("social.comments") && can("inbox.view"));
 
   return (
     <div className={`app-shell suite-shell${rail.open ? " nav-open" : ""}`}>
@@ -114,7 +132,9 @@ export function SuiteShell({ children, title, crumb, actions }: FrameProps): JSX
               <div key={section.heading} style={{ display: "contents" }}>
                 <div className="app-nav__section">{section.heading}</div>
                 {visible.map((item) => {
-                  const badge = item.to === "/inbox" && (unread.data ?? 0) > 0 ? unread.data : null;
+                  const count = item.to === "/inbox" ? unread.data : item.to === "/comments" ? commentsWaiting.data : undefined;
+                  const badge = (count ?? 0) > 0 ? count : null;
+                  const badgeLabel = item.to === "/comments" ? `${badge} comments waiting` : `${badge} unread messages`;
                   return (
                     <Link
                       key={item.to}
@@ -128,7 +148,7 @@ export function SuiteShell({ children, title, crumb, actions }: FrameProps): JSX
                       </span>
                       <span>{item.label}</span>
                       {badge != null && (
-                        <span className="suite-nav__badge" aria-label={`${badge} unread messages`}>
+                        <span className="suite-nav__badge" aria-label={badgeLabel}>
                           {badge > 99 ? "99+" : badge}
                         </span>
                       )}

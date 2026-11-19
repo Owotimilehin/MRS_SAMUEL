@@ -12,3 +12,4 @@ export * from "./meta/page-details.js";
 export * from "./meta/upload.js";
 export * from "./meta/whatsapp-profile.js";
 export * from "./meta/templates.js";
+export * from "./meta/comments.js";

@@ -48,6 +48,7 @@ import { paymentsAdminRoutes } from "./routes/payments-admin.js";
 import { onlineOrdersQueueRoutes } from "./routes/online-orders-queue.js";
 import { settingsRoutes, publicSettingsRoutes } from "./routes/settings.js";
 import { inboxRoutes } from "./routes/inbox.js";
+import { socialCommentRoutes } from "./routes/social-comments.js";
 import { inboxSettingsRoutes } from "./routes/inbox-settings.js";
 import { inboxReportRoutes } from "./routes/inbox-reports.js";
 import { channelRoutes } from "./routes/channels.js";
@@ -136,6 +137,8 @@ export function buildApp(): Hono {
   app.route("/v1/inbox/reports", inboxReportRoutes(db));
   app.route("/v1/inbox/voice", voiceAppRoutes(db));
   app.route("/v1/inbox", inboxRoutes(db));
+  // Comments on Facebook and Instagram posts (suite spec 03).
+  app.route("/v1/social/comments", socialCommentRoutes(db));
   // Business suite: channel accounts (Facebook Page, Instagram).
   // Chat set-up is mounted first so its longer path wins over /v1/channels/:id.
   app.route("/v1/channels/:accountId/chat-setup", channelChatSetupRoutes(db));

@@ -1,0 +1,109 @@
+/* Comments (suite spec 03). Every class starts with cmt-. */
+.cmt-page { display: grid; gap: 12px; }
+.cmt-banner { margin: 0; padding: 10px 14px; border-radius: 12px; font-size: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cmt-banner--grey { border: 1px solid var(--line); background: rgba(20, 24, 31, 0.04); color: var(--ink-soft); }
+.cmt-banner--red { border: 1px solid rgba(220, 38, 38, 0.35); background: rgba(220, 38, 38, 0.08); color: #991b1b; }
+
+.cmt-filters { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.cmt-tabs { display: flex; gap: 2px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.cmt-tabs button { background: none; border: 0; padding: 8px 12px; font-size: 14px; font-weight: 600; color: var(--ink-soft); cursor: pointer; border-bottom: 3px solid transparent; }
+.cmt-tabs button.is-active { color: var(--ink); border-bottom-color: var(--accent); }
+.cmt-filters__right { display: flex; gap: 8px; flex-wrap: wrap; }
+.cmt-filters__right .input { height: 36px; min-width: 180px; }
+
+.cmt-cols { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 12px; align-items: start; }
+.cmt-col { padding: 0; min-width: 0; overflow: hidden; }
+.cmt-col--list { max-height: calc(100vh - 230px); overflow-y: auto; }
+.cmt-pick { padding: 48px 20px; }
+.cmt-empty-action { display: flex; justify-content: center; margin-top: 12px; }
+
+.cmt-list { list-style: none; margin: 0; padding: 0; }
+.cmt-list__more { margin: 0; padding: 10px 14px; font-size: 12px; color: var(--ink-soft); }
+.cmt-item { width: 100%; display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; background: none; border: 0; border-bottom: 1px solid var(--line); text-align: left; cursor: pointer; color: inherit; font: inherit; position: relative; }
+.cmt-item:hover { background: rgba(27, 87, 51, 0.04); }
+.cmt-item.is-selected { background: rgba(27, 87, 51, 0.08); }
+.cmt-item__icon { color: var(--ink-soft); padding-top: 2px; }
+.cmt-item__main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.cmt-item__top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-soft); }
+.cmt-item__author { font-size: 14px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmt-item.is-unread .cmt-item__author { font-weight: 800; }
+.cmt-item__preview { font-size: 13px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmt-item__chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.cmt-item__thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); flex: none; }
+.cmt-item__dot { position: absolute; left: 4px; top: 18px; width: 7px; height: 7px; border-radius: 50%; background: #e85d1c; }
+
+.cmt-chip { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; }
+.cmt-chip--grey { background: rgba(20, 24, 31, 0.07); color: var(--ink-soft); }
+.cmt-chip--amber { background: rgba(245, 158, 11, 0.16); color: #92400e; }
+.cmt-chip--red { background: rgba(220, 38, 38, 0.1); color: #991b1b; }
+.cmt-chip--blue { background: rgba(59, 130, 246, 0.12); color: #1d4ed8; }
+.cmt-tone--grey { color: var(--ink-soft); }
+.cmt-tone--amber { color: #92400e; }
+.cmt-tone--red { color: #991b1b; }
+
+.cmt-thread { display: grid; gap: 12px; padding: 14px 16px; }
+.cmt-back { display: none; justify-self: start; }
+.cmt-link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
+.cmt-link:disabled { opacity: 0.5; cursor: default; }
+.cmt-post { display: flex; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(20, 24, 31, 0.02); }
+.cmt-post__picture { width: 96px; height: 96px; object-fit: cover; border-radius: 10px; flex: none; }
+.cmt-post__body { min-width: 0; display: grid; gap: 6px; align-content: start; }
+.cmt-post__text { margin: 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmt-post__note { margin: 0; font-size: 13px; color: var(--ink-soft); font-style: italic; }
+.cmt-post__meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--ink-soft); }
+.cmt-thread__bar { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.cmt-assign { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-soft); }
+.cmt-assign .input { height: 34px; min-width: 150px; }
+.cmt-thread__comments { display: grid; gap: 10px; }
+
+.cmt-row { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.cmt-row--reply { margin-left: 24px; }
+.cmt-row--ours { background: rgba(27, 87, 51, 0.05); }
+.cmt-row.is-muted { opacity: 0.75; }
+.cmt-row__head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--ink-soft); }
+.cmt-row__author { font-size: 14px; font-weight: 700; color: var(--ink); }
+.cmt-row__flag { font-style: italic; }
+.cmt-row__likes { display: inline-flex; gap: 3px; align-items: center; }
+.cmt-row__text { margin: 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmt-row__text.is-deleted { text-decoration: line-through; color: var(--ink-soft); }
+.cmt-row__note, .cmt-row__state { margin: 0; font-size: 12px; }
+.cmt-row__note { color: var(--ink-soft); }
+.cmt-row__open { font-size: 12px; }
+.cmt-row__actions { display: flex; gap: 4px 14px; flex-wrap: wrap; margin-top: 2px; }
+.cmt-row__btn { background: none; border: 0; padding: 4px 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer; min-height: 32px; }
+.cmt-row__btn.is-danger { color: var(--danger, #b91c1c); }
+.cmt-row__btn:disabled { opacity: 0.5; cursor: default; }
+.cmt-private { margin-top: 4px; padding: 8px 10px; border-radius: 10px; background: rgba(20, 24, 31, 0.04); font-size: 13px; overflow-wrap: anywhere; }
+.cmt-private__hint { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+
+.cmt-reply { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; }
+.cmt-reply__to { font-size: 12px; color: var(--ink-soft); }
+.cmt-reply__row { display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.cmt-textarea { width: 100%; height: auto; min-height: 72px; padding: 10px 12px; resize: vertical; font: inherit; }
+.cmt-count { font-size: 12px; color: var(--ink-soft); margin-left: auto; }
+.cmt-count.is-over { color: var(--danger, #b91c1c); font-weight: 700; }
+.cmt-saved { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 200px; overflow-y: auto; }
+.cmt-saved__item { width: 100%; display: grid; gap: 2px; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: none; font: inherit; font-size: 13px; cursor: pointer; }
+.cmt-saved__item span { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmt-saved__note { font-size: 13px; color: var(--ink-soft); }
+
+.cmt-dialog { display: grid; gap: 10px; font-size: 14px; }
+.cmt-dialog p { margin: 0; line-height: 1.5; }
+.cmt-dialog__sub { color: var(--ink-soft); font-size: 13px; }
+.cmt-quote { margin: 0; padding: 10px 12px; border-left: 3px solid var(--accent); background: rgba(20, 24, 31, 0.04); border-radius: 0 10px 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmt-label { font-size: 13px; font-weight: 600; }
+.cmt-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Phones and narrow tablets: the list fills the screen; an open thread replaces it. */
+@media (max-width: 860px) {
+  .cmt-cols { grid-template-columns: minmax(0, 1fr); }
+  .cmt-col--list { max-height: none; }
+  .cmt-page.has-thread .cmt-col--list,
+  .cmt-page.has-thread .cmt-filters { display: none; }
+  .cmt-page:not(.has-thread) .cmt-col--thread { display: none; }
+  .cmt-back { display: inline-block; }
+  .cmt-filters__right { width: 100%; }
+  .cmt-filters__right .input { flex: 1; min-width: 0; }
+  .cmt-post__picture { width: 64px; height: 64px; }
+  .cmt-row--reply { margin-left: 12px; }
+}

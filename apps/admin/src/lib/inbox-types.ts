@@ -160,6 +160,8 @@ export interface TimelineMessage {
   advert?: string | null;
   /** A tapped Messenger/Instagram button: "Tapped a starter question" and the like. */
   tap_caption?: string | null;
+  /** This message is the private reply to a comment (suite spec 03). */
+  comment_ref?: { thread_id?: string; comment_id?: string; network?: string; excerpt?: string } | null;
 }
 
 export interface CallSummary {
