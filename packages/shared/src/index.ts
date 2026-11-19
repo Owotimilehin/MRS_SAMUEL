@@ -10,3 +10,4 @@ export * from "./inbox.js";
 export * from "./chat-setup.js";
 export * from "./page-details.js";
 export * from "./whatsapp-profile.js";
+export * from "./social-post.js";

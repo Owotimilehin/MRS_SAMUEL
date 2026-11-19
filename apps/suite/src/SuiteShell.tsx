@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BarChart3,
+  CalendarClock,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
@@ -32,7 +33,7 @@ import { activeNavTo } from "./nav.js";
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/inbox/reports" | "/inbox/settings" | "/channels";
+  to: "/inbox" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/posts";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -43,6 +44,10 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   {
     heading: "Conversations",
     items: [{ to: "/inbox", label: "Inbox", Icon: MessagesSquare, cap: "inbox.view" }],
+  },
+  {
+    heading: "Marketing",
+    items: [{ to: "/posts", label: "Posts", Icon: CalendarClock, cap: "social.publish" }],
   },
   {
     heading: "Insight",

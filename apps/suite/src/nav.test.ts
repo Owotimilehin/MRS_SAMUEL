@@ -29,3 +29,17 @@ describe("where a person lands", () => {
     expect(activeNavTo("/channels", LINKS)).toBe("/channels");
   });
 });
+
+describe("posts in the menu (suite spec 09)", () => {
+  const WITH_POSTS = ["/inbox", "/posts", "/inbox/reports", "/channels", "/inbox/settings"] as const;
+  it("lights Posts for the list, a new post and an open post", () => {
+    expect(activeNavTo("/posts", WITH_POSTS)).toBe("/posts");
+    expect(activeNavTo("/posts/new", WITH_POSTS)).toBe("/posts");
+    expect(activeNavTo("/posts/7f3c-post/edit", WITH_POSTS)).toBe("/posts");
+  });
+  it("someone who may only publish posts lands on Posts", () => {
+    expect(firstAllowedPage(["social.publish"])).toBe("/posts");
+    expect(firstAllowedPage(["inbox.view", "social.publish"])).toBe("/inbox");
+    expect(firstAllowedPage(["social.publish", "inbox.reports"])).toBe("/posts");
+  });
+});

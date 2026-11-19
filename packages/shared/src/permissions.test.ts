@@ -120,3 +120,12 @@ describe("channels.manage", () => {
     expect(resolveCapabilities("branch_staff")).not.toContain("channels.manage");
   });
 });
+
+describe("social.publish", () => {
+  it("is held by owner and admin, not manager or branch staff", () => {
+    expect(resolveCapabilities("owner")).toContain("social.publish");
+    expect(resolveCapabilities("admin")).toContain("social.publish");
+    expect(resolveCapabilities("manager")).not.toContain("social.publish");
+    expect(resolveCapabilities("branch_staff")).not.toContain("social.publish");
+  });
+});

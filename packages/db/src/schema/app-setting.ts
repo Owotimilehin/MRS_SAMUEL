@@ -26,3 +26,10 @@ export interface PaymentProviderValue {
 }
 
 export const PAYMENT_PROVIDER_KEY = "payment_provider";
+
+/** JSON shape stored under the `social_publishing` key (suite spec 09). A missing row means false. */
+export interface SocialPublishingValue {
+  scheduled_enabled: boolean;
+}
+
+export const SOCIAL_PUBLISHING_KEY = "social_publishing";
