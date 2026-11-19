@@ -14,6 +14,13 @@ import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
+import {
+  applyContactImports,
+  cleanupContactImports,
+  rebuildContactSummaries,
+  refreshContactSummaries,
+  sendContactConsentConfirmations,
+} from "./jobs/contacts.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -57,6 +64,12 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "inbox_template_pending", everyMs: 5 * 60_000, last: 0, run: () => refreshPendingTemplates(db, logger) },
     { name: "inbox_identity_profiles", everyMs: 30_000, last: 0, run: () => refreshIdentityProfiles(db, logger) },
     { name: "inbox_meta_subscriptions", everyMs: 60 * 60_000, last: 0, run: () => ensureMetaSubscriptions(db, logger) },
+    // Contacts (suite spec 14, Phase A).
+    { name: "contact_summary_refresh", everyMs: 60_000, last: 0, run: () => refreshContactSummaries(db, logger) },
+    { name: "contact_summary_rebuild", everyMs: 24 * 60 * 60_000, last: 0, run: () => rebuildContactSummaries(db, logger) },
+    { name: "contact_consent_confirm", everyMs: 10_000, last: 0, run: () => sendContactConsentConfirmations(db, logger) },
+    { name: "contact_import_apply", everyMs: 5_000, last: 0, run: () => applyContactImports(db, logger) },
+    { name: "contact_import_cleanup", everyMs: 24 * 60 * 60_000, last: 0, run: () => cleanupContactImports(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {
