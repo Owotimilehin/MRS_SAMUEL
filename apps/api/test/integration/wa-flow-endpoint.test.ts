@@ -8,6 +8,11 @@ import { auditLog, inboxConversation, inboxHoliday, inboxMessage, inboxPhoneNumb
 import { SLOT_WINDOWS, makeFlowToken } from "@ms/domain";
 import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 
+// The address WhatsApp is told to call: whatever public address this server
+// is configured with (it differs between a laptop and CI), never a fixed one.
+// Read when used, because the test set-up fills in the default address.
+const endpointUri = (): string => `${(process.env.PUBLIC_API_URL ?? "").replace(/\/$/, "")}/v1/webhooks/whatsapp-flows`;
+
 /**
  * Suite spec 07, Phase B: the encrypted data endpoint for the live delivery-time form, the `flows`
  * webhook field and the secure-connection routes. A throwaway RSA key pair is generated when the
@@ -494,9 +499,9 @@ describe("WhatsApp forms, Phase B: the data endpoint (suite spec 07)", () => {
     expect(made.status).toBe(201);
     const dto = ((await made.json()) as { data: Dto }).data;
     const create = calls.find((c) => c.method === "POST" && c.path === `${WABA}/flows`)!;
-    expect(create.body).toMatchObject({ name: "ms_delivery_slot", categories: ["APPOINTMENT_BOOKING"], endpoint_uri: "http://localhost/v1/webhooks/whatsapp-flows" });
+    expect(create.body).toMatchObject({ name: "ms_delivery_slot", categories: ["APPOINTMENT_BOOKING"], endpoint_uri: endpointUri() });
     expect("publish" in create.body!).toBe(false);
-    expect(calls.find((c) => c.method === "POST" && c.path === dto.meta_flow_id)!.body).toEqual({ endpoint_uri: "http://localhost/v1/webhooks/whatsapp-flows", application_id: APP_ID });
+    expect(calls.find((c) => c.method === "POST" && c.path === dto.meta_flow_id)!.body).toEqual({ endpoint_uri: endpointUri(), application_id: APP_ID });
     expect((await db.select().from(waFlow).where(eq(waFlow.id, dto.id!)))[0]!.usesEndpoint).toBe(true);
 
     // Publishing needs a valid key at WhatsApp for every active number of the account.
