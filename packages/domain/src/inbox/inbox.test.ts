@@ -148,6 +148,21 @@ describe("parseInbound", () => {
     });
     expect(parseInbound({ from: "1", id: "e", type: "ephemeral" }).type).toBe("unsupported");
   });
+
+  it("parseInbound turns a system message into type system with its body", () => {
+    expect(
+      parseInbound({
+        from_user_id: "US.2",
+        id: "s1",
+        type: "system",
+        system: { type: "user_changed_user_id", body: "User changed from US.1 to US.2", user_id: "US.2", previous_user_id: "US.1" },
+      }),
+    ).toEqual({ type: "system", body: "User changed from US.1 to US.2", mediaId: null, mediaMime: null, mediaFilename: null });
+    expect(parseInbound({ id: "s2", type: "system" })).toMatchObject({
+      type: "system",
+      body: "WhatsApp updated this customer's details.",
+    });
+  });
 });
 
 describe("canSeeConversation", () => {
