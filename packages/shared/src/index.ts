@@ -21,3 +21,4 @@ export * from "./social-post.js";
 export * from "./insights.js";
 export * from "./ads.js";
 export * from "./contacts.js";
+export * from "./broadcasts.js";
