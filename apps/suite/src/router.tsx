@@ -16,7 +16,9 @@ import { RouteErrorComponent } from "@admin/components/RouteErrorComponent.js";
 import { PageLoader } from "@admin/components/Spinner.js";
 import { RequireAuth, useAuthUser } from "@admin/lib/auth.js";
 import { LoginPage, type LoginCopy } from "@admin/routes/login.js";
+import type { Capability } from "@ms/shared";
 import { ADMIN_URL } from "./suite-host.js";
+import { firstAllowedPage } from "./nav.js";
 
 function lazyNamed<P = Record<string, never>>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,6 +36,7 @@ function lazyNamed<P = Record<string, never>>(
 const InboxPage = lazyNamed<{ conversationId?: string }>(() => import("@admin/routes/inbox/index.js"), "InboxPage");
 const InboxSettingsPage = lazyNamed(() => import("@admin/routes/inbox/settings.js"), "InboxSettingsPage");
 const InboxReportsPage = lazyNamed(() => import("@admin/routes/inbox/reports.js"), "InboxReportsPage");
+const ChannelsPage = lazyNamed(() => import("./features/channels/ChannelsPage.js"), "ChannelsPage");
 
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
@@ -43,10 +46,8 @@ const SUITE_LOGIN_COPY: LoginCopy = {
   lede: "Messages, calls and contacts for Mrs. Samuel Fruit Juice. Sign in with the same email and password you use for the shop.",
 };
 
-/** Staff without inbox access can sign in, but there is nothing here for them yet. */
-function NeedsInbox({ children }: { children: ReactNode }): JSX.Element {
-  const user = useAuthUser();
-  if (user.capabilities.includes("inbox.view")) return <>{children}</>;
+/** Shown to someone who is signed in but holds no suite permission at all. */
+function NoSuiteAccess(): JSX.Element {
   return (
     <main className="suite-note card">
       <h1>You don&apos;t have access to the suite yet</h1>
@@ -58,22 +59,38 @@ function NeedsInbox({ children }: { children: ReactNode }): JSX.Element {
   );
 }
 
-function page(node: ReactNode): JSX.Element {
+/**
+ * The one page gate (foundation ruling 9.2.2): the page needs `cap`. Someone
+ * with no suite permission at all sees the "no access" note; someone with
+ * other suite permissions is taken to the first page they may see.
+ */
+function Needs({ cap, children }: { cap: Capability; children: ReactNode }): JSX.Element {
+  const user = useAuthUser();
+  if (user.capabilities.includes(cap)) return <>{children}</>;
+  if (!firstAllowedPage(user.capabilities)) return <NoSuiteAccess />;
+  return <ToFirstPage />;
+}
+
+function page(node: ReactNode, cap: Capability): JSX.Element {
   return (
     <RequireAuth>
-      <NeedsInbox>
+      <Needs cap={cap}>
         <Suspense fallback={<PageLoader />}>{node}</Suspense>
-      </NeedsInbox>
+      </Needs>
     </RequireAuth>
   );
 }
 
-function ToInbox(): JSX.Element {
+/** Land on the first menu page this person may see. */
+function ToFirstPage(): JSX.Element {
   const navigate = useNavigate();
+  const user = useAuthUser();
+  const to = firstAllowedPage(user.capabilities);
   useEffect(() => {
-    void navigate({ to: "/inbox", replace: true });
-  }, [navigate]);
-  return <PageLoader label="Opening the inbox…" />;
+    if (to) void navigate({ to, replace: true });
+  }, [navigate, to]);
+  if (!to) return <NoSuiteAccess />;
+  return <PageLoader label="Opening the suite…" />;
 }
 
 const rootRoute = createRootRoute({
@@ -84,35 +101,44 @@ const rootRoute = createRootRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
-  component: () => <LoginPage defaultDest="/inbox" copy={SUITE_LOGIN_COPY} />,
+  component: () => <LoginPage defaultDest="/" copy={SUITE_LOGIN_COPY} />,
 });
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: ToInbox,
+  component: () => (
+    <RequireAuth>
+      <ToFirstPage />
+    </RequireAuth>
+  ),
 });
 const inboxRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox",
-  component: () => page(<InboxPage />),
+  component: () => page(<InboxPage />, "inbox.view"),
 });
 const inboxConversationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox/$conversationId",
   component: () => {
     const params = useParams({ from: "/inbox/$conversationId" });
-    return page(<InboxPage conversationId={params.conversationId} />);
+    return page(<InboxPage conversationId={params.conversationId} />, "inbox.view");
   },
 });
 const inboxSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox/settings",
-  component: () => page(<InboxSettingsPage />),
+  component: () => page(<InboxSettingsPage />, "inbox.settings"),
 });
 const inboxReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox/reports",
-  component: () => page(<InboxReportsPage />),
+  component: () => page(<InboxReportsPage />, "inbox.reports"),
+});
+const channelsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/channels",
+  component: () => page(<ChannelsPage />, "channels.manage"),
 });
 
 const routeTree = rootRoute.addChildren([
@@ -122,6 +148,7 @@ const routeTree = rootRoute.addChildren([
   inboxSettingsRoute,
   inboxReportsRoute,
   inboxConversationRoute,
+  channelsRoute,
 ]);
 
 export const router = createRouter({

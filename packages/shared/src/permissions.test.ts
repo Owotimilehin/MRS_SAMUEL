@@ -111,3 +111,12 @@ describe("till sell-policy capability split", () => {
     }
   });
 });
+
+describe("channels.manage", () => {
+  it("is held by owner and admin, not manager or branch staff", () => {
+    expect(resolveCapabilities("owner")).toContain("channels.manage");
+    expect(resolveCapabilities("admin")).toContain("channels.manage");
+    expect(resolveCapabilities("manager")).not.toContain("channels.manage");
+    expect(resolveCapabilities("branch_staff")).not.toContain("channels.manage");
+  });
+});

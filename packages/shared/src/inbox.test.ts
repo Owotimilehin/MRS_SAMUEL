@@ -1,5 +1,41 @@
 import { describe, it, expect } from "vitest";
-import { toE164, waWindowOpen, waWindowRemainingMs, isOpenNow, localParts, messagePreview } from "./inbox.js";
+import {
+  toE164,
+  waWindowOpen,
+  waWindowRemainingMs,
+  isOpenNow,
+  localParts,
+  messagePreview,
+  channelForKind,
+  isBsuid,
+  channelLabel,
+  CHANNEL_KINDS,
+  IDENTITY_CHANNELS,
+  WHATSAPP_ACCOUNT_KEY,
+} from "./inbox.js";
+
+describe("channel accounts and identities", () => {
+  it("channelForKind maps phone to whatsapp and leaves the others", () => {
+    expect(channelForKind("phone")).toBe("whatsapp");
+    expect(channelForKind("messenger")).toBe("messenger");
+    expect(channelForKind("instagram")).toBe("instagram");
+  });
+  it("isBsuid accepts US.123 and US.ENT.123 and rejects digits-only and empty", () => {
+    expect(isBsuid("US.123")).toBe(true);
+    expect(isBsuid("US.13491208655302741918")).toBe(true);
+    expect(isBsuid("US.ENT.11815799212886844830")).toBe(true);
+    expect(isBsuid("2347067220914")).toBe(false);
+    expect(isBsuid("")).toBe(false);
+    expect(isBsuid(null)).toBe(false);
+    expect(isBsuid("us.123")).toBe(false);
+    expect(isBsuid("US.")).toBe(false);
+  });
+  it("labels each channel in plain words", () => {
+    expect(IDENTITY_CHANNELS.map(channelLabel)).toEqual(["WhatsApp", "Facebook Messenger", "Instagram"]);
+    expect(CHANNEL_KINDS).toEqual(["phone", "messenger", "instagram"]);
+    expect(WHATSAPP_ACCOUNT_KEY).toBe("global");
+  });
+});
 
 describe("toE164", () => {
   it("normalises Nigerian local and international forms", () => {

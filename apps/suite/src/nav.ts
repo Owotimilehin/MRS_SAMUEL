@@ -12,3 +12,24 @@ export function activeNavTo<T extends string>(pathname: string, links: readonly 
   }
   return best;
 }
+
+/**
+ * The suite's pages in menu order, with the permission each needs. Keep in
+ * step with NAV in SuiteShell.tsx (which adds the labels and icons).
+ */
+export const SUITE_PAGES = [
+  { to: "/inbox", cap: "inbox.view" },
+  { to: "/inbox/reports", cap: "inbox.reports" },
+  { to: "/channels", cap: "channels.manage" },
+  { to: "/inbox/settings", cap: "inbox.settings" },
+] as const;
+
+export type SuitePath = (typeof SUITE_PAGES)[number]["to"];
+
+/**
+ * Where a person lands after signing in: the first menu page they may see, or
+ * null when they hold no suite permission at all (foundation ruling 9.2.2).
+ */
+export function firstAllowedPage(capabilities: readonly string[]): SuitePath | null {
+  return SUITE_PAGES.find((p) => capabilities.includes(p.cap))?.to ?? null;
+}

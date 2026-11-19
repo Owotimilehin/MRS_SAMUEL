@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  contactName,
+  eraseConfirmMatches,
+  eraseConfirmTarget,
+  firstIdentityHandle,
+  identityLine,
   conversationIdFromPath,
   shouldAlertForEvent,
   titleWithCount,
@@ -490,5 +495,55 @@ describe("new-message alerts", () => {
     expect(conversationIdFromPath("/inbox/reports")).toBeNull();
     expect(conversationIdFromPath("/inbox/settings")).toBeNull();
     expect(conversationIdFromPath("/owner/orders/abc")).toBeNull();
+  });
+});
+
+describe("customer identities (suite spec 01)", () => {
+  it("contactName falls back to the identity name before \"Unknown customer\"", () => {
+    expect(contactName("Ada", "+2348031234567", "@ada")).toBe("Ada");
+    expect(contactName(null, "+2348031234567", "@ada")).toBe("+234 803 123 4567");
+    expect(contactName("  ", null, "@ada")).toBe("@ada");
+    expect(contactName(null, null, "Funmi on Facebook")).toBe("Funmi on Facebook");
+    expect(contactName(null, null, " ")).toBe("Unknown customer");
+    expect(contactName(null, null)).toBe("Unknown customer");
+  });
+
+  it("eraseConfirmTarget picks phone, then username, then name, then the word DELETE", () => {
+    expect(eraseConfirmTarget({ name: "Ada", phone: "+2348031234567" }, [{ username: "ada" }])).toEqual({
+      kind: "phone",
+      show: "+234 803 123 4567",
+    });
+    expect(eraseConfirmTarget({ name: "Ada", phone: null }, [{ username: null }, { username: "@ada_ig" }])).toEqual({
+      kind: "username",
+      show: "@ada_ig",
+    });
+    expect(eraseConfirmTarget({ name: " Ada ", phone: "" }, [{ username: null }])).toEqual({ kind: "name", show: "Ada" });
+    expect(eraseConfirmTarget({ name: null, phone: null }, [])).toEqual({ kind: "word", show: "DELETE" });
+  });
+
+  it("eraseConfirmMatches follows the target", () => {
+    expect(eraseConfirmMatches("+234 803 123 4567", { kind: "phone", show: "+234 803 123 4567" }, "+2348031234567")).toBe(true);
+    expect(eraseConfirmMatches("DELETE", { kind: "phone", show: "+234 803 123 4567" }, "+2348031234567")).toBe(false);
+    expect(eraseConfirmMatches(" ADA_IG ", { kind: "username", show: "@ada_ig" })).toBe(true);
+    expect(eraseConfirmMatches("@ada_ig", { kind: "username", show: "@ada_ig" })).toBe(true);
+    expect(eraseConfirmMatches("ada", { kind: "username", show: "@ada_ig" })).toBe(false);
+    expect(eraseConfirmMatches("ada", { kind: "name", show: "Ada" })).toBe(true);
+    expect(eraseConfirmMatches("delete", { kind: "word", show: "DELETE" })).toBe(false);
+    expect(eraseConfirmMatches("DELETE", { kind: "word", show: "DELETE" })).toBe(true);
+  });
+
+  it("describes each way a customer reaches us", () => {
+    const base = { display_name: null, username: null, phone: null, account_label: "WhatsApp" };
+    expect(identityLine({ ...base, channel: "whatsapp", phone: "+2348031234567" })).toBe("+234 803 123 4567");
+    expect(identityLine({ ...base, channel: "whatsapp" })).toBe("WhatsApp (number hidden)");
+    expect(identityLine({ ...base, channel: "whatsapp", username: "ada" })).toBe("WhatsApp (number hidden) · @ada");
+    expect(identityLine({ ...base, channel: "messenger", account_label: "Facebook Page" })).toBe("Facebook user · Facebook Page");
+    expect(identityLine({ ...base, channel: "messenger", display_name: "Ada O", account_label: "Facebook Page" })).toBe(
+      "Ada O · Facebook Page",
+    );
+    expect(identityLine({ ...base, channel: "instagram", username: "ada", account_label: "Instagram" })).toBe("@ada · Instagram");
+    expect(identityLine({ ...base, channel: "instagram", account_label: "Instagram" })).toBe("Instagram user · Instagram");
+    expect(firstIdentityHandle([{ ...base, channel: "whatsapp" }, { ...base, channel: "instagram", username: "ada" }])).toBe("@ada");
+    expect(firstIdentityHandle([])).toBeNull();
   });
 });

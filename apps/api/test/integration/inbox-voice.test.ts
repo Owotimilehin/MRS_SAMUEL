@@ -149,4 +149,23 @@ describe("unified inbox — voice webhooks", () => {
     const [after] = await db.select().from(inboxCall).where(eq(inboxCall.id, call!.id));
     expect(after!.outcome).toBe("information");
   });
+
+  it("an incoming call never matches a non-phone row", async () => {
+    // A Facebook Page row that (wrongly) carries an inbound match value: still never a call target (rule R21).
+    await db.insert(inboxPhoneNumber).values({
+      kind: "messenger",
+      e164: null,
+      externalId: "100000000000077",
+      pageExternalId: "100000000000077",
+      externalName: "Mrs Samuel fruit juice",
+      label: "Facebook Page",
+      channels: "whatsapp",
+      inboundMatch: "+2348100000077",
+    });
+    const p = callParams("+2348100000077");
+    const res = await twilio("/incoming", p);
+    expect(res.status).toBe(200);
+    expect(res.xml).toContain("not in service");
+    expect(await db.select().from(inboxCall).where(eq(inboxCall.twilioCallSid, p.CallSid))).toHaveLength(0);
+  });
 });

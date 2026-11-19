@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deadTokens, wantsPush, type PushMessage } from "./inbox-push.js";
+import { deadTokens, pushTitle, wantsPush, type PushMessage } from "./inbox-push.js";
 import type { InboxViewer } from "@ms/domain";
 
 const viewer: InboxViewer = { userId: "U1", capabilities: ["inbox.view"], teamIds: ["T1"], numberIds: ["N1"] };
@@ -32,5 +32,16 @@ describe("deadTokens", () => {
     ];
     expect(deadTokens([msg("a"), msg("b"), msg("c")], tickets)).toEqual(["b"]);
     expect(deadTokens([msg("a")], null)).toEqual([]);
+  });
+});
+
+describe("pushTitle", () => {
+  const none = { name: null, phone: null, identityName: null, identityUsername: null };
+  it("push title falls back to the identity name", () => {
+    expect(pushTitle({ ...none, name: "Ada", phone: "+2347000000000", identityName: "Ada FB" })).toBe("Ada");
+    expect(pushTitle({ ...none, phone: "+2347000000000", identityName: "Ada FB" })).toBe("+2347000000000");
+    expect(pushTitle({ ...none, identityName: "Ada FB", identityUsername: "ada" })).toBe("Ada FB");
+    expect(pushTitle({ ...none, identityUsername: "ada" })).toBe("@ada");
+    expect(pushTitle(none)).toBe("New message");
   });
 });

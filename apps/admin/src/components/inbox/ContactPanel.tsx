@@ -1,12 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Facebook, Instagram, MessageCircle } from "lucide-react";
 import { ConfirmModal } from "../ConfirmModal.js";
 import { CustomerLink } from "../../lib/app-frame.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
-import { contactName, listTime, phoneConfirmMatches, prettyPhone } from "../../lib/inbox-logic.js";
+import {
+  contactName,
+  eraseConfirmMatches,
+  eraseConfirmTarget,
+  firstIdentityHandle,
+  identityLine,
+  listTime,
+  prettyPhone,
+} from "../../lib/inbox-logic.js";
 import { toast } from "../../lib/toast.js";
-import type { ContactInfo, ContactSearchHit } from "../../lib/inbox-types.js";
+import type { ContactInfo, ContactSearchHit, IdentityRow } from "../../lib/inbox-types.js";
 
 type Customer = ContactInfo["customer"];
 
@@ -51,6 +60,8 @@ export function ContactPanel({
     );
   }
   const c = q.data.customer;
+  const identities = q.data.identities ?? [];
+  const handle = firstIdentityHandle(identities);
   const dirty = name.trim() !== (c.name ?? "") || notes !== (c.notes ?? "");
   const others = q.data.conversations.filter((x) => x.id !== currentConversationId);
 
@@ -74,7 +85,7 @@ export function ContactPanel({
     <>
       <div>
         <div className="t-eyebrow">Contact</div>
-        <div style={{ fontWeight: 800, fontSize: 16 }}>{contactName(c.name, c.phone)}</div>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>{contactName(c.name, c.phone, handle)}</div>
         {c.phone && (
           <a href={`tel:${c.phone}`} style={{ fontSize: 14 }}>
             {prettyPhone(c.phone)}
@@ -89,6 +100,7 @@ export function ContactPanel({
           </div>
         )}
       </div>
+      {identities.length > 0 && <ReachesYouOn identities={identities} />}
       {editable ? (
         <div style={{ display: "grid", gap: 8 }}>
           <label className="field">
@@ -153,6 +165,7 @@ export function ContactPanel({
       {dialog === "erase" && (
         <EraseDialog
           customer={c}
+          identities={identities}
           onClose={() => setDialog(null)}
           onDone={() => {
             setDialog(null);
@@ -163,6 +176,7 @@ export function ContactPanel({
       {dialog === "merge" && (
         <MergeDialog
           customer={c}
+          handle={handle}
           onClose={() => setDialog(null)}
           onDone={() => {
             setDialog(null);
@@ -176,12 +190,71 @@ export function ContactPanel({
 
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 
-/** Permanently delete a customer's inbox history, after they type the phone number. */
-function EraseDialog({ customer, onClose, onDone }: { customer: Customer; onClose: () => void; onDone: () => void }): JSX.Element {
+const CHANNEL_ICON = { whatsapp: MessageCircle, messenger: Facebook, instagram: Instagram } as const;
+
+/** Every way this customer has reached us: WhatsApp number, Facebook name, Instagram username. */
+function ReachesYouOn({ identities }: { identities: IdentityRow[] }): JSX.Element {
+  return (
+    <div>
+      <div className="t-eyebrow" style={{ marginBottom: 6 }}>Reaches you on</div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {identities.map((i) => {
+          const Icon = CHANNEL_ICON[i.channel] ?? MessageCircle;
+          return (
+            <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, minWidth: 0 }}>
+              {i.profile_pic_url && <IdentityPicture src={i.profile_pic_url} />}
+              <Icon size={16} aria-hidden="true" style={{ flex: "none" }} />
+              <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                {identityLine(i)}
+                {i.last_seen_at && <span style={{ color: "var(--ink-soft)" }}> · last wrote {listTime(i.last_seen_at)}</span>}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Meta's picture links expire: hide the picture if it no longer loads. */
+function IdentityPicture({ src }: { src: string }): JSX.Element | null {
+  const [broken, setBroken] = useState(false);
+  if (broken) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={24}
+      height={24}
+      style={{ borderRadius: "50%", flex: "none", objectFit: "cover" }}
+      onError={() => setBroken(true)}
+    />
+  );
+}
+
+const ERASE_LABEL: Record<"phone" | "username" | "name", string> = {
+  phone: "Type the customer's phone number to confirm:",
+  username: "Type the customer's username to confirm:",
+  name: "Type the customer's name to confirm:",
+};
+
+/** Permanently delete a customer's inbox history, after they type the phone, username, name or DELETE (rule R10). */
+function EraseDialog({
+  customer,
+  identities,
+  onClose,
+  onDone,
+}: {
+  customer: Customer;
+  identities: IdentityRow[];
+  onClose: () => void;
+  onDone: () => void;
+}): JSX.Element {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
-  const who = contactName(customer.name, customer.phone);
-  const matches = phoneConfirmMatches(typed, customer.phone);
+  const who = contactName(customer.name, customer.phone, firstIdentityHandle(identities));
+  const target = eraseConfirmTarget(customer, identities);
+  const matches = eraseConfirmMatches(typed, target, customer.phone);
 
   async function erase(): Promise<void> {
     setBusy(true);
@@ -211,35 +284,50 @@ function EraseDialog({ customer, onClose, onDone }: { customer: Customer; onClos
     >
       <div style={{ display: "grid", gap: 10 }}>
         <p style={{ margin: 0 }}>
-          This permanently removes every chat, call, recording and note for <strong>{who}</strong> from the inbox. It can't be
-          undone.
+          This permanently removes every chat, call, recording and note for <strong>{who}</strong>, and their WhatsApp,
+          Facebook and Instagram details, from the inbox. It can't be undone.
         </p>
         <p style={{ margin: 0, color: "var(--ink-soft)", fontSize: 13 }}>Their orders are not touched.</p>
-        {customer.phone ? (
-          <label className="field">
-            <span className="field__label">
-              Type the customer's phone number to confirm: <strong>{prettyPhone(customer.phone)}</strong>
-            </span>
-            <input
-              className="input"
-              inputMode="tel"
-              autoComplete="off"
-              value={typed}
-              placeholder={prettyPhone(customer.phone)}
-              onChange={(e) => setTyped(e.target.value)}
-            />
-            {typed.trim() && !matches && <span className="field__hint">That doesn't match yet.</span>}
-          </label>
-        ) : (
-          <div className="field__error">This contact has no phone number on file, so it can't be confirmed here.</div>
-        )}
+        <label className="field">
+          <span className="field__label">
+            {target.kind === "word" ? (
+              <>
+                Type <strong>DELETE</strong> to confirm
+              </>
+            ) : (
+              <>
+                {ERASE_LABEL[target.kind]} <strong>{target.show}</strong>
+              </>
+            )}
+          </span>
+          <input
+            className="input"
+            inputMode={target.kind === "phone" ? "tel" : "text"}
+            autoComplete="off"
+            autoCapitalize="off"
+            value={typed}
+            placeholder={target.show}
+            onChange={(e) => setTyped(e.target.value)}
+          />
+          {typed.trim() && !matches && <span className="field__hint">That doesn't match yet.</span>}
+        </label>
       </div>
     </ConfirmModal>
   );
 }
 
-/** Find the contact to keep, then move this one's chats and calls onto it. */
-function MergeDialog({ customer, onClose, onDone }: { customer: Customer; onClose: () => void; onDone: () => void }): JSX.Element {
+/** Find the contact to keep, then move this one's chats, calls and channel details onto it. */
+function MergeDialog({
+  customer,
+  handle,
+  onClose,
+  onDone,
+}: {
+  customer: Customer;
+  handle: string | null;
+  onClose: () => void;
+  onDone: () => void;
+}): JSX.Element {
   const [text, setText] = useState("");
   const [term, setTerm] = useState("");
   const [target, setTarget] = useState<ContactSearchHit | null>(null);
@@ -258,14 +346,15 @@ function MergeDialog({ customer, onClose, onDone }: { customer: Customer; onClos
     staleTime: 30_000,
   });
   const hits = (search.data ?? []).filter((h) => h.id !== customer.id);
-  const who = contactName(customer.name, customer.phone);
+  const who = contactName(customer.name, customer.phone, handle);
+  const hitName = (h: ContactSearchHit): string => contactName(h.name, h.phone, h.handles?.[0]);
 
   async function merge(): Promise<void> {
     if (!target) return;
     setBusy(true);
     try {
       const r = await inboxApi.mergeContact(customer.id, target.id);
-      toast.success(`Moved ${plural(r.moved_conversations, "chat")} to ${contactName(target.name, target.phone)}.`);
+      toast.success(`Moved ${plural(r.moved_conversations, "chat")} to ${hitName(target)}.`);
       onDone();
     } catch {
       /* toast shown by api() */
@@ -287,8 +376,10 @@ function MergeDialog({ customer, onClose, onDone }: { customer: Customer; onClos
       {target ? (
         <div style={{ display: "grid", gap: 10 }}>
           <p style={{ margin: 0 }}>
-            Moves this contact's chats and calls to <strong>{contactName(target.name, target.phone)}</strong>. Orders are not
-            changed.
+            Moves this contact's chats and calls to <strong>{hitName(target)}</strong>. Orders are not changed.
+          </p>
+          <p style={{ margin: 0 }}>
+            Their WhatsApp, Facebook and Instagram details move too, so future messages from them arrive on the kept contact.
           </p>
           <div className="card card--soft" style={{ fontSize: 13, display: "grid", gap: 2 }}>
             <div>
@@ -296,7 +387,7 @@ function MergeDialog({ customer, onClose, onDone }: { customer: Customer; onClos
               {customer.name && customer.phone ? ` (${prettyPhone(customer.phone)})` : ""}
             </div>
             <div>
-              <strong>To:</strong> {contactName(target.name, target.phone)}
+              <strong>To:</strong> {hitName(target)}
               {target.name && target.phone ? ` (${prettyPhone(target.phone)})` : ""}
             </div>
           </div>
@@ -312,7 +403,7 @@ function MergeDialog({ customer, onClose, onDone }: { customer: Customer; onClos
             <input
               className="input"
               value={text}
-              placeholder="Name or phone number"
+              placeholder="Search by name, phone or username"
               autoComplete="off"
               onChange={(e) => setText(e.target.value)}
             />
@@ -338,10 +429,11 @@ function MergeDialog({ customer, onClose, onDone }: { customer: Customer; onClos
                   style={{ padding: 8, fontFamily: "inherit", fontSize: 13, color: "inherit", textAlign: "left", cursor: "pointer" }}
                   onClick={() => setTarget(h)}
                 >
-                  <div style={{ fontWeight: 700 }}>{contactName(h.name, h.phone)}</div>
+                  <div style={{ fontWeight: 700 }}>{hitName(h)}</div>
                   <div style={{ color: "var(--ink-soft)", fontSize: 13 }}>
                     {h.name && h.phone ? `${prettyPhone(h.phone)} · ` : ""}
                     {plural(h.conversations, "chat")}
+                    {h.handles?.length ? ` · ${h.handles.join(", ")}` : ""}
                   </div>
                 </button>
               ))}

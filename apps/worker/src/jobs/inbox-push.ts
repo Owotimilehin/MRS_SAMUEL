@@ -14,6 +14,7 @@ import {
   adminUser,
   customer,
   inboxConversation,
+  inboxIdentity,
   inboxMessage,
   inboxNotifyPref,
   inboxPushToken,
@@ -68,6 +69,25 @@ export const expoPushSender: PushSender = async (messages) => {
   }
   return dead;
 };
+
+/**
+ * The push title: the contact's name, else phone, else what Meta calls them on
+ * the channel (a Facebook name or an Instagram username). Exported for tests.
+ */
+export function pushTitle(conv: {
+  name: string | null;
+  phone: string | null;
+  identityName: string | null;
+  identityUsername: string | null;
+}): string {
+  return (
+    conv.name ||
+    conv.phone ||
+    conv.identityName ||
+    (conv.identityUsername ? `@${conv.identityUsername}` : "") ||
+    "New message"
+  );
+}
 
 /** Exported for tests. */
 export function wantsPush(
@@ -137,9 +157,12 @@ export async function sendMessagePushes(db: DbClient, log: Log, send: PushSender
         assigneeId: inboxConversation.assigneeId,
         name: customer.name,
         phone: customer.phone,
+        identityName: inboxIdentity.displayName,
+        identityUsername: inboxIdentity.username,
       })
       .from(inboxConversation)
       .innerJoin(customer, eq(customer.id, inboxConversation.customerId))
+      .leftJoin(inboxIdentity, eq(inboxIdentity.id, inboxConversation.identityId))
       .where(inArray(inboxConversation.id, convIds));
 
     // One push per conversation per person (the latest message), not one per message.
@@ -156,7 +179,7 @@ export async function sendMessagePushes(db: DbClient, log: Log, send: PushSender
         if (!wantsPush(viewer, level, conv)) continue;
         outgoing.push({
           to: t.token,
-          title: conv.name || conv.phone || "New WhatsApp message",
+          title: pushTitle(conv),
           body: messagePreview(msg.type, msg.body).slice(0, 120),
           data: { conversationId: convId },
           sound: "default",

@@ -50,6 +50,7 @@ import { settingsRoutes, publicSettingsRoutes } from "./routes/settings.js";
 import { inboxRoutes } from "./routes/inbox.js";
 import { inboxSettingsRoutes } from "./routes/inbox-settings.js";
 import { inboxReportRoutes } from "./routes/inbox-reports.js";
+import { channelRoutes } from "./routes/channels.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
 
@@ -130,6 +131,8 @@ export function buildApp(): Hono {
   app.route("/v1/inbox/reports", inboxReportRoutes(db));
   app.route("/v1/inbox/voice", voiceAppRoutes(db));
   app.route("/v1/inbox", inboxRoutes(db));
+  // Business suite: channel accounts (Facebook Page, Instagram).
+  app.route("/v1/channels", channelRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));

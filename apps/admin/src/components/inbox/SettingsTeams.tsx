@@ -245,7 +245,8 @@ export function SettingsAccess(): JSX.Element {
   const qc = useQueryClient();
   const users = useQuery({ queryKey: settingsKeys.users, queryFn: settingsApi.adminUsers });
   const staff = useQuery({ queryKey: inboxKeys.staff, queryFn: inboxApi.staff });
-  const numbers = useQuery({ queryKey: settingsKeys.numbers, queryFn: settingsApi.numbers });
+  // Every channel: phone lines, the Facebook Page and the Instagram account.
+  const numbers = useQuery({ queryKey: settingsKeys.numbersAll, queryFn: () => settingsApi.numbers({ all: true }) });
   const access = useQuery({ queryKey: settingsKeys.access, queryFn: settingsApi.access });
   const [drafts, setDrafts] = useState<Record<string, Set<string>>>({});
   const [saving, setSaving] = useState<string | null>(null);
@@ -288,10 +289,10 @@ export function SettingsAccess(): JSX.Element {
 
   return (
     <section className="card">
-      <h2 className="t-h2">Who can use which number</h2>
+      <h2 className="t-h2">Who can use which channel</h2>
       <p style={{ color: "var(--ink-soft)", fontSize: 13, marginBottom: 12 }}>
-        Staff only see chats and calls for the numbers ticked here. People who can see every conversation (owners and some
-        admins) always have every number, so their boxes are ticked and locked.
+        Staff only see chats and calls for the channels ticked here. People who can see every conversation (owners and some
+        admins) always have every channel, so their boxes are ticked and locked.
       </p>
       <DataState
         loading={loading}
@@ -303,8 +304,8 @@ export function SettingsAccess(): JSX.Element {
           void access.refetch();
         }}
         isEmpty={people.length === 0 || activeNumbers.length === 0}
-        emptyTitle={activeNumbers.length === 0 ? "No numbers yet" : "No inbox staff yet"}
-        emptyHint={activeNumbers.length === 0 ? "Add a business number first." : "Give staff inbox access in Admin users."}
+        emptyTitle={activeNumbers.length === 0 ? "No channels yet" : "No inbox staff yet"}
+        emptyHint={activeNumbers.length === 0 ? "Add a phone line or connect a Page first." : "Give staff inbox access in Admin users."}
       >
         <div style={{ display: "grid", gap: 10 }}>
           {people.map((u) => {
@@ -319,7 +320,7 @@ export function SettingsAccess(): JSX.Element {
                     <div style={{ fontWeight: 700 }}>{staffLabel(u.name?.trim() || u.email)}</div>
                     <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
                       {sentenceCase(u.role)}
-                      {unlimited ? " · can use every number" : ""}
+                      {unlimited ? " · can use every channel" : ""}
                     </div>
                   </div>
                   {!unlimited && (dirty || saving === u.id) && (

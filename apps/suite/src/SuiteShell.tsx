@@ -8,7 +8,18 @@
 import { lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BarChart3, ChevronRight, ChevronsLeft, ChevronsRight, ExternalLink, Menu, MessagesSquare, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import {
+  BarChart3,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ExternalLink,
+  Menu,
+  MessagesSquare,
+  Share2,
+  SlidersHorizontal,
+  type LucideIcon,
+} from "lucide-react";
 import type { Capability } from "@ms/shared";
 import type { FrameProps } from "@admin/lib/app-frame.js";
 import { useAuthUser } from "@admin/lib/auth.js";
@@ -21,13 +32,13 @@ import { activeNavTo } from "./nav.js";
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/inbox/reports" | "/inbox/settings";
+  to: "/inbox" | "/inbox/reports" | "/inbox/settings" | "/channels";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
 }
 
-/** The suite's menu. One line per section, in the order shown. */
+/** The suite's menu. One line per section, in the order shown. Keep SUITE_PAGES in nav.ts in the same order. */
 const NAV: { heading: string; items: NavItem[] }[] = [
   {
     heading: "Conversations",
@@ -39,7 +50,10 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   },
   {
     heading: "Set-up",
-    items: [{ to: "/inbox/settings", label: "Settings", Icon: SlidersHorizontal, cap: "inbox.settings" }],
+    items: [
+      { to: "/channels", label: "Channels", Icon: Share2, cap: "channels.manage" },
+      { to: "/inbox/settings", label: "Settings", Icon: SlidersHorizontal, cap: "inbox.settings" },
+    ],
   },
 ];
 

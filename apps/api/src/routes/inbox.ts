@@ -7,6 +7,7 @@ import {
   customer,
   inboxCall,
   inboxConversation,
+  inboxIdentity,
   inboxMessage,
   inboxNote,
   inboxNotifyPref,
@@ -35,7 +36,15 @@ import {
   type InboxViewer,
   type OutboundContent,
 } from "@ms/domain";
-import { resolveCapabilities, waWindowRemainingMs, type AdminRole, type Capability, type PermissionOverrides } from "@ms/shared";
+import {
+  IDENTITY_CHANNELS,
+  resolveCapabilities,
+  waWindowRemainingMs,
+  type AdminRole,
+  type Capability,
+  type IdentityChannel,
+  type PermissionOverrides,
+} from "@ms/shared";
 import { requireAuth } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -72,7 +81,7 @@ export function clearInboxViewerCache(userId?: string): void {
   else viewerCache.clear();
 }
 
-function withViewer(db: DbClient): MiddlewareHandler {
+export function withViewer(db: DbClient): MiddlewareHandler {
   return async (c, next) => {
     const viewer = await cachedViewer(db, c.get("auth").userId);
     if (!viewer) throw new BusinessError("forbidden", "no inbox access", 403);
@@ -81,14 +90,14 @@ function withViewer(db: DbClient): MiddlewareHandler {
   };
 }
 
-function need(c: Context, cap: Capability): void {
+export function need(c: Context, cap: Capability): void {
   if (!c.get("inboxViewer").capabilities.includes(cap)) {
     throw new BusinessError("forbidden", `missing capability: ${cap}`, 403);
   }
 }
 
 /** Load a conversation the viewer may see — 404 (not 403) otherwise, so its existence isn't revealed. */
-async function visibleConversation(db: DbClient, c: Context, id: string) {
+export async function visibleConversation(db: DbClient, c: Context, id: string) {
   if (!z.string().uuid().safeParse(id).success) throw new BusinessError("not_found", "conversation not found", 404);
   const [conv] = await db.select().from(inboxConversation).where(eq(inboxConversation.id, id));
   if (!conv || !canSeeConversation(c.get("inboxViewer"), conv)) {
@@ -102,6 +111,89 @@ async function audit(db: DbClient, c: Context, action: string, entityType: strin
 }
 
 const assignee = alias(adminUser, "assignee");
+
+/** Escape a user's text for an ILIKE pattern and wrap it in %…%. */
+function likeTerm(text: string): string {
+  return `%${text.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+}
+
+/** The contact has an identity (Messenger name, Instagram username, …) matching the search. */
+function identityMatches(text: string): SQL {
+  const term = likeTerm(text.replace(/^@/, ""));
+  return sql`exists (select 1 from ${inboxIdentity} i where i.customer_id = ${customer.id} and (i.username ilike ${term} or i.display_name ilike ${term}))`;
+}
+
+/** Up to three handles for a contact ("@username", else the display name), newest first. */
+const customerHandles = sql<string[]>`array(
+  select coalesce('@' || i.username, i.display_name) from ${inboxIdentity} i
+  where i.customer_id = ${customer.id} and coalesce(i.username, i.display_name) is not null
+  order by i.last_seen_at desc nulls last, i.created_at desc limit 3)`;
+
+export interface IdentityRow {
+  id: string;
+  channel: IdentityChannel;
+  account_label: string;
+  display_name: string | null;
+  username: string | null;
+  phone: string | null;
+  profile_pic_url: string | null;
+  last_seen_at: Date | null;
+}
+
+/**
+ * Every way a customer has reached us. WhatsApp identities are always shown; a
+ * Messenger or Instagram identity only to staff who may use that line (rule R20).
+ */
+async function identitiesFor(db: DbClient, v: InboxViewer, customerId: string): Promise<IdentityRow[]> {
+  const rows = await db
+    .select({ ident: inboxIdentity, lineId: inboxPhoneNumber.id, lineLabel: inboxPhoneNumber.label })
+    .from(inboxIdentity)
+    .leftJoin(
+      inboxPhoneNumber,
+      and(eq(inboxPhoneNumber.kind, inboxIdentity.channel), eq(inboxPhoneNumber.externalId, inboxIdentity.accountExternalId)),
+    )
+    .where(eq(inboxIdentity.customerId, customerId))
+    .orderBy(sql`${inboxIdentity.lastSeenAt} desc nulls last`, asc(inboxIdentity.createdAt));
+  const out: IdentityRow[] = [];
+  for (const { ident, lineId, lineLabel } of rows) {
+    const channel = ident.channel as IdentityChannel;
+    if (channel !== "whatsapp") {
+      if (lineId ? !canUseNumber(v, lineId) : v.numberIds !== "all") continue;
+    }
+    out.push({
+      id: ident.id,
+      channel,
+      account_label: channel === "whatsapp" ? "WhatsApp" : (lineLabel ?? ""),
+      display_name: ident.displayName,
+      username: ident.username,
+      phone: channel === "whatsapp" && /^\d+$/.test(ident.externalId) ? `+${ident.externalId}` : null,
+      profile_pic_url: ident.profilePicUrl,
+      last_seen_at: ident.lastSeenAt,
+    });
+  }
+  return out;
+}
+
+/**
+ * Rule R10: what a person must type to erase a contact. The phone if there is
+ * one; else one of the usernames; else the name; else the word DELETE.
+ */
+function eraseConfirmMatches(
+  confirm: string,
+  cust: { phone: string | null; name: string | null },
+  usernames: string[],
+): boolean {
+  const digits = (v: string | null) => (v ?? "").replace(/\D/g, "").replace(/^(234|0)/, "");
+  if (digits(cust.phone)) return digits(confirm) === digits(cust.phone);
+  const typed = confirm.trim();
+  const named = usernames.filter((u) => u.trim());
+  if (named.length) {
+    const t = typed.replace(/^@/, "").toLowerCase();
+    return named.some((u) => u.trim().replace(/^@/, "").toLowerCase() === t);
+  }
+  if (cust.name?.trim()) return typed.toLowerCase() === cust.name.trim().toLowerCase();
+  return typed === "DELETE";
+}
 
 // ── Upload tokens: an attachment can only be sent by whoever uploaded it ──
 
@@ -158,7 +250,14 @@ export function inboxRoutes(db: DbClient) {
   r.get("/me", async (c) => {
     const v = c.get("inboxViewer");
     const numbers = await db
-      .select({ id: inboxPhoneNumber.id, label: inboxPhoneNumber.label, e164: inboxPhoneNumber.e164, channels: inboxPhoneNumber.channels })
+      .select({
+        id: inboxPhoneNumber.id,
+        label: inboxPhoneNumber.label,
+        e164: inboxPhoneNumber.e164,
+        channels: inboxPhoneNumber.channels,
+        kind: inboxPhoneNumber.kind,
+        external_name: inboxPhoneNumber.externalName,
+      })
       .from(inboxPhoneNumber)
       .where(
         and(
@@ -170,7 +269,7 @@ export function inboxRoutes(db: DbClient) {
     return c.json({
       data: {
         user_id: v.userId,
-        capabilities: v.capabilities.filter((x) => /^(inbox|calls|recordings|transcripts)\./.test(x)),
+        capabilities: v.capabilities.filter((x) => /^(inbox|calls|recordings|transcripts|channels)\./.test(x)),
         team_ids: v.teamIds,
         numbers,
       },
@@ -301,13 +400,17 @@ export function inboxRoutes(db: DbClient) {
     if (q.number && z.string().uuid().safeParse(q.number).success) conds.push(eq(inboxConversation.phoneNumberId, q.number));
     if (q.team && z.string().uuid().safeParse(q.team).success) conds.push(eq(inboxConversation.teamId, q.team));
     if (q.label) conds.push(sql`${q.label} = any(${inboxConversation.labels})`);
+    if (q.channel && (IDENTITY_CHANNELS as readonly string[]).includes(q.channel)) {
+      conds.push(eq(inboxConversation.channel, q.channel));
+    }
     if (q.q && q.q.trim()) {
-      const term = `%${q.q.trim().replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+      const term = likeTerm(q.q.trim());
       const digits = q.q.replace(/\D/g, "");
       conds.push(
         or(
           ilike(customer.name, term),
           ...(digits.length >= 4 ? [sql`regexp_replace(coalesce(${customer.phone}, ''), '\\D', '', 'g') like ${`%${digits}%`}`] : []),
+          identityMatches(q.q.trim()),
         )!,
       );
     }
@@ -331,6 +434,9 @@ export function inboxRoutes(db: DbClient) {
         customer_phone: customer.phone,
         number_id: inboxPhoneNumber.id,
         number_label: inboxPhoneNumber.label,
+        number_kind: inboxPhoneNumber.kind,
+        channel: inboxConversation.channel,
+        identity_name: sql<string | null>`coalesce(${inboxIdentity.displayName}, '@' || ${inboxIdentity.username})`,
         team_id: inboxConversation.teamId,
         team_name: inboxTeam.name,
         assignee_id: inboxConversation.assigneeId,
@@ -341,6 +447,7 @@ export function inboxRoutes(db: DbClient) {
       .innerJoin(inboxPhoneNumber, eq(inboxPhoneNumber.id, inboxConversation.phoneNumberId))
       .leftJoin(inboxTeam, eq(inboxTeam.id, inboxConversation.teamId))
       .leftJoin(assignee, eq(assignee.id, inboxConversation.assigneeId))
+      .leftJoin(inboxIdentity, eq(inboxIdentity.id, inboxConversation.identityId))
       .where(and(...conds))
       .orderBy(desc(inboxConversation.lastActivityAt))
       .limit(limit + 1);
@@ -362,11 +469,23 @@ export function inboxRoutes(db: DbClient) {
       ? await db.select({ id: adminUser.id, name: adminUser.name, email: adminUser.email }).from(adminUser).where(eq(adminUser.id, conv.assigneeId))
       : [];
     const [team] = conv.teamId ? await db.select().from(inboxTeam).where(eq(inboxTeam.id, conv.teamId)) : [];
+    const [ident] = conv.identityId ? await db.select().from(inboxIdentity).where(eq(inboxIdentity.id, conv.identityId)) : [];
     return c.json({
       data: {
         ...conv,
         customer: cust ? { id: cust.id, name: cust.name, phone: cust.phone, email: cust.email, notes: cust.notes } : null,
-        number: num ? { id: num.id, label: num.label, e164: num.e164, channels: num.channels } : null,
+        number: num
+          ? { id: num.id, label: num.label, e164: num.e164, channels: num.channels, kind: num.kind, external_name: num.externalName }
+          : null,
+        identity: ident
+          ? {
+              id: ident.id,
+              channel: ident.channel,
+              display_name: ident.displayName,
+              username: ident.username,
+              profile_pic_url: ident.profilePicUrl,
+            }
+          : null,
         assignee: ass ? { id: ass.id, name: ass.name ?? ass.email } : null,
         team: team ? { id: team.id, name: team.name } : null,
         window_remaining_ms: waWindowRemainingMs(conv.lastInboundWaAt),
@@ -650,7 +769,7 @@ export function inboxRoutes(db: DbClient) {
   r.get("/contacts/search", async (c) => {
     const q = (c.req.query("q") ?? "").trim();
     if (q.length < 2) return c.json({ data: [] });
-    const term = `%${q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+    const term = likeTerm(q);
     const digits = q.replace(/\D/g, "");
     const rows = await db
       .select({
@@ -658,6 +777,7 @@ export function inboxRoutes(db: DbClient) {
         name: customer.name,
         phone: customer.phone,
         conversations: sql<number>`count(*)::int`,
+        handles: customerHandles,
       })
       .from(inboxConversation)
       .innerJoin(customer, eq(customer.id, inboxConversation.customerId))
@@ -667,6 +787,7 @@ export function inboxRoutes(db: DbClient) {
           or(
             ilike(customer.name, term),
             ...(digits.length >= 4 ? [sql`regexp_replace(coalesce(${customer.phone}, ''), '\\D', '', 'g') like ${`%${digits}%`}`] : []),
+            identityMatches(q),
           ),
         ),
       )
@@ -698,6 +819,7 @@ export function inboxRoutes(db: DbClient) {
     return c.json({
       data: {
         customer: { id: cust!.id, name: cust!.name, phone: cust!.phone, email: cust!.email, notes: cust!.notes },
+        identities: await identitiesFor(db, v, id),
         conversations: convs,
         timeline: c.req.query("timeline") ? await buildTimeline(db, v, convs.map((x) => x.id)) : undefined,
       },
@@ -706,51 +828,78 @@ export function inboxRoutes(db: DbClient) {
 
   /**
    * Erase a customer's inbox history on request: chats, calls, recordings,
-   * notes and the stored files. Their customer record and orders are the
-   * shop's own records and are not touched.
+   * notes, the stored files, their WhatsApp / Facebook / Instagram identities
+   * and the raw webhook copies that mention them. Their customer record and
+   * orders are the shop's own records and are not touched (spec 01, Q3).
    */
   r.post("/contacts/:customerId/erase", async (c) => {
     need(c, "inbox.erase");
     const id = c.req.param("customerId");
     if (!z.string().uuid().safeParse(id).success) throw new BusinessError("not_found", "not found", 404);
-    const { confirm_phone } = z.object({ confirm_phone: z.string().min(4).max(30) }).parse(await c.req.json());
+    const body = z
+      .object({
+        confirm: z.string().min(1).max(120).optional(),
+        // Older clients send the phone under this key.
+        confirm_phone: z.string().min(1).max(120).optional(),
+      })
+      .parse(await c.req.json());
+    const confirm = body.confirm ?? body.confirm_phone;
+    if (!confirm) throw new BusinessError("validation_failed", "That doesn't match this customer", 400);
     const [cust] = await db.select().from(customer).where(eq(customer.id, id));
     if (!cust) throw new BusinessError("not_found", "not found", 404);
-    const digits = (v: string | null) => (v ?? "").replace(/\D/g, "").replace(/^(234|0)/, "");
-    if (!digits(cust.phone) || digits(confirm_phone) !== digits(cust.phone)) {
-      throw new BusinessError("validation_failed", "The phone number doesn't match this customer", 400);
+    const identities = await db.select().from(inboxIdentity).where(eq(inboxIdentity.customerId, id));
+    const usernames = identities.map((i) => i.username).filter((u): u is string => !!u);
+    if (!eraseConfirmMatches(confirm, cust, usernames)) {
+      throw new BusinessError("validation_failed", "That doesn't match this customer", 400);
     }
+    const digits = (v: string | null) => (v ?? "").replace(/\D/g, "").replace(/^(234|0)/, "");
 
     const result = await db.transaction(async (tx) => {
       const convs = await tx.select().from(inboxConversation).where(eq(inboxConversation.customerId, id));
       const convIds = convs.map((x) => x.id);
-      if (convIds.length === 0) return { conversations: 0, messages: 0, calls: 0, recordings: 0, keys: [] as (string | null)[] };
-      const calls = await tx.select({ id: inboxCall.id }).from(inboxCall).where(inArray(inboxCall.conversationId, convIds));
-      const callIds = calls.map((x) => x.id);
-      const recs = callIds.length
-        ? await tx.delete(inboxRecording).where(inArray(inboxRecording.callId, callIds)).returning({ key: inboxRecording.storageKey })
-        : [];
-      if (callIds.length) await tx.delete(inboxCall).where(inArray(inboxCall.id, callIds));
-      const msgs = await tx.delete(inboxMessage).where(inArray(inboxMessage.conversationId, convIds)).returning({ key: inboxMessage.mediaKey });
-      await tx.delete(inboxNote).where(inArray(inboxNote.conversationId, convIds));
-      for (const conv of convs) await publishInboxEvent(tx, signalFor("conversation.updated", conv));
-      await tx.delete(inboxConversation).where(inArray(inboxConversation.id, convIds));
-      // Raw webhook copies of their messages and calls.
+      let calls: { id: string }[] = [];
+      let recs: { key: string | null }[] = [];
+      let msgs: { key: string | null }[] = [];
+      if (convIds.length) {
+        calls = await tx.select({ id: inboxCall.id }).from(inboxCall).where(inArray(inboxCall.conversationId, convIds));
+        const callIds = calls.map((x) => x.id);
+        recs = callIds.length
+          ? await tx.delete(inboxRecording).where(inArray(inboxRecording.callId, callIds)).returning({ key: inboxRecording.storageKey })
+          : [];
+        if (callIds.length) await tx.delete(inboxCall).where(inArray(inboxCall.id, callIds));
+        msgs = await tx.delete(inboxMessage).where(inArray(inboxMessage.conversationId, convIds)).returning({ key: inboxMessage.mediaKey });
+        await tx.delete(inboxNote).where(inArray(inboxNote.conversationId, convIds));
+        for (const conv of convs) await publishInboxEvent(tx, signalFor("conversation.updated", conv));
+        await tx.delete(inboxConversation).where(inArray(inboxConversation.id, convIds));
+      }
+      const gone = await tx.delete(inboxIdentity).where(eq(inboxIdentity.customerId, id)).returning({ id: inboxIdentity.id });
+      // Raw webhook copies of their messages and calls: by phone digits and by every identity ID.
+      const needles = new Set<string>();
       const d = digits(cust.phone);
-      if (d.length >= 7) {
-        await tx.delete(inboxWebhookEvent).where(sql`${inboxWebhookEvent.payload}::text like ${`%${d}%`}`);
+      if (d.length >= 7) needles.add(d);
+      for (const ident of identities) if (ident.externalId.length >= 7) needles.add(ident.externalId);
+      for (const needle of needles) {
+        await tx.delete(inboxWebhookEvent).where(sql`${inboxWebhookEvent.payload}::text like ${likeTerm(needle)}`);
       }
       return {
         conversations: convIds.length,
         messages: msgs.length,
-        calls: callIds.length,
+        calls: calls.length,
         recordings: recs.length,
+        identities: gone.length,
         keys: [...recs.map((x) => x.key), ...msgs.map((x) => x.key)],
       };
     });
     const { keys, ...counts } = result;
     await deleteInboxObjects(keys).catch((err: unknown) => logger.error({ err, customerId: id }, "inbox erase: file delete failed"));
-    await writeAudit(db, c, { action: "inbox.contact_erase", entityType: "customer", entityId: id, after: counts, notify: true });
+    await writeAudit(db, c, {
+      action: "inbox.contact_erase",
+      entityType: "customer",
+      entityId: id,
+      // The customer row stays (the inbox never changes it); the owner removes it in the shop admin if asked.
+      after: { ...counts, customer_row_kept: true },
+      notify: true,
+    });
     return c.json({ data: counts });
   });
 
@@ -797,6 +946,8 @@ export function inboxRoutes(db: DbClient) {
               ...(conv.lastInboundWaAt
                 ? { lastInboundWaAt: sql`greatest(coalesce(${inboxConversation.lastInboundWaAt}, '-infinity'::timestamptz), ${conv.lastInboundWaAt.toISOString()}::timestamptz)` }
                 : {}),
+              // The kept thread remembers who it is with if it didn't know yet.
+              ...(conv.identityId ? { identityId: sql`coalesce(${inboxConversation.identityId}, ${conv.identityId}::uuid)` } : {}),
             })
             .where(eq(inboxConversation.id, clash.id));
           await publishInboxEvent(tx, signalFor("conversation.updated", conv));
@@ -808,16 +959,23 @@ export function inboxRoutes(db: DbClient) {
           await publishInboxEvent(tx, signalFor("conversation.updated", updated!));
         }
       }
-      return convs.length;
+      // Their WhatsApp, Facebook and Instagram identities move too, so future
+      // messages land on the kept contact (rule R7).
+      const identities = await tx
+        .update(inboxIdentity)
+        .set({ customerId: intoId, updatedAt: new Date() })
+        .where(eq(inboxIdentity.customerId, fromId))
+        .returning({ id: inboxIdentity.id });
+      return { conversations: convs.length, identities: identities.length };
     });
     await writeAudit(db, c, {
       action: "inbox.contact_merge",
       entityType: "customer",
       entityId: fromId,
-      after: { into_customer_id: intoId, moved_conversations: moved },
+      after: { into_customer_id: intoId, moved_conversations: moved.conversations, moved_identities: moved.identities },
       notify: true,
     });
-    return c.json({ data: { moved_conversations: moved } });
+    return c.json({ data: { moved_conversations: moved.conversations, moved_identities: moved.identities } });
   });
 
   r.patch("/contacts/:customerId", async (c) => {
@@ -857,6 +1015,9 @@ export function inboxRoutes(db: DbClient) {
         phone: customer.phone,
         conversations: sql<number>`count(*)::int`,
         last_activity: sql<string>`max(${inboxConversation.lastActivityAt})`,
+        other_names: sql<string | null>`(select string_agg(h, '; ' order by h) from (
+          select distinct coalesce('@' || i.username, i.display_name) as h from ${inboxIdentity} i
+          where i.customer_id = ${customer.id} and coalesce(i.username, i.display_name) is not null) handles)`,
       })
       .from(inboxConversation)
       .innerJoin(customer, eq(customer.id, inboxConversation.customerId))
@@ -866,7 +1027,12 @@ export function inboxRoutes(db: DbClient) {
     await audit(db, c, "inbox.contacts_export", "customer", "export", { rows: rows.length });
     c.header("content-type", "text/csv; charset=utf-8");
     c.header("content-disposition", 'attachment; filename="inbox-contacts.csv"');
-    return c.body(toCsv(["Name", "Phone", "Conversations", "Last activity"], rows.map((r2) => [r2.name, r2.phone, r2.conversations, r2.last_activity])));
+    return c.body(
+      toCsv(
+        ["Name", "Phone", "Conversations", "Last activity", "Other names"],
+        rows.map((r2) => [r2.name, r2.phone, r2.conversations, r2.last_activity, r2.other_names]),
+      ),
+    );
   });
 
   return r;
