@@ -14,3 +14,4 @@ export * from "./inbox-templates.js";
 export * from "./template-draft.js";
 export * from "./template-starter.js";
 export * from "./template-wording.js";
+export * from "./contacts.js";
