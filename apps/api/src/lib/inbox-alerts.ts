@@ -7,12 +7,15 @@ import { outboxEvent, type DbExecutor } from "@ms/db";
  * payload.account exists from the last 24 hours. Each event type needs a case
  * in apps/worker/src/outbox.ts (ruling 9.2.10).
  *
+ * "inbox.template_alert" (suite spec 06) is written by packages/domain (it is raised inside the webhook
+ * transaction and by the worker) with payload.account = "<template id>:<kind>", so it dedupes the same way.
+ *
  * The WhatsApp "unknown number" alert keeps its own copy of this pattern in
  * webhooks-whatsapp.ts (its payload key differs; WhatsApp behaviour is unchanged).
  */
 export async function alertOnce(
   db: DbExecutor,
-  eventType: "inbox.unknown_channel_account" | "inbox.meta_config" | "inbox.meta_policy" | "channels.page_config",
+  eventType: "inbox.unknown_channel_account" | "inbox.meta_config" | "inbox.meta_policy" | "channels.page_config" | "inbox.template_alert",
   payload: Record<string, unknown> & { account: string },
 ): Promise<boolean> {
   const [recent] = await db
