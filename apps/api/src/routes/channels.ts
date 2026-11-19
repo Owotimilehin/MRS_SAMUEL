@@ -16,9 +16,12 @@ import {
   MetaApiError,
   clearPageTokenCache,
   describePage,
+  isPageSubscribed,
   listConnectablePages,
   metaConfigFromEnv,
   pageAccessToken,
+  subscribePage,
+  unparkEventsForAccount,
   type ConnectablePage,
   type MetaConfig,
 } from "@ms/domain";
@@ -38,6 +41,8 @@ const NO_PAGE_ACCESS =
   "Meta would not give us access to this Page. Check it is assigned to our system user with messaging rights.";
 const NO_INSTAGRAM = "This Page has no Instagram account linked to it.";
 const INSTAGRAM_UNLINKED = "This Instagram account is no longer linked to the Facebook Page.";
+const NOT_RECEIVING =
+  "Meta is not sending us messages for this Page. We tried to switch it back on; check again in a minute.";
 const DEFAULT_LABEL: Record<"messenger" | "instagram", string> = { messenger: "Facebook Page", instagram: "Instagram" };
 
 /** A Meta refusal as a sentence a shop worker can act on (spec 01, section 3). */
@@ -79,6 +84,11 @@ export interface ChannelRow {
   hours_profile_name: string | null;
   is_active: boolean;
   open_conversations: number;
+  /** Spec 02: when Meta was last told to send this Page's messages to us. */
+  webhook_subscribed_at: Date | null;
+  /** Spec 02: the last configuration problem Meta reported, in plain words (cleared by the next success). */
+  problem_text: string | null;
+  problem_at: Date | null;
 }
 
 async function channelRows(db: DbExecutor, ids?: string[]): Promise<ChannelRow[]> {
@@ -98,6 +108,9 @@ async function channelRows(db: DbExecutor, ids?: string[]): Promise<ChannelRow[]
       hours_profile_id: inboxPhoneNumber.hoursProfileId,
       hours_profile_name: inboxHoursProfile.name,
       is_active: inboxPhoneNumber.isActive,
+      webhook_subscribed_at: inboxPhoneNumber.webhookSubscribedAt,
+      problem_text: inboxPhoneNumber.problemText,
+      problem_at: inboxPhoneNumber.problemAt,
       open_conversations: sql<number>`(select count(*)::int from ${inboxConversation} c
         where c.phone_number_id = ${inboxPhoneNumber.id} and c.status <> 'closed')`,
     })
@@ -295,9 +308,33 @@ export function channelRoutes(db: DbClient) {
           out.push(await reactivate(raced.id));
         }
       }
-      // spec 02: subscribe webhooks here
       return out;
     });
+
+    // 4b. Spec 02: ask Meta to send this Page's messages to us (outside the transaction:
+    // never hold a database transaction open across a call to Meta). A refusal keeps
+    // the rows and shows the problem on the Channels page.
+    const now = new Date();
+    try {
+      await subscribePage(cfg, page.pageId);
+      await db
+        .update(inboxPhoneNumber)
+        .set({ webhookSubscribedAt: now, webhookCheckedAt: now, updatedAt: now })
+        .where(and(eq(inboxPhoneNumber.pageExternalId, page.pageId), inArray(inboxPhoneNumber.kind, ["messenger", "instagram"])));
+    } catch (err) {
+      if (!(err instanceof MetaApiError)) throw err;
+      await db
+        .update(inboxPhoneNumber)
+        .set({
+          problemText: `Connected, but Meta would not switch on message delivery: ${channelErrorSentence(err)}`,
+          problemCode: err.code ? (err.subcode ? `${err.code}/${err.subcode}` : err.code) : null,
+          problemAt: now,
+          updatedAt: now,
+        })
+        .where(inArray(inboxPhoneNumber.id, ids));
+    }
+    // Messages Meta sent before the account was connected come in now (rule R4).
+    for (const w of wanted) await unparkEventsForAccount(db, w.kind, w.externalId);
 
     const rows = await channelRows(db, ids);
     // 5. One audit entry per row.
@@ -382,6 +419,41 @@ export function channelRoutes(db: DbClient) {
     await db
       .update(inboxPhoneNumber)
       .set({ externalName, updatedAt: new Date() })
+      .where(eq(inboxPhoneNumber.id, id));
+
+    // Spec 02: is Meta still sending us this Page's messages? If not, switch it back on once.
+    const now = new Date();
+    let resubscribed = false;
+    try {
+      let subscribed = await isPageSubscribed(cfg, pageId);
+      if (!subscribed) {
+        await subscribePage(cfg, pageId);
+        resubscribed = true;
+        subscribed = await isPageSubscribed(cfg, pageId);
+      }
+      await db
+        .update(inboxPhoneNumber)
+        .set({
+          webhookCheckedAt: now,
+          // Rows connected before spec 02 learn their subscription here.
+          ...(resubscribed
+            ? { webhookSubscribedAt: now }
+            : subscribed
+              ? { webhookSubscribedAt: sql`coalesce(${inboxPhoneNumber.webhookSubscribedAt}, now())` }
+              : {}),
+        })
+        .where(eq(inboxPhoneNumber.id, id));
+      if (!subscribed) return c.json({ data: { ok: false, problem: NOT_RECEIVING, external_name: externalName } });
+    } catch (err) {
+      if (err instanceof MetaApiError) {
+        return c.json({ data: { ok: false, problem: channelErrorSentence(err), external_name: externalName } });
+      }
+      throw err;
+    }
+    // All good: the next success clears any earlier problem (rule R20).
+    await db
+      .update(inboxPhoneNumber)
+      .set({ problemCode: null, problemText: null, problemAt: null, updatedAt: now })
       .where(eq(inboxPhoneNumber.id, id));
     return c.json({ data: { ok: true, problem: null, external_name: externalName } });
   });

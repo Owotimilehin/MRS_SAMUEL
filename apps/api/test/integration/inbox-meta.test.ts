@@ -79,7 +79,10 @@ function installGraphStub(): void {
     if (url.includes("fields=first_name")) return ok({ first_name: "Ada", last_name: "Obi", profile_pic: "https://cdn.example/ada.jpg" });
     if (url.includes("fields=name,username")) return ok({ name: "Bisi", username: "bisi_juice", profile_pic: null });
     if (url.includes("fields=name,instagram_business_account")) {
-      return ok({ id: PAGE_ID, name: "Mrs Samuel fruit juice", instagram_business_account: { id: IG_ID, username: "mrs_samuelfruitjuice" } });
+      if (path === PAGE_ID) {
+        return ok({ id: PAGE_ID, name: "Mrs Samuel fruit juice", instagram_business_account: { id: IG_ID, username: "mrs_samuelfruitjuice" } });
+      }
+      return ok({ id: path, name: "Another Page" });
     }
     return ok({});
   }) as typeof fetch;
@@ -772,5 +775,68 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
       const rows = await db.execute(sql.raw(`select count(*)::int as n from ${table} where ${table}::text like '%${PAGE_TOKEN}%'`));
       expect((rows as unknown as { n: number }[])[0]!.n).toBe(0);
     }
+  });
+  // ── Connecting: subscribe, replay parked events, check ─────────────────────
+
+  async function connect(body: Record<string, unknown>) {
+    const res = await fetch(`${baseUrl}/v1/channels/connect`, {
+      method: "POST",
+      headers: { cookie: await loginOwner(), "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, json: (await res.json()) as { data: { id: string; kind: string; webhook_subscribed_at: string | null; problem_text: string | null }[] } };
+  }
+
+  it("an event for an unknown account is replayed after connect", async () => {
+    graphCalls.length = 0;
+    const res = await connect({ page_id: UNKNOWN_PAGE_ID, messenger: true, instagram: false });
+    expect(res.status).toBe(201);
+    expect(res.json.data[0]).toMatchObject({ kind: "messenger", problem_text: null });
+    expect(res.json.data[0]!.webhook_subscribed_at).toBeNull(); // the response rows were read before the subscription
+    const sub = graphCalls.find((g) => g.method === "POST" && g.url.includes(`/${UNKNOWN_PAGE_ID}/subscribed_apps`));
+    expect(sub?.auth).toBe(`Bearer ${PAGE_TOKEN}`);
+    const [line] = await db.select().from(inboxPhoneNumber).where(eq(inboxPhoneNumber.externalId, UNKNOWN_PAGE_ID));
+    expect(line!.webhookSubscribedAt).not.toBeNull();
+
+    // The parked events are queued again; the worker's retry (same code path) brings them in.
+    const parked = await db.select().from(inboxWebhookEvent).where(sql`${inboxWebhookEvent.payload}::text like '%m_unknown_%'`);
+    expect(parked).toHaveLength(2);
+    expect(parked.every((p) => p.attempts === 0 && p.lastError === null && p.processedAt === null)).toBe(true);
+    const { processStoredMetaEvent } = await import("../../src/routes/webhooks-meta.js");
+    for (const ev of parked) {
+      await processStoredMetaEvent(db, ev.id, ev.payload as unknown as { object: string; entry: never[] });
+    }
+    const msgs = await messagesByMidPrefix("m_unknown_");
+    expect(msgs.map((m) => m.body)).toEqual(["anyone?", "hello?"]);
+  });
+
+  it("POST /channels/connect subscribes the page; a refusal is shown as a problem and the rows are kept", async () => {
+    subscribeError = { status: 403, error: { message: "(#200) Permissions error", code: 200 } };
+    try {
+      const res = await connect({ page_id: PAGE_ID, messenger: true, instagram: true });
+      expect(res.status).toBe(201);
+      expect(res.json.data.map((r) => r.kind).sort()).toEqual(["instagram", "messenger"]);
+    } finally {
+      subscribeError = null;
+    }
+    const rows = await db.select().from(inboxPhoneNumber).where(eq(inboxPhoneNumber.pageExternalId, PAGE_ID));
+    expect(rows).toHaveLength(2);
+    for (const r of rows) {
+      expect(r.isActive).toBe(true);
+      expect(r.problemText).toMatch(/^Connected, but Meta would not switch on message delivery: /);
+    }
+    // Channels list shows it.
+    const list = await fetch(`${baseUrl}/v1/channels`, { headers: { cookie: await loginOwner() } });
+    const listed = ((await list.json()) as { data: { id: string; problem_text: string | null }[] }).data;
+    expect(listed.find((r) => r.id === messengerLineId)?.problem_text).toMatch(/^Connected, but/);
+
+    // "Check connection" subscribes again and clears the problem.
+    subscribedApps = [];
+    const check = await fetch(`${baseUrl}/v1/channels/${messengerLineId}/check`, { method: "POST", headers: { cookie: await loginOwner() } });
+    expect(((await check.json()) as { data: { ok: boolean; problem: string | null } }).data).toMatchObject({ ok: true, problem: null });
+    const [after] = await db.select().from(inboxPhoneNumber).where(eq(inboxPhoneNumber.id, messengerLineId));
+    expect(after).toMatchObject({ problemText: null, problemCode: null });
+    expect(after!.webhookSubscribedAt).not.toBeNull();
+    expect(after!.webhookCheckedAt).not.toBeNull();
   });
 });
