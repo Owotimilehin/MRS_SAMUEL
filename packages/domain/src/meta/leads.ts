@@ -967,7 +967,7 @@ export async function linkLeadConversation(
     const [conv] = await db
       .update(inboxConversation)
       .set({
-        labels: sql`case when ${LEAD_LABEL} = any(${inboxConversation.labels}) then ${inboxConversation.labels} else array_append(${inboxConversation.labels}, ${LEAD_LABEL}) end`,
+        labels: sql`case when ${LEAD_LABEL}::text = any(${inboxConversation.labels}) then ${inboxConversation.labels} else array_append(${inboxConversation.labels}, ${LEAD_LABEL}::text) end`,
       })
       .where(eq(inboxConversation.id, conversation.id))
       .returning();
