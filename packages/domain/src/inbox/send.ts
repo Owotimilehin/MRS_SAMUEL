@@ -93,8 +93,9 @@ export interface SendInput {
   /**
    * Set for messages no person sent. Kept on the message (payload.auto) so the
    * timeline can label it and so the same automatic message is not sent twice.
+   * "opt_out" / "opt_in": the one answer to a customer's own STOP or START (suite spec 14, R29).
    */
-  auto?: "after_hours";
+  auto?: "after_hours" | "opt_out" | "opt_in";
 }
 
 type TemplateContent = Extract<OutboundContent, { type: "template" }>;

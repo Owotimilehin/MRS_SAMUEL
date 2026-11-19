@@ -47,6 +47,13 @@ const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
 const TemplatesPage = lazyNamed(() => import("./features/templates/TemplatesPage.js"), "TemplatesPage");
 const TemplateEditorPage = lazyNamed<{ templateId: string }>(() => import("./features/templates/TemplateEditorPage.js"), "TemplateEditorPage");
 
+// Contacts (suite spec 14, Phase A).
+const ContactsPage = lazyNamed(() => import("./features/contacts/ContactsPage.js"), "ContactsPage");
+const ContactPage = lazyNamed<{ customerId: string }>(() => import("./features/contacts/ContactPage.js"), "ContactPage");
+const ContactListsPage = lazyNamed(() => import("./features/contacts/ListsPage.js"), "ListsPage");
+const ContactListPage = lazyNamed<{ listId: string }>(() => import("./features/contacts/ListPage.js"), "ListPage");
+const ContactImportPage = lazyNamed(() => import("./features/contacts/ImportPage.js"), "ImportPage");
+
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
   line1: "Every customer,",
@@ -193,6 +200,39 @@ const templateEditorRoute = createRoute({
   },
 });
 
+// Contacts (suite spec 14, Phase A). The fixed addresses are declared before /contacts/$customerId.
+const contactsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/contacts",
+  component: () => page(<ContactsPage />, "contacts.view"),
+});
+const contactListsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/contacts/lists",
+  component: () => page(<ContactListsPage />, "contacts.view"),
+});
+const contactListRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/contacts/lists/$listId",
+  component: () => {
+    const params = useParams({ from: "/contacts/lists/$listId" });
+    return page(<ContactListPage listId={params.listId} />, "contacts.view");
+  },
+});
+const contactImportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/contacts/import",
+  component: () => page(<ContactImportPage />, "contacts.manage"),
+});
+const contactRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/contacts/$customerId",
+  component: () => {
+    const params = useParams({ from: "/contacts/$customerId" });
+    return page(<ContactPage customerId={params.customerId} />, "contacts.view");
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -206,6 +246,11 @@ const routeTree = rootRoute.addChildren([
   whatsAppProfileRoute,
   templatesRoute,
   templateEditorRoute,
+  contactsRoute,
+  contactListsRoute,
+  contactListRoute,
+  contactImportRoute,
+  contactRoute,
 ]);
 
 export const router = createRouter({

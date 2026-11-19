@@ -18,6 +18,7 @@ import {
 } from "@ms/db";
 import { isBsuid, messagePreview, toE164, WHATSAPP_ACCOUNT_KEY } from "@ms/shared";
 import { applyTemplateWebhook, TEMPLATE_WEBHOOK_FIELDS, wabaIsOurs } from "../meta/templates.js";
+import { applyConsentKeyword, applyUserPreference } from "../contacts/consent.js";
 import { findOrOpenConversation, publishInboxEvent, resolveWhatsAppCustomer, signalFor, touchConversation, ts } from "./core.js";
 
 /**
@@ -225,6 +226,13 @@ export async function ingestWhatsAppPayload(db: DbExecutor, payload: WaWebhookPa
         }
         continue;
       }
+      if (change.field === "user_preferences") {
+        // The customer stopped or resumed promotions from us in WhatsApp's own settings (suite spec 14, R31).
+        for (const p of (value as { user_preferences?: unknown[] }).user_preferences ?? []) {
+          await applyUserPreference(db, p as never);
+        }
+        continue;
+      }
       if (change.field !== "messages") continue;
 
       const waNumberId = value.metadata?.phone_number_id;
@@ -310,6 +318,26 @@ async function ingestMessage(
     .onConflictDoNothing({ target: inboxMessage.waMessageId })
     .returning({ id: inboxMessage.id });
   if (!row) return false;
+
+  // STOP and START (suite spec 14, R27). The message is stored, shown and counted
+  // as unread exactly as any other; this only records the customer's wish and
+  // marks the message so the out-of-hours reply is not sent on top of the
+  // confirmation. The customer row itself is never changed.
+  if (fromCustomer) {
+    const kw = await applyConsentKeyword(db, {
+      customerId: who.customerId,
+      messageId: row.id,
+      type: parsed.type,
+      body: parsed.body,
+      at,
+    });
+    if (kw) {
+      await db
+        .update(inboxMessage)
+        .set({ payload: sql`coalesce(${inboxMessage.payload}, '{}'::jsonb) || ${JSON.stringify({ _suite: { consent: kw } })}::jsonb` })
+        .where(eq(inboxMessage.id, row.id));
+    }
+  }
 
   const conv = await touchConversation(db, conversation.id, {
     preview: messagePreview(parsed.type, parsed.body),

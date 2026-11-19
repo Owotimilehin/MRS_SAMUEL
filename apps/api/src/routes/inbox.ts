@@ -4,6 +4,7 @@ import { z } from "zod";
 import { and, asc, desc, eq, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import {
   adminUser,
+  contactAlias,
   customer,
   inboxCall,
   inboxConversation,
@@ -58,6 +59,7 @@ import { toCsv } from "../lib/csv.js";
 import { reloadViewer, subscribe } from "../inbox/realtime.js";
 import { logger } from "../logger.js";
 import { alertOnce } from "../lib/inbox-alerts.js";
+import { eraseContactTables, mergeContactTables } from "../lib/contacts-merge-erase.js";
 import { alias } from "drizzle-orm/pg-core";
 import crypto from "node:crypto";
 import { env } from "../env.js";
@@ -150,7 +152,7 @@ export interface IdentityRow {
  * Every way a customer has reached us. WhatsApp identities are always shown; a
  * Messenger or Instagram identity only to staff who may use that line (rule R20).
  */
-async function identitiesFor(db: DbClient, v: InboxViewer, customerId: string): Promise<IdentityRow[]> {
+export async function identitiesFor(db: DbClient, v: InboxViewer, customerId: string): Promise<IdentityRow[]> {
   const rows = await db
     .select({ ident: inboxIdentity, lineId: inboxPhoneNumber.id, lineLabel: inboxPhoneNumber.label })
     .from(inboxIdentity)
@@ -1015,12 +1017,18 @@ export function inboxRoutes(db: DbClient) {
       for (const needle of needles) {
         await tx.delete(inboxWebhookEvent).where(sql`${inboxWebhookEvent.payload}::text like ${likeTerm(needle)}`);
       }
+      // Contacts (suite spec 14, 5.6): labels, lists, origin and import details go; the
+      // fact that they must never get a promotion is kept on purpose.
+      const contacts = await eraseContactTables(tx, id);
       return {
         conversations: convIds.length,
         messages: msgs.length,
         calls: calls.length,
         recordings: recs.length,
         identities: gone.length,
+        contact_labels: contacts.labels,
+        contact_lists: contacts.lists,
+        consent_kept_as_stopped: true,
         keys: [...recs.map((x) => x.key), ...msgs.map((x) => x.key)],
       };
     });
@@ -1050,6 +1058,12 @@ export function inboxRoutes(db: DbClient) {
     }
     const [target] = await db.select({ id: customer.id }).from(customer).where(and(eq(customer.id, intoId), isNull(customer.deletedAt)));
     if (!target) throw new BusinessError("not_found", "contact not found", 404);
+    // Contacts (suite spec 14, 5.6): a record that was itself merged away cannot be the kept one.
+    const [targetAlias] = await db.select({ id: contactAlias.customerId }).from(contactAlias).where(eq(contactAlias.customerId, intoId));
+    if (targetAlias) {
+      throw new BusinessError("validation_failed", "Pick the main contact, not one that was merged into another.", 400);
+    }
+    const mergedBy = c.get("auth").userId;
 
     const moved = await db.transaction(async (tx) => {
       const convs = await tx.select().from(inboxConversation).where(eq(inboxConversation.customerId, fromId));
@@ -1100,13 +1114,23 @@ export function inboxRoutes(db: DbClient) {
         .set({ customerId: intoId, updatedAt: new Date() })
         .where(eq(inboxIdentity.customerId, fromId))
         .returning({ id: inboxIdentity.id });
-      return { conversations: convs.length, identities: identities.length };
+      // Labels, lists, consent, import rows and origin follow; the merged record becomes an
+      // alias of the kept one (suite spec 14, 5.6). The shop's customer rows are not changed.
+      const contacts = await mergeContactTables(tx, fromId, intoId, mergedBy);
+      return { conversations: convs.length, identities: identities.length, ...contacts };
     });
     await writeAudit(db, c, {
       action: "inbox.contact_merge",
       entityType: "customer",
       entityId: fromId,
-      after: { into_customer_id: intoId, moved_conversations: moved.conversations, moved_identities: moved.identities },
+      after: {
+        into_customer_id: intoId,
+        moved_conversations: moved.conversations,
+        moved_identities: moved.identities,
+        moved_labels: moved.movedLabels,
+        moved_lists: moved.movedLists,
+        alias: true,
+      },
       notify: true,
     });
     return c.json({ data: { moved_conversations: moved.conversations, moved_identities: moved.identities } });

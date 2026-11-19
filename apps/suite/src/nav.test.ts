@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { activeNavTo, firstAllowedPage } from "./nav.js";
 
-const LINKS = ["/inbox", "/inbox/reports", "/channels", "/templates", "/inbox/settings"] as const;
+const LINKS = ["/inbox", "/contacts", "/inbox/reports", "/channels", "/templates", "/inbox/settings"] as const;
 
 describe("suite menu", () => {
   it("lights Inbox for the list and for an open conversation", () => {
@@ -33,5 +33,18 @@ describe("where a person lands", () => {
     expect(activeNavTo("/templates/7f3c-template", LINKS)).toBe("/templates");
     expect(firstAllowedPage(["templates.manage", "inbox.settings"])).toBe("/templates");
     expect(firstAllowedPage(["templates.manage"])).toBe("/templates");
+  });
+  it("a person with only contacts.view lands on /contacts", () => {
+    expect(firstAllowedPage(["contacts.view"])).toBe("/contacts");
+    expect(firstAllowedPage(["contacts.view", "inbox.reports"])).toBe("/contacts");
+    // With inbox access too, the inbox still comes first.
+    expect(firstAllowedPage(["contacts.view", "inbox.view"])).toBe("/inbox");
+  });
+  it("lights Contacts on the list, a contact, the lists and the import page", () => {
+    expect(activeNavTo("/contacts", LINKS)).toBe("/contacts");
+    expect(activeNavTo("/contacts/7f3c-customer", LINKS)).toBe("/contacts");
+    expect(activeNavTo("/contacts/lists", LINKS)).toBe("/contacts");
+    expect(activeNavTo("/contacts/lists/7f3c-list", LINKS)).toBe("/contacts");
+    expect(activeNavTo("/contacts/import", LINKS)).toBe("/contacts");
   });
 });
