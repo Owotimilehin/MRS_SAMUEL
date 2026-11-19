@@ -239,6 +239,33 @@ describe("assertWriteAllowed: the hard rules every write to Meta passes", () => 
       expect(() => assertWriteAllowed({ actor: person, action, externalId: null, path: "act_1/x", body })).toThrow(AdWriteForbiddenError);
     }
   });
+  it("an advert whose name, headline or text is the word ACTIVE is allowed; a status of ACTIVE anywhere in a create is not (review F15 iv)", () => {
+    // Words the owner typed are not status fields.
+    const shouting: AdDraftSpec = { ...spec, name: "ACTIVE", headline: "ACTIVE", primary_text: "ACTIVE", description: "ACTIVE", greeting: "ACTIVE", prefilled_message: "ACTIVE" };
+    const creative = buildCreativeBody(shouting, creativeCtx, tag);
+    expect(JSON.stringify(creative)).toContain('"ACTIVE"');
+    expect(() => assertWriteAllowed({ actor: person, action: "create_campaign", externalId: null, path: "act_1/campaigns", body: { ...buildCampaignBody(shouting, tag), name: "ACTIVE" } })).not.toThrow();
+    expect(() => assertWriteAllowed({ actor: person, action: "create_adset", externalId: null, path: "act_1/adsets", body: { ...buildAdsetBody(shouting, adsetCtx, tag), name: "ACTIVE" } })).not.toThrow();
+    expect(() => assertWriteAllowed({ actor: person, action: "create_creative", externalId: null, path: "act_1/adcreatives", body: creative })).not.toThrow();
+    expect(() => assertWriteAllowed({ actor: person, action: "create_ad", externalId: null, path: "act_1/ads", body: { ...buildAdBody(shouting, { adsetId: "1", creativeId: "2" }, tag), name: "ACTIVE" } })).not.toThrow();
+
+    // Any status field set to ACTIVE, at any depth, in a list, in any letter case, is still refused.
+    const campaign = buildCampaignBody(spec, tag);
+    const sneaky: [Parameters<typeof assertWriteAllowed>[0]["action"], Record<string, unknown>][] = [
+      ["create_campaign", { ...campaign, status: "ACTIVE" }],
+      ["create_campaign", { ...campaign, status: "active" }],
+      ["create_campaign", { ...campaign, configured_status: "ACTIVE" }],
+      ["create_campaign", { ...campaign, effective_status: "ACTIVE" }],
+      ["create_campaign", { ...campaign, adsets: [{ name: "x", status: "ACTIVE" }] }],
+      ["create_campaign", { ...campaign, anything: { deep: { adset_status: ["PAUSED", "ACTIVE"] } } }],
+      ["create_creative", { ...buildCreativeBody(spec, creativeCtx, tag), status: "ACTIVE" }],
+      ["create_creative", { ...buildCreativeBody(spec, creativeCtx, tag), object_story_spec: { link_data: { status: " Active " } } }],
+      ["create_ad", { ...buildAdBody(spec, { adsetId: "1", creativeId: "2" }, tag), creative: { creative_id: "2", status: "ACTIVE" } }],
+    ];
+    for (const [action, body] of sneaky) {
+      expect(() => assertWriteAllowed({ actor: person, action, externalId: null, path: "act_1/x", body }), JSON.stringify(body).slice(0, 80)).toThrow(AdWriteForbiddenError);
+    }
+  });
   it("turning on and a budget change each carry exactly one field", () => {
     expect(() => assertWriteAllowed({ actor: person, action: "turn_on", externalId: "9", path: "9", body: { status: "ACTIVE" } })).not.toThrow();
     expect(() => assertWriteAllowed({ actor: person, action: "turn_on", externalId: "9", path: "9", body: { status: "ACTIVE", daily_budget: 1 } })).toThrow();
