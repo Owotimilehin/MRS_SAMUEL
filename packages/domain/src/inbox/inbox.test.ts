@@ -256,6 +256,29 @@ describe("parseInbound", () => {
     expect(parseInbound({ from: "1", id: "e", type: "ephemeral" }).type).toBe("unsupported");
   });
 
+  it("parseInbound turns an order message into type order with a cart summary", () => {
+    const order = {
+      catalog_id: "123456",
+      text: "No ice please",
+      product_items: [
+        { product_retailer_id: "v-3f0c1d2e-4b5a-4c6d-8e7f-9a0b1c2d3e4f", quantity: 2, item_price: 1500, currency: "NGN" },
+        { product_retailer_id: "v-9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a", quantity: 1, item_price: 2800, currency: "NGN" },
+      ],
+    };
+    expect(parseInbound({ from: "1", id: "o1", type: "order", order })).toEqual({
+      type: "order",
+      body: 'Sent a cart: 2 items, 3 bottles — "No ice please"',
+      mediaId: null,
+      mediaMime: null,
+      mediaFilename: null,
+    });
+    expect(
+      parseInbound({ from: "1", id: "o2", type: "order", order: { product_items: [{ product_retailer_id: "v-x", quantity: 1 }] } }).body,
+    ).toBe("Sent a cart: 1 item, 1 bottle");
+    // A cart with nothing readable in it is still shown as a cart, never dropped.
+    expect(parseInbound({ from: "1", id: "o3", type: "order" })).toMatchObject({ type: "order", body: "Sent a cart: 0 items, 0 bottles" });
+  });
+
   it("parseInbound turns a system message into type system with its body", () => {
     expect(
       parseInbound({
