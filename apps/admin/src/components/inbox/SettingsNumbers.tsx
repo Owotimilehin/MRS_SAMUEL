@@ -23,7 +23,7 @@ function qualityPill(q: string | null): JSX.Element {
 
 export function SettingsNumbers(): JSX.Element {
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: settingsKeys.numbers, queryFn: settingsApi.numbers });
+  const q = useQuery({ queryKey: settingsKeys.numbers, queryFn: () => settingsApi.numbers() });
   const [edit, setEdit] = useState<PhoneNumberRow | "new" | null>(null);
   const [register, setRegister] = useState<PhoneNumberRow | null>(null);
   const [refreshing, setRefreshing] = useState<string | null>(null);

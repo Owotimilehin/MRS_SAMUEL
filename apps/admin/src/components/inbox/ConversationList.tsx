@@ -136,8 +136,8 @@ export function ConversationList(p: Props): JSX.Element {
         {/* Always shown, so the list doesn't jump when a tab has no labels. */}
         <div className="ibx-filters">
           {p.me.numbers.length > 1 && (
-            <select className="select" aria-label="Business number" value={p.number} onChange={(e) => p.onNumber(e.target.value)}>
-              <option value="">All numbers</option>
+            <select className="select" aria-label="Channel" value={p.number} onChange={(e) => p.onNumber(e.target.value)}>
+              <option value="">All channels</option>
               {p.me.numbers.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.label}
@@ -210,7 +210,7 @@ function ConversationRowItem({
   /** The business number takes calls only, so this isn't a WhatsApp chat. */
   callsOnly: boolean;
 }): JSX.Element {
-  const name = contactName(row.customer_name, row.customer_phone);
+  const name = contactName(row.customer_name, row.customer_phone, row.identity_name);
   const unread = row.unread > 0;
   return (
     <button

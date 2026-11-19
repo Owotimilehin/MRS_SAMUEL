@@ -19,7 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useAuthUser } from "../lib/auth.js";
 import { inboxApi, inboxKeys } from "../lib/inbox-api.js";
-import { conversationIdFromPath, shouldAlertForEvent, titleWithCount } from "../lib/inbox-logic.js";
+import { conversationIdFromPath, identityName, shouldAlertForEvent, titleWithCount } from "../lib/inbox-logic.js";
 import {
   desktopEnabled,
   playMessageSound,
@@ -114,10 +114,10 @@ export function useInboxNotifier(enabled: boolean): void {
       void inboxApi
         .conversation(convId)
         .then((c) => ({
-          title: c.customer?.name || c.customer?.phone || "New WhatsApp message",
+          title: c.customer?.name || c.customer?.phone || identityName(c.identity) || "New message",
           body: c.lastPreview || "New message",
         }))
-        .catch(() => ({ title: "New WhatsApp message", body: "Open the inbox to read it." }))
+        .catch(() => ({ title: "New message", body: "Open the inbox to read it." }))
         .then(({ title, body }) => {
           if (active) {
             toast.info(`New message from ${title}: ${body.slice(0, 80)}`);

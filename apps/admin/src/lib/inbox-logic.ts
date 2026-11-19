@@ -3,7 +3,7 @@
  * unit-tested: list tabs per capability, timeline day grouping, reconnect
  * backoff, template variables, and the small label/format helpers.
  */
-import type { CallOutcome, MessageStatus, TimelineItem, TimelinePage } from "./inbox-types.js";
+import type { CallOutcome, IdentityRow, MessageStatus, TimelineItem, TimelinePage } from "./inbox-types.js";
 
 /** Business time zone; staff are in Nigeria. */
 export const INBOX_TZ = "Africa/Lagos";
@@ -374,11 +374,92 @@ export function shouldSendTyping(lastSentAt: number | null, now: number, interva
   return lastSentAt === null || now - lastSentAt >= intervalMs;
 }
 
-/** Display name for a customer row. */
-export function contactName(name: string | null | undefined, phone: string | null | undefined): string {
+/**
+ * Display name for a customer row: their name, else their phone, else what
+ * Meta calls them on the channel (`fallback`: a Facebook name or "@username"),
+ * else "Unknown customer".
+ */
+export function contactName(
+  name: string | null | undefined,
+  phone: string | null | undefined,
+  fallback?: string | null,
+): string {
   const n = name?.trim();
   if (n) return n;
-  return prettyPhone(phone) || "Unknown customer";
+  return prettyPhone(phone) || fallback?.trim() || "Unknown customer";
+}
+
+type IdentityLike = Pick<IdentityRow, "channel" | "display_name" | "username" | "phone">;
+
+/** What Meta calls the customer on a thread: their display name, else "@username". */
+export function identityName(i: { display_name: string | null; username: string | null } | null | undefined): string | null {
+  if (!i) return null;
+  return i.display_name?.trim() || (i.username?.trim() ? `@${i.username.trim()}` : null);
+}
+
+/** A short handle for an identity: "@username", else its display name, else its phone. */
+export function identityHandle(i: IdentityLike): string | null {
+  if (i.username?.trim()) return `@${i.username.trim()}`;
+  if (i.display_name?.trim()) return i.display_name.trim();
+  return i.phone ? prettyPhone(i.phone) : null;
+}
+
+/** The first handle among a contact's identities, for the heading when the contact has no name or phone. */
+export function firstIdentityHandle(identities: readonly IdentityLike[] | null | undefined): string | null {
+  for (const i of identities ?? []) {
+    const h = identityHandle(i);
+    if (h) return h;
+  }
+  return null;
+}
+
+/** The main text of a "Reaches you on" line (spec 01, 7.4). */
+export function identityLine(i: IdentityLike & Pick<IdentityRow, "account_label">): string {
+  switch (i.channel) {
+    case "whatsapp":
+      if (i.phone) return prettyPhone(i.phone);
+      return `WhatsApp (number hidden)${i.username ? ` · @${i.username}` : ""}`;
+    case "messenger":
+      return `${i.display_name ?? "Facebook user"} · ${i.account_label}`;
+    case "instagram":
+      return `${i.username ? `@${i.username}` : (i.display_name ?? "Instagram user")} · ${i.account_label}`;
+  }
+}
+
+export interface EraseTarget {
+  kind: "phone" | "username" | "name" | "word";
+  /** What the person must type (a username is shown with "@"). */
+  show: string;
+}
+
+/**
+ * What a person must type to erase a contact (rule R10, checked again on the
+ * server): the phone if there is one; else the first username; else the name;
+ * else the word DELETE.
+ */
+export function eraseConfirmTarget(
+  customer: { name: string | null; phone: string | null },
+  identities: readonly Pick<IdentityRow, "username">[] | null | undefined,
+): EraseTarget {
+  if (phoneDigits(customer.phone)) return { kind: "phone", show: prettyPhone(customer.phone) };
+  const username = (identities ?? []).map((i) => i.username?.trim().replace(/^@/, "")).find((u) => !!u);
+  if (username) return { kind: "username", show: `@${username}` };
+  if (customer.name?.trim()) return { kind: "name", show: customer.name.trim() };
+  return { kind: "word", show: "DELETE" };
+}
+
+/** Does what was typed match the erase target? */
+export function eraseConfirmMatches(typed: string, target: EraseTarget, phone?: string | null): boolean {
+  switch (target.kind) {
+    case "phone":
+      return phoneConfirmMatches(typed, phone ?? target.show);
+    case "username":
+      return typed.trim().replace(/^@/, "").toLowerCase() === target.show.replace(/^@/, "").toLowerCase();
+    case "name":
+      return typed.trim().toLowerCase() === target.show.toLowerCase();
+    case "word":
+      return typed === "DELETE";
+  }
 }
 
 // ── Business hours editor ────────────────────────────────────────────────────

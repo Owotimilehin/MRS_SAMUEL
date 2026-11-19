@@ -3,7 +3,7 @@ import { ArrowLeft, Phone, Tag, UserRound, CheckCircle2, RotateCcw } from "lucid
 import { toE164 } from "@ms/shared";
 import { Modal } from "../Modal.js";
 import { inboxApi } from "../../lib/inbox-api.js";
-import { contactName, parseLabels, prettyPhone, staffLabel } from "../../lib/inbox-logic.js";
+import { contactName, identityName, parseLabels, prettyPhone, staffLabel } from "../../lib/inbox-logic.js";
 import { startCall, useVoice } from "../../lib/inbox-voice.js";
 import type { ConversationDetail, InboxTeamLite, StaffMember } from "../../lib/inbox-types.js";
 
@@ -22,7 +22,7 @@ export function ConversationHeader({ conv, meId, staff, teams, can, onBack, onCh
   const [busy, setBusy] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const onCall = useVoice((s) => s.active !== null);
-  const name = contactName(conv.customer?.name, conv.customer?.phone);
+  const name = contactName(conv.customer?.name, conv.customer?.phone, identityName(conv.identity));
   const canAssign = can("inbox.assign");
 
   async function patch(p: Parameters<typeof inboxApi.patchConversation>[1]): Promise<void> {
@@ -37,8 +37,14 @@ export function ConversationHeader({ conv, meId, staff, teams, can, onBack, onCh
     }
   }
 
+  // Only a phone line can place a call; a Facebook Page or Instagram account never can.
   const callable =
-    can("calls.outbound") && conv.can_use_number && conv.number && conv.number.channels !== "whatsapp" && !!conv.customer;
+    can("calls.outbound") &&
+    conv.can_use_number &&
+    conv.number &&
+    (conv.number.kind ?? "phone") === "phone" &&
+    conv.number.channels !== "whatsapp" &&
+    !!conv.customer;
   const customerE164 = toE164(conv.customer?.phone);
 
   const assigneeSelect = canAssign ? (

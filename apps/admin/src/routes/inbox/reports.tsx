@@ -130,7 +130,7 @@ export function InboxReportsPage(): JSX.Element {
           <label className="field">
             <span className="field__label">Number</span>
             <select className="select" value={number} onChange={(e) => setNumber(e.target.value)}>
-              <option value="">All numbers</option>
+              <option value="">All channels</option>
               {me.data!.numbers.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.label}

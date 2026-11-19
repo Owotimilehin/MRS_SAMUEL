@@ -29,7 +29,9 @@ interface Props {
 export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
   const canReply = can("inbox.reply") && conv.can_use_number;
   const canNote = can("inbox.notes");
-  const waNumber = conv.number?.channels !== "voice";
+  // Replies go out on WhatsApp from a phone line; Messenger and Instagram replies arrive with spec 02.
+  const phoneLine = (conv.number?.kind ?? "phone") === "phone";
+  const waNumber = phoneLine && conv.number?.channels !== "voice";
   const [mode, setMode] = useState<"reply" | "note">(canReply && waNumber ? "reply" : "note");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -181,8 +183,11 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
           </span>
         ) : null}
       </div>
-      {!waNumber && mode === "reply" && (
+      {phoneLine && !waNumber && mode === "reply" && (
         <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>This number is for calls only — WhatsApp replies aren't possible.</div>
+      )}
+      {!phoneLine && (
+        <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>Replies on this channel are not switched on yet.</div>
       )}
       {!conv.can_use_number && can("inbox.reply") && (
         <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>You don't have access to reply from {conv.number?.label ?? "this number"}.</div>

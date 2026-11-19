@@ -12,7 +12,7 @@ type Tab = "numbers" | "teams" | "access" | "hours" | "ivr" | "quick" | "templat
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: "numbers", label: "Numbers" },
   { key: "teams", label: "Teams" },
-  { key: "access", label: "Who can use which number" },
+  { key: "access", label: "Who can use which channel" },
   { key: "hours", label: "Hours" },
   { key: "ivr", label: "Phone menu" },
   { key: "quick", label: "Quick replies" },

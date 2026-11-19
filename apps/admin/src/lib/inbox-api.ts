@@ -167,18 +167,22 @@ export const inboxApi = {
     api(`/inbox/contacts/${customerId}`, { method: "PATCH", body: JSON.stringify(b) }),
   searchContacts: async (q: string) =>
     (await api<{ data: ContactSearchHit[] }>(`/inbox/contacts/search${qs({ q })}`)).data,
-  /** Permanently removes this customer's chats, calls, recordings and notes (inbox.erase). Orders stay. */
-  eraseContact: async (customerId: string, confirmPhone: string) =>
+  /**
+   * Permanently removes this customer's chats, calls, recordings, notes and
+   * channel identities (inbox.erase). Orders stay. `confirm` is the phone,
+   * username, name or the word DELETE (see eraseConfirmTarget).
+   */
+  eraseContact: async (customerId: string, confirm: string) =>
     (
       await api<{ data: EraseResult }>(`/inbox/contacts/${customerId}/erase`, {
         method: "POST",
-        body: JSON.stringify({ confirm_phone: confirmPhone }),
+        body: JSON.stringify({ confirm }),
       })
     ).data,
   /** Moves this contact's chats and calls onto another contact (inbox.erase). */
   mergeContact: async (customerId: string, intoCustomerId: string) =>
     (
-      await api<{ data: { moved_conversations: number } }>(`/inbox/contacts/${customerId}/merge`, {
+      await api<{ data: { moved_conversations: number; moved_identities?: number } }>(`/inbox/contacts/${customerId}/merge`, {
         method: "POST",
         body: JSON.stringify({ into_customer_id: intoCustomerId }),
       })

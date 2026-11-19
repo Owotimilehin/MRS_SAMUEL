@@ -15,6 +15,8 @@ const json = (method: string, body: unknown): RequestInit => ({ method, body: JS
 
 export const settingsKeys = {
   numbers: ["inbox", "settings", "numbers"] as const,
+  /** Phone lines plus Facebook Page and Instagram accounts (Staff access). */
+  numbersAll: ["inbox", "settings", "numbers", "all"] as const,
   teams: ["inbox", "settings", "teams"] as const,
   access: ["inbox", "settings", "access"] as const,
   hours: ["inbox", "settings", "hours"] as const,
@@ -68,7 +70,9 @@ export interface AdminUserLite {
 }
 
 export const settingsApi = {
-  numbers: async () => (await api<{ data: PhoneNumberRow[] }>(`${S}/numbers`)).data,
+  /** Phone lines; with `all`, also the Facebook Page and Instagram accounts (for Staff access). */
+  numbers: async (opts: { all?: boolean } = {}) =>
+    (await api<{ data: PhoneNumberRow[] }>(`${S}/numbers${opts.all ? "?kind=all" : ""}`)).data,
   createNumber: (b: NumberInput) => api(`${S}/numbers`, json("POST", b)),
   updateNumber: (id: string, b: Partial<NumberInput>) => api(`${S}/numbers/${id}`, json("PATCH", b)),
   registerNumber: (id: string, pin: string) => api(`${S}/numbers/${id}/register`, json("POST", { pin })),

@@ -5,16 +5,29 @@
  * single DB rows (conversation detail, settings rows) come back camelCase.
  */
 
+import type { ChannelKind, IdentityChannel } from "@ms/shared";
+
+export type { ChannelKind, IdentityChannel };
+
 export type Channels = "voice" | "whatsapp" | "both";
 export type ConversationStatus = "open" | "pending" | "closed";
 export type MessageStatus = "received" | "queued" | "sent" | "delivered" | "read" | "failed";
 export type CallOutcome = "in_progress" | "answered" | "missed" | "voicemail" | "after_hours" | "failed";
 
+/**
+ * A line the customer reached us on: a phone line, a Facebook Page or an
+ * Instagram account (spec 01, "channel accounts"). Only a phone has e164.
+ */
 export interface InboxNumberLite {
   id: string;
   label: string;
-  e164: string;
+  e164: string | null;
+  /** Meaningful only for kind "phone". */
   channels: Channels;
+  /** Older servers leave it out: treat a missing kind as "phone". */
+  kind?: ChannelKind;
+  /** The Page name, or the Instagram username without "@". */
+  external_name?: string | null;
 }
 
 export interface InboxMe {
@@ -50,6 +63,10 @@ export interface ConversationRow {
   customer_phone: string | null;
   number_id: string;
   number_label: string;
+  number_kind?: ChannelKind;
+  channel?: IdentityChannel;
+  /** What Meta calls the customer on this thread's channel (name, or "@username"). */
+  identity_name?: string | null;
   team_id: string | null;
   team_name: string | null;
   assignee_id: string | null;
@@ -80,6 +97,15 @@ export interface ConversationDetail {
   team: { id: string; name: string } | null;
   window_remaining_ms: number;
   can_use_number: boolean;
+  channel?: IdentityChannel;
+  /** The identity that last wrote in this thread; replies go to it. */
+  identity?: {
+    id: string;
+    channel: IdentityChannel;
+    display_name: string | null;
+    username: string | null;
+    profile_pic_url: string | null;
+  } | null;
 }
 
 export interface TimelineMessage {
@@ -161,6 +187,8 @@ export interface ContactSearchHit {
   name: string | null;
   phone: string | null;
   conversations: number;
+  /** Up to three "@username" or display names from the contact's identities. */
+  handles?: string[];
 }
 
 export interface EraseResult {
@@ -168,6 +196,21 @@ export interface EraseResult {
   messages: number;
   calls: number;
   recordings: number;
+  identities?: number;
+}
+
+/** One way a customer reaches us (WhatsApp number, Facebook name, Instagram username). */
+export interface IdentityRow {
+  id: string;
+  channel: IdentityChannel;
+  /** The label of our line ("WhatsApp" for every WhatsApp identity). */
+  account_label: string;
+  display_name: string | null;
+  username: string | null;
+  /** "+234…" for a WhatsApp identity that is a phone number; null otherwise. */
+  phone: string | null;
+  profile_pic_url: string | null;
+  last_seen_at: string | null;
 }
 
 export interface InboxTemplate {
@@ -189,6 +232,8 @@ export interface QuickReply {
 
 export interface ContactInfo {
   customer: { id: string; name: string | null; phone: string | null; email: string | null; notes: string | null };
+  /** Absent on servers before spec 01. */
+  identities?: IdentityRow[];
   conversations: Array<{
     id: string;
     status: ConversationStatus;
@@ -217,9 +262,14 @@ export type NotifyLevel = "all" | "assigned" | "none";
 
 export interface PhoneNumberRow {
   id: string;
-  e164: string;
+  /** Null for a Facebook Page or Instagram account (only listed with ?kind=all). */
+  e164: string | null;
   label: string;
   channels: Channels;
+  kind?: ChannelKind;
+  externalId?: string | null;
+  pageExternalId?: string | null;
+  externalName?: string | null;
   wabaId: string | null;
   waPhoneNumberId: string | null;
   waStatus: string | null;

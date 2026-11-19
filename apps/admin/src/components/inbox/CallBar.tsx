@@ -83,7 +83,7 @@ export function CallBar(): JSX.Element | null {
 
   const callerPhone = v.incoming?.from ?? (v.active?.direction === "in" ? v.active.who : null);
   const caller = useCaller(callerPhone, canInbox);
-  const callerName = caller.data ? contactName(caller.data.customer_name, caller.data.customer_phone) : null;
+  const callerName = caller.data ? contactName(caller.data.customer_name, caller.data.customer_phone, caller.data.identity_name) : null;
 
   if (!canAnswer && !canCall) return null;
   if (!configured && !v.active && !v.incoming) return null;
@@ -305,7 +305,8 @@ function TransferPicker({ onDone }: { onDone: () => void }): JSX.Element {
 
 function DialCard({ onClose, canInbox }: { onClose: () => void; canInbox: boolean }): JSX.Element {
   const me = useQuery({ queryKey: inboxKeys.me, queryFn: inboxApi.me, enabled: canInbox, staleTime: 60_000 });
-  const voiceNumbers = (me.data?.numbers ?? []).filter((n) => n.channels !== "whatsapp");
+  // Phone lines that take calls (never a Facebook Page or Instagram account).
+  const voiceNumbers = (me.data?.numbers ?? []).filter((n) => (n.kind ?? "phone") === "phone" && n.channels !== "whatsapp");
   const [to, setTo] = useState("");
   const [numberId, setNumberId] = useState("");
   const chosen = numberId || voiceNumbers[0]?.id || "";
