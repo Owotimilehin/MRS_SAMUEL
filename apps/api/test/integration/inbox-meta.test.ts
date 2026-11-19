@@ -760,9 +760,9 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     const big = await upload({ filename: "a.jpg", content_type: "image/jpeg", size_bytes: 9 * 1024 * 1024, conversation_id: ig.id });
     expect(big.status).toBe(400);
     expect(await msg(big)).toBe("This file is too large for Instagram (limit 8 MB)");
-    // Allowed on Messenger: it passes the rules and only stops because this test has no storage configured.
+    // Allowed on Messenger: it passes the rules (503 only when this test run has no storage configured).
     const ok = await upload({ filename: "a.jpg", content_type: "image/jpeg", size_bytes: 9 * 1024 * 1024, conversation_id: fb.id });
-    expect(ok.status).toBe(503);
+    expect([201, 503]).toContain(ok.status);
   });
 
   it("no response body or stored row contains the stubbed page token", async () => {
@@ -792,7 +792,7 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     const res = await connect({ page_id: UNKNOWN_PAGE_ID, messenger: true, instagram: false });
     expect(res.status).toBe(201);
     expect(res.json.data[0]).toMatchObject({ kind: "messenger", problem_text: null });
-    expect(res.json.data[0]!.webhook_subscribed_at).toBeNull(); // the response rows were read before the subscription
+    expect(res.json.data[0]!.webhook_subscribed_at).not.toBeNull(); // the rows are read back after the subscription
     const sub = graphCalls.find((g) => g.method === "POST" && g.url.includes(`/${UNKNOWN_PAGE_ID}/subscribed_apps`));
     expect(sub?.auth).toBe(`Bearer ${PAGE_TOKEN}`);
     const [line] = await db.select().from(inboxPhoneNumber).where(eq(inboxPhoneNumber.externalId, UNKNOWN_PAGE_ID));
