@@ -7,6 +7,7 @@
  *     messages the customer unsent
  *   - syncAllTemplates: hourly refresh of message templates from Meta
  *   - refreshPendingTemplates: every 5 minutes, templates still in review
+ *   - syncAllFlows: hourly refresh of the status of WhatsApp forms (Flows) we hold
  */
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import {
@@ -16,6 +17,7 @@ import {
   inboxTemplate,
   inboxWebhookEvent,
   outboxEvent,
+  waFlow,
   type DbClient,
 } from "@ms/db";
 import {
@@ -31,6 +33,7 @@ import {
   sendAfterHoursAutoReplies,
   signalFor,
   syncTemplatesForWaba,
+  syncFlowsForWaba,
   MetaApiError,
   type MetaEntry,
   type WaWebhookPayload,
@@ -337,6 +340,26 @@ export async function syncAllTemplates(db: DbClient, log: Log): Promise<number> 
  * (suite spec 06, section 6). Only reads; never submits, edits or deletes a template. A rate limit
  * stops the run until the next tick; a refusal for one template is logged and skipped.
  */
+/**
+ * Hourly: bring the status and validation errors of the forms we hold in line with Meta (suite
+ * spec 07, section 6). Read-only at Meta. It never creates, uploads, publishes, retires or sends a
+ * form. A failure is logged and tried again next hour.
+ */
+export async function syncAllFlows(db: DbClient, log: Log, opts: { now?: Date } = {}): Promise<number> {
+  const cfg = metaConfigFromEnv();
+  if (!cfg) return 0;
+  const wabas = await db.selectDistinct({ waba: waFlow.wabaId }).from(waFlow).where(isNotNull(waFlow.metaFlowId));
+  let total = 0;
+  for (const { waba } of wabas) {
+    try {
+      total += await syncFlowsForWaba(db, cfg, waba, opts.now ?? new Date());
+    } catch (err) {
+      log.warn({ err, waba }, "whatsapp form sync failed");
+    }
+  }
+  return total;
+}
+
 export async function refreshPendingTemplates(db: DbClient, log: Log, opts: { now?: Date } = {}): Promise<number> {
   const cfg = metaConfigFromEnv();
   if (!cfg) return 0;
