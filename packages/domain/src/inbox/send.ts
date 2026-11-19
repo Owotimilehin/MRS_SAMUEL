@@ -95,6 +95,11 @@ export interface SendInput {
    * timeline can label it and so the same automatic message is not sent twice.
    */
   auto?: "after_hours";
+  /**
+   * Extra facts kept on the message's payload from the moment it is queued, and kept if the send
+   * fails (suite spec 07: `flow` says which form a message carries, so its answer can be matched).
+   */
+  payloadExtra?: Record<string, unknown>;
 }
 
 type TemplateContent = Extract<OutboundContent, { type: "template" }>;
@@ -232,8 +237,11 @@ export async function sendFromConversation(
         "More than 24 hours since the customer's last message — send a template instead",
       );
     }
-    body = input.content.type === "text" ? input.content.body : (input.content.caption ?? null);
+    body =
+      input.content.type === "text" || input.content.type === "flow" ? input.content.body : (input.content.caption ?? null);
   }
+  const payloadExtra: Record<string, unknown> = { ...(input.payloadExtra ?? {}) };
+  const hasExtra = (): boolean => Object.keys(payloadExtra).length > 0;
 
   const type = input.content.type;
   const [queued] = await db
@@ -252,7 +260,7 @@ export async function sendFromConversation(
       senderUserId: input.userId,
       // Written with the row, before Meta is called: a crash mid-send leaves
       // the marker behind, so an automatic message is never sent twice.
-      ...(input.auto ? { payload: { auto: input.auto } } : {}),
+      ...(input.auto || hasExtra() ? { payload: { ...payloadExtra, ...(input.auto ? { auto: input.auto } : {}) } } : {}),
       createdAt: now,
     })
     .returning();
@@ -278,6 +286,7 @@ export async function sendFromConversation(
         // unconfirmed: it may have been delivered — staff should check before
         // resending. retryable: certainly not sent and worth another try.
         payload: {
+          ...payloadExtra,
           ...(input.auto ? { auto: input.auto } : {}),
           unconfirmed: e?.delivery === "unknown",
           retryable: e !== null && e.delivery === "not_sent" && e.retryable,
@@ -383,6 +392,7 @@ async function sendMetaFromConversation(
   // 4–6. What this channel can carry (rule R16: refused before anything is written).
   const content = input.content;
   if (content.type === "template") throw new InboxSendError("not_supported", "Templates are only for WhatsApp.");
+  if (content.type === "flow") throw new InboxSendError("not_supported", "Forms are only for WhatsApp.");
   // The out-of-hours reply (inbox-gaps) is WhatsApp-only; its job never picks these threads, and this keeps it so.
   if (input.auto) throw new InboxSendError("not_supported", "Automatic replies are only for WhatsApp.");
   if (content.type !== "text" && content.caption) {

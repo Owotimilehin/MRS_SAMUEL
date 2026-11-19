@@ -315,6 +315,9 @@ export function messagePreview(type: string, body: string | null | undefined): s
       return "📍 Location";
     case "template":
       return "Template message";
+    // A WhatsApp form (suite spec 07).
+    case "flow":
+      return "📋 Form sent";
     // Messenger and Instagram (suite spec 02).
     case "share":
       return "Shared a post";

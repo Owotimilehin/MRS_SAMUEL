@@ -18,6 +18,7 @@ import {
 } from "@ms/db";
 import { isBsuid, messagePreview, toE164, WHATSAPP_ACCOUNT_KEY } from "@ms/shared";
 import { applyTemplateWebhook, TEMPLATE_WEBHOOK_FIELDS, wabaIsOurs } from "../meta/templates.js";
+import { parseFlowReply, recordFlowResponse } from "../meta/flow-responses.js";
 import { findOrOpenConversation, publishInboxEvent, resolveWhatsAppCustomer, signalFor, touchConversation, ts } from "./core.js";
 
 /**
@@ -70,6 +71,8 @@ export interface WaInboundMessage {
     type?: string;
     button_reply?: { id?: string; title?: string };
     list_reply?: { id?: string; title?: string; description?: string };
+    /** A completed WhatsApp form (Flow); `response_json` is JSON as a string (suite spec 07). */
+    nfm_reply?: { name?: string; body?: string; response_json?: string };
   };
   reaction?: { message_id?: string; emoji?: string };
   contacts?: { name?: { formatted_name?: string }; phones?: { phone?: string }[] }[];
@@ -143,7 +146,10 @@ export function parseInbound(m: WaInboundMessage): {
       type = "interactive";
       break;
     case "interactive":
-      body = m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? null;
+      body =
+        m.interactive?.type === "nfm_reply"
+          ? "Completed a form"
+          : (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? null);
       break;
     case "reaction":
       body = m.reaction?.emoji ? `Reacted ${m.reaction.emoji}` : "Removed a reaction";
@@ -311,8 +317,30 @@ async function ingestMessage(
     .returning({ id: inboxMessage.id });
   if (!row) return false;
 
+  // A completed form (suite spec 07): keep the answers beside the message, name the form in the
+  // body and the list preview, and label the chat. Nothing is sent and no contact is changed.
+  let previewBody = parsed.body;
+  const reply = parseFlowReply(m);
+  if (reply) {
+    const recorded = await recordFlowResponse(db, {
+      messageId: row.id,
+      conversationId: conversation.id,
+      contextWaMessageId: m.context?.id ?? null,
+      reply,
+    });
+    previewBody = `Completed form: ${recorded.title}`;
+    await db.update(inboxMessage).set({ body: previewBody }).where(eq(inboxMessage.id, row.id));
+    if (recorded.label) {
+      const label = recorded.label.toLowerCase();
+      await db
+        .update(inboxConversation)
+        .set({ labels: sql`array_append(${inboxConversation.labels}, ${label})` })
+        .where(and(eq(inboxConversation.id, conversation.id), sql`not (${label} = any(${inboxConversation.labels}))`));
+    }
+  }
+
   const conv = await touchConversation(db, conversation.id, {
-    preview: messagePreview(parsed.type, parsed.body),
+    preview: messagePreview(parsed.type, previewBody),
     ...(fromCustomer ? { inboundWa: at, unreadIncrement: true } : {}),
     at,
   });

@@ -209,6 +209,22 @@ export type OutboundContent =
       headerMedia?: { type: "image" | "video" | "document"; link: string; filename?: string };
       /** The blank at the end of a link button; `index` is the button's position from 0. */
       buttonParams?: { index: number; text: string }[];
+    }
+  /** A WhatsApp form (Flow) sent as an interactive message inside the 24-hour window (suite spec 07). */
+  | {
+      type: "flow";
+      /** Meta's Flow ID. */
+      flowId: string;
+      /** Our signed token; comes back with the answer. */
+      flowToken: string;
+      /** The button text. */
+      cta: string;
+      body: string;
+      footer?: string;
+      action: "navigate" | "data_exchange";
+      /** The entry screen, for `navigate`. */
+      screen?: string;
+      mode: "published" | "draft";
     };
 
 /**
@@ -275,6 +291,29 @@ export function buildSendPayload(to: WaRecipient, content: OutboundContent): Rec
         },
       };
     }
+    case "flow":
+      // No `data` is sent for the entry screen; `flow_action_payload` only goes with `navigate`.
+      return {
+        ...base,
+        type: "interactive",
+        interactive: {
+          type: "flow",
+          body: { text: content.body },
+          ...(content.footer ? { footer: { text: content.footer } } : {}),
+          action: {
+            name: "flow",
+            parameters: {
+              flow_message_version: "3",
+              flow_id: content.flowId,
+              flow_cta: content.cta,
+              flow_token: content.flowToken,
+              flow_action: content.action,
+              ...(content.action === "navigate" ? { flow_action_payload: { screen: content.screen } } : {}),
+              mode: content.mode,
+            },
+          },
+        },
+      };
     default: {
       const media: Record<string, unknown> = { link: content.link };
       if (content.caption && content.type !== "audio") media.caption = content.caption;

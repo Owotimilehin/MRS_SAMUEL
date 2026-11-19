@@ -12,3 +12,7 @@ export * from "./meta/page-details.js";
 export * from "./meta/upload.js";
 export * from "./meta/whatsapp-profile.js";
 export * from "./meta/templates.js";
+export * from "./meta/flows.js";
+export * from "./meta/flows/definitions.js";
+export * from "./meta/flow-token.js";
+export * from "./meta/flow-responses.js";
