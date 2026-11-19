@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { activeNavTo } from "./nav.js";
+import { activeNavTo, firstAllowedPage } from "./nav.js";
 
-const LINKS = ["/inbox", "/inbox/reports", "/inbox/settings"] as const;
+const LINKS = ["/inbox", "/inbox/reports", "/channels", "/inbox/settings"] as const;
 
 describe("suite menu", () => {
   it("lights Inbox for the list and for an open conversation", () => {
@@ -15,5 +15,17 @@ describe("suite menu", () => {
   it("lights nothing on a page outside the menu", () => {
     expect(activeNavTo("/login", LINKS)).toBeNull();
     expect(activeNavTo("/inboxes", LINKS)).toBeNull();
+  });
+});
+
+describe("where a person lands", () => {
+  it("goes to the first menu page they may see", () => {
+    expect(firstAllowedPage(["inbox.view", "channels.manage"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.reports", "inbox.settings"])).toBe("/inbox/reports");
+    expect(firstAllowedPage(["channels.manage", "inbox.settings"])).toBe("/channels");
+    expect(firstAllowedPage(["orders.view"])).toBeNull();
+  });
+  it("lights Channels on its page", () => {
+    expect(activeNavTo("/channels", LINKS)).toBe("/channels");
   });
 });
