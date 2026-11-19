@@ -93,6 +93,8 @@ export const CAPABILITIES = [
   // Connect and configure channel accounts (Facebook Page, Instagram); later:
   // chat set-up, WhatsApp profile, Page details. Admins, not managers.
   "channels.manage",
+  // See statistics from Facebook, Instagram and WhatsApp (suite spec 11).
+  "insights.view",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -140,6 +142,7 @@ const ADMIN_CAPS: Capability[] = [
   "inbox.settings",
   "inbox.reports",
   "channels.manage",
+  "insights.view",
 ];
 
 const MANAGER_CAPS: Capability[] = [
@@ -174,6 +177,7 @@ const MANAGER_CAPS: Capability[] = [
   "recordings.listen",
   "transcripts.view",
   "inbox.reports",
+  "insights.view",
 ];
 
 const BRANCH_STAFF_CAPS: Capability[] = [
