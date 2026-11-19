@@ -53,6 +53,8 @@ export const catalogueLink = pgTable(
     askFulfilmentAuto: boolean("ask_fulfilment_auto").notNull().default(false),
     /** Owner switch, off by default (foundation C6): tell customers when their order is paid, on its way, delivered. */
     orderUpdatesEnabled: boolean("order_updates_enabled").notNull().default(false),
+    /** When the owner last switched order updates on (migration 0085). A status that changed before this is never announced. */
+    orderUpdatesEnabledAt: timestamp("order_updates_enabled_at", { withTimezone: true }),
     /** "Something changed in the shop, sync now" flag, set by requestCatalogueSync. */
     syncRequestedAt: timestamp("sync_requested_at", { withTimezone: true }),
     syncRequestReason: text("sync_request_reason"),
@@ -171,6 +173,8 @@ export const catalogueChatOrder = pgTable(
       .references(() => saleOrder.id, { onDelete: "set null" }),
     placedBy: uuid("placed_by").references(() => adminUser.id, { onDelete: "set null" }),
     paymentLinkSentAt: timestamp("payment_link_sent_at", { withTimezone: true }),
+    /** Taken by "Ask" and by the worker before either sends "delivery or pickup?" (migration 0085), so only one does. */
+    askClaimedAt: timestamp("ask_claimed_at", { withTimezone: true }),
     /** The last sale_order.status the customer was told about. */
     lastNotifiedStatus: text("last_notified_status"),
     notifyAttempts: integer("notify_attempts").notNull().default(0),
