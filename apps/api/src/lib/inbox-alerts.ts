@@ -12,7 +12,12 @@ import { outboxEvent, type DbExecutor } from "@ms/db";
  */
 export async function alertOnce(
   db: DbExecutor,
-  eventType: "inbox.unknown_channel_account" | "inbox.meta_config" | "inbox.meta_policy" | "channels.page_config",
+  eventType:
+    | "inbox.unknown_channel_account"
+    | "inbox.meta_config"
+    | "inbox.meta_policy"
+    | "channels.page_config"
+    | "social.publish_config_error",
   payload: Record<string, unknown> & { account: string },
 ): Promise<boolean> {
   const [recent] = await db
