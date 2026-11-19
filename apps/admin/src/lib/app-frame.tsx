@@ -26,11 +26,19 @@ export interface CustomerLinkProps {
   style?: CSSProperties;
 }
 
+export interface LeadLinkProps {
+  leadId: string;
+  children: ReactNode;
+  style?: CSSProperties;
+}
+
 export interface HostApp {
   /** The page frame: menu, header, and the body the screen renders into. */
   Shell: ComponentType<FrameProps>;
   /** A link to the customer's orders and profile in the shop. */
   CustomerLink: ComponentType<CustomerLinkProps>;
+  /** A link to a lead on the suite's Leads page (suite spec 13). A host without one shows no link. */
+  LeadLink?: ComponentType<LeadLinkProps>;
 }
 
 const HostContext = createContext<HostApp | null>(null);
@@ -53,4 +61,10 @@ export function Frame(props: FrameProps): JSX.Element {
 export function CustomerLink(props: CustomerLinkProps): JSX.Element {
   const { CustomerLink: Impl } = useHost();
   return <Impl {...props} />;
+}
+
+/** The hosting application's link to a lead in the suite; nothing when the host has none. */
+export function LeadLink(props: LeadLinkProps): JSX.Element | null {
+  const { LeadLink: Impl } = useHost();
+  return Impl ? <Impl {...props} /> : null;
 }

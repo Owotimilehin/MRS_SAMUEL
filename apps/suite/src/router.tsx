@@ -44,6 +44,8 @@ const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
   "WhatsAppProfilePage",
 );
 
+const LeadsPage = lazyNamed<{ leadId?: string }>(() => import("./features/leads/LeadsPage.js"), "LeadsPage");
+
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
   line1: "Every customer,",
@@ -175,6 +177,21 @@ const whatsAppProfileRoute = createRoute({
   },
 });
 
+// Leads from Meta lead forms (suite spec 13). A lead opens as a drawer over the list.
+const leadsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/leads",
+  component: () => page(<LeadsPage />, "leads.view"),
+});
+const leadRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/leads/$leadId",
+  component: () => {
+    const params = useParams({ from: "/leads/$leadId" });
+    return page(<LeadsPage leadId={params.leadId} />, "leads.view");
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -186,6 +203,8 @@ const routeTree = rootRoute.addChildren([
   chatSetupRoute,
   pageDetailsRoute,
   whatsAppProfileRoute,
+  leadsRoute,
+  leadRoute,
 ]);
 
 export const router = createRouter({
