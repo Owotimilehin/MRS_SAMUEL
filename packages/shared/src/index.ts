@@ -7,3 +7,4 @@ export * from "./permissions.js";
 export { looksLikeBareId } from "./product-name.js";
 export * from "./delivery-schedule.js";
 export * from "./inbox.js";
+export * from "./chat-setup.js";

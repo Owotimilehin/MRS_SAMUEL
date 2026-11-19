@@ -15,11 +15,11 @@
  * short-lived link) and the worker fetches it. Story-mention media is never
  * downloaded or stored (foundation C4).
  */
-import { and, eq, sql } from "drizzle-orm";
-import { inboxMessage, inboxWebhookEvent, type DbExecutor } from "@ms/db";
-import { messagePreview } from "@ms/shared";
+import { and, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { inboxConversation, inboxIdentity, inboxMessage, inboxWebhookEvent, type DbExecutor } from "@ms/db";
+import { describeChatSetupPayload, messagePreview } from "@ms/shared";
 import { channelAccountByExternalId, type ChannelAccount } from "../meta/accounts.js";
-import { findOrCreateCustomerByIdentity, findOrOpenConversation, publishInboxEvent, signalFor, touchConversation } from "./core.js";
+import { findOrCreateCustomerByIdentity, findOrOpenConversation, publishInboxEvent, signalFor, touchConversation, ts } from "./core.js";
 import { PARKED_ATTEMPTS } from "./whatsapp-ingest.js";
 
 export type MetaChannel = "messenger" | "instagram";
@@ -323,8 +323,15 @@ async function handleMessagingEvent(ctx: MetaEntryContext, e: MetaMessagingEvent
   };
   if (e.message) {
     if (e.message.is_echo) return handleEcho(ctx, e, ev);
+    if (e.message.is_deleted) return handleUnsend(ctx, e.message, ev);
     return handleInboundMessage(ctx, e.message, ev);
   }
+  if (e.delivery) return handleDelivery(ctx, e.delivery, ev);
+  if (e.read) return handleRead(ctx, e.read, ev);
+  if (e.postback) return handlePostback(ctx, e, ev);
+  if (e.referral) return handleReferral(ctx, e, ev);
+  if (e.reaction) return handleReaction(ctx, e, ev);
+  if (e.message_edit) return handleEdit(ctx, e.message_edit, ev);
   return false;
 }
 
@@ -415,9 +422,326 @@ async function handleInboundMessage(ctx: MetaEntryContext, m: MetaInboundMessage
   return true;
 }
 
-/** Step 5: an echo of a message the Page sent (rule R6). Filled in by task 7. */
-async function handleEcho(_ctx: MetaEntryContext, _e: MetaMessagingEvent, _ev: EventCtx): Promise<boolean> {
-  return false;
+/** The raw event time, for made-up keys ("ref:<sender>:<timestamp>"). */
+function rawTs(e: MetaMessagingEvent, ev: EventCtx): string {
+  return typeof e.timestamp === "number" ? String(e.timestamp) : String(ev.at.getTime());
+}
+
+const ECHO_WAIT_MS = 20_000;
+const SUITE_METADATA = /^suite:([0-9a-f-]{36})$/i;
+
+async function signalMessage(db: DbExecutor, conversationId: string, messageId: string): Promise<void> {
+  const [conv] = await db.select().from(inboxConversation).where(eq(inboxConversation.id, conversationId));
+  if (conv) await publishInboxEvent(db, signalFor("message.status", conv, messageId));
+}
+
+/** Step 5, rule R6: an echo of a message the Page or Instagram account sent. */
+async function handleEcho(ctx: MetaEntryContext, e: MetaMessagingEvent, ev: EventCtx): Promise<boolean> {
+  const m = e.message!;
+  if (!m.mid) return false;
+  const { db } = ctx;
+
+  // (a) We already have it (our send saved its mid, or this is a replay).
+  const [known] = await db
+    .select({ id: inboxMessage.id, status: inboxMessage.status, conversationId: inboxMessage.conversationId })
+    .from(inboxMessage)
+    .where(eq(inboxMessage.waMessageId, m.mid))
+    .limit(1);
+  if (known) {
+    if (known.status === "queued") {
+      await db.update(inboxMessage).set({ status: "sent" }).where(eq(inboxMessage.id, known.id));
+      await signalMessage(db, known.conversationId, known.id);
+      ctx.result.updates++;
+    }
+    return true;
+  }
+
+  // (b) Our own send, tagged "suite:<row id>", whose mid is not saved yet.
+  const tagged = typeof m.metadata === "string" ? SUITE_METADATA.exec(m.metadata) : null;
+  if (tagged) {
+    const [row] = await db
+      .update(inboxMessage)
+      .set({
+        waMessageId: m.mid,
+        // The echo proves it went: a queued or "unconfirmed" row becomes sent; later states stay.
+        status: sql`case when ${inboxMessage.status} in ('queued','failed') then 'sent'::inbox_message_status else ${inboxMessage.status} end`,
+      })
+      .where(and(eq(inboxMessage.id, tagged[1]!), eq(inboxMessage.direction, "out"), isNull(inboxMessage.waMessageId)))
+      .returning({ id: inboxMessage.id, conversationId: inboxMessage.conversationId });
+    if (row) {
+      await signalMessage(db, row.conversationId, row.id);
+      ctx.result.updates++;
+      return true;
+    }
+  }
+
+  // (c) Sent by another app (Meta Business Suite's inbox, the phone app): insert at once.
+  const appId = m.app_id != null ? String(m.app_id) : null;
+  const fromElsewhere = !!ctx.opts.appId && appId !== null && appId !== ctx.opts.appId;
+  // (d) Maybe our own send, still saving its mid: leave it for the worker to retry.
+  if (!fromElsewhere && ctx.now.getTime() - ev.at.getTime() < ECHO_WAIT_MS) throw new EchoBeforeSendError(m.mid);
+
+  // (e) An answer someone gave outside the suite: show it so nobody answers twice.
+  const conversation = await customerThread(ctx, ev);
+  const payload = { ...ev.payload, echo: { app_id: appId } };
+  let last: { id: string; type: string; body: string | null } | null = null;
+  let inserted = 0;
+  for (const r of parseMetaMessage(ctx.kind, m)) {
+    const [row] = await db
+      .insert(inboxMessage)
+      .values({
+        conversationId: conversation.id,
+        direction: "out",
+        type: r.type,
+        body: r.body,
+        mediaUrl: r.mediaUrl,
+        channel: ctx.kind,
+        waMessageId: m.mid + r.idSuffix,
+        status: "sent",
+        senderUserId: null,
+        payload,
+        createdAt: ev.at,
+      })
+      .onConflictDoNothing({ target: inboxMessage.waMessageId })
+      .returning({ id: inboxMessage.id });
+    if (row) {
+      inserted++;
+      last = { id: row.id, type: r.type, body: r.body };
+    }
+  }
+  if (!last) return true;
+  if (!conversation.firstResponseAt) {
+    await db
+      .update(inboxConversation)
+      .set({ firstResponseAt: ev.at })
+      .where(and(eq(inboxConversation.id, conversation.id), isNull(inboxConversation.firstResponseAt)));
+  }
+  const conv = await touchConversation(db, conversation.id, { preview: messagePreview(last.type, last.body), at: ev.at });
+  await publishInboxEvent(db, { ...signalFor("message.created", conv, last.id), direction: "out" });
+  await publishInboxEvent(db, signalFor("conversation.updated", conv));
+  ctx.result.messagesCreated += inserted;
+  return true;
+}
+
+/** The customer's conversations on this account (by their scoped ID). Creates nothing. */
+function customerConversationIds(ctx: MetaEntryContext, customerSideId: string) {
+  return ctx.db
+    .select({ id: inboxConversation.id })
+    .from(inboxConversation)
+    .innerJoin(inboxIdentity, eq(inboxIdentity.customerId, inboxConversation.customerId))
+    .where(
+      and(
+        eq(inboxConversation.phoneNumberId, ctx.account.id),
+        eq(inboxIdentity.channel, ctx.kind),
+        eq(inboxIdentity.accountExternalId, ctx.account.externalId),
+        eq(inboxIdentity.externalId, customerSideId),
+      ),
+    );
+}
+
+async function signalRows(ctx: MetaEntryContext, rows: { id: string; conversationId: string }[]): Promise<void> {
+  for (const r of rows) await signalMessage(ctx.db, r.conversationId, r.id);
+  ctx.result.updates += rows.length;
+}
+
+/** Step 6, rule R7: delivered (Messenger only). Forward only; never touches failed. */
+async function handleDelivery(
+  ctx: MetaEntryContext,
+  d: NonNullable<MetaMessagingEvent["delivery"]>,
+  ev: EventCtx,
+): Promise<boolean> {
+  const changed: { id: string; conversationId: string }[] = [];
+  const ret = { id: inboxMessage.id, conversationId: inboxMessage.conversationId };
+  const mids = (d.mids ?? []).filter((x): x is string => typeof x === "string" && x.length > 0);
+  if (mids.length) {
+    changed.push(
+      ...(await ctx.db
+        .update(inboxMessage)
+        .set({ status: "delivered", deliveredAt: ev.at })
+        .where(and(inArray(inboxMessage.waMessageId, mids), eq(inboxMessage.status, "sent"), eq(inboxMessage.direction, "out")))
+        .returning(ret)),
+    );
+  }
+  if (typeof d.watermark === "number") {
+    const mark = metaEventTime(d.watermark, ev.at);
+    changed.push(
+      ...(await ctx.db
+        .update(inboxMessage)
+        .set({ status: "delivered", deliveredAt: ev.at })
+        .where(
+          and(
+            inArray(inboxMessage.conversationId, customerConversationIds(ctx, ev.customerSideId)),
+            eq(inboxMessage.direction, "out"),
+            eq(inboxMessage.status, "sent"),
+            lte(inboxMessage.createdAt, mark),
+          ),
+        )
+        .returning(ret)),
+    );
+  }
+  await signalRows(ctx, changed);
+  return true;
+}
+
+/** Step 7, rule R8: read. Messenger by watermark; Instagram by mid and every earlier sent one. */
+async function handleRead(ctx: MetaEntryContext, r: NonNullable<MetaMessagingEvent["read"]>, ev: EventCtx): Promise<boolean> {
+  const ret = { id: inboxMessage.id, conversationId: inboxMessage.conversationId };
+  const set = { status: "read" as const, readAt: ev.at, deliveredAt: sql`coalesce(${inboxMessage.deliveredAt}, ${ts(ev.at)})` };
+  const notYetRead = inArray(inboxMessage.status, ["sent", "delivered"]);
+  let changed: { id: string; conversationId: string }[] = [];
+  if (typeof r.watermark === "number") {
+    const mark = metaEventTime(r.watermark, ev.at);
+    changed = await ctx.db
+      .update(inboxMessage)
+      .set(set)
+      .where(
+        and(
+          inArray(inboxMessage.conversationId, customerConversationIds(ctx, ev.customerSideId)),
+          eq(inboxMessage.direction, "out"),
+          notYetRead,
+          lte(inboxMessage.createdAt, mark),
+        ),
+      )
+      .returning(ret);
+  } else if (r.mid) {
+    const [seen] = await ctx.db
+      .select({ conversationId: inboxMessage.conversationId, createdAt: inboxMessage.createdAt })
+      .from(inboxMessage)
+      .where(eq(inboxMessage.waMessageId, r.mid))
+      .limit(1);
+    if (!seen) return true;
+    changed = await ctx.db
+      .update(inboxMessage)
+      .set(set)
+      .where(
+        and(
+          eq(inboxMessage.conversationId, seen.conversationId),
+          eq(inboxMessage.direction, "out"),
+          notYetRead,
+          lte(inboxMessage.createdAt, seen.createdAt),
+        ),
+      )
+      .returning(ret);
+  }
+  await signalRows(ctx, changed);
+  return true;
+}
+
+/**
+ * Step 8: a tapped button. Follows spec 04's contract (section 5.6): one
+ * inbound "interactive" row, body = title, else the chat set-up fallback
+ * title, else "Tapped a button"; it opens the window and counts as unread.
+ */
+async function handlePostback(ctx: MetaEntryContext, e: MetaMessagingEvent, ev: EventCtx): Promise<boolean> {
+  const pb = e.postback!;
+  const key = pb.mid ?? `pb:${ev.customerSideId}:${rawTs(e, ev)}`;
+  if (await midExists(ctx.db, key)) return true;
+  const body = pb.title?.trim() || describeChatSetupPayload(pb.payload)?.fallbackTitle || "Tapped a button";
+  await insertInbound(ctx, ev, [{ key, type: "interactive", body }], { inboundWa: true, unread: true, alert: true });
+  return true;
+}
+
+/** Plain words for where a chat came from (step 9). */
+export function referralText(r: MetaReferral | undefined): string {
+  if (r?.source === "ADS") {
+    const title = r.ads_context_data?.ad_title?.trim();
+    return title ? `Came from an advert: ${title}` : "Came from an advert";
+  }
+  return `Opened the chat from a link${r?.ref ? ` (${r.ref})` : ""}`;
+}
+
+/** Step 9: a referral on an existing thread. Opens the window; no unread, no alert (R13, R14). */
+async function handleReferral(ctx: MetaEntryContext, e: MetaMessagingEvent, ev: EventCtx): Promise<boolean> {
+  const key = `ref:${ev.customerSideId}:${rawTs(e, ev)}`;
+  if (await midExists(ctx.db, key)) return true;
+  await insertInbound(ctx, ev, [{ key, type: "referral", body: referralText(e.referral) }], {
+    inboundWa: true,
+    unread: false,
+    alert: false,
+  });
+  return true;
+}
+
+/** Step 10: a reaction. "react" opens the window and counts as unread; "unreact" does neither. */
+async function handleReaction(ctx: MetaEntryContext, e: MetaMessagingEvent, ev: EventCtx): Promise<boolean> {
+  const r = e.reaction!;
+  const key = `react:${r.mid ?? ev.customerSideId}:${rawTs(e, ev)}`;
+  if (await midExists(ctx.db, key)) return true;
+  const react = r.action !== "unreact";
+  const body = !react ? "Removed a reaction" : r.emoji ? `Reacted ${r.emoji}` : "Reacted to a message";
+  await insertInbound(ctx, ev, [{ key, type: "reaction", body }], { inboundWa: react, unread: react, alert: react });
+  return true;
+}
+
+const MAX_EDITS_KEPT = 5;
+
+/** Step 11: the customer edited a message. The old text is kept in payload.edits (last 5). */
+async function handleEdit(
+  ctx: MetaEntryContext,
+  edit: NonNullable<MetaMessagingEvent["message_edit"]>,
+  ev: EventCtx,
+): Promise<boolean> {
+  if (!edit.mid || typeof edit.text !== "string") return false;
+  const [row] = await ctx.db.select().from(inboxMessage).where(eq(inboxMessage.waMessageId, edit.mid)).limit(1);
+  if (!row || row.deletedAt) return true;
+  if (row.body === edit.text) return true; // a replay of this edit
+  const payload = (row.payload ?? {}) as Record<string, unknown>;
+  const edits = Array.isArray(payload.edits) ? (payload.edits as unknown[]) : [];
+  const nextEdits = [...edits, { text: row.body, at: (row.editedAt ?? row.createdAt).toISOString() }].slice(-MAX_EDITS_KEPT);
+  await ctx.db
+    .update(inboxMessage)
+    .set({ body: edit.text, editedAt: ev.at, payload: { ...payload, edits: nextEdits } })
+    .where(eq(inboxMessage.id, row.id));
+  await signalMessage(ctx.db, row.conversationId, row.id);
+  ctx.result.updates++;
+  return true;
+}
+
+/**
+ * Rule R9: the customer unsent a message. Its text goes from the row and from
+ * the stored raw copy; a stored file is queued for removal (payload.purge_key).
+ */
+async function handleUnsend(ctx: MetaEntryContext, m: MetaInboundMessagePart, ev: EventCtx): Promise<boolean> {
+  if (!m.mid) return false;
+  const rows = await ctx.db
+    .select()
+    .from(inboxMessage)
+    .where(
+      and(
+        sql`(${inboxMessage.waMessageId} = ${m.mid} or ${inboxMessage.waMessageId} like ${m.mid + "#%"})`,
+        isNull(inboxMessage.deletedAt),
+      ),
+    );
+  for (const row of rows) {
+    await ctx.db
+      .update(inboxMessage)
+      .set({
+        body: null,
+        mediaUrl: null,
+        mediaKey: null,
+        deletedAt: ev.at,
+        payload: row.mediaKey ? { purge_key: row.mediaKey } : {},
+      })
+      .where(eq(inboxMessage.id, row.id));
+    // The list preview says so only when this was the newest message in the thread.
+    const [newest] = await ctx.db
+      .select({ id: inboxMessage.id })
+      .from(inboxMessage)
+      .where(eq(inboxMessage.conversationId, row.conversationId))
+      .orderBy(desc(inboxMessage.createdAt))
+      .limit(1);
+    if (newest?.id === row.id) {
+      const [conv] = await ctx.db
+        .update(inboxConversation)
+        .set({ lastPreview: "Message deleted" })
+        .where(eq(inboxConversation.id, row.conversationId))
+        .returning();
+      if (conv) await publishInboxEvent(ctx.db, signalFor("conversation.updated", conv));
+    }
+    await signalMessage(ctx.db, row.conversationId, row.id);
+    ctx.result.updates++;
+  }
+  return true;
 }
 
 /**

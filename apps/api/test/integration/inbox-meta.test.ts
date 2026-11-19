@@ -14,7 +14,7 @@ import {
   inboxWebhookEvent,
 } from "@ms/db";
 import { clearPageTokenCache } from "@ms/domain";
-import { setupTestDb, seedOwner } from "./helpers.js";
+import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 
 /**
  * Suite spec 02: Messenger and Instagram direct messages. A messenger line and
@@ -128,6 +128,8 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
       body: raw,
     });
   }
+
+  const loginOwner = () => loginAs(baseUrl, "owner@example.com", "ownerpassword123");
 
   async function messagesByMidPrefix(prefix: string) {
     return db
@@ -284,6 +286,202 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     const created = signals.filter((s) => s.event === "message.created");
     expect(created).toHaveLength(1);
     expect(created[0]).toMatchObject({ direction: "in" });
+  });
+
+  // ── Every kind of event ────────────────────────────────────────────────────
+
+  /** A fresh customer's thread on a line: they write once, we return the conversation. */
+  async function threadFor(from: string, object: "page" | "instagram" = "page", ts = Date.now()) {
+    const mid = `${object === "page" ? "m" : "ig"}_open_${from}`;
+    await postWebhook(pageEvent(textEvent({ object, mid, text: "hello", from, ts }), { object }));
+    const [msg] = await messagesByMidPrefix(mid);
+    return conversationOf(msg!.id);
+  }
+
+  async function outbound(conversationId: string, o: { mid: string | null; status: "queued" | "sent" | "delivered" | "read" | "failed"; at: Date; channel?: string }) {
+    const [row] = await db
+      .insert(inboxMessage)
+      .values({
+        conversationId,
+        direction: "out",
+        type: "text",
+        body: `out ${o.mid ?? "queued"}`,
+        channel: o.channel ?? "messenger",
+        waMessageId: o.mid,
+        status: o.status,
+        createdAt: o.at,
+      })
+      .returning();
+    return row!;
+  }
+  const reload = async (id: string) => (await db.select().from(inboxMessage).where(eq(inboxMessage.id, id)))[0]!;
+  const reloadConv = async (id: string) => (await db.select().from(inboxConversation).where(eq(inboxConversation.id, id)))[0]!;
+
+  it("a story mention is saved without media_url", async () => {
+    const ev = {
+      sender: { id: "980000000000000201" },
+      recipient: { id: IG_ID },
+      timestamp: Date.now(),
+      message: { mid: "ig_story_1", attachments: [{ type: "story_mention", payload: { url: "https://cdn.example.test/story1" } }] },
+    };
+    await postWebhook(pageEvent(ev, { object: "instagram" }));
+    const [msg] = await messagesByMidPrefix("ig_story_1");
+    expect(msg).toMatchObject({ type: "story_mention", body: "Mentioned you in their story", mediaUrl: null, mediaId: null });
+    // The link stays only in the raw copy (offered for 24 hours), never downloaded.
+    expect(JSON.stringify(msg!.payload)).toContain("https://cdn.example.test/story1");
+  });
+
+  it("a postback and a reaction open the reply window; a referral opens it without unread or alert", async () => {
+    const from = "24000000000000301";
+    const old = Date.now() - 3 * 86_400_000;
+    const conv = await threadFor(from, "page", old);
+    await db.update(inboxConversation).set({ unreadCount: 0 }).where(eq(inboxConversation.id, conv.id));
+
+    // Referral: window opens, unread unchanged, no "in" signal.
+    const signals: { event: string; direction?: string }[] = [];
+    const sub = await db.$client.listen("inbox_events", (raw) => signals.push(JSON.parse(raw) as (typeof signals)[number]));
+    const refTs = Date.now() - 60_000;
+    try {
+      await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: PAGE_ID }, timestamp: refTs, referral: { source: "ADS", type: "OPEN_THREAD", ad_id: "123", ads_context_data: { ad_title: "Mango Monday" } } }));
+      for (let i = 0; i < 20 && !signals.some((s) => s.event === "message.created"); i++) await new Promise((r) => setTimeout(r, 50));
+    } finally {
+      await sub.unlisten();
+    }
+    const [ref] = await messagesByMidPrefix(`ref:${from}:`);
+    expect(ref).toMatchObject({ type: "referral", direction: "in", body: "Came from an advert: Mango Monday" });
+    let c = await reloadConv(conv.id);
+    expect(c.unreadCount).toBe(0);
+    expect(c.lastInboundWaAt!.getTime()).toBe(refTs);
+    expect(signals.filter((s) => s.event === "message.created").every((s) => s.direction === undefined)).toBe(true);
+
+    // Postback: chat set-up payload without a title gets the fallback title.
+    const pbTs = Date.now() - 30_000;
+    await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: PAGE_ID }, timestamp: pbTs, postback: { payload: "ms:v1:ice:2" } }));
+    const [pb] = await messagesByMidPrefix(`pb:${from}:`);
+    expect(pb).toMatchObject({ type: "interactive", direction: "in", body: "Starter question 2" });
+    expect((pb!.payload as { postback: { payload: string } }).postback.payload).toBe("ms:v1:ice:2");
+    c = await reloadConv(conv.id);
+    expect(c.unreadCount).toBe(1);
+    expect(c.lastInboundWaAt!.getTime()).toBe(pbTs);
+
+    // Reaction: opens the window and counts as unread; unreact does neither.
+    const reTs = Date.now() - 10_000;
+    await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: PAGE_ID }, timestamp: reTs, reaction: { mid: "m_x", action: "react", emoji: "❤️" } }));
+    const [react] = await messagesByMidPrefix("react:m_x:");
+    expect(react).toMatchObject({ type: "reaction", body: "Reacted ❤️" });
+    c = await reloadConv(conv.id);
+    expect(c.unreadCount).toBe(2);
+    expect(c.lastInboundWaAt!.getTime()).toBe(reTs);
+    await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: PAGE_ID }, timestamp: Date.now(), reaction: { mid: "m_y", action: "unreact" } }));
+    c = await reloadConv(conv.id);
+    expect(c.unreadCount).toBe(2);
+    expect(c.lastInboundWaAt!.getTime()).toBe(reTs);
+  });
+
+  it("an edit replaces the body and keeps the old text; an unsend blanks the message and queues the file for removal", async () => {
+    const from = "980000000000000301";
+    await threadFor(from, "instagram");
+    await postWebhook(pageEvent(textEvent({ object: "instagram", mid: "ig_edit_1", text: "Two mangos", from }), { object: "instagram" }));
+    await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: IG_ID }, timestamp: Date.now(), message_edit: { mid: "ig_edit_1", text: "Three mangos", num_edit: 1 } }, { object: "instagram" }));
+    const [edited] = await messagesByMidPrefix("ig_edit_1");
+    expect(edited!.body).toBe("Three mangos");
+    expect(edited!.editedAt).not.toBeNull();
+    expect((edited!.payload as { edits: { text: string }[] }).edits.map((x) => x.text)).toEqual(["Two mangos"]);
+
+    // A photo that was stored, then unsent.
+    await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: IG_ID }, timestamp: Date.now(), message: { mid: "ig_unsend_1", text: "secret", attachments: [{ type: "image", payload: { url: "https://cdn.example.test/p.jpg" } }] } }, { object: "instagram" }));
+    const [photo] = await messagesByMidPrefix("ig_unsend_1");
+    await db.update(inboxMessage).set({ mediaKey: "inbox/media/2026/11/x.jpg", mediaUrl: null }).where(eq(inboxMessage.id, photo!.id));
+    await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: IG_ID }, timestamp: Date.now(), message: { mid: "ig_unsend_1", is_deleted: true } }, { object: "instagram" }));
+    const gone = await reload(photo!.id);
+    expect(gone).toMatchObject({ body: null, mediaKey: null, mediaUrl: null });
+    expect(gone.deletedAt).not.toBeNull();
+    expect(gone.payload).toEqual({ purge_key: "inbox/media/2026/11/x.jpg" });
+    expect((await reloadConv(gone.conversationId)).lastPreview).toBe("Message deleted");
+  });
+
+  it("an echo with our metadata fills the mid on the queued row and inserts nothing", async () => {
+    const from = "24000000000000401";
+    const conv = await threadFor(from);
+    const queued = await outbound(conv.id, { mid: null, status: "queued", at: new Date() });
+    const echo = { sender: { id: PAGE_ID }, recipient: { id: from }, timestamp: Date.now(), message: { mid: "m_echo_meta", is_echo: true, app_id: Number(OUR_APP_ID), metadata: `suite:${queued.id}`, text: queued.body } };
+    await postWebhook(pageEvent(echo));
+    expect(await reload(queued.id)).toMatchObject({ waMessageId: "m_echo_meta", status: "sent" });
+    expect(await messagesByMidPrefix("m_echo_meta")).toHaveLength(1);
+  });
+
+  it("a fresh unknown echo is left unprocessed (EchoBeforeSendError); an old one becomes an outbound message marked external_sender", async () => {
+    const from = "24000000000000501";
+    await threadFor(from);
+    const fresh = { sender: { id: PAGE_ID }, recipient: { id: from }, timestamp: Date.now(), message: { mid: "m_echo_fresh", is_echo: true, app_id: Number(OUR_APP_ID), text: "from us?" } };
+    await postWebhook(pageEvent(fresh));
+    expect(await messagesByMidPrefix("m_echo_fresh")).toHaveLength(0);
+    const [ev] = await db.select().from(inboxWebhookEvent).where(sql`${inboxWebhookEvent.payload}::text like '%m_echo_fresh%'`);
+    expect(ev!.processedAt).toBeNull();
+    expect(ev!.lastError).toContain("echo");
+
+    const old = { ...fresh, timestamp: Date.now() - 120_000, message: { ...fresh.message, mid: "m_echo_old", text: "Answered in the Page inbox" } };
+    await postWebhook(pageEvent(old));
+    const [row] = await messagesByMidPrefix("m_echo_old");
+    expect(row).toMatchObject({ direction: "out", status: "sent", senderUserId: null, body: "Answered in the Page inbox" });
+    expect((row!.payload as { echo: { app_id: string } }).echo.app_id).toBe(OUR_APP_ID);
+    const owner = await loginOwner();
+    const tl = await fetch(`${baseUrl}/v1/inbox/conversations/${row!.conversationId}/timeline`, { headers: { cookie: owner } });
+    const items = ((await tl.json()) as { data: { kind?: string; id: string; external_sender?: boolean }[] }).data;
+    expect(items.find((i) => i.id === row!.id)?.external_sender).toBe(true);
+  });
+
+  it("an echo from another app id is inserted at once", async () => {
+    const from = "24000000000000601";
+    await threadFor(from);
+    await postWebhook(pageEvent({ sender: { id: PAGE_ID }, recipient: { id: from }, timestamp: Date.now(), message: { mid: "m_echo_other", is_echo: true, app_id: 263902037430900, text: "Hi from Business Suite" } }));
+    const [row] = await messagesByMidPrefix("m_echo_other");
+    expect(row).toMatchObject({ direction: "out", senderUserId: null, status: "sent" });
+  });
+
+  it("delivery and read watermarks move statuses forward only", async () => {
+    const from = "24000000000000701";
+    const conv = await threadFor(from);
+    const t = Date.now();
+    const a = await outbound(conv.id, { mid: "m_wm_a", status: "sent", at: new Date(t - 10_000) });
+    const b = await outbound(conv.id, { mid: "m_wm_b", status: "sent", at: new Date(t - 5_000) });
+    const r = await outbound(conv.id, { mid: "m_wm_r", status: "read", at: new Date(t - 20_000) });
+    const f = await outbound(conv.id, { mid: "m_wm_f", status: "failed", at: new Date(t - 20_000) });
+    await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: PAGE_ID }, timestamp: t, delivery: { watermark: t - 7_000 } }));
+    expect((await reload(a.id)).status).toBe("delivered");
+    expect((await reload(b.id)).status).toBe("sent");
+    expect((await reload(r.id)).status).toBe("read");
+    expect((await reload(f.id)).status).toBe("failed");
+    await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: PAGE_ID }, timestamp: t + 1, read: { watermark: t } }));
+    expect((await reload(a.id)).status).toBe("read");
+    expect((await reload(b.id)).status).toBe("read");
+    expect((await reload(b.id)).deliveredAt).not.toBeNull();
+    // A late delivery never moves read back.
+    await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: PAGE_ID }, timestamp: t + 2, delivery: { mids: ["m_wm_a", "m_wm_b"], watermark: t } }));
+    expect((await reload(a.id)).status).toBe("read");
+    expect((await reload(f.id)).status).toBe("failed");
+  });
+
+  it("Instagram seen marks the message and earlier sent ones read", async () => {
+    const from = "980000000000000701";
+    const conv = await threadFor(from, "instagram");
+    const t = Date.now();
+    const a = await outbound(conv.id, { mid: "ig_seen_a", status: "sent", at: new Date(t - 10_000), channel: "instagram" });
+    const b = await outbound(conv.id, { mid: "ig_seen_b", status: "sent", at: new Date(t - 5_000), channel: "instagram" });
+    const later = await outbound(conv.id, { mid: "ig_seen_c", status: "sent", at: new Date(t - 1_000), channel: "instagram" });
+    await postWebhook(pageEvent({ sender: { id: from }, recipient: { id: IG_ID }, timestamp: t, read: { mid: "ig_seen_b" } }, { object: "instagram" }));
+    expect((await reload(a.id)).status).toBe("read");
+    expect((await reload(b.id)).status).toBe("read");
+    expect((await reload(later.id)).status).toBe("sent");
+  });
+
+  it("standby events are ingested and flagged", async () => {
+    await postWebhook(pageEvent(textEvent({ mid: "m_standby_1", text: "while another app has the chat", from: "24000000000000801" }), { standby: true }));
+    const [row] = await messagesByMidPrefix("m_standby_1");
+    expect(row).toMatchObject({ direction: "in", body: "while another app has the chat" });
+    expect((row!.payload as { standby?: boolean }).standby).toBe(true);
+    const [ev] = await db.select().from(inboxWebhookEvent).where(sql`${inboxWebhookEvent.payload}::text like '%m_standby_1%'`);
+    expect(ev!.kind).toBe("page.standby");
   });
 });
 
