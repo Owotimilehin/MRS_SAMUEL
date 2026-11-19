@@ -18,7 +18,8 @@ const staticKeys = keys.filter((k) => !flowDef(k)!.usesEndpoint);
 
 describe("Flow JSON definitions (suite spec 07, section 7.1)", () => {
   it("every registry form of this build has a file", () => {
-    for (const key of ["delivery_address", "bulk_order", "complaint", "pickup_request"]) expect(keys).toContain(key);
+    for (const key of ["delivery_address", "bulk_order", "complaint", "pickup_request", "delivery_slot"]) expect(keys).toContain(key);
+    expect(staticKeys).toEqual(["delivery_address", "bulk_order", "complaint", "pickup_request"]);
     for (const key of keys) expect(flowDef(key)).not.toBeNull();
     expect(flowJson("nope")).toBeNull();
     expect(() => flowJsonText("nope")).toThrow();
@@ -148,6 +149,29 @@ describe("Flow JSON definitions (suite spec 07, section 7.1)", () => {
       expect(flowDef(key)!.usesEndpoint).toBe(dynamic);
       if (!dynamic) expect(flowJsonText(key)).not.toContain("data_exchange");
     }
+  });
+
+  it("the delivery-slot form routes PICK_DAY to PICK_TIME, declares its data with examples and ends with data_exchange", () => {
+    const j = flowJson("delivery_slot")!;
+    expect(j.data_api_version).toBe("3.0");
+    expect(j.routing_model).toEqual({ PICK_DAY: ["PICK_TIME"], PICK_TIME: [] });
+    const [day, time] = screensOf("delivery_slot") as [Obj, Obj];
+    expect([day.id, time.id]).toEqual(["PICK_DAY", "PICK_TIME"]);
+    expect(day.terminal).toBeUndefined();
+    expect(time.terminal).toBe(true);
+    for (const s of [day, time]) {
+      for (const decl of Object.values(s.data as Record<string, Obj>)) expect(decl.__example__).toBeDefined();
+    }
+    expect(Object.keys(day.data as Obj)).toEqual(["days"]);
+    expect(Object.keys(time.data as Obj).sort()).toEqual(["day", "day_label", "slots"]);
+    expect(actionOf(day)).toEqual({ name: "data_exchange", payload: { day: "${form.day}" } });
+    expect(actionOf(time)).toEqual({ name: "data_exchange", payload: { day: "${data.day}", slot: "${form.slot}" } });
+    const radio = (s: Obj): Obj => childrenOf(s).find((c) => c.type === "RadioButtonsGroup")!;
+    expect(radio(day)).toMatchObject({ name: "day", label: "Delivery day", required: true, "data-source": "${data.days}" });
+    expect(radio(time)).toMatchObject({ name: "slot", label: "Delivery time", required: true, "data-source": "${data.slots}" });
+    // No `complete` action: the endpoint's final answer ends the form.
+    expect(flowJsonText("delivery_slot")).not.toContain('"complete"');
+    expect(flowDef("delivery_slot")!.fields.map((f) => f.name)).toEqual(["slot_label"]);
   });
 
   it("flowJsonHash is stable for the same file", () => {

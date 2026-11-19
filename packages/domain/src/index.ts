@@ -16,3 +16,5 @@ export * from "./meta/flows.js";
 export * from "./meta/flows/definitions.js";
 export * from "./meta/flow-token.js";
 export * from "./meta/flow-responses.js";
+export * from "./meta/flow-crypto.js";
+export * from "./meta/flow-slots.js";

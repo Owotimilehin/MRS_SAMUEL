@@ -9,6 +9,7 @@ import type { FlowKey } from "@ms/shared";
 import bulkOrder from "./definitions/bulk-order.flow.json" with { type: "json" };
 import complaint from "./definitions/complaint.flow.json" with { type: "json" };
 import deliveryAddress from "./definitions/delivery-address.flow.json" with { type: "json" };
+import deliverySlot from "./definitions/delivery-slot.flow.json" with { type: "json" };
 import pickupRequest from "./definitions/pickup-request.flow.json" with { type: "json" };
 
 const DEFINITIONS: Partial<Record<FlowKey, unknown>> = {
@@ -16,6 +17,8 @@ const DEFINITIONS: Partial<Record<FlowKey, unknown>> = {
   bulk_order: bulkOrder,
   complaint,
   pickup_request: pickupRequest,
+  // Phase B: talks to our data endpoint. Hidden and unusable until the server holds the private key.
+  delivery_slot: deliverySlot,
 };
 
 /** Keys that have a JSON file in this build. */
