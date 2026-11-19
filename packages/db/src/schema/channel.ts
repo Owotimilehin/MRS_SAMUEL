@@ -32,6 +32,8 @@ export const channelChatSetup = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     pushedByUserId: uuid("pushed_by_user_id").references(() => adminUser.id),
     pushedAt: timestamp("pushed_at", { withTimezone: true }),
+    /** Every time this version was sent to Meta; each try counts towards the 10-minute limit (M6). */
+    pushTries: timestamp("push_tries", { withTimezone: true }).array(),
   },
   (t) => ({
     uqVersion: uniqueIndex("uq_channel_chat_setup_version").on(t.accountId, t.version),
