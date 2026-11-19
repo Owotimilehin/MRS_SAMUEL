@@ -5,10 +5,12 @@
  *   - runCatalogueSync:       push what changed in the shop to the Meta catalogue
  *   - runCatalogueBatchCheck: ask Meta whether each sent batch was taken
  *   - runCatalogueReconcile:  nightly, compare Meta's list with ours
+ *   - runChatOrderJobs:       the two automatic customer messages, each behind
+ *                             an owner switch that is off by default
  *
  * Every job returns at once when Meta is not configured or no catalogue is
- * linked, and nothing is ever sent unless "Keep WhatsApp in step with the
- * shop" is switched on (catalogue_link.sync_enabled).
+ * linked, and nothing is ever sent to Meta's catalogue unless "Keep WhatsApp
+ * in step with the shop" is switched on (catalogue_link.sync_enabled).
  */
 import type { DbClient } from "@ms/db";
 import {
@@ -18,6 +20,8 @@ import {
   getCatalogueLink,
   metaConfigFromEnv,
   reconcileCatalogue,
+  runChatOrderPrompts,
+  runOrderUpdates,
   syncCatalogue,
   type MetaConfig,
 } from "@ms/domain";
@@ -68,4 +72,28 @@ export async function runCatalogueReconcile(
   const counts = await reconcileCatalogue(db, cfg, { storefrontBase: storefrontBase() });
   log.info(counts, "catalogue: nightly reconcile");
   return counts;
+}
+
+/**
+ * Section 6.4. Two messages a customer can get without a person clicking:
+ *   - the "delivery or pickup?" question and its follow-ups, only while the
+ *     owner's "Ask automatically when a cart arrives" switch is on;
+ *   - "paid", "on its way", "delivered", only while the owner's "Tell
+ *     customers…" switch is on.
+ * Both switches are off until the owner turns them on (foundation C6). The
+ * domain functions check the switches themselves; this wrapper only supplies
+ * the configuration.
+ */
+export async function runChatOrderJobs(
+  db: DbClient,
+  log: Log,
+  cfg: MetaConfig | null = metaConfigFromEnv(),
+): Promise<{ prompts: number; updates: number } | null> {
+  if (!cfg) return null;
+  const link = await getCatalogueLink(db);
+  if (!link || (!link.askFulfilmentAuto && !link.orderUpdatesEnabled)) return null;
+  const prompts = await runChatOrderPrompts(db, cfg, log);
+  const updates = await runOrderUpdates(db, cfg, log, { language: process.env.INBOX_TEMPLATE_LANGUAGE || "en" });
+  if (prompts || updates) log.info({ prompts, updates }, "catalogue: chat order messages sent");
+  return { prompts, updates };
 }
