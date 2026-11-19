@@ -1,5 +1,5 @@
 /** Calls for /v1/channels/:accountId/page (suite spec 10). */
-import { api, API_BASE, ApiError, refreshAccessToken } from "@admin/lib/api.js";
+import { api, API_BASE, refreshAccessToken } from "@admin/lib/api.js";
 import type { PAGE_LIMITS, PageAddress, PageEditable, PageEditableKey } from "@ms/shared";
 
 export interface PageSnapshot {

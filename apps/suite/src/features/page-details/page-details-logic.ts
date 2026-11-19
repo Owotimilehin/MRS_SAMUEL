@@ -1,7 +1,6 @@
 /** Pure rules for the Page details screen (suite spec 10, section 7). No React in here. */
 import {
   PAGE_DAYS,
-  PAGE_DAY_NAMES,
   PAGE_EDITABLE_KEYS,
   normalisePageChanges,
   samePageValue,
