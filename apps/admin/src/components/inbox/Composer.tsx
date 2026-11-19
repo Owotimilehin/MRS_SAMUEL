@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Paperclip, MessageSquareText, FileText, X, StickyNote, Clock } from "lucide-react";
+import { Paperclip, MessageSquareText, FileText, X, StickyNote, Clock, ShoppingBag } from "lucide-react";
 import { headerMediaLabel, humanAgentRemainingMs, templateNeeds, uploadProblem, waWindowRemainingMs } from "@ms/shared";
 import { ChannelIcon } from "./ChannelIcon.js";
+import { ProductPicker } from "./ProductPicker.js";
 import { Modal } from "../Modal.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import { humanizeError } from "../../lib/api.js";
@@ -53,6 +54,15 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
   const [busy, setBusy] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showProducts, setShowProducts] = useState(false);
+  // Products (suite spec 08): WhatsApp only, and only once a catalogue is connected to it.
+  const sendable = useQuery({
+    queryKey: inboxKeys.catalogueSendable,
+    queryFn: inboxApi.catalogueSendable,
+    enabled: canReply && waNumber && (conv.channel ?? "whatsapp") === "whatsapp",
+    staleTime: 60_000,
+    retry: false,
+  });
   const fileRef = useRef<HTMLInputElement | null>(null);
   const lastTyping = useRef<number | null>(null);
 
@@ -296,6 +306,11 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
                   <FileText size={16} />
                 </button>
               )}
+              {!metaLine && sendable.data?.catalog_id && (
+                <button type="button" className="btn btn--ghost btn--sm" aria-label="Send products" title="Send products" onClick={() => setShowProducts(true)}>
+                  <ShoppingBag size={16} />
+                </button>
+              )}
             </>
           )}
           <textarea
@@ -341,6 +356,16 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
           onPick={(qr) => {
             setText((t) => (t ? `${t}\n${qr.body}` : qr.body));
             setShowQuick(false);
+          }}
+        />
+      )}
+      {showProducts && !metaLine && (
+        <ProductPicker
+          conv={conv}
+          onClose={() => setShowProducts(false)}
+          onSent={() => {
+            setShowProducts(false);
+            onSent();
           }}
         />
       )}

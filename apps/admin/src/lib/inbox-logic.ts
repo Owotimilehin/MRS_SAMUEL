@@ -925,3 +925,85 @@ export function textUsage(text: string, limit: { max: number; unit: "characters"
   const used = limit.unit === "bytes" ? new TextEncoder().encode(text).length : [...text].length;
   return { used, over: used > limit.max };
 }
+
+// ── Selling in chat (suite spec 08) ──────────────────────────────────────────
+
+/** The heading on a cart card, by where the cart has got to. */
+export function chatOrderHeading(state: string, orderNumber?: string | null): string {
+  switch (state) {
+    case "new":
+      return "Cart received";
+    case "asked":
+      return "Waiting for: delivery or pickup";
+    case "awaiting_address":
+      return "Waiting for the delivery address";
+    case "ready":
+      return "Ready to create the order";
+    case "placed":
+      return orderNumber ? `Order ${orderNumber}` : "Order created";
+    case "cancelled":
+      return "Cart dismissed";
+    default:
+      return "Cart";
+  }
+}
+
+/** The note under a cart line, or null. The shop's price always wins; a line no longer sold must be removed. */
+export function cartLineNote(line: {
+  sellable: boolean;
+  in_stock: boolean;
+  price_differs: boolean;
+  meta_price: number | null;
+}): string | null {
+  if (!line.sellable) return "No longer sold. Remove it to continue.";
+  const notes: string[] = [];
+  if (line.price_differs && line.meta_price != null) {
+    notes.push(`Price in WhatsApp was ₦${Math.round(line.meta_price).toLocaleString("en-NG")}. The shop price is used.`);
+  }
+  if (!line.in_stock) notes.push("Out of stock: this will become a made-to-order (preorder) order.");
+  return notes.length ? notes.join(" ") : null;
+}
+
+/** The chip on a cart that has become an order. */
+export function chatOrderStatusChip(status: string): { text: string; tone: "warning" | "success" | "danger" | "ink" } {
+  switch (status) {
+    case "confirmed":
+      return { text: "Waiting for payment", tone: "warning" };
+    case "paid":
+      return { text: "Paid", tone: "success" };
+    case "out_for_delivery":
+      return { text: "Out for delivery", tone: "success" };
+    case "handed_over":
+      return { text: "Ready / handed over", tone: "success" };
+    case "delivered":
+      return { text: "Delivered", tone: "success" };
+    case "cancelled":
+    case "failed":
+      return { text: "Cancelled", tone: "danger" };
+    case "reconcile_needed":
+      return { text: "Payment needs checking", tone: "warning" };
+    default:
+      return { text: status, tone: "ink" };
+  }
+}
+
+/** Can a payment link still be sent for an order in this status? */
+export function chatOrderAwaitingPayment(status: string): boolean {
+  return status === "confirmed" || status === "reconcile_needed";
+}
+
+/** A delivery address the server will accept: 10 to 500 characters. */
+export function deliveryAddressProblem(address: string): string | null {
+  const a = address.trim();
+  if (a.length < 10 || a.length > 500) return "Enter the full address: house number, street, area and city.";
+  return null;
+}
+
+/** A typed delivery fee as whole naira between 0 and 100,000, or null when it is not one. */
+export function parseDeliveryFee(text: string): number | null {
+  const t = text.trim().replace(/[,\s₦]/g, "");
+  if (t === "") return 0;
+  if (!/^\d{1,6}$/.test(t)) return null;
+  const n = Number(t);
+  return n <= 100_000 ? n : null;
+}
