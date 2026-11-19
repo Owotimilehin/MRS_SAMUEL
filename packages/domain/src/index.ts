@@ -9,3 +9,5 @@ export * from "./meta/accounts.js";
 export * from "./meta/messaging.js";
 export * from "./meta/chat-setup.js";
 export * from "./meta/page-details.js";
+export * from "./meta/upload.js";
+export * from "./meta/whatsapp-profile.js";
