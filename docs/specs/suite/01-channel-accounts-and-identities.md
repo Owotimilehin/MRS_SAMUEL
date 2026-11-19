@@ -638,3 +638,22 @@ Use an account with the owner role. Meta is called read-only in steps 2 to 6.
 | Q5 | Should a newly connected channel be ticked automatically for staff who are limited to certain lines? | No. Show the note in 7.2. Owners and admins (`inbox.view_all`) see it at once |
 | Q6 | The foundation's D13 signature of `findOrCreateCustomerByIdentity` has no profile picture. | Keep D13 as written; spec 02 calls `updateIdentityProfile` after it. This spec also adds `clearPageTokenCache`, `withPageToken`, `listConnectablePages`, `describePage`, `resolveWhatsAppCustomer`, a fifth parameter on `findOrOpenConversation`, and the columns `inbox_phone_number.external_name` and `inbox_conversation.identity_id`, none of which D13 or section 6 of the foundation lists. Later specs may rely on them |
 | Q7 | D2 says the identity key is `(channel, account_external_id, external_id)` but WhatsApp IDs are not scoped to a line. | Use the constant `'global'` as the account key for every WhatsApp identity (`WHATSAPP_ACCOUNT_KEY`) |
+
+## Built differently
+
+Departures made while building this spec on `work/olu/suite-01-identities` (20 Nov 2026), each chosen to follow the foundation's section 9 or to keep existing WhatsApp and phone behaviour.
+
+1. **`inbox_identity.customer_id` is `ON DELETE CASCADE`** (migration and Drizzle). Foundation ruling 9.2.8 requires CASCADE or SET NULL on tables that point at `customer`; the column is NOT NULL, so CASCADE.
+2. **`graph()` options** are `{ token, onResponse, service }` (rulings 9.2.4 and 9.2.11). The network-failure wording now says "Meta" by default; the existing WhatsApp calls pass `service: "WhatsApp"` so their wording is unchanged. `MetaApiError` gained `subcode` (from `error_subcode`) and an optional `details`.
+3. **`GET /v1/channels`** also returns `teams` and `hours_profiles` (id and name) for the dialogs, and each `ChannelRow` also carries `channels`, `team_name` and `hours_profile_name`, so a person with only `channels.manage` can use the page without `inbox.settings`.
+4. **`POST /v1/channels/:id/check`** answers `400` ("Phone lines are changed under Settings, Numbers.") for a phone row. Meta refusals other than 190/10/200/299/temporary read "Meta refused this: {Meta's message}".
+5. **System messages** (`type: "system"`) are stored and shown, but do not open the 24-hour window or count as unread: the customer did not write.
+6. **`findOrCreateCustomer`** with `source: "whatsapp"` re-points an existing WhatsApp identity whose customer is soft-deleted to the customer it resolves to (rule R17). An identity on a live customer is never moved (R15).
+7. **Erase**: `confirm` accepts 1 to 120 characters, the old `confirm_phone` key still works, and every mismatch (including a wrong phone) reads "That doesn't match this customer". The audit entry carries `customer_row_kept: true` (Q3). A Messenger or Instagram identity whose line row no longer exists is shown on the contact panel only to staff who see every line.
+8. **Search** strips a leading "@" before matching identity usernames and names.
+9. **Settings number routes**: `register` and `refresh` answer `404` for a missing row as well as for a non-phone row (before, a missing row gave `400`).
+10. **Missed-call follow-ups** also check that the fallback line is a phone, not only the call's line.
+11. **Suite page gate**: `NeedsInbox` became `Needs({ cap })` (ruling 9.2.2). The address `/` and sign-in land on the first menu page the person may see (`firstAllowedPage` in `nav.ts`); someone with no suite permission sees the existing "no access" note.
+12. **Wording**: besides section 7.5, the Staff access heading and its Settings tab now say "channel" instead of "number" ("Who can use which channel"). `SettingsNumbers.tsx` changed by one line (its query function is wrapped, because `settingsApi.numbers` now takes an option).
+13. **Tests**: R8 ("a call never creates a WhatsApp identity") is tested by calling `findOrCreateCustomer(…, { source: "phone" })` directly, not through the Twilio webhook. Extra tests cover 131062 wording, `GET /available` with no token (503) and `graph()` options.
+14. **Not built here**: env `META_APP_ID` (ruling 9.2.4) has no user in this spec and is left to the first spec that needs it.

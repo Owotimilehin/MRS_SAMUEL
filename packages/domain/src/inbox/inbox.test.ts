@@ -200,3 +200,14 @@ describe("canSeeConversation", () => {
     expect(canSeeConversation(v, { ...base, teamId: null })).toBe(false);
   });
 });
+
+describe("whatsappRecipient (rule R13)", () => {
+  it("prefers the conversation's WhatsApp identity, then the customer's phone", async () => {
+    const { whatsappRecipient } = await import("./send.js");
+    expect(whatsappRecipient({ channel: "whatsapp", externalId: "2347090000041" }, "+2347090000040")).toBe("2347090000041");
+    expect(whatsappRecipient({ channel: "whatsapp", externalId: "NG.1000000000001" }, null)).toEqual({ bsuid: "NG.1000000000001" });
+    expect(whatsappRecipient(null, "0803 123 4567")).toBe("2348031234567");
+    expect(whatsappRecipient({ channel: "instagram", externalId: "IGSID" }, null)).toBeNull();
+    expect(whatsappRecipient(null, null)).toBeNull();
+  });
+});
