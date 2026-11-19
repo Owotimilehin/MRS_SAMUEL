@@ -248,6 +248,59 @@ describe("componentsToDraft", () => {
   });
 });
 
+describe("a button that opens a form (suite spec 07)", () => {
+  const flowButton = { type: "FLOW" as const, text: "Add address", flowKey: "delivery_address" };
+  const flows = { delivery_address: { flowId: "9001", action: "navigate" as const, screen: "ADDRESS" }, delivery_slot: { flowId: "9005", action: "data_exchange" as const, screen: "PICK_DAY" } };
+
+  it("validateDraft: one form button at most, and it must name a form", () => {
+    expect(codes(draft({ buttons: [flowButton] }))).toEqual([]);
+    expect(codes(draft({ buttons: [flowButton, { ...flowButton, text: "Again" }] }))).toContain("flow_count");
+    const missing = validateDraft(draft({ buttons: [{ type: "FLOW", text: "Add address", flowKey: "" }] }), ctx);
+    expect(missing.map((p) => [p.code, p.field, p.level, p.message])).toEqual([["flow_missing", "buttons.0.flowKey", "error", "Choose which form the button opens."]]);
+    expect(validateDraft(draft({ buttons: [flowButton, { ...flowButton }] }), ctx).find((p) => p.code === "flow_count")!.message).toBe("A template can have one form button at most.");
+    // The label rules are the same as for every button.
+    expect(codes(draft({ buttons: [{ ...flowButton, text: "" }] }))).toContain("button_text");
+  });
+
+  it("a form button counts toward the ten and sits with the non-reply buttons", () => {
+    const replies = (n: number): TemplateDraft["buttons"] => Array.from({ length: n }, (_, i) => ({ type: "QUICK_REPLY" as const, text: `Reply ${i + 1}` }));
+    expect(codes(draft({ buttons: [...replies(9), flowButton] }))).toEqual([]);
+    expect(codes(draft({ buttons: [...replies(10), flowButton] }))).toContain("button_counts");
+    // Reply, form, reply: the reply buttons are split.
+    expect(codes(draft({ buttons: [...replies(1), flowButton, { type: "QUICK_REPLY", text: "Later" }] }))).toContain("button_group");
+    expect(codes(draft({ buttons: [flowButton, { type: "URL", text: "Shop", url: "https://example.com/", example: "" }, ...replies(2)] }))).toEqual([]);
+  });
+
+  it("draftToComponents writes Meta's shape for navigate and for data_exchange, and refuses a form that is not live", () => {
+    const out = draftToComponents(draft({ buttons: [{ type: "QUICK_REPLY", text: "Not now" }, flowButton] }), null, { flows });
+    expect(out.at(-1)).toEqual({
+      type: "BUTTONS",
+      buttons: [
+        { type: "QUICK_REPLY", text: "Not now" },
+        { type: "FLOW", text: "Add address", flow_id: "9001", flow_action: "navigate", navigate_screen: "ADDRESS" },
+      ],
+    });
+    const slot = draftToComponents(draft({ buttons: [{ type: "FLOW", text: "Choose a time", flowKey: "delivery_slot" }] }), null, { flows });
+    expect(slot.at(-1)).toEqual({ type: "BUTTONS", buttons: [{ type: "FLOW", text: "Choose a time", flow_id: "9005", flow_action: "data_exchange" }] });
+    expect(() => draftToComponents(draft({ buttons: [flowButton] }), null)).toThrow();
+    expect(() => draftToComponents(draft({ buttons: [{ ...flowButton, flowKey: "complaint" }] }), null, { flows })).toThrow();
+  });
+
+  it("componentsToDraft maps a form button back through the Flow id; an unknown form cannot be edited", () => {
+    const components = draftToComponents(draft({ buttons: [flowButton] }), null, { flows });
+    expect(componentsToDraft(components, "UTILITY", { flowKeys: { "9001": "delivery_address" } })!.buttons).toEqual([flowButton]);
+    expect(componentsToDraft(components, "UTILITY", { flowKeys: { "1234": "complaint" } })).toBeNull();
+    expect(componentsToDraft(components, "UTILITY")).toBeNull();
+    // Meta may list the id as a number.
+    const numeric = [{ type: "BODY", text: "Hello there, please fill this in." }, { type: "BUTTONS", buttons: [{ type: "FLOW", text: "Add address", flow_id: 9001 }] }];
+    expect(componentsToDraft(numeric, "UTILITY", { flowKeys: { "9001": "delivery_address" } })!.buttons).toEqual([flowButton]);
+  });
+
+  it("the preview shows the form button's label", () => {
+    expect(draftPreview(draft({ buttons: [flowButton] })).buttons).toEqual(["Add address"]);
+  });
+});
+
 describe("draftPreview", () => {
   it("fills blanks with the examples and leaves a missing one as {{n}}", () => {
     const p = draftPreview({ ...FULL, body: { text: FULL.body.text, examples: ["Ada", ""] } });

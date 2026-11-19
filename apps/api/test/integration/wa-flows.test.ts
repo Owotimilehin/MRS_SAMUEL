@@ -635,6 +635,140 @@ describe("WhatsApp forms (suite spec 07)", () => {
     expect((await sendForm(chat.conversationId, { flow_key: "bulk_order", test: true })).status).toBe(409);
   });
 
+  // ── A form outside the 24 hours: a template with a form button (5.5a) ──
+
+  const formTemplate = (name: string, flowId: unknown, extra: unknown[] = []) => ({
+    wabaId: WABA,
+    name,
+    language: "en",
+    status: "APPROVED",
+    category: "UTILITY",
+    components: [
+      { type: "BODY", text: "Tap the button to tell us where to deliver your order." },
+      { type: "BUTTONS", buttons: [...extra, { type: "FLOW", text: "Add address", ...(flowId === undefined ? {} : { flow_id: flowId }), flow_action: "navigate", navigate_screen: "ADDRESS" }] },
+    ],
+  });
+  const sendTemplate = (conversationId: string, name: string, cookie = owner) =>
+    call("POST", `/v1/inbox/conversations/${conversationId}/messages`, { type: "template", name, language: "en" }, cookie);
+
+  it("a template with a form button sends outside the window with a token, and its answer is matched to the form", async () => {
+    const dto = await live("delivery_address");
+    await db.delete(inboxTemplate);
+    await db.insert(inboxTemplate).values(formTemplate("address_request", dto.meta_flow_id, [{ type: "QUICK_REPLY", text: "Not now" }]));
+    const chat = await newChat(30); // the customer last wrote 30 hours ago
+
+    // The picker now offers it.
+    const list = await data<{ name: string; sendable: boolean; unsendable_reason: string | null }[]>(await call("GET", "/v1/inbox/templates"));
+    expect(list.find((t) => t.name === "address_request")).toMatchObject({ sendable: true, unsendable_reason: null });
+
+    const res = await sendTemplate(chat.conversationId, "address_request");
+    expect(res.status).toBe(201);
+    const msg = await data<{ id: string; type: string; waMessageId: string; payload: { flow: Record<string, unknown> } }>(res);
+    const sent = metaCalls("POST", `${WA_NUMBER_ID}/messages`);
+    expect(sent).toHaveLength(1);
+    const template = sent[0]!.body!.template as { name: string; components: { type: string; sub_type: string; index: string; parameters: { type: string; action: { flow_token: string } }[] }[] };
+    expect(sent[0]!.body!.type).toBe("template");
+    expect(template.name).toBe("address_request");
+    expect(template.components).toHaveLength(1);
+    expect(template.components[0]).toMatchObject({ type: "button", sub_type: "flow", index: "1" });
+    const token = template.components[0]!.parameters[0]!.action.flow_token;
+    expect(template.components[0]!.parameters).toEqual([{ type: "action", action: { flow_token: token } }]);
+    expect(readFlowToken(process.env.JWT_SIGNING_KEY!, token, new Date())).toEqual({ ok: true, key: "delivery_address", conversationId: chat.conversationId });
+    expect(msg.type).toBe("template");
+    expect(msg.payload.flow).toEqual({ key: "delivery_address", flow_row_id: dto.id, token, title: "Delivery address", cta: "Add address" });
+
+    // The customer completes the form: matched through context.id even with no flow_key in the answer.
+    await answer(chat.from, { flow_token: token, street: "12 Example Street", area: "ajah" }, msg.waMessageId);
+    const [resp] = await responsesOf(chat.conversationId);
+    expect(resp).toMatchObject({ flowKey: "delivery_address", flowId: dto.id, requestMessageId: msg.id });
+  });
+
+  it("a template whose form is unknown or not live is refused before Meta is called", async () => {
+    const draft = await create("delivery_address");
+    await db.delete(inboxTemplate);
+    await db.insert(inboxTemplate).values([
+      formTemplate("form_unknown", "4040404"),
+      formTemplate("form_unlisted", undefined),
+      formTemplate("form_draft", draft.meta_flow_id),
+      formTemplate("form_twice", draft.meta_flow_id, [{ type: "FLOW", text: "Again", flow_id: draft.meta_flow_id }]),
+    ]);
+    const chat = await newChat();
+    for (const name of ["form_unknown", "form_unlisted"]) {
+      const res = await sendTemplate(chat.conversationId, name);
+      expect(res.status, name).toBe(409);
+      const e = await err(res);
+      expect(e.details?.reason).toBe("template_unsupported");
+      expect(e.message).toBe("This template opens a form the suite does not know. Sync forms under Templates and forms, or use another template.");
+    }
+    const notLive = await sendTemplate(chat.conversationId, "form_draft");
+    expect(notLive.status).toBe(409);
+    expect((await err(notLive)).message).toBe("The form behind this template is not live at WhatsApp.");
+    const twice = await sendTemplate(chat.conversationId, "form_twice");
+    expect(twice.status).toBe(409);
+    expect((await err(twice)).message).toBe("This template has more than one form button, which the inbox can't send yet");
+    expect(metaCalls("POST", `${WA_NUMBER_ID}/messages`)).toHaveLength(0);
+    // No message row was written for any of them.
+    expect(await db.select().from(inboxMessage).where(and(eq(inboxMessage.conversationId, chat.conversationId), eq(inboxMessage.direction, "out")))).toHaveLength(0);
+    await db.delete(inboxTemplate);
+  });
+
+  it("the template editor accepts a form button: it submits Meta's shape and the template opens for editing again", async () => {
+    const tpl = (method: string, path: string, body?: unknown) => call(method, `/v1/templates${path}`, body);
+    const draft = {
+      category: "UTILITY",
+      header: null,
+      body: { text: "Hello {{1}}, please tap the button below and tell us where to deliver your order today.", examples: ["Ada"] },
+      footer: "",
+      buttons: [{ type: "FLOW", text: "Add address", flowKey: "delivery_address" }],
+    };
+    await db.delete(inboxTemplate);
+    const made = await tpl("POST", "", { waba_id: WABA, name: "address_form_request", language: "en", draft });
+    expect(made.status).toBe(201);
+    const row = await data<{ id: string; draft_updated_at: string }>(made);
+
+    // The form is not live yet: refused before Meta is asked, and the draft is untouched.
+    const early = await tpl("POST", `/${row.id}/submit`, { draft_updated_at: row.draft_updated_at, accept_warnings: true });
+    expect(early.status).toBe(409);
+    expect((await err(early)).details?.reason).toBe("form_not_live");
+    expect(metaCalls("POST", `${WABA}/message_templates`)).toHaveLength(0);
+
+    const dto = await live("delivery_address");
+    // "Meta" for the template calls of this one test.
+    const real = globalThis.fetch;
+    let created: Record<string, unknown> | null = null;
+    globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (href.includes(`/${WABA}/message_templates`) && init?.method === "POST") {
+        created = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return json({ id: "TPL-1", status: "PENDING", category: "UTILITY" });
+      }
+      if (href.includes("/TPL-1")) return json({ id: "TPL-1", name: "address_form_request", language: "en", status: "APPROVED", category: "UTILITY", components: created?.components });
+      return real(input, init);
+    }) as typeof fetch;
+    try {
+      const res = await tpl("POST", `/${row.id}/submit`, { draft_updated_at: row.draft_updated_at, accept_warnings: true });
+      expect(res.status).toBe(200);
+      const after = await data<{ status: string; editable: boolean; flow_keys: Record<string, string>; components: { type: string; buttons?: unknown[] }[] }>(res);
+      const buttons = (created!.components as { type: string; buttons?: unknown[] }[]).find((c) => c.type === "BUTTONS")!.buttons;
+      expect(buttons).toEqual([{ type: "FLOW", text: "Add address", flow_id: dto.meta_flow_id, flow_action: "navigate", navigate_screen: "ADDRESS" }]);
+      expect(after).toMatchObject({ status: "APPROVED", editable: true, flow_keys: { [dto.meta_flow_id!]: "delivery_address" } });
+    } finally {
+      globalThis.fetch = real;
+    }
+    // Two form buttons, or one with no form chosen, are validation errors.
+    const bad = await tpl("POST", "", { waba_id: WABA, name: "two_forms", language: "en", draft: { ...draft, buttons: [draft.buttons[0], { type: "FLOW", text: "Other", flowKey: "" }] } });
+    const badRow = await data<{ id: string; draft_updated_at: string }>(bad);
+    const refused = await tpl("POST", `/${badRow.id}/submit`, { draft_updated_at: badRow.draft_updated_at, accept_warnings: true });
+    expect(refused.status).toBe(400);
+    const problems = ((await refused.json()) as { error: { details: { problems: { code: string }[] } } }).error.details.problems.map((x) => x.code);
+    expect(problems).toEqual(expect.arrayContaining(["flow_count", "flow_missing"]));
+    // A template whose form we no longer hold is read-only, with a plain reason.
+    await db.delete(waFlow);
+    const orphan = await data<{ editable: boolean; not_editable_reason: string | null }>(await tpl("GET", `/${row.id}`));
+    expect(orphan).toEqual(expect.objectContaining({ editable: false, not_editable_reason: "This template opens a form the suite does not know. Change it in WhatsApp Manager." }));
+    await db.delete(inboxTemplate);
+  });
+
   // ── Answers ──
 
   it("an nfm_reply webhook stores one response, sets the message body, adds the label, and a replay adds nothing", async () => {
@@ -853,6 +987,7 @@ describe("WhatsApp forms (suite spec 07)", () => {
   });
 
   it("no template is touched and nothing is published or sent on its own", async () => {
+    await db.delete(inboxTemplate);
     await create("delivery_address");
     await flows("GET", "/");
     await flows("POST", "/sync");

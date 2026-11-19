@@ -62,7 +62,7 @@ export function matchesChip(row: TemplateRow, chip: ListChip): boolean {
 export function draftOfRow(row: TemplateRow): TemplateDraft | null {
   if (row.draft) return row.draft as unknown as TemplateDraft;
   if (row.status === "DRAFT") return null;
-  return componentsToDraft(row.components, row.category);
+  return componentsToDraft(row.components, row.category, { flowKeys: row.flow_keys ?? {} });
 }
 
 /** The first 90 characters of the message, for the list. */

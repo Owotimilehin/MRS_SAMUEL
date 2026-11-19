@@ -685,6 +685,8 @@ export function inboxRoutes(db: DbClient) {
         content,
         mediaKey,
         mediaMime,
+        // A template whose button opens a form carries a signed token (suite spec 07).
+        flowTokenSecret: env.JWT_SIGNING_KEY,
       });
       await audit(db, c, "inbox.message_send", "inbox_message", msg.id, { conversation_id: conv.id, type: msg.type, status: msg.status });
       // Messenger/Instagram configuration problem (spec 02, rule R20): tell the owner once a day per account.

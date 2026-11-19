@@ -11,10 +11,12 @@ import {
   inboxMessage,
   inboxPhoneNumber,
   inboxTemplate,
+  waFlow,
   type DbClient,
 } from "@ms/db";
 import {
   fitsTextLimit,
+  flowDef,
   headerMediaLabel,
   humanAgentRemainingMs,
   isBsuid,
@@ -28,6 +30,7 @@ import {
 import { and, isNull, or, sql } from "drizzle-orm";
 import { classifyMessagingError, sendMetaMessage, type MetaSendContent } from "../meta/messaging.js";
 import { explainFlowError } from "../meta/flows.js";
+import { makeFlowToken } from "../meta/flow-token.js";
 import {
   MetaApiError,
   renderTemplateBody,
@@ -104,6 +107,11 @@ export interface SendInput {
    * fails (suite spec 07: `flow` says which form a message carries, so its answer can be matched).
    */
   payloadExtra?: Record<string, unknown>;
+  /**
+   * The secret that signs form tokens (the API's JWT_SIGNING_KEY). Needed only to send a template
+   * whose button opens a form; without it such a template is refused before Meta is called.
+   */
+  flowTokenSecret?: string;
 }
 
 type TemplateContent = Extract<OutboundContent, { type: "template" }>;
@@ -149,6 +157,11 @@ export function prepareTemplateContent(needs: TemplateNeeds, content: TemplateCo
       }
       return { index: b.index, text: given };
     });
+  }
+  // Form buttons carry our token (set by sendFromConversation); only the template's own form buttons are kept.
+  if (needs.flowButtons.length && content.flowButtons?.length) {
+    const kept = needs.flowButtons.flatMap((b) => content.flowButtons!.filter((f) => f.index === b.index).slice(0, 1));
+    if (kept.length) out.flowButtons = kept;
   }
   return out;
 }
@@ -209,6 +222,8 @@ export async function sendFromConversation(
   let mediaKey = input.mediaKey ?? null;
   let mediaMime = input.mediaMime ?? null;
   let mediaFilename = "filename" in content ? (content.filename ?? null) : null;
+  // Set when a template's button opens a form: kept on the message so the answer is matched to the form.
+  let templateFlow: Record<string, unknown> | null = null;
   if (input.content.type === "template") {
     const [tpl] = await db
       .select()
@@ -224,7 +239,30 @@ export async function sendFromConversation(
       throw new InboxSendError("template_not_approved", `Template ${input.content.name} is not approved`);
     }
     // Refuse what the inbox can't send, or what is missing, before calling Meta.
-    const prepared = prepareTemplateContent(templateNeeds(tpl.components, tpl.category), input.content);
+    const needs = templateNeeds(tpl.components, tpl.category);
+    let templateContent = input.content;
+    const formButton = needs.sendable ? needs.flowButtons[0] : undefined;
+    if (formButton) {
+      // A button that opens a form (suite spec 07, 5.5a): it must be one of ours and live, and it carries our token.
+      const [flowRow] = formButton.flowId ? await db.select().from(waFlow).where(eq(waFlow.metaFlowId, formButton.flowId)) : [];
+      const def = flowRow ? flowDef(flowRow.key) : null;
+      if (!flowRow || !def) {
+        throw new InboxSendError(
+          "template_unsupported",
+          "This template opens a form the suite does not know. Sync forms under Templates and forms, or use another template.",
+        );
+      }
+      if (flowRow.status !== "PUBLISHED") {
+        throw new InboxSendError("template_unsupported", "The form behind this template is not live at WhatsApp.");
+      }
+      if (!input.flowTokenSecret) {
+        throw new InboxSendError("template_unsupported", "This template opens a form, so it can only be sent by a person from the inbox.");
+      }
+      const token = makeFlowToken(input.flowTokenSecret, def.key, ctx.conv.id, now);
+      templateContent = { ...input.content, flowButtons: [{ index: formButton.index, flowToken: token }] };
+      templateFlow = { key: def.key, flow_row_id: flowRow.id, token, title: def.title, cta: formButton.text };
+    }
+    const prepared = prepareTemplateContent(needs, templateContent);
     content = prepared;
     if (prepared.headerMedia) {
       mediaFilename = prepared.headerMedia.filename ?? null;
@@ -244,7 +282,7 @@ export async function sendFromConversation(
     body =
       input.content.type === "text" || input.content.type === "flow" ? input.content.body : (input.content.caption ?? null);
   }
-  const payloadExtra: Record<string, unknown> = { ...(input.payloadExtra ?? {}) };
+  const payloadExtra: Record<string, unknown> = { ...(input.payloadExtra ?? {}), ...(templateFlow ? { flow: templateFlow } : {}) };
   const hasExtra = (): boolean => Object.keys(payloadExtra).length > 0;
 
   const type = input.content.type;

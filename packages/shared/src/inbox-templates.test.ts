@@ -60,6 +60,8 @@ describe("templateNeeds — Meta's sample templates", () => {
       urlButtons: [],
       footerText: "WhatsApp Business Platform sample message",
       buttonLabels: [],
+      // No form button (suite spec 07 added this field; empty by default).
+      flowButtons: [],
     });
   });
   it("jaspers_market_plain_text_v1: body only", () => {
@@ -128,9 +130,6 @@ describe("templateNeeds — what the inbox can't send", () => {
     expect(reason([body, { type: "BUTTONS", buttons: [{ type: "OTP", otp_type: "COPY_CODE", text: "Copy code" }] }])).toBe(
       "This template is a login-code message, which the inbox can't send yet",
     );
-    expect(reason([body, { type: "BUTTONS", buttons: [{ type: "FLOW", text: "Book", flow_id: "1" }] }])).toBe(
-      "This template opens a form, which the inbox can't send yet",
-    );
     expect(reason([body, { type: "BUTTONS", buttons: [{ type: "CATALOG", text: "View catalog" }] }])).toBe(
       "This template shows the product catalogue, which the inbox can't send yet",
     );
@@ -154,6 +153,30 @@ describe("templateNeeds — what the inbox can't send", () => {
   it("copes with missing or empty components", () => {
     expect(templateNeeds(null).sendable).toBe(true);
     expect(templateNeeds([]).bodyParams).toBe(0);
+  });
+});
+
+describe("templateNeeds — a button that opens a form (suite spec 07)", () => {
+  const body = { type: "BODY", text: "Tap the button to tell us your delivery address." };
+  const flow = (text: string, flow_id?: unknown) => ({ type: "FLOW", text, ...(flow_id === undefined ? {} : { flow_id }), flow_action: "navigate", navigate_screen: "ADDRESS" });
+
+  it("a template with one FLOW button is sendable and reports flowButtons; two FLOW buttons are not", () => {
+    const one = templateNeeds([body, { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Not now" }, flow("Add address", "9001")] }], "UTILITY");
+    expect(one.sendable).toBe(true);
+    expect(one.reason).toBeNull();
+    expect(one.flowButtons).toEqual([{ index: 1, text: "Add address", flowId: "9001" }]);
+    expect(one.buttonLabels).toEqual(["Not now", "Add address"]);
+    expect(one.urlButtons).toEqual([]);
+
+    const two = templateNeeds([body, { type: "BUTTONS", buttons: [flow("Add address", "9001"), flow("Report a problem", "9002")] }], "UTILITY");
+    expect(two.sendable).toBe(false);
+    expect(two.reason).toBe("This template has more than one form button, which the inbox can't send yet");
+  });
+
+  it("reads a numeric flow_id, and reports null when Meta did not list one", () => {
+    expect(templateNeeds([body, { type: "BUTTONS", buttons: [flow("Add address", 9001)] }]).flowButtons[0]!.flowId).toBe("9001");
+    expect(templateNeeds([body, { type: "BUTTONS", buttons: [flow("Add address")] }]).flowButtons).toEqual([{ index: 0, text: "Add address", flowId: null }]);
+    expect(templateNeeds([body]).flowButtons).toEqual([]);
   });
 });
 

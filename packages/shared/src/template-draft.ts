@@ -12,7 +12,17 @@ export type DraftHeader =
 export type DraftButton =
   | { type: "QUICK_REPLY"; text: string }
   | { type: "URL"; text: string; url: string; example: string } // example = the end of the link; "" when no blank
-  | { type: "PHONE_NUMBER"; text: string; phone: string };
+  | { type: "PHONE_NUMBER"; text: string; phone: string }
+  /** Opens a built-in WhatsApp form (suite spec 07). `flowKey` is the form's registry key; "" until one is chosen. */
+  | { type: "FLOW"; text: string; flowKey: string };
+
+/** What the server needs to turn a form button into Meta's shape: the live Flow behind each form key. */
+export interface DraftFlowTarget {
+  flowId: string;
+  action: "navigate" | "data_exchange";
+  /** The entry screen, for `navigate`. */
+  screen: string;
+}
 export interface TemplateDraft {
   category: DraftCategory;
   header: DraftHeader | null;
@@ -33,6 +43,7 @@ export const TEMPLATE_LIMITS = {
   buttons: 10,
   urlButtons: 2,
   phoneButtons: 1,
+  flowButtons: 1,
   quickReplies: 10,
 } as const;
 
@@ -230,6 +241,9 @@ export function validateDraft(d: TemplateDraft, ctx: ValidateContext): DraftProb
   if (d.buttons.length > TEMPLATE_LIMITS.buttons || urls > TEMPLATE_LIMITS.urlButtons || phones > TEMPLATE_LIMITS.phoneButtons) {
     add("buttons", "error", "button_counts", "Too many buttons. WhatsApp allows 10 in all, with at most 2 links and 1 phone number.");
   }
+  if (d.buttons.filter((b) => b.type === "FLOW").length > TEMPLATE_LIMITS.flowButtons) {
+    add("buttons", "error", "flow_count", "A template can have one form button at most.");
+  }
   let flips = 0;
   for (let i = 1; i < d.buttons.length; i++) {
     if ((d.buttons[i]!.type === "QUICK_REPLY") !== (d.buttons[i - 1]!.type === "QUICK_REPLY")) flips++;
@@ -267,6 +281,8 @@ export function validateDraft(d: TemplateDraft, ctx: ValidateContext): DraftProb
       if (!PHONE_RE.test(b.phone.trim())) {
         add(`buttons.${i}.phone`, "error", "phone_format", "Write the phone number with its country code, for example +2348012345678.");
       }
+    } else if (b.type === "FLOW") {
+      if (b.flowKey.trim() === "") add(`buttons.${i}.flowKey`, "error", "flow_missing", "Choose which form the button opens.");
     }
   });
 
@@ -310,7 +326,7 @@ export function validateDraft(d: TemplateDraft, ctx: ValidateContext): DraftProb
 export function draftToComponents(
   d: TemplateDraft,
   headerHandle: string | null,
-  opts: { flatBodyExamples?: boolean } = {},
+  opts: { flatBodyExamples?: boolean; flows?: Readonly<Record<string, DraftFlowTarget>> } = {},
 ): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
   const h = d.header;
@@ -339,6 +355,18 @@ export function draftToComponents(
       buttons: d.buttons.map((b) => {
         if (b.type === "QUICK_REPLY") return { type: "QUICK_REPLY", text: b.text };
         if (b.type === "PHONE_NUMBER") return { type: "PHONE_NUMBER", text: b.text, phone_number: b.phone };
+        if (b.type === "FLOW") {
+          // The caller (the submit route) resolves the form to its live Flow first and refuses when there is none.
+          const target = opts.flows?.[b.flowKey];
+          if (!target) throw new Error(`no live form for the button "${b.text}"`);
+          return {
+            type: "FLOW",
+            text: b.text,
+            flow_id: target.flowId,
+            flow_action: target.action,
+            ...(target.action === "navigate" ? { navigate_screen: target.screen } : {}),
+          };
+        }
         const btn: Record<string, unknown> = { type: "URL", text: b.text, url: b.url };
         if (b.url.includes("{{1}}")) btn.example = [b.url.replace("{{1}}", b.example)];
         return btn;
@@ -360,8 +388,14 @@ function strs(v: unknown): string[] {
  * The reverse, for editing a template Meta already holds. null when the inbox cannot send the
  * template (`templateNeeds`), the type is not Marketing or Utility, or there is no body: the editor
  * cannot open it and the screen says so. A media heading comes back with `sampleKey: ""`.
+ * A form button is mapped back through `opts.flowKeys` (Meta's Flow ID -> our form key); a form we
+ * do not know makes the template read-only, as before.
  */
-export function componentsToDraft(components: readonly unknown[], category: string | null): TemplateDraft | null {
+export function componentsToDraft(
+  components: readonly unknown[],
+  category: string | null,
+  opts: { flowKeys?: Readonly<Record<string, string>> } = {},
+): TemplateDraft | null {
   const cat = (category ?? "").toUpperCase();
   if (cat !== "MARKETING" && cat !== "UTILITY") return null;
   if (!templateNeeds(components, cat).sendable) return null;
@@ -405,6 +439,11 @@ export function componentsToDraft(components: readonly unknown[], category: stri
             if (example.startsWith(prefix)) example = example.slice(prefix.length);
           } else example = "";
           draft.buttons.push({ type: "URL", text, url, example });
+        } else if (bType === "FLOW") {
+          const id = typeof b.flow_id === "string" ? b.flow_id : typeof b.flow_id === "number" ? String(b.flow_id) : "";
+          const flowKey = id ? opts.flowKeys?.[id] : undefined;
+          if (!flowKey) return null;
+          draft.buttons.push({ type: "FLOW", text, flowKey });
         } else return null;
       }
     } else return null;

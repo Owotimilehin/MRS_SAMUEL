@@ -10,6 +10,8 @@ export interface TemplateRow {
   category: string | null;
   status: string;
   components: unknown[];
+  /** Meta Flow ID -> form key, for the form buttons in `components` (suite spec 07, 5.5a). */
+  flow_keys?: Record<string, string>;
   meta_template_id: string | null;
   quality_score: string | null;
   rejected_reason: string | null;
@@ -90,7 +92,7 @@ interface Body {
  * sending or deleting a template twice must be a person's decision after reading what WhatsApp
  * holds (foundation rule 9). One sign-in refresh on 401 is the only repeat.
  */
-async function writeOnce(method: string, path: string, payload?: unknown): Promise<Body> {
+export async function writeOnce(method: string, path: string, payload?: unknown): Promise<Body> {
   const init: RequestInit = {
     method,
     credentials: "include",

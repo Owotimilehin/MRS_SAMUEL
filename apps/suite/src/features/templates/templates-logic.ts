@@ -33,6 +33,7 @@ export type ButtonKind = DraftButton["type"];
 export function newButton(kind: ButtonKind): DraftButton {
   if (kind === "QUICK_REPLY") return { type: "QUICK_REPLY", text: "" };
   if (kind === "URL") return { type: "URL", text: "", url: "https://", example: "" };
+  if (kind === "FLOW") return { type: "FLOW", text: "", flowKey: "" };
   return { type: "PHONE_NUMBER", text: "", phone: "+234" };
 }
 
@@ -41,6 +42,7 @@ export function buttonMenu(buttons: readonly DraftButton[]): { kind: ButtonKind;
   const full = buttons.length >= TEMPLATE_LIMITS.buttons;
   const urls = buttons.filter((b) => b.type === "URL").length;
   const phones = buttons.filter((b) => b.type === "PHONE_NUMBER").length;
+  const forms = buttons.filter((b) => b.type === "FLOW").length;
   return [
     { kind: "QUICK_REPLY", label: "Reply button", disabled: full ? "Ten buttons at most" : null },
     { kind: "URL", label: "Link button", disabled: full ? "Ten buttons at most" : urls >= TEMPLATE_LIMITS.urlButtons ? "Two links at most" : null },
@@ -48,6 +50,12 @@ export function buttonMenu(buttons: readonly DraftButton[]): { kind: ButtonKind;
       kind: "PHONE_NUMBER",
       label: "Call button",
       disabled: full ? "Ten buttons at most" : phones >= TEMPLATE_LIMITS.phoneButtons ? "One phone number at most" : null,
+    },
+    // Opens a built-in WhatsApp form (suite spec 07, 5.5a).
+    {
+      kind: "FLOW",
+      label: "Form button",
+      disabled: full ? "Ten buttons at most" : forms >= TEMPLATE_LIMITS.flowButtons ? "One form button at most" : null,
     },
   ];
 }
