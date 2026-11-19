@@ -44,6 +44,8 @@ const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
   "WhatsAppProfilePage",
 );
 
+const InsightsPage = lazyNamed(() => import("./features/insights/InsightsPage.js"), "InsightsPage");
+
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
   line1: "Every customer,",
@@ -175,6 +177,12 @@ const whatsAppProfileRoute = createRoute({
   },
 });
 
+const insightsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/insights",
+  component: () => page(<InsightsPage />, "insights.view"),
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -186,6 +194,7 @@ const routeTree = rootRoute.addChildren([
   chatSetupRoute,
   pageDetailsRoute,
   whatsAppProfileRoute,
+  insightsRoute,
 ]);
 
 export const router = createRouter({
