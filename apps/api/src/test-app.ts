@@ -55,6 +55,7 @@ import { channelChatSetupRoutes } from "./routes/channel-chat-setup.js";
 import { channelPageRoutes } from "./routes/channel-page-details.js";
 import { whatsappProfileRoutes } from "./routes/whatsapp-profile.js";
 import { templateRoutes } from "./routes/templates.js";
+import { waFlowRoutes } from "./routes/wa-flows.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
@@ -144,6 +145,8 @@ export function buildApp(): Hono {
   app.route("/v1/whatsapp-profile", whatsappProfileRoutes(db));
   // WhatsApp template authoring (suite spec 06).
   app.route("/v1/templates", templateRoutes(db));
+  // WhatsApp forms (Flows): manage the built-in forms (suite spec 07).
+  app.route("/v1/wa-flows", waFlowRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));
