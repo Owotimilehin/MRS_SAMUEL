@@ -16,7 +16,7 @@ import {
   inboxTeam,
   inboxWebhookEvent,
 } from "@ms/db";
-import { findOrCreateCustomerByIdentity } from "@ms/domain";
+import { findOrCreateCustomer, findOrCreateCustomerByIdentity, findOrOpenConversation } from "@ms/domain";
 import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
 
 /**
@@ -415,5 +415,203 @@ describe("suite spec 01 — customer identities", () => {
       errorMessage: "Not sent: WhatsApp can't deliver this kind of message to a customer who has hidden their number.",
     });
     expect((msg!.payload as { meta_message?: string }).meta_message).toContain("BSUID recipient not supported");
+  });
+
+  // ── Merge ──────────────────────────────────────────────────────────────────
+
+  async function merge(cookie: string, fromId: string, intoId: string): Promise<Response> {
+    return fetch(`${baseUrl}/v1/inbox/contacts/${fromId}/merge`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ into_customer_id: intoId }),
+    });
+  }
+
+  it("after a merge the next message from the merged number lands on the kept contact (R7)", async () => {
+    await postWebhook(inboundPayload({ wamid: "wamid.r7.a1", from: "2347090000050", name: "Merge A" }));
+    await postWebhook(inboundPayload({ wamid: "wamid.r7.b1", from: "2347090000051", name: "Merge B" }));
+    const a = (await conversationOf("wamid.r7.a1"))!.customerId;
+    const b = (await conversationOf("wamid.r7.b1"))!.customerId;
+    expect((await merge(await ownerCookie(), a, b)).status).toBe(200);
+
+    await postWebhook(inboundPayload({ wamid: "wamid.r7.a2", from: "2347090000050", name: "Merge A" }));
+    const after = await conversationOf("wamid.r7.a2");
+    expect(after!.customerId).toBe(b); // before spec 01 this reopened contact A
+    // The customer row of A is untouched and still holds the number.
+    const [rowA] = await db.select().from(customer).where(eq(customer.id, a));
+    expect(rowA).toMatchObject({ phone: "+2347090000050", name: "Merge A" });
+    // A reply in that thread goes to the number that wrote in it (R13).
+    const res = await reply(await ownerCookie(), after!.id, "Reply after merge");
+    expect(res.status).toBe(201);
+    const sent = graphCalls.find((g) => (g.body?.text as { body?: string } | undefined)?.body === "Reply after merge");
+    expect(sent!.body!.to).toBe("2347090000050");
+  });
+
+  it("merge moves identities and reports moved_identities", async () => {
+    await postWebhook(inboundPayload({ wamid: "wamid.mi.a", userId: "NG.5000000000005", name: "Hidden twin", username: "twin" }));
+    await postWebhook(inboundPayload({ wamid: "wamid.mi.b", from: "2347090000052", name: "Visible twin" }));
+    const a = (await conversationOf("wamid.mi.a"))!.customerId;
+    const b = (await conversationOf("wamid.mi.b"))!.customerId;
+    const res = await merge(await ownerCookie(), a, b);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { moved_conversations: number; moved_identities: number } };
+    expect(body.data).toEqual({ moved_conversations: 1, moved_identities: 1 });
+    expect((await waIdentity("NG.5000000000005"))!.customerId).toBe(b);
+    expect(await db.select().from(inboxIdentity).where(eq(inboxIdentity.customerId, a))).toHaveLength(0);
+    // Both live threads on the same line folded into one, which still knows who it is with.
+    const convs = await db.select().from(inboxConversation).where(eq(inboxConversation.customerId, b));
+    expect(convs).toHaveLength(1);
+    expect(convs[0]!.identityId).not.toBeNull();
+
+    const contact = await fetch(`${baseUrl}/v1/inbox/contacts/${b}`, { headers: { cookie: await ownerCookie() } });
+    const detail = (await contact.json()) as { data: { identities: { channel: string; phone: string | null; username: string | null; account_label: string }[] } };
+    expect(detail.data.identities).toHaveLength(2);
+    expect(detail.data.identities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ channel: "whatsapp", phone: "+2347090000052", account_label: "WhatsApp" }),
+        expect.objectContaining({ channel: "whatsapp", phone: null, username: "twin" }),
+      ]),
+    );
+  });
+
+  // ── Erase ──────────────────────────────────────────────────────────────────
+
+  async function erase(cookie: string, customerId: string, confirm: string): Promise<Response> {
+    return fetch(`${baseUrl}/v1/inbox/contacts/${customerId}/erase`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ confirm }),
+    });
+  }
+
+  it("erase with a phone still needs the phone; erase without a phone accepts the username, then the name, then DELETE (R10)", async () => {
+    const owner = await ownerCookie();
+
+    // Phone: only the phone will do.
+    await postWebhook(inboundPayload({ wamid: "wamid.r10.phone", from: "2347090000060", name: "Has Phone" }));
+    const withPhone = (await conversationOf("wamid.r10.phone"))!.customerId;
+    expect((await erase(owner, withPhone, "DELETE")).status).toBe(400);
+    expect((await erase(owner, withPhone, "Has Phone")).status).toBe(400);
+    expect((await erase(owner, withPhone, "0709 000 0060")).status).toBe(200);
+
+    // No phone, a username: the username (any case, with or without "@"), not the name.
+    await postWebhook(inboundPayload({ wamid: "wamid.r10.user", userId: "NG.6000000000006", name: "User Name", username: "erase_me" }));
+    const withUsername = (await conversationOf("wamid.r10.user"))!.customerId;
+    const wrong = await erase(owner, withUsername, "User Name");
+    expect(wrong.status).toBe(400);
+    expect(((await wrong.json()) as { error: { message: string } }).error.message).toBe("That doesn't match this customer");
+    expect((await erase(owner, withUsername, " @ERASE_me ")).status).toBe(200);
+
+    // No phone, no username, a name: the name (any case). No conversations is still a 200.
+    const named = await db.transaction((tx) =>
+      findOrCreateCustomerByIdentity(tx, { channel: "messenger", accountExternalId: "1001", externalId: "PSID-NAMED", displayName: "Named Person" }),
+    );
+    expect((await erase(owner, named.customerId, "DELETE")).status).toBe(400);
+    const okNamed = await erase(owner, named.customerId, " named person ");
+    expect(okNamed.status).toBe(200);
+    expect(((await okNamed.json()) as { data: { identities: number; conversations: number } }).data).toMatchObject({
+      identities: 1,
+      conversations: 0,
+    });
+
+    // Nothing at all: exactly DELETE.
+    const anon = await db.transaction((tx) =>
+      findOrCreateCustomerByIdentity(tx, { channel: "messenger", accountExternalId: "1001", externalId: "PSID-ANON" }),
+    );
+    expect((await erase(owner, anon.customerId, "delete")).status).toBe(400);
+    expect((await erase(owner, anon.customerId, "DELETE")).status).toBe(200);
+  });
+
+  it("erase deletes identities and webhook copies containing the identity id", async () => {
+    await postWebhook(inboundPayload({ wamid: "wamid.erase.id", userId: "NG.7000000000007", name: "Forget", username: "forget_me" }));
+    const cust = (await conversationOf("wamid.erase.id"))!.customerId;
+    const before = await db.select().from(inboxWebhookEvent);
+    expect(before.some((e) => JSON.stringify(e.payload).includes("NG.7000000000007"))).toBe(true);
+
+    const res = await erase(await ownerCookie(), cust, "forget_me");
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { identities: number; messages: number } }).data).toMatchObject({ identities: 1, messages: 1 });
+    expect(await db.select().from(inboxIdentity).where(eq(inboxIdentity.customerId, cust))).toHaveLength(0);
+    expect(await waIdentity("NG.7000000000007")).toBeUndefined();
+    const after = await db.select().from(inboxWebhookEvent);
+    expect(after.some((e) => JSON.stringify(e.payload).includes("NG.7000000000007"))).toBe(false);
+    expect(await db.select().from(customer).where(eq(customer.id, cust))).toHaveLength(1); // the shop's record stays
+  });
+
+  // ── Search and other channels ──────────────────────────────────────────────
+
+  it("conversation search finds a contact by Instagram username", async () => {
+    const [ig] = await db
+      .insert(inboxPhoneNumber)
+      .values({
+        kind: "instagram",
+        e164: null,
+        externalId: "17840000009",
+        pageExternalId: "1009",
+        externalName: "mrs_samuelfruitjuice",
+        label: "Instagram",
+        channels: "whatsapp",
+      })
+      .returning();
+    const who = await db.transaction((tx) =>
+      findOrCreateCustomerByIdentity(tx, {
+        channel: "instagram",
+        accountExternalId: "17840000009",
+        externalId: "IGSID-SEARCH",
+        displayName: "Bimpe",
+        username: "juice_lover",
+      }),
+    );
+    // The contact's name is "Bimpe", so only the identity can match "juice_lov".
+    expect((await db.select().from(customer).where(eq(customer.id, who.customerId)))[0]!.name).toBe("Bimpe");
+    const { conversation } = await db.transaction((tx) =>
+      findOrOpenConversation(tx, who.customerId, ig!.id, new Date(), { identityId: who.identityId }),
+    );
+    expect(conversation).toMatchObject({ channel: "instagram", identityId: who.identityId });
+
+    const owner = await ownerCookie();
+    type Row = { id: string; channel: string; number_kind: string; identity_name: string | null };
+    const list = async (query: string) =>
+      ((await (await fetch(`${baseUrl}/v1/inbox/conversations?${query}`, { headers: { cookie: owner } })).json()) as { data: Row[] }).data;
+
+    const found = await list("q=juice_lov");
+    expect(found.map((r) => r.id)).toContain(conversation.id);
+    expect(found.find((r) => r.id === conversation.id)).toMatchObject({
+      channel: "instagram",
+      number_kind: "instagram",
+      identity_name: "Bimpe",
+    });
+    expect((await list(`q=${encodeURIComponent("@juice_lover")}`)).map((r) => r.id)).toContain(conversation.id);
+    expect((await list("channel=instagram")).map((r) => r.id)).toEqual([conversation.id]);
+    expect((await list("channel=whatsapp")).map((r) => r.id)).not.toContain(conversation.id);
+
+    const hits = (await (await fetch(`${baseUrl}/v1/inbox/contacts/search?q=juice`, { headers: { cookie: owner } })).json()) as {
+      data: { id: string; handles: string[] }[];
+    };
+    expect(hits.data.find((h) => h.id === who.customerId)?.handles).toEqual(["@juice_lover"]);
+
+    const detail = (await (await fetch(`${baseUrl}/v1/inbox/conversations/${conversation.id}`, { headers: { cookie: owner } })).json()) as {
+      data: { number: { kind: string; e164: string | null; external_name: string }; identity: { username: string } };
+    };
+    expect(detail.data.number).toMatchObject({ kind: "instagram", e164: null, external_name: "mrs_samuelfruitjuice" });
+    expect(detail.data.identity.username).toBe("juice_lover");
+
+    // A reply on Instagram is refused until spec 02 switches it on.
+    const res = await reply(owner, conversation.id, "hi on instagram");
+    expect(res.status).toBe(409);
+  });
+
+  it("a call never creates a WhatsApp identity (R8)", async () => {
+    // A first-time caller: a customer, but no identity.
+    const caller = await db.transaction((tx) => findOrCreateCustomer(tx, "+2347090000070", { source: "phone" }));
+    expect(caller.created).toBe(true);
+    expect(await waIdentity("2347090000070")).toBeUndefined();
+
+    // A caller who has written on WhatsApp before: their identity's contact is used.
+    await postWebhook(inboundPayload({ wamid: "wamid.r8.wa", from: "2347090000071", name: "Writes and calls" }));
+    const waCustomer = (await conversationOf("wamid.r8.wa"))!.customerId;
+    const again = await db.transaction((tx) => findOrCreateCustomer(tx, "+2347090000071", { source: "phone" }));
+    expect(again).toEqual({ id: waCustomer, created: false });
+    expect(await db.select().from(inboxIdentity).where(eq(inboxIdentity.externalId, "2347090000071"))).toHaveLength(1);
   });
 });
