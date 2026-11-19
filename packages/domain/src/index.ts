@@ -7,3 +7,4 @@ export * from "./variance-loss.js";
 export * from "./inbox/index.js";
 export * from "./meta/accounts.js";
 export * from "./meta/messaging.js";
+export * from "./meta/chat-setup.js";

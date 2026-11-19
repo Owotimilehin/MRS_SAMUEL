@@ -28,7 +28,7 @@ export const PAGE_WEBHOOK_FIELDS = [
 ] as const;
 
 /** Run a Page-token call; on code 190 forget the token and try once more. */
-async function withPageTokenRetry<T>(cfg: MetaConfig, pageId: string, call: (token: string) => Promise<T>): Promise<T> {
+export async function withPageTokenRetry<T>(cfg: MetaConfig, pageId: string, call: (token: string) => Promise<T>): Promise<T> {
   const token = await pageAccessToken(cfg, pageId);
   try {
     return await call(token);
