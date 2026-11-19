@@ -563,6 +563,11 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `(code ${String(p["code"] ?? "unknown")}).\n` +
           `👉 ${SUITE_URL}/channels`,
       };
+    case "catalogue.sync_blocked":
+      return {
+        chatIds: [owner],
+        text: `🛍️ *Catalogue sync stopped*\nMeta refused our access (${String(p["code"] ?? "")}): ${String(p["message"] ?? "")}\n👉 ${SUITE_URL}/catalogue`,
+      };
     case "channels.chat_setup_config":
       return {
         chatIds: [owner],

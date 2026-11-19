@@ -48,6 +48,7 @@ const CommentsPage = lazyNamed<{ threadId?: string }>(() => import("./features/c
 
 const TemplatesPage = lazyNamed<{ tab?: "messages" | "forms" }>(() => import("./features/templates/TemplatesPage.js"), "TemplatesPage");
 const TemplateEditorPage = lazyNamed<{ templateId: string }>(() => import("./features/templates/TemplateEditorPage.js"), "TemplateEditorPage");
+const CataloguePage = lazyNamed(() => import("./features/catalogue/CataloguePage.js"), "CataloguePage");
 
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
@@ -218,6 +219,12 @@ const commentThreadRoute = createRoute({
   },
 });
 
+const catalogueRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/catalogue",
+  component: () => page(<CataloguePage />, "catalogue.manage"),
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -234,6 +241,7 @@ const routeTree = rootRoute.addChildren([
   templateEditorRoute,
   commentsRoute,
   commentThreadRoute,
+  catalogueRoute,
 ]);
 
 export const router = createRouter({

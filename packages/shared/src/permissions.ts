@@ -94,6 +94,8 @@ export const CAPABILITIES = [
   // See and answer comments (suite spec 03). Which accounts a person sees follows
   // the same per-line access as the inbox (inbox_user_number_access).
   "social.comments",
+  // Catalogue: connect, sync and repair the Meta catalogue (spec 08).
+  "catalogue.manage",
   // Connect and configure channel accounts (Facebook Page, Instagram); later:
   // chat set-up, WhatsApp profile, Page details. Admins, not managers.
   "channels.manage",
@@ -149,6 +151,7 @@ const ADMIN_CAPS: Capability[] = [
   "social.comments",
   "channels.manage",
   "templates.manage",
+  "catalogue.manage",
 ];
 
 const MANAGER_CAPS: Capability[] = [

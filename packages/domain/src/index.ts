@@ -19,3 +19,5 @@ export * from "./meta/flow-responses.js";
 export * from "./meta/flow-crypto.js";
 export * from "./meta/flow-slots.js";
 export * from "./meta/comments.js";
+export * from "./meta/catalogue.js";
+export * from "./meta/catalogue-chat.js";

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { and, asc, desc, eq, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import {
   adminUser,
+  catalogueChatOrder,
   customer,
   inboxCall,
   inboxConversation,
@@ -72,6 +73,7 @@ import { toCsv } from "../lib/csv.js";
 import { reloadViewer, subscribe } from "../inbox/realtime.js";
 import { logger } from "../logger.js";
 import { alertOnce } from "../lib/inbox-alerts.js";
+import { productSendContent } from "../lib/catalogue-send.js";
 import { alias } from "drizzle-orm/pg-core";
 import crypto from "node:crypto";
 import { env } from "../env.js";
@@ -295,6 +297,9 @@ const SendBody = z.discriminatedUnion("type", [
       .max(10)
       .default([]),
   }),
+  // Products from the catalogue (suite spec 08): one product, a product list, or the whole menu.
+  z.object({ type: z.literal("product"), retailer_ids: z.array(z.string().min(3).max(100)).min(1).max(30), text: z.string().trim().max(1024).optional() }),
+  z.object({ type: z.literal("catalogue"), text: z.string().trim().max(1024).optional() }),
 ]);
 
 /** Send a form (suite spec 07, 5.5). `test` sends a draft to try it out; it needs templates.manage as well. */
@@ -646,8 +651,14 @@ export function inboxRoutes(db: DbClient) {
     let content: OutboundContent;
     let mediaKey: string | null = null;
     let mediaMime: string | null = null;
+    // Set when products are sent (suite spec 08), for the audit entry.
+    let productIds: string[] | null = null;
     if (body.type === "text") {
       content = { type: "text", body: body.body };
+    } else if (body.type === "product" || body.type === "catalogue") {
+      const built = await productSendContent(db, body);
+      content = built.content;
+      productIds = built.retailerIds;
     } else if (body.type === "template") {
       need(c, "inbox.templates");
       content = { type: "template", name: body.name, language: body.language, bodyParams: body.params };
@@ -692,7 +703,16 @@ export function inboxRoutes(db: DbClient) {
         // A template whose button opens a form carries a signed token (suite spec 07).
         flowTokenSecret: env.JWT_SIGNING_KEY,
       });
-      await audit(db, c, "inbox.message_send", "inbox_message", msg.id, { conversation_id: conv.id, type: msg.type, status: msg.status });
+      if (productIds) {
+        await audit(db, c, "inbox.send_product", "inbox_message", msg.id, {
+          conversation_id: conv.id,
+          kind: body.type,
+          retailer_ids: productIds,
+          status: msg.status,
+        });
+      } else {
+        await audit(db, c, "inbox.message_send", "inbox_message", msg.id, { conversation_id: conv.id, type: msg.type, status: msg.status });
+      }
       // Messenger/Instagram configuration problem (spec 02, rule R20): tell the owner once a day per account.
       const p = (msg.payload ?? {}) as { config?: boolean; account?: string };
       if (p.config === true && p.account) {
@@ -1224,6 +1244,8 @@ export function inboxRoutes(db: DbClient) {
         forms = await tx.delete(waFlowResponse).where(inArray(waFlowResponse.conversationId, convIds)).returning({ id: waFlowResponse.id });
         msgs = await tx.delete(inboxMessage).where(inArray(inboxMessage.conversationId, convIds)).returning({ key: inboxMessage.mediaKey });
         await tx.delete(inboxNote).where(inArray(inboxNote.conversationId, convIds));
+        // Carts sent in these chats (suite spec 08, ruling 9.2.8). The shop's orders made from them stay.
+        await tx.delete(catalogueChatOrder).where(inArray(catalogueChatOrder.conversationId, convIds));
         for (const conv of convs) await publishInboxEvent(tx, signalFor("conversation.updated", conv));
         // Comments are public and stay (suite spec 03, Q10); the private message sent about one is inbox
         // history, so its text and its link to the chat go. Its "sent" mark stays: Meta allows only one.
@@ -1302,6 +1324,11 @@ export function inboxRoutes(db: DbClient) {
           await tx.update(waFlowResponse).set({ conversationId: clash.id }).where(eq(waFlowResponse.conversationId, conv.id));
           await tx.update(inboxNote).set({ conversationId: clash.id }).where(eq(inboxNote.conversationId, conv.id));
           await tx.update(inboxCall).set({ conversationId: clash.id, customerId: intoId }).where(eq(inboxCall.conversationId, conv.id));
+          // Carts move with the thread, or deleting it below would take them too (suite spec 08, rule R35).
+          await tx
+            .update(catalogueChatOrder)
+            .set({ conversationId: clash.id, customerId: intoId })
+            .where(eq(catalogueChatOrder.conversationId, conv.id));
           await tx
             .update(inboxConversation)
             .set({
@@ -1321,6 +1348,7 @@ export function inboxRoutes(db: DbClient) {
           await publishInboxEvent(tx, signalFor("conversation.updated", clash));
         } else {
           await tx.update(inboxCall).set({ customerId: intoId }).where(eq(inboxCall.conversationId, conv.id));
+          await tx.update(catalogueChatOrder).set({ customerId: intoId }).where(eq(catalogueChatOrder.conversationId, conv.id));
           const [updated] = await tx.update(inboxConversation).set({ customerId: intoId }).where(eq(inboxConversation.id, conv.id)).returning();
           await publishInboxEvent(tx, signalFor("conversation.updated", updated!));
         }

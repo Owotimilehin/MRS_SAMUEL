@@ -22,6 +22,7 @@ import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
 import { backfillComments, fillCommentDetails, pollComments } from "./jobs/social-comments.js";
+import { runCatalogueBatchCheck, runCatalogueReconcile, runCatalogueSync, runChatOrderJobs } from "./jobs/catalogue.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -71,6 +72,12 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "social_comment_fill", everyMs: 15_000, last: 0, run: () => fillCommentDetails(db, logger) },
     { name: "social_comment_backfill", everyMs: 60_000, last: 0, run: () => backfillComments(db, logger) },
     { name: "social_comment_poll", everyMs: 5 * 60_000, last: 0, run: () => pollComments(db, logger) },
+    // Catalogue sync (suite spec 08). Nothing is sent unless the owner has switched sync on.
+    { name: "catalogue_sync", everyMs: 10_000, last: 0, run: () => runCatalogueSync(db, logger) },
+    { name: "catalogue_batch_check", everyMs: 20_000, last: 0, run: () => runCatalogueBatchCheck(db, logger) },
+    { name: "catalogue_reconcile", everyMs: 30 * 60_000, last: 0, run: () => runCatalogueReconcile(db, logger) },
+    // Automatic cart questions and order updates: each behind an owner switch, off by default.
+    { name: "catalogue_chat_orders", everyMs: 10_000, last: 0, run: () => runChatOrderJobs(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {

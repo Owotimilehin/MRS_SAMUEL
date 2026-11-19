@@ -45,3 +45,15 @@ describe("where a person lands", () => {
     expect(firstAllowedPage(["social.comments", "inbox.reports"])).toBe("/comments");
   });
 });
+
+describe("the Catalogue page (suite spec 08)", () => {
+  const WITH_CATALOGUE = ["/inbox", "/catalogue", "/inbox/reports", "/channels", "/inbox/settings"] as const;
+  it("lights Catalogue on its page", () => {
+    expect(activeNavTo("/catalogue", WITH_CATALOGUE)).toBe("/catalogue");
+  });
+  it("is where someone with only the catalogue permission lands", () => {
+    expect(firstAllowedPage(["catalogue.manage"])).toBe("/catalogue");
+    expect(firstAllowedPage(["catalogue.manage", "inbox.reports"])).toBe("/catalogue");
+    expect(firstAllowedPage(["inbox.view", "catalogue.manage"])).toBe("/inbox");
+  });
+});

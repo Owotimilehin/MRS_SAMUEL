@@ -58,6 +58,8 @@ import { whatsappProfileRoutes } from "./routes/whatsapp-profile.js";
 import { templateRoutes } from "./routes/templates.js";
 import { waFlowRoutes } from "./routes/wa-flows.js";
 import { whatsappFlowsEndpointRoutes } from "./routes/webhooks-whatsapp-flows.js";
+import { catalogueRoutes } from "./routes/catalogue.js";
+import { chatOrderRoutes } from "./routes/inbox-chat-orders.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
@@ -138,6 +140,8 @@ export function buildApp(): Hono {
   app.route("/v1/inbox/settings", inboxSettingsRoutes(db));
   app.route("/v1/inbox/reports", inboxReportRoutes(db));
   app.route("/v1/inbox/voice", voiceAppRoutes(db));
+  // Carts sent from WhatsApp (suite spec 08). Mounted above /v1/inbox so its longer path wins.
+  app.route("/v1/inbox/chat-orders", chatOrderRoutes(db));
   app.route("/v1/inbox", inboxRoutes(db));
   // Comments on Facebook and Instagram posts (suite spec 03).
   app.route("/v1/social/comments", socialCommentRoutes(db));
@@ -151,6 +155,8 @@ export function buildApp(): Hono {
   app.route("/v1/templates", templateRoutes(db));
   // WhatsApp forms (Flows): manage the built-in forms (suite spec 07).
   app.route("/v1/wa-flows", waFlowRoutes(db));
+  // Business suite: catalogue sync and selling in chat (suite spec 08).
+  app.route("/v1/catalogue", catalogueRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));

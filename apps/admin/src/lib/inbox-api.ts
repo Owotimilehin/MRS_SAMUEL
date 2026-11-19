@@ -6,6 +6,8 @@
 import { api, ApiError, humanizeError } from "./api.js";
 import { toast } from "./toast.js";
 import type {
+  CatalogueSendable,
+  ChatOrderList,
   ContactInfo,
   ContactSearchHit,
   ConversationDetail,
@@ -18,6 +20,8 @@ import type {
   InboxTeamLite,
   InboxTemplate,
   NotifyLevel,
+  PlaceChatOrderInput,
+  PlacedChatOrder,
   QuickReply,
   StaffMember,
   TimelinePage,
@@ -40,6 +44,9 @@ export const inboxKeys = {
   /** Forms that can be sent (spec 07). With a conversation, "live" is for that chat's WhatsApp account. */
   flows: ["inbox", "flows"] as const,
   flowsFor: (conversationId: string) => ["inbox", "flows", conversationId] as const,
+  // Selling in chat (suite spec 08).
+  catalogueSendable: ["inbox", "catalogue-sendable"] as const,
+  chatOrders: (conversationId: string) => ["inbox", "chat-orders", conversationId] as const,
 };
 
 export interface ConversationFilters {
@@ -244,6 +251,25 @@ export const inboxApi = {
         body: JSON.stringify({ into_customer_id: intoCustomerId }),
       })
     ).data,
+
+  // ── Selling in chat (suite spec 08) ──
+  /** What can be sent from the catalogue. `catalog_id` is null when nothing is connected (not an error). */
+  catalogueSendable: async () => (await api<{ data: CatalogueSendable }>("/catalogue/sendable")).data,
+  /** One product, or a product list for two to thirty. */
+  sendProducts: (id: string, retailerIds: string[], text?: string) =>
+    postMessage(id, { type: "product", retailer_ids: retailerIds, ...(text ? { text } : {}) }),
+  /** The whole menu. */
+  sendCatalogue: (id: string, text?: string) => postMessage(id, { type: "catalogue", ...(text ? { text } : {}) }),
+  /** Carts this customer sent in this chat, newest first, at the shop's own prices. */
+  chatOrders: (conversationId: string) => api<ChatOrderList>(`/inbox/chat-orders${qs({ conversation_id: conversationId })}`),
+  /** Ask "delivery or pickup?" with two buttons. The caller shows what happened. */
+  askChatOrder: (id: string) => api(`/inbox/chat-orders/${id}/ask`, { method: "POST" }, { silentError: true }),
+  /** One click: create the shop order from the cart and send the OPay link. Safe to repeat: one cart is one order. */
+  placeChatOrder: async (id: string, b: PlaceChatOrderInput) =>
+    (await api<{ data: PlacedChatOrder }>(`/inbox/chat-orders/${id}/place`, { method: "POST", body: JSON.stringify(b) }, { silentError: true })).data,
+  sendPaymentLink: async (id: string) =>
+    (await api<{ data: { order_number: string; payment_link: string | null; warning?: string } }>(`/inbox/chat-orders/${id}/payment-link`, { method: "POST" })).data,
+  cancelChatOrder: (id: string) => api(`/inbox/chat-orders/${id}/cancel`, { method: "POST" }),
 };
 
 /** Plain link (cookies ride along) — the browser downloads the CSV. */

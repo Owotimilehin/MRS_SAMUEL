@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Download, FileText, Trash2, Voicemail } from "lucide-react";
+import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Download, FileText, Trash2, Voicemail, ShoppingBag } from "lucide-react";
 import { ConfirmModal } from "../ConfirmModal.js";
 import { FlowResponseCardView, FlowSentRow } from "./FlowCards.js";
 import { inboxApi } from "../../lib/inbox-api.js";
@@ -173,7 +173,13 @@ function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
         <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 2 }}>Template: {humanTemplateName(m.template_name)}</div>
       )}
       {(m.has_media || m.media_pending) && <MessageMedia m={m} />}
-      {m.body && <div>{m.body}</div>}
+      {m.body && (
+        <div>
+          {/* A cart sent from the catalogue (suite spec 08). */}
+          {m.type === "order" && <ShoppingBag size={13} aria-hidden style={{ verticalAlign: "-2px", marginRight: 4 }} />}
+          {m.body}
+        </div>
+      )}
       {!m.body && !m.has_media && !m.media_pending && !flowSent && (
         <div style={{ color: "var(--ink-soft)", fontStyle: "italic" }}>
           {m.type === "reaction" ? "Reacted to a message" : m.type === "location" ? "📍 Shared a location" : `Unsupported message (${m.type})`}

@@ -5,6 +5,12 @@ import {
   flowCardActions,
   flowHandledText,
   formatFlowValue,
+  cartLineNote,
+  chatOrderAwaitingPayment,
+  chatOrderHeading,
+  chatOrderStatusChip,
+  deliveryAddressProblem,
+  parseDeliveryFee,
   replyState,
   textUsage,
   WHATSAPP_ACCEPT,
@@ -751,5 +757,56 @@ describe("WhatsApp forms (spec 07)", () => {
     );
     expect(flowAddressPreview([{ label: "Landmark", value: "By the gate" }])).toBe("Landmark: By the gate");
     expect(flowAddressPreview([])).toBe("");
+  });
+});
+
+// ── Selling in chat (suite spec 08) ──────────────────────────────────────────
+describe("cart card wording", () => {
+  it("chatOrderHeading(state): one heading per state", () => {
+    expect(chatOrderHeading("new")).toBe("Cart received");
+    expect(chatOrderHeading("asked")).toBe("Waiting for: delivery or pickup");
+    expect(chatOrderHeading("awaiting_address")).toBe("Waiting for the delivery address");
+    expect(chatOrderHeading("ready")).toBe("Ready to create the order");
+    expect(chatOrderHeading("placed", "SO-2026-00042")).toBe("Order SO-2026-00042");
+    expect(chatOrderHeading("placed")).toBe("Order created");
+    expect(chatOrderHeading("cancelled")).toBe("Cart dismissed");
+  });
+
+  it("cartLineNote(line): price differences, lines no longer sold, and preorders", () => {
+    const line = { sellable: true, in_stock: true, price_differs: false, meta_price: 1500 };
+    expect(cartLineNote(line)).toBeNull();
+    expect(cartLineNote({ ...line, price_differs: true, meta_price: 1400 })).toBe("Price in WhatsApp was ₦1,400. The shop price is used.");
+    expect(cartLineNote({ ...line, sellable: false, price_differs: true })).toBe("No longer sold. Remove it to continue.");
+    expect(cartLineNote({ ...line, in_stock: false })).toBe("Out of stock: this will become a made-to-order (preorder) order.");
+    expect(cartLineNote({ ...line, in_stock: false, price_differs: true, meta_price: 7.99 })).toBe(
+      "Price in WhatsApp was ₦8. The shop price is used. Out of stock: this will become a made-to-order (preorder) order.",
+    );
+  });
+
+  it("the status chip follows the shop order, and the link can only be re-sent while payment is awaited", () => {
+    expect(chatOrderStatusChip("confirmed").text).toBe("Waiting for payment");
+    expect(chatOrderStatusChip("paid").text).toBe("Paid");
+    expect(chatOrderStatusChip("out_for_delivery").text).toBe("Out for delivery");
+    expect(chatOrderStatusChip("handed_over").text).toBe("Ready / handed over");
+    expect(chatOrderStatusChip("delivered").text).toBe("Delivered");
+    expect(chatOrderStatusChip("cancelled")).toEqual({ text: "Cancelled", tone: "danger" });
+    expect(chatOrderStatusChip("reconcile_needed").text).toBe("Payment needs checking");
+    expect(chatOrderAwaitingPayment("confirmed")).toBe(true);
+    expect(chatOrderAwaitingPayment("reconcile_needed")).toBe(true);
+    expect(chatOrderAwaitingPayment("paid")).toBe(false);
+    expect(chatOrderAwaitingPayment("cancelled")).toBe(false);
+  });
+
+  it("checks the address and the typed delivery fee the way the server does", () => {
+    expect(deliveryAddressProblem("Lekki")).toBe("Enter the full address: house number, street, area and city.");
+    expect(deliveryAddressProblem("12 Test Close, Lekki Phase 1, Lagos")).toBeNull();
+    expect(parseDeliveryFee("")).toBe(0);
+    expect(parseDeliveryFee("500")).toBe(500);
+    expect(parseDeliveryFee("₦1,500")).toBe(1500);
+    expect(parseDeliveryFee("100000")).toBe(100000);
+    expect(parseDeliveryFee("100001")).toBeNull();
+    expect(parseDeliveryFee("12.50")).toBeNull();
+    expect(parseDeliveryFee("-5")).toBeNull();
+    expect(parseDeliveryFee("free")).toBeNull();
   });
 });

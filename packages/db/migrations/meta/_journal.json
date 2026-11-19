@@ -533,6 +533,13 @@
       "when": 1786700000000,
       "tag": "0076_wa_flows",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1786800000000,
+      "tag": "0077_catalogue_sync",
+      "breakpoints": true
     }
   ]
 }

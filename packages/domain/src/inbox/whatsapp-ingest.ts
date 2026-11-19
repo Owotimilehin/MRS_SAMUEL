@@ -21,6 +21,7 @@ import { applyTemplateWebhook, TEMPLATE_WEBHOOK_FIELDS, wabaIsOurs } from "../me
 import { parseFlowReply, recordFlowResponse } from "../meta/flow-responses.js";
 import { applyFlowWebhook } from "../meta/flows.js";
 import { findOrOpenConversation, publishInboxEvent, resolveWhatsAppCustomer, signalFor, touchConversation, ts } from "./core.js";
+import { noteChatOrderMessage, parseOrderMessage } from "../meta/catalogue-chat.js";
 
 /**
  * A delivery status arrived for a message we haven't finished saving (Meta can
@@ -83,6 +84,12 @@ export interface WaInboundMessage {
   /** Some system messages may carry these at the top level instead (read defensively; rule R16). */
   user_id?: string;
   previous_user_id?: string;
+  /** type "order": a cart sent from the catalogue (suite spec 08). item_price is Meta's, for display only. */
+  order?: {
+    catalog_id?: string;
+    text?: string;
+    product_items?: { product_retailer_id?: string; quantity?: number; item_price?: number; currency?: string }[];
+  };
 }
 
 interface WaStatus {
@@ -163,6 +170,16 @@ export function parseInbound(m: WaInboundMessage): {
     case "system":
       body = m.system?.body ?? "WhatsApp updated this customer's details.";
       break;
+    case "order": {
+      // A cart from the catalogue (suite spec 08). Only a summary is kept here; the cart itself goes to catalogue_chat_order.
+      const lines = parseOrderMessage(m)?.lines ?? [];
+      const n = lines.length;
+      const units = lines.reduce((sum, l) => sum + l.quantity, 0);
+      const text = m.order?.text?.trim();
+      type = "order";
+      body = `Sent a cart: ${n} item${n === 1 ? "" : "s"}, ${units} bottle${units === 1 ? "" : "s"}${text ? ` — "${text}"` : ""}`;
+      break;
+    }
     default:
       type = "unsupported";
       body = "This message type isn't supported yet — open WhatsApp to view it.";
@@ -350,6 +367,11 @@ async function ingestMessage(
         .where(and(eq(inboxConversation.id, conversation.id), sql`not (${label} = any(${inboxConversation.labels}))`));
     }
   }
+
+  // Selling in chat (suite spec 08): a cart is recorded once; any other message may be the
+  // customer's answer to "delivery or pickup?" or their address. Same transaction, no network
+  // call, and it can never stop the message itself from being saved.
+  await noteChatOrderMessage(db, { conversationId: conversation.id, customerId: who.customerId, message: m });
 
   const conv = await touchConversation(db, conversation.id, {
     preview: messagePreview(parsed.type, previewBody),

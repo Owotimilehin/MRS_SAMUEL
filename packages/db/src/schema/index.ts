@@ -44,3 +44,4 @@ export * from "./inbox.js";
 export * from "./wa-flow.js";
 export * from "./social.js";
 export * from "./channel.js";
+export * from "./catalogue.js";
