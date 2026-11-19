@@ -8,6 +8,8 @@ import {
   buildProductListMessage,
   buildProductMessage,
   catalogueBackoffMs,
+  catalogueReconcileDue,
+  catalogueSyncDue,
   checkBatch,
   classifyCatalogueError,
   formatNaira,
@@ -281,5 +283,46 @@ describe("plain words and error classes", () => {
     expect(classifyCatalogueError(err("100"))).toBe("refusal");
     expect(classifyCatalogueError(err("368"))).toBe("refusal");
     expect(classifyCatalogueError(new Error("boom"))).toBe("refusal");
+  });
+});
+
+describe("when the worker runs a pass", () => {
+  const now = new Date("2026-11-20T12:00:00Z");
+  const ago = (ms: number) => new Date(now.getTime() - ms);
+  type Link = Parameters<typeof catalogueSyncDue>[0];
+  const link = (over: Partial<Link> = {}): Link =>
+    ({
+      syncEnabled: true,
+      problemKind: null,
+      fullSyncRequestedAt: null,
+      syncRequestedAt: null,
+      lastSyncAt: ago(10_000),
+      lastReconcileAt: null,
+      ...over,
+    }) as Link;
+
+  it("never while sync is off or a configuration problem is set", () => {
+    expect(catalogueSyncDue(link({ syncEnabled: false, lastSyncAt: null }), now)).toBe(false);
+    expect(catalogueSyncDue(link({ problemKind: "config", lastSyncAt: null }), now)).toBe(false);
+    expect(catalogueReconcileDue(link({ syncEnabled: false }), new Date("2026-11-20T01:30:00Z"))).toBe(false);
+  });
+
+  it("at once after a change or a full-sync request, otherwise once a minute", () => {
+    expect(catalogueSyncDue(link(), now)).toBe(false);
+    expect(catalogueSyncDue(link({ lastSyncAt: null }), now)).toBe(true);
+    expect(catalogueSyncDue(link({ syncRequestedAt: ago(5_000) }), now)).toBe(true);
+    expect(catalogueSyncDue(link({ syncRequestedAt: ago(20_000) }), now)).toBe(false);
+    expect(catalogueSyncDue(link({ fullSyncRequestedAt: ago(1_000) }), now)).toBe(true);
+    expect(catalogueSyncDue(link({ lastSyncAt: ago(61_000) }), now)).toBe(true);
+    expect(catalogueSyncDue(link({ problemKind: "temporary", lastSyncAt: ago(61_000) }), now)).toBe(true);
+  });
+
+  it("the nightly reconcile runs in the 02:00 hour in Lagos, at most once in 20 hours", () => {
+    const twoAmLagos = new Date("2026-11-20T01:30:00Z"); // Lagos is UTC+1
+    expect(catalogueReconcileDue(link(), twoAmLagos)).toBe(true);
+    expect(catalogueReconcileDue(link({ lastReconcileAt: new Date("2026-11-20T01:05:00Z") }), twoAmLagos)).toBe(false);
+    expect(catalogueReconcileDue(link({ lastReconcileAt: new Date("2026-11-19T01:05:00Z") }), twoAmLagos)).toBe(true);
+    expect(catalogueReconcileDue(link(), new Date("2026-11-20T02:30:00Z"))).toBe(false);
+    expect(catalogueReconcileDue(link(), now)).toBe(false);
   });
 });
