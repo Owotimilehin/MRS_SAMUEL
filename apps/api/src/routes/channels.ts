@@ -20,7 +20,7 @@ import {
   listConnectablePages,
   metaConfigFromEnv,
   pageAccessToken,
-  subscribePage,
+  subscribePageKeepingFields,
   unparkEventsForAccount,
   type ConnectablePage,
   type MetaConfig,
@@ -316,7 +316,7 @@ export function channelRoutes(db: DbClient) {
     // the rows and shows the problem on the Channels page.
     const now = new Date();
     try {
-      await subscribePage(cfg, page.pageId);
+      await subscribePageKeepingFields(cfg, page.pageId);
       await db
         .update(inboxPhoneNumber)
         .set({ webhookSubscribedAt: now, webhookCheckedAt: now, updatedAt: now })
@@ -427,7 +427,7 @@ export function channelRoutes(db: DbClient) {
     try {
       let subscribed = await isPageSubscribed(cfg, pageId);
       if (!subscribed) {
-        await subscribePage(cfg, pageId);
+        await subscribePageKeepingFields(cfg, pageId);
         resubscribed = true;
         subscribed = await isPageSubscribed(cfg, pageId);
       }
