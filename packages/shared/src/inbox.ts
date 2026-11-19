@@ -29,6 +29,49 @@ export function waIdFromE164(e164: string): string {
   return e164.replace(/^\+/, "");
 }
 
+/**
+ * Channel accounts (suite spec 01, foundation D1/D2). A row of
+ * inbox_phone_number is a "channel account": a phone line, a Facebook Page,
+ * or an Instagram account. The values are enforced here and in zod, not by a
+ * database CHECK, so later specs can add values without a drop.
+ */
+export const CHANNEL_KINDS = ["phone", "messenger", "instagram"] as const;
+export type ChannelKind = (typeof CHANNEL_KINDS)[number];
+
+/** The channel a customer identity (and a conversation, and a message) is on. */
+export const IDENTITY_CHANNELS = ["whatsapp", "messenger", "instagram"] as const;
+export type IdentityChannel = (typeof IDENTITY_CHANNELS)[number];
+
+/** account_external_id of every WhatsApp identity (a WhatsApp ID is not scoped to one line). */
+export const WHATSAPP_ACCOUNT_KEY = "global";
+
+/** The conversation channel for a line: a phone line talks WhatsApp; the others are themselves. */
+export function channelForKind(kind: ChannelKind): IdentityChannel {
+  return kind === "phone" ? "whatsapp" : kind;
+}
+
+const BSUID_RE = /^[A-Z]{2}\.(ENT\.)?[A-Za-z0-9]{1,128}$/;
+
+/**
+ * A WhatsApp business-scoped user ID ("US.1349…" or "US.ENT.1181…"), as
+ * opposed to a digits-only wa_id (a phone number).
+ */
+export function isBsuid(id: string | null | undefined): boolean {
+  return typeof id === "string" && BSUID_RE.test(id);
+}
+
+/** Plain name of a channel for screens. */
+export function channelLabel(channel: IdentityChannel): string {
+  switch (channel) {
+    case "whatsapp":
+      return "WhatsApp";
+    case "messenger":
+      return "Facebook Messenger";
+    case "instagram":
+      return "Instagram";
+  }
+}
+
 /** Is the 24-hour reply window open? */
 export function waWindowOpen(lastInboundAt: Date | string | null | undefined, now: Date = new Date()): boolean {
   if (!lastInboundAt) return false;
