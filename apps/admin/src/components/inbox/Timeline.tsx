@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Download, FileText, Trash2, Voicemail } from "lucide-react";
 import { ConfirmModal } from "../ConfirmModal.js";
+import { FlowResponseCardView, FlowSentRow } from "./FlowCards.js";
 import { inboxApi } from "../../lib/inbox-api.js";
 import { humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
@@ -45,6 +46,10 @@ interface TimelineProps {
   onLoadEarlier: () => void;
   /** Something in the timeline changed on the server (e.g. a recording was deleted). */
   onChanged: () => void;
+  /** May act on a form answer (inbox.reply). Without it the card shows no buttons. */
+  canReply?: boolean;
+  /** May copy a form answer to the notes (inbox.notes). */
+  canNote?: boolean;
 }
 
 export function Timeline({
@@ -55,6 +60,8 @@ export function Timeline({
   loadingEarlier,
   onLoadEarlier,
   onChanged,
+  canReply = false,
+  canNote = false,
 }: TimelineProps): JSX.Element {
   const days = useMemo(() => groupTimelineByDay(items), [items]);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -116,7 +123,16 @@ export function Timeline({
         <div key={d.key} style={{ display: "contents" }}>
           <div className="ibx-day">{d.label}</div>
           {d.items.map((it) =>
-            it.kind === "message" ? (
+            it.kind === "message" && it.data.direction === "in" && it.data.flow_response ? (
+              <FlowResponseCardView
+                key={`m${it.data.id}`}
+                response={it.data.flow_response}
+                at={it.data.created_at}
+                canReply={canReply}
+                canNote={canNote}
+                onChanged={onChanged}
+              />
+            ) : it.kind === "message" ? (
               <MessageBubble key={`m${it.data.id}`} m={it.data} />
             ) : it.kind === "call" ? (
               <CallCard
@@ -142,6 +158,8 @@ function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
   const problem = sendProblem(m);
   const ticks =
     problem === "unconfirmed" ? { marks: "?", read: false, label: "Not confirmed" } : messageTicks(m.status);
+  // A form we sent (spec 07): the button and the form's name go under the text.
+  const flowSent = m.direction === "out" && m.flow_sent ? m.flow_sent : null;
   return (
     <div className={`ibx-msg ibx-msg--${m.direction}${problem ? ` ibx-msg--${problem}` : ""}`}>
       {m.direction === "out" && m.sender_name && (
@@ -155,11 +173,12 @@ function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
       )}
       {(m.has_media || m.media_pending) && <MessageMedia m={m} />}
       {m.body && <div>{m.body}</div>}
-      {!m.body && !m.has_media && !m.media_pending && (
+      {!m.body && !m.has_media && !m.media_pending && !flowSent && (
         <div style={{ color: "var(--ink-soft)", fontStyle: "italic" }}>
           {m.type === "reaction" ? "Reacted to a message" : m.type === "location" ? "📍 Shared a location" : `Unsupported message (${m.type})`}
         </div>
       )}
+      {flowSent && <FlowSentRow flow={flowSent} />}
       {problem === "failed" && <div className="ibx-msg__error">Not sent{m.error_message ? `: ${m.error_message}` : ""}</div>}
       {problem === "unconfirmed" && <div className="ibx-msg__warn">{UNCONFIRMED_TEXT}</div>}
       <div className="ibx-msg__meta">

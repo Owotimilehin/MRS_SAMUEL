@@ -296,6 +296,8 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
                         items={timeline.data?.items ?? []}
                         canDownload={can("recordings.download")}
                         canDeleteRecordings={can("recordings.delete")}
+                        canReply={can("inbox.reply")}
+                        canNote={can("inbox.notes")}
                         hasMore={!!timeline.data?.hasMore && !!timeline.data.nextBefore}
                         loadingEarlier={loadingEarlier}
                         onLoadEarlier={() => void loadEarlier()}

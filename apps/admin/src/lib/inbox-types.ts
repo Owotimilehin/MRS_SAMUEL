@@ -160,6 +160,62 @@ export interface TimelineMessage {
   advert?: string | null;
   /** A tapped Messenger/Instagram button: "Tapped a starter question" and the like. */
   tap_caption?: string | null;
+  /** An outbound form message (spec 07): the form's title and the button text. Absent on older servers. */
+  flow_sent?: FlowSent | null;
+  /** The customer's answers to a form (spec 07). Absent on older servers. */
+  flow_response?: FlowResponseCard | null;
+}
+
+export interface FlowSent {
+  title: string;
+  cta: string;
+}
+
+/** One answer on a form card. `value` is already formatted for display by the server. */
+export interface FlowCardRow {
+  label: string;
+  value: string;
+  /** text, phone, choice, multi, date, longtext or other. */
+  kind: string;
+}
+
+export interface FlowResponseCard {
+  id: string;
+  flow_key: string;
+  /** "new" or "handled"; anything else shows no pill. */
+  status: string;
+  handled_by_name: string | null;
+  handled_at: string | null;
+  title: string;
+  rows: FlowCardRow[];
+  /** Delivery-slot answers only: "This time was already full when it arrived". */
+  warning?: string | null;
+}
+
+/** A form the composer can send (GET /inbox/flows). */
+export interface InboxFlow {
+  key: string;
+  title: string;
+  description: string;
+  cta: string;
+  default_message: string;
+  /** Published at WhatsApp for this conversation's account. */
+  live: boolean;
+  /** A draft exists that someone with templates.manage can send as a test. */
+  testable: boolean;
+}
+
+export type FlowResponseAction = "handled" | "reopen" | "save_address" | "add_note";
+
+export interface FlowActionResult {
+  id: string;
+  status: string;
+  handled_at: string | null;
+  /** save_address: the contact's address before and after. */
+  before?: string | null;
+  after?: string;
+  /** add_note: the note that was added. */
+  note_id?: string;
 }
 
 export interface CallSummary {
