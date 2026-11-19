@@ -96,6 +96,12 @@ export const CAPABILITIES = [
   // Write, submit and delete WhatsApp message templates (and later Flows). Admins, not managers
   // (managers keep inbox.templates: send only).
   "templates.manage",
+  // Contacts (suite spec 14): see the Contacts page, a contact's details and lists.
+  // Owner, admin and manager. Downloads also need inbox.export.
+  "contacts.view",
+  // Edit a contact, add by hand, import, labels, lists, record consent. Owner and admin
+  // (grantable to a named manager).
+  "contacts.manage",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -144,6 +150,8 @@ const ADMIN_CAPS: Capability[] = [
   "inbox.reports",
   "channels.manage",
   "templates.manage",
+  "contacts.view",
+  "contacts.manage",
 ];
 
 const MANAGER_CAPS: Capability[] = [
@@ -178,6 +186,7 @@ const MANAGER_CAPS: Capability[] = [
   "recordings.listen",
   "transcripts.view",
   "inbox.reports",
+  "contacts.view",
 ];
 
 const BRANCH_STAFF_CAPS: Capability[] = [
