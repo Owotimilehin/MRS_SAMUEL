@@ -9,7 +9,7 @@
 import { sql } from "drizzle-orm";
 import type { DbClient } from "@ms/db";
 import { runJob } from "./jobs/run-job.js";
-import { retryWebhookEvents, downloadPendingMedia, syncAllTemplates } from "./jobs/inbox-whatsapp.js";
+import { retryWebhookEvents, downloadPendingMedia, sendAutoReplies, syncAllTemplates } from "./jobs/inbox-whatsapp.js";
 import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-voice.js";
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
@@ -48,6 +48,7 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
   const summariser = claudeSummariserFromEnv();
   const jobs: Job[] = [
     { name: "inbox_push", everyMs: 5_000, last: 0, run: () => sendMessagePushes(db, logger) },
+    { name: "inbox_auto_reply", everyMs: 10_000, last: 0, run: () => sendAutoReplies(db, logger) },
     { name: "inbox_media", everyMs: 10_000, last: 0, run: () => downloadPendingMedia(db, logger) },
     { name: "inbox_recordings", everyMs: 15_000, last: 0, run: () => processPendingRecordings(db, logger, { summariser }) },
     { name: "inbox_webhook_retry", everyMs: 30_000, last: 0, run: () => retryWebhookEvents(db, logger) },

@@ -3,7 +3,7 @@
  * unit-tested: list tabs per capability, timeline day grouping, reconnect
  * backoff, template variables, and the small label/format helpers.
  */
-import { TEXT_LIMIT, uploadAccept } from "@ms/shared";
+import { TEXT_LIMIT, headerMediaLabel, uploadAccept, type TemplateHeaderMedia, type TemplateNeeds } from "@ms/shared";
 import type {
   CallOutcome,
   Channels,
@@ -379,6 +379,88 @@ export function templateParamsComplete(params: readonly string[], count: number)
   if (count === 0) return true;
   if (params.length < count) return false;
   return params.slice(0, count).every((p) => p.trim().length > 0);
+}
+
+/** What staff have filled in so far for a template. */
+export interface TemplateDraft {
+  /** Body blanks, in order. */
+  params: readonly string[];
+  /** The blank in a text heading. */
+  headerParam: string;
+  /** The end of each link button's link, keyed by the button's position. */
+  buttonParams: Readonly<Record<number, string>>;
+  /** Is a file chosen for the heading? */
+  hasFile: boolean;
+}
+
+/**
+ * The first thing still missing before a template can be sent, in plain
+ * words, or null when everything is there. Send stays disabled until null.
+ */
+export function templateDraftProblem(needs: TemplateNeeds, draft: TemplateDraft): string | null {
+  if (!needs.sendable) return needs.reason ?? "This template can't be sent from the inbox yet";
+  if (needs.headerMedia && !draft.hasFile) return `Add a ${headerMediaLabel(needs.headerMedia)} to send this template.`;
+  if (needs.headerParams > 0 && !draft.headerParam.trim()) return "Fill in the blank in the heading.";
+  if (!templateParamsComplete(draft.params, needs.bodyParams)) return "Fill in every blank in the message.";
+  const button = needs.urlButtons.find((b) => !(draft.buttonParams[b.index] ?? "").trim());
+  if (button) return `Fill in the end of the link for the "${button.text}" button.`;
+  return null;
+}
+
+/** What may be attached for each kind of template heading (mirrors the server's upload rules). */
+const HEADER_FILE_RULES: Record<TemplateHeaderMedia, { types: readonly string[]; maxMb: number; accept: string; hint: string }> = {
+  image: { types: ["image/jpeg", "image/png"], maxMb: 5, accept: "image/jpeg,image/png", hint: "JPG or PNG, up to 5 MB" },
+  video: { types: ["video/mp4"], maxMb: 16, accept: "video/mp4", hint: "MP4, up to 16 MB" },
+  document: { types: ["application/pdf"], maxMb: 16, accept: "application/pdf", hint: "PDF, up to 16 MB" },
+};
+
+export function headerFileRule(kind: TemplateHeaderMedia): { accept: string; hint: string } {
+  const { accept, hint } = HEADER_FILE_RULES[kind];
+  return { accept, hint };
+}
+
+/** Why this file can't be the template's picture/video/document, or null when it can. */
+export function headerFileProblem(kind: TemplateHeaderMedia, f: { type: string; size: number }): string | null {
+  const rule = HEADER_FILE_RULES[kind];
+  if (!rule.types.includes(f.type)) return `This template needs a ${headerMediaLabel(kind)} (${rule.hint}).`;
+  if (f.size > rule.maxMb * 1024 * 1024) return `That file is too large. Use a ${headerMediaLabel(kind)} of ${rule.maxMb} MB or less.`;
+  if (f.size <= 0) return "That file is empty.";
+  return null;
+}
+
+/** "Add picture" / "Add video" / "Add document". */
+export function addHeaderFileLabel(kind: TemplateHeaderMedia): string {
+  return `Add ${headerMediaLabel(kind)}`;
+}
+
+/** How many things staff type in for this template (message, heading and link blanks). */
+export function templateBlankCount(needs: TemplateNeeds): number {
+  return needs.bodyParams + needs.headerParams + needs.urlButtons.length;
+}
+
+/** A link button's address with its blank filled, for the preview. */
+export function fillButtonUrl(url: string, value: string): string {
+  return url.replace(/\{\{\s*1\s*\}\}/g, value.trim() || "…");
+}
+
+// ── Automatic messages ───────────────────────────────────────────────────────
+
+/**
+ * Label for a message no member of staff sent. "after_hours" is the reply to
+ * customers who write when closed; anything else (e.g. the missed-call
+ * follow-up) is an automatic message. Null for messages a person sent.
+ */
+export function autoMessageLabel(auto: string | null | undefined): string | null {
+  if (!auto) return null;
+  return auto === "after_hours" ? "Automatic reply" : "Automatic message";
+}
+
+/** Help text under the number form's after-hours message, for the channels the number uses. */
+export function afterHoursHelp(channels: "voice" | "whatsapp" | "both"): string {
+  const wa = "Sent automatically on WhatsApp to a customer who writes when you're closed (once per closed period)";
+  if (channels === "whatsapp") return `${wa}.`;
+  if (channels === "voice") return "Read out to callers who ring when you're closed.";
+  return `${wa}, and read out to callers who ring when you're closed.`;
 }
 
 // ── Typing indicator ─────────────────────────────────────────────────────────

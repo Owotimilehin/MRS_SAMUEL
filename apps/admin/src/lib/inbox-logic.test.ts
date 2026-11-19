@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { templateNeeds } from "@ms/shared";
 import {
   replyState,
   textUsage,
@@ -11,6 +12,14 @@ import {
   conversationIdFromPath,
   shouldAlertForEvent,
   titleWithCount,
+  addHeaderFileLabel,
+  afterHoursHelp,
+  autoMessageLabel,
+  fillButtonUrl,
+  headerFileProblem,
+  headerFileRule,
+  templateBlankCount,
+  templateDraftProblem,
   applyEarlierPage,
   applyNewestPage,
   greetingContentType,
@@ -177,6 +186,68 @@ describe("templates", () => {
     expect(templateParamsComplete(["Ada"], 2)).toBe(false);
     expect(templateParamsComplete(["Ada", "  "], 2)).toBe(false);
     expect(templateParamsComplete(["Ada", "MS-12"], 2)).toBe(true);
+  });
+});
+
+describe("template extras", () => {
+  const imageCta = templateNeeds([
+    { type: "HEADER", format: "IMAGE" },
+    { type: "BODY", text: "Free delivery for all online orders" },
+    { type: "BUTTONS", buttons: [{ type: "URL", text: "Shop now", url: "https://www.jaspersmarket.com/" }] },
+  ]);
+  const full = templateNeeds([
+    { type: "HEADER", format: "TEXT", text: "Order {{1}}" },
+    { type: "BODY", text: "Hi {{1}}" },
+    { type: "BUTTONS", buttons: [{ type: "URL", text: "Track", url: "https://shop.example/t/{{1}}" }] },
+  ]);
+  const empty = { params: [], headerParam: "", buttonParams: {}, hasFile: false };
+
+  it("keeps Send off until the picture is added", () => {
+    expect(templateDraftProblem(imageCta, empty)).toBe("Add a picture to send this template.");
+    expect(templateDraftProblem(imageCta, { ...empty, hasFile: true })).toBeNull();
+  });
+  it("asks for each blank in turn: heading, message, link", () => {
+    expect(templateDraftProblem(full, empty)).toBe("Fill in the blank in the heading.");
+    expect(templateDraftProblem(full, { ...empty, headerParam: "A1" })).toBe("Fill in every blank in the message.");
+    expect(templateDraftProblem(full, { ...empty, headerParam: "A1", params: ["Ada"] })).toBe(
+      'Fill in the end of the link for the "Track" button.',
+    );
+    expect(templateDraftProblem(full, { headerParam: "A1", params: ["Ada"], buttonParams: { 0: "abc" }, hasFile: false })).toBeNull();
+    expect(templateBlankCount(full)).toBe(3);
+  });
+  it("never lets a template the inbox can't send through", () => {
+    const carousel = templateNeeds([{ type: "BODY", text: "x" }, { type: "CAROUSEL", cards: [] }]);
+    expect(templateDraftProblem(carousel, { ...empty, hasFile: true })).toBe("This template has a carousel, which the inbox can't send yet");
+  });
+  it("checks the file is the right kind and size", () => {
+    expect(headerFileProblem("image", { type: "image/jpeg", size: 200_000 })).toBeNull();
+    expect(headerFileProblem("image", { type: "application/pdf", size: 200_000 })).toBe("This template needs a picture (JPG or PNG, up to 5 MB).");
+    expect(headerFileProblem("image", { type: "image/png", size: 6 * 1024 * 1024 })).toBe("That file is too large. Use a picture of 5 MB or less.");
+    expect(headerFileProblem("video", { type: "video/mp4", size: 1000 })).toBeNull();
+    expect(headerFileProblem("document", { type: "image/png", size: 1000 })).toContain("needs a document");
+    expect(headerFileRule("image").accept).toBe("image/jpeg,image/png");
+    expect(addHeaderFileLabel("image")).toBe("Add picture");
+    expect(addHeaderFileLabel("video")).toBe("Add video");
+  });
+  it("shows where a link button will go", () => {
+    expect(fillButtonUrl("https://shop.example/t/{{1}}", "abc")).toBe("https://shop.example/t/abc");
+    expect(fillButtonUrl("https://shop.example/t/{{1}}", "")).toBe("https://shop.example/t/…");
+  });
+});
+
+describe("automatic messages and the after-hours help text", () => {
+  it("labels messages no person sent", () => {
+    expect(autoMessageLabel("after_hours")).toBe("Automatic reply");
+    expect(autoMessageLabel("system")).toBe("Automatic message");
+    expect(autoMessageLabel(null)).toBeNull();
+    expect(autoMessageLabel(undefined)).toBeNull();
+  });
+  it("says exactly what the after-hours message does for the number's channels", () => {
+    expect(afterHoursHelp("both")).toBe(
+      "Sent automatically on WhatsApp to a customer who writes when you're closed (once per closed period), and read out to callers who ring when you're closed.",
+    );
+    expect(afterHoursHelp("whatsapp")).toBe("Sent automatically on WhatsApp to a customer who writes when you're closed (once per closed period).");
+    expect(afterHoursHelp("voice")).toBe("Read out to callers who ring when you're closed.");
   });
 });
 

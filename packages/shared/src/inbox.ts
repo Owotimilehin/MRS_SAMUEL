@@ -252,6 +252,47 @@ export function isOpenNow(
   });
 }
 
+/** "YYYY-MM-DD" moved by a number of days. */
+function shiftDay(day: string, days: number): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * When the current closed period began: the end of the most recent open
+ * window, looking back at most `maxDaysBack` days. Null when open right now.
+ * Same rules as isOpenNow (holidays closed all day, no overnight windows).
+ * If the business was not open at all in the look-back, returns its start.
+ * Day arithmetic assumes the zone's UTC offset did not change in between
+ * (true for Africa/Lagos; elsewhere it can be an hour out across a clock change).
+ */
+export function closedSince(
+  rules: readonly HoursRule[],
+  holidays: readonly string[],
+  now: Date = new Date(),
+  timeZone = "Africa/Lagos",
+  maxDaysBack = 14,
+): Date | null {
+  if (isOpenNow(rules, holidays, now, timeZone)) return null;
+  const { date, weekday, minutes } = localParts(now, timeZone);
+  const startOfLocalDay = now.getTime() - (now.getTime() % 60_000) - minutes * 60_000;
+  for (let back = 0; back <= maxDaysBack; back++) {
+    if (holidays.includes(shiftDay(date, -back))) continue;
+    const wd = (((weekday - back) % 7) + 7) % 7;
+    let latestClose = -1;
+    for (const r of rules) {
+      if (r.weekday !== wd) continue;
+      const open = toMinutes(r.openTime);
+      const close = toMinutes(r.closeTime);
+      if (!(close > open)) continue;
+      // Today: only windows that have already ended (later ones haven't opened yet).
+      if (back === 0 && close > minutes) continue;
+      latestClose = Math.max(latestClose, close);
+    }
+    if (latestClose >= 0) return new Date(startOfLocalDay - back * 86_400_000 + latestClose * 60_000);
+  }
+  return new Date(now.getTime() - maxDaysBack * 86_400_000);
+}
+
 /** Message types staff can send inside the window. */
 export const INBOX_SEND_TYPES = ["text", "image", "document", "audio", "video"] as const;
 export type InboxSendType = (typeof INBOX_SEND_TYPES)[number];
