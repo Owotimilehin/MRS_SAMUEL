@@ -560,15 +560,16 @@ export function templateRoutes(db: DbClient) {
     const claim = await db.transaction(async (tx) => {
       const [row] = await tx.select().from(inboxTemplate).where(eq(inboxTemplate.id, id.data)).for("update");
       if (!row) throw new BusinessError("not_found", "not found", 404);
+      if (!row.draft) throw new BusinessError("validation_failed", "There is nothing to send. Make a change first.", 400);
+      // Whatever its status: a second click on "Send changes" must not reach Meta twice. A submit that
+      // finished has cleared its draft (checked above), so a recent claim with a draft still there is in flight.
       if (
-        row.status === "DRAFT" &&
         row.submittedAt &&
         Math.abs(now.getTime() - row.submittedAt.getTime()) < 60_000 &&
         !row.lastError
       ) {
         throw new BusinessError("conflict", IN_FLIGHT, 409, { reason: "in_flight" });
       }
-      if (!row.draft) throw new BusinessError("validation_failed", "There is nothing to send. Make a change first.", 400);
       if (!sameStamp(row.draftUpdatedAt, body.draft_updated_at)) {
         throw new BusinessError("conflict", CHANGED_ELSEWHERE, 409, { reason: "changed_elsewhere" });
       }
@@ -663,6 +664,18 @@ export function templateRoutes(db: DbClient) {
       return { row, draft, mode, flows, flowKeys };
     });
     const { row, draft, mode, flows } = claim;
+    /** On completion the draft is cleared only if it is still the one that was sent: one saved meanwhile is kept. */
+    const clearSentDraft = async (): Promise<void> => {
+      await db
+        .update(inboxTemplate)
+        .set({ draft: null, draftUpdatedAt: null, draftUpdatedBy: null })
+        .where(
+          and(
+            eq(inboxTemplate.id, row.id),
+            row.draftUpdatedAt ? eq(inboxTemplate.draftUpdatedAt, row.draftUpdatedAt) : isNull(inboxTemplate.draftUpdatedAt),
+          ),
+        );
+    };
 
     const fail = async (err: unknown): Promise<never> => {
       const message = err instanceof MetaApiError ? explainTemplateError(err) : err instanceof BusinessError ? err.message : "Something went wrong on our side. Check the list in a minute before trying again.";
@@ -733,12 +746,10 @@ export function templateRoutes(db: DbClient) {
             parameterFormat: "POSITIONAL",
             statusChangedAt: t,
             syncedAt: t,
-            draft: null,
-            draftUpdatedAt: null,
-            draftUpdatedBy: null,
             lastError: null,
           })
           .where(eq(inboxTemplate.id, row.id));
+        await clearSentDraft();
         if (answer.category !== draft.category) {
           notice = `WhatsApp filed this under ${templateCategoryLabel(answer.category)} instead of ${templateCategoryLabel(draft.category)}.`;
         }
@@ -756,14 +767,12 @@ export function templateRoutes(db: DbClient) {
           .update(inboxTemplate)
           .set({
             components,
-            draft: null,
-            draftUpdatedAt: null,
-            draftUpdatedBy: null,
             lastError: null,
             syncedAt: t,
             ...(row.status === "APPROVED" ? { metaEditTimes: [...kept, t.toISOString()] } : {}),
           })
           .where(eq(inboxTemplate.id, row.id));
+        await clearSentDraft();
         try {
           await applyMetaTemplate(db, row.wabaId, await getTemplate(cfg, row.metaTemplateId!), templateDeps.now());
         } catch (err) {
