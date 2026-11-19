@@ -288,7 +288,8 @@ describe("the advert form", () => {
   it("special_category must be the literal false", () => {
     expect(adDraftSpecSchema.safeParse({ ...good, special_category: true }).success).toBe(false);
     expect(adDraftSpecSchema.safeParse({ ...good, special_category: "false" }).success).toBe(false);
-    const { special_category: _omit, ...without } = good;
+    const without: Record<string, unknown> = { ...good };
+    delete without.special_category;
     expect(adDraftSpecSchema.safeParse(without).success).toBe(false);
   });
   it("refuses a fraction of a naira, a zero budget, unknown keys and an image outside our folder", () => {
@@ -302,7 +303,8 @@ describe("the advert form", () => {
     expect(draftProblems({ ...good, end_at: "2026-11-24T08:00:00.000Z" }, now)).toHaveLength(1);
     expect(draftProblems({ ...good, end_at: "2026-12-24T08:00:00.000Z" }, now)).toHaveLength(1);
     expect(draftProblems({ ...good, start_at: "2026-11-19T08:00:00.000Z", end_at: "2026-11-25T08:00:00.000Z" }, now)).toHaveLength(1);
-    const { end_at: _omit, ...noEnd } = good;
+    const noEnd: Record<string, unknown> = { ...good };
+    delete noEnd.end_at;
     expect(adDraftSpecSchema.safeParse(noEnd).success).toBe(false);
   });
   it("only WhatsApp adverts can be created until the others are checked with Meta", () => {

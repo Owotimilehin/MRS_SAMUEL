@@ -448,6 +448,13 @@ export function adCreativeText(creative: unknown): { title: string | null; body:
   return { title: str(c.title) ?? str(link?.name), body: str(c.body) ?? str(link?.message) };
 }
 
+/** A copy of `o` without the named keys (the key columns of an upsert). */
+function without<T extends object, K extends keyof T>(o: T, keys: readonly K[]): Omit<T, K> {
+  const copy = { ...o };
+  for (const k of keys) delete copy[k];
+  return copy;
+}
+
 type CacheInsert = typeof adCampaignCache.$inferInsert;
 
 function cacheRow(adAccountId: string, level: "campaign" | "adset" | "ad", o: Record<string, unknown>, now: Date): CacheInsert | null {
@@ -488,11 +495,10 @@ export async function upsertAdObjects(
     const row = cacheRow(adAccountId, level, o, now);
     if (!row) continue;
     ids.push(row.externalId);
-    const { adAccountId: _a, level: _l, externalId: _e, ...changes } = row;
     await db
       .insert(adCampaignCache)
       .values(row)
-      .onConflictDoUpdate({ target: [adCampaignCache.level, adCampaignCache.externalId], set: { adAccountId, ...changes } });
+      .onConflictDoUpdate({ target: [adCampaignCache.level, adCampaignCache.externalId], set: without(row, ["level", "externalId"]) });
   }
   return ids;
 }
@@ -599,13 +605,12 @@ export async function syncAdAccount(
       for (const r of rows) {
         const row = insightRow(link, level, r, now);
         if (!row) continue;
-        const { adAccountId: _a, level: _l, externalId: _e, day: _d, ...figures } = row;
         await db
           .insert(adInsightDaily)
           .values(row)
           .onConflictDoUpdate({
             target: [adInsightDaily.level, adInsightDaily.externalId, adInsightDaily.day],
-            set: { adAccountId: row.adAccountId, ...figures },
+            set: without(row, ["level", "externalId", "day"]),
           });
         if (level === "account") days++;
       }

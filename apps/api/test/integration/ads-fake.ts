@@ -52,7 +52,7 @@ export class FakeAds {
   events: Obj[] = [];
   headers: Record<string, string> = {};
   /** Answer a call differently (a refusal, a timeout). Return null to fall through to the normal answer. */
-  override: ((call: GraphCall) => Response | Promise<Response> | null) | null = null;
+  override: ((call: GraphCall) => Response | null | Promise<Response | null>) | null = null;
   /** After a successful write, do something to the pretend account (for example save a different budget). */
   afterWrite: ((call: GraphCall) => void) | null = null;
   private seq = 120000000000000;

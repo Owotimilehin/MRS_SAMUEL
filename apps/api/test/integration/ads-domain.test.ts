@@ -23,7 +23,7 @@ import {
   type DbClient,
 } from "@ms/db";
 import {
-  AdsManageError,
+  type AdsManageError,
   assertCanManage,
   attributeOrders,
   changeDailyBudget,

@@ -144,7 +144,7 @@ export async function scanAdTouches(db: DbClient, now: Date = new Date()): Promi
         sql`${inboxWebhookEvent.payload}::text like '%"referral"%'`,
       ),
     )
-    .orderBy(inboxWebhookEvent.receivedAt)
+    .orderBy(desc(inboxWebhookEvent.receivedAt))
     .limit(1000);
   for (const ev of events) {
     const object = (ev.payload as { object?: unknown }).object;

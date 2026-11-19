@@ -83,6 +83,7 @@ describe("/v1/ads", () => {
     });
     const text = await res.text();
     seenBodies.push(text);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- response bodies differ per route; each test asserts the shape it expects
     let json: any = null;
     try {
       json = JSON.parse(text);
@@ -579,6 +580,10 @@ describe("/v1/ads", () => {
       ["POST", `/adsets/${done.adset_external_id}/budget-preview`, { daily_budget: 3000 }],
       ["POST", `/adsets/${done.adset_external_id}/budget`, { daily_budget: 3000, typed: "9000" }],
       ["POST", "/rules", { name: "x", threshold: 1, lookback_days: 1, min_spend: 0, scope_campaign_external_id: null, is_active: true }],
+      ["PATCH", "/rules/00000000-0000-4000-8000-000000000001", { is_active: true }],
+      ["GET", "/drafts"],
+      ["GET", `/drafts/${d.id}`],
+      ["DELETE", `/drafts/${d.id}`],
     ];
     for (const [method, path, body] of tries) {
       const res = await call(owner, method, path, body);
