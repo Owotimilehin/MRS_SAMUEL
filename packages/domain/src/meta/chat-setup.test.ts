@@ -1,6 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ChatSetupConfig } from "@ms/shared";
-import { configToProfile, liveMatches, planPublish, profileToConfig, type LiveProfile } from "./chat-setup.js";
+import {
+  configToProfile,
+  deleteMessengerProfile,
+  describeChatSetupMetaError,
+  liveMatches,
+  planPublish,
+  profileToConfig,
+  readMessengerProfile,
+  setMessengerProfile,
+  type LiveProfile,
+} from "./chat-setup.js";
+import { clearPageTokenCache, type ChannelAccount } from "./accounts.js";
+import { MetaApiError } from "../inbox/meta.js";
 
 const full: ChatSetupConfig = {
   greeting: "Hello {{user_first_name}}",
@@ -203,5 +215,78 @@ describe("liveMatches", () => {
     const other = { ...full, menu: [full.menu[0]!, { type: "web_url" as const, title: "Our shop", url: "https://other.example" }] };
     expect(liveMatches(other, live, "messenger")).toBe(false);
     expect(liveMatches(empty, {}, "messenger")).toBe(true);
+  });
+});
+
+// ── The Graph calls (fetch is always stubbed; tokens are obviously fake) ─────
+
+const cfg = { token: "SYSTEM-USER-TEST", graphVersion: "v23.0" };
+const page: ChannelAccount = { id: "11111111-1111-4111-8111-111111111111", kind: "messenger", label: "Page", externalId: "100200300", pageId: "100200300", isActive: true };
+const insta: ChannelAccount = { ...page, id: "22222222-2222-4222-8222-222222222222", kind: "instagram", externalId: "17841400000000001" };
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+let fetchMock: ReturnType<typeof vi.fn>;
+let calls: { url: string; method: string; body: unknown; auth: string }[];
+beforeEach(() => {
+  clearPageTokenCache();
+  calls = [];
+  fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+    if (url.includes("fields=access_token")) return json({ access_token: "PAGE-TOKEN-TEST" });
+    calls.push({ url, method: String(init.method), body: init.body ? JSON.parse(String(init.body)) : null, auth: (init.headers as Record<string, string>).authorization! });
+    return json({ result: "success", data: [{ greeting: [{ locale: "default", text: "Hi" }], junk: 1 }] });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+});
+afterEach(() => vi.unstubAllGlobals());
+
+describe("Messenger Profile calls", () => {
+  it("readMessengerProfile: messenger asks for four fields; instagram adds platform and asks for two; returns data[0] or {}", async () => {
+    const live = await readMessengerProfile(cfg, page);
+    expect(calls[0]!.url).toContain("/me/messenger_profile?fields=get_started,greeting,ice_breakers,persistent_menu");
+    expect(calls[0]!.url).not.toContain("platform");
+    expect(calls[0]!.auth).toBe("Bearer PAGE-TOKEN-TEST");
+    expect(live).toEqual({ greeting: [{ locale: "default", text: "Hi" }] });
+
+    await readMessengerProfile(cfg, insta);
+    expect(calls[1]!.url).toContain("me/messenger_profile?fields=ice_breakers,persistent_menu&platform=instagram");
+
+    fetchMock.mockImplementation(async (url: string) => (url.includes("access_token") ? json({ access_token: "PAGE-TOKEN-TEST" }) : json({ data: [] })));
+    expect(await readMessengerProfile(cfg, page)).toEqual({});
+  });
+
+  it("setMessengerProfile and deleteMessengerProfile: instagram sends platform in the query and the body; messenger sends neither", async () => {
+    await setMessengerProfile(cfg, page, { greeting: [] });
+    await setMessengerProfile(cfg, insta, { ice_breakers: [] });
+    await deleteMessengerProfile(cfg, page, ["get_started", "persistent_menu"]);
+    await deleteMessengerProfile(cfg, insta, ["ice_breakers"]);
+    expect(calls.map((c) => [c.method, c.url.split("/v23.0/")[1], c.body])).toEqual([
+      ["POST", "me/messenger_profile", { greeting: [] }],
+      ["POST", "me/messenger_profile?platform=instagram", { ice_breakers: [], platform: "instagram" }],
+      ["DELETE", "me/messenger_profile", { fields: ["get_started", "persistent_menu"] }],
+      ["DELETE", "me/messenger_profile?platform=instagram", { fields: ["ice_breakers"], platform: "instagram" }],
+    ]);
+  });
+
+  it("an account with no Page cannot be called", async () => {
+    await expect(readMessengerProfile(cfg, { ...insta, pageId: null })).rejects.toBeInstanceOf(MetaApiError);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("describeChatSetupMetaError", () => {
+  it("describeChatSetupMetaError: plain wording for configuration, busy, rate limit, no answer and refusal", () => {
+    const d = (e: MetaApiError) => describeChatSetupMetaError(e, "Page");
+    expect(d(new MetaApiError("expired", 401, "190", false))).toMatchObject({ cls: "config", text: "The suite has lost its permission for this account. Ask the owner to check Channels." });
+    expect(d(new MetaApiError("slow", 500, "2", true))).toMatchObject({ cls: "temporary", text: "Meta is busy. Nothing was changed. Try again in a few minutes." });
+    expect(d(new MetaApiError("limit", 400, "613", true))).toMatchObject({ cls: "rate_limit", text: "Meta allows only a few set-up changes every 10 minutes. Try again shortly." });
+    expect(d(new MetaApiError("limit", 429, null, true))).toMatchObject({ cls: "rate_limit" });
+    expect(d(new MetaApiError("No answer from Meta", 0, null, true, "unknown"))).toMatchObject({ cls: "unknown", text: "No answer from Meta, so we can't tell what is live. Press Check now in a minute." });
+    expect(d(new MetaApiError("Title too long", 400, "100", false, "not_sent", "2018001"))).toEqual({
+      cls: "refusal",
+      code: "100/2018001",
+      text: "Meta refused this: Title too long (code 100/2018001).",
+    });
   });
 });
