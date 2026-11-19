@@ -484,6 +484,17 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `👉 ${SUITE_URL}/channels`,
       };
     case "inbox.meta_config":
+      // The WhatsApp profile screen (suite spec 05) raises this with area "whatsapp_profile".
+      if (p["area"] === "whatsapp_profile") {
+        return {
+          chatIds: [owner],
+          text:
+            `⚠️ *WhatsApp connection problem*\n` +
+            `Meta refused a request from the suite (code ${String(p["code"] ?? "?")}, ${String(p["area"])}). ` +
+            `The access token or its permissions need checking.\n` +
+            `👉 ${SUITE_URL}/channels`,
+        };
+      }
       return {
         chatIds: [owner],
         text:

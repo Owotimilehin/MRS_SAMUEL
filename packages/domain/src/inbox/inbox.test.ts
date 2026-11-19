@@ -6,6 +6,9 @@ import {
   renderTemplateBody,
   templateParamCount,
   graph,
+  graphRaw,
+  getNumberInfo,
+  numberMessagingLimit,
   MetaApiError,
   metaConfigFromEnv,
 } from "./meta.js";
@@ -117,6 +120,84 @@ describe("graph", () => {
     );
     await expect(graph(cfg, "GET", "x")).rejects.toThrow("Could not reach Meta");
     await expect(graph(cfg, "GET", "x", undefined, { service: "WhatsApp" })).rejects.toThrow("Could not reach WhatsApp");
+  });
+});
+
+describe("graphRaw", () => {
+  const cfg = { token: "SYSTEM-TOKEN-TEST", graphVersion: "v23.0" };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the raw body with the chosen scheme, headers and timeout, and maps errors like graph", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ h: "H1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const bytes = new Uint8Array([1, 2, 3]);
+    const out = await graphRaw<{ h: string }>(cfg, "POST", "upload:SESSION", {
+      authScheme: "OAuth",
+      headers: { file_offset: "0" },
+      body: bytes,
+      timeoutMs: 60_000,
+    });
+    expect(out).toEqual({ h: "H1" });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://graph.facebook.com/v23.0/upload:SESSION");
+    expect((init.headers as Record<string, string>).authorization).toBe("OAuth SYSTEM-TOKEN-TEST");
+    expect((init.headers as Record<string, string>).file_offset).toBe("0");
+    expect(init.body).toBe(bytes);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: { message: "Bad", code: 190 } }), { status: 401 })),
+    );
+    const err = await graphRaw(cfg, "GET", "x", {}).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(MetaApiError);
+    expect((err as MetaApiError).code).toBe("190");
+    // Bearer is the default scheme.
+    const f2 = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", f2);
+    await graphRaw(cfg, "GET", "y", {});
+    expect(((f2.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>).authorization).toBe(
+      "Bearer SYSTEM-TOKEN-TEST",
+    );
+  });
+});
+
+describe("getNumberInfo", () => {
+  const cfg = { token: "SYSTEM-TOKEN-TEST", graphVersion: "v23.0" };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("asks for the current limit field with the old one, and prefers the current value", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ status: "CONNECTED", whatsapp_business_manager_messaging_limit: "TIER_2K", messaging_limit_tier: "TIER_250" }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const info = await getNumberInfo(cfg, "1098765432");
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toContain("whatsapp_business_manager_messaging_limit");
+    expect(numberMessagingLimit(info)).toBe("TIER_2K");
+    expect(numberMessagingLimit({ messaging_limit_tier: "TIER_250" })).toBe("TIER_250");
+    expect(numberMessagingLimit({})).toBeNull();
+  });
+
+  it("falls back to the old field alone when Meta refuses the new one with code 100", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "nonexisting field", code: 100 } }), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "CONNECTED", messaging_limit_tier: "TIER_250" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const info = await getNumberInfo(cfg, "1098765432");
+    expect((fetchMock.mock.calls[1] as unknown as [string])[0]).not.toContain("whatsapp_business_manager_messaging_limit");
+    expect(numberMessagingLimit(info)).toBe("TIER_250");
+  });
+
+  it("does not hide other refusals", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { message: "token", code: 190 } }), { status: 401 })));
+    await expect(getNumberInfo(cfg, "1")).rejects.toBeInstanceOf(MetaApiError);
   });
 });
 

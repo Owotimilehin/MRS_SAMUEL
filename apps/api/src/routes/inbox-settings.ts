@@ -15,7 +15,7 @@ import {
   inboxUserNumberAccess,
   type DbClient,
 } from "@ms/db";
-import { getNumberInfo, metaConfigFromEnv, registerNumber, unparkEventsForNumber, MetaApiError } from "@ms/domain";
+import { getNumberInfo, numberMessagingLimit, metaConfigFromEnv, registerNumber, unparkEventsForNumber, MetaApiError } from "@ms/domain";
 import { toE164 } from "@ms/shared";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
@@ -184,7 +184,7 @@ export function inboxSettingsRoutes(db: DbClient) {
       .set({
         waStatus: info.status ?? num.waStatus,
         qualityRating: info.quality_rating ?? num.qualityRating,
-        messagingLimit: info.messaging_limit_tier ?? num.messagingLimit,
+        messagingLimit: numberMessagingLimit(info) ?? num.messagingLimit,
         updatedAt: new Date(),
       })
       .where(eq(inboxPhoneNumber.id, id))

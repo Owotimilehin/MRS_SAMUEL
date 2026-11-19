@@ -81,14 +81,39 @@ export interface GraphOptions {
 }
 
 /**
- * One Graph API call. Throws MetaApiError with Meta's code and subcode on a
- * refusal, and a delivery-"unknown" error when no answer came back.
+ * One Graph API call with a JSON body. Throws MetaApiError with Meta's code and
+ * subcode on a refusal, and a delivery-"unknown" error when no answer came back.
  */
 export async function graph<T>(
   cfg: MetaConfig,
   method: "GET" | "POST" | "DELETE",
   path: string,
   body?: unknown,
+  opts: GraphOptions = {},
+): Promise<T> {
+  return graphRaw<T>(
+    cfg,
+    method,
+    path,
+    {
+      ...(body ? { headers: { "content-type": "application/json" } } : {}),
+      body: body ? JSON.stringify(body) : null,
+    },
+    opts,
+  );
+}
+
+/**
+ * Like graph(), for calls that are not JSON-in (a file upload, the Resumable Upload
+ * API). Same URL, same error mapping (MetaApiError). `authScheme` is "Bearer" unless
+ * the call needs "OAuth" (the upload session). `opts` carries the same per-call
+ * token, onResponse and service as graph().
+ */
+export async function graphRaw<T>(
+  cfg: MetaConfig,
+  method: "GET" | "POST" | "DELETE",
+  path: string,
+  init: { headers?: Record<string, string>; body?: BodyInit | null; authScheme?: "Bearer" | "OAuth"; timeoutMs?: number },
   opts: GraphOptions = {},
 ): Promise<T> {
   const service = opts.service ?? "Meta";
@@ -100,11 +125,11 @@ export async function graph<T>(
     res = await fetch(url, {
       method,
       headers: {
-        authorization: `Bearer ${opts.token ?? cfg.token}`,
-        ...(body ? { "content-type": "application/json" } : {}),
+        authorization: `${init.authScheme ?? "Bearer"} ${opts.token ?? cfg.token}`,
+        ...(init.headers ?? {}),
       },
-      body: body ? JSON.stringify(body) : null,
-      signal: AbortSignal.timeout(15_000),
+      body: init.body ?? null,
+      signal: AbortSignal.timeout(init.timeoutMs ?? 15_000),
     });
     opts.onResponse?.(res);
     text = await res.text();
@@ -273,17 +298,42 @@ export async function registerNumber(cfg: MetaConfig, phoneNumberId: string, pin
   await graph(cfg, "POST", `${phoneNumberId}/register`, { messaging_product: "whatsapp", pin }, WA);
 }
 
-export async function getNumberInfo(
-  cfg: MetaConfig,
-  phoneNumberId: string,
-): Promise<{ display_phone_number?: string; verified_name?: string; quality_rating?: string; status?: string; messaging_limit_tier?: string }> {
-  return graph(
-    cfg,
-    "GET",
-    `${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,status,messaging_limit_tier`,
-    undefined,
-    WA,
-  );
+export interface NumberInfo {
+  display_phone_number?: string;
+  verified_name?: string;
+  quality_rating?: string;
+  status?: string;
+  /** The current field (suite spec 05, 14.1): the limit shared by the whole business. */
+  whatsapp_business_manager_messaging_limit?: string;
+  /** Deprecated by Meta; still read as a fallback. */
+  messaging_limit_tier?: string;
+}
+
+const NUMBER_FIELDS = "display_phone_number,verified_name,quality_rating,status";
+
+/**
+ * Status, quality and daily limit of a number. Asks for the current limit field
+ * together with the deprecated one; if Meta refuses the field list (code 100, an
+ * unknown field) it asks again with the old field only, so nothing breaks.
+ */
+export async function getNumberInfo(cfg: MetaConfig, phoneNumberId: string): Promise<NumberInfo> {
+  try {
+    return await graph<NumberInfo>(
+      cfg,
+      "GET",
+      `${phoneNumberId}?fields=${NUMBER_FIELDS},whatsapp_business_manager_messaging_limit,messaging_limit_tier`,
+      undefined,
+      WA,
+    );
+  } catch (err) {
+    if (!(err instanceof MetaApiError) || err.code !== "100") throw err;
+    return graph<NumberInfo>(cfg, "GET", `${phoneNumberId}?fields=${NUMBER_FIELDS},messaging_limit_tier`, undefined, WA);
+  }
+}
+
+/** The daily limit to store: the current field, else the deprecated one, else null. */
+export function numberMessagingLimit(info: NumberInfo): string | null {
+  return info.whatsapp_business_manager_messaging_limit ?? info.messaging_limit_tier ?? null;
 }
 
 /** Body text of a template with {{n}} filled, for showing in the timeline. */

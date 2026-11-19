@@ -53,6 +53,7 @@ import { inboxReportRoutes } from "./routes/inbox-reports.js";
 import { channelRoutes } from "./routes/channels.js";
 import { channelChatSetupRoutes } from "./routes/channel-chat-setup.js";
 import { channelPageRoutes } from "./routes/channel-page-details.js";
+import { whatsappProfileRoutes } from "./routes/whatsapp-profile.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
@@ -139,6 +140,7 @@ export function buildApp(): Hono {
   app.route("/v1/channels/:accountId/chat-setup", channelChatSetupRoutes(db));
   app.route("/v1/channels/:accountId/page", channelPageRoutes(db));
   app.route("/v1/channels", channelRoutes(db));
+  app.route("/v1/whatsapp-profile", whatsappProfileRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));

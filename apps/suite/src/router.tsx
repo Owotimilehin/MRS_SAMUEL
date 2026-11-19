@@ -21,14 +21,14 @@ import { ADMIN_URL } from "./suite-host.js";
 import { firstAllowedPage } from "./nav.js";
 
 function lazyNamed<P = Record<string, never>>(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  loader: () => Promise<Record<string, ComponentType<any>>>,
+  // A screen file may also export plain helpers (the WhatsApp profile's wording functions), so any module will do.
+  loader: () => Promise<object>,
   name: string,
 ): ComponentType<P> {
   return lazy(() =>
     loader().then((m) => ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      default: m[name] as ComponentType<any>,
+      default: (m as Record<string, ComponentType<any>>)[name] as ComponentType<any>,
     })),
   ) as unknown as ComponentType<P>;
 }
@@ -39,6 +39,10 @@ const InboxReportsPage = lazyNamed(() => import("@admin/routes/inbox/reports.js"
 const ChannelsPage = lazyNamed(() => import("./features/channels/ChannelsPage.js"), "ChannelsPage");
 const ChatSetupPage = lazyNamed<{ accountId: string }>(() => import("./features/chat-setup/ChatSetupPage.js"), "ChatSetupPage");
 const PageDetailsPage = lazyNamed<{ accountId: string }>(() => import("./features/page-details/PageDetailsPage.js"), "PageDetailsPage");
+const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
+  () => import("./features/channels/WhatsAppProfilePage.js"),
+  "WhatsAppProfilePage",
+);
 
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
@@ -161,6 +165,16 @@ const pageDetailsRoute = createRoute({
   },
 });
 
+// $accountId is the phone line's ID (the same ID Channels lists).
+const whatsAppProfileRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/channels/$accountId/whatsapp-profile",
+  component: () => {
+    const params = useParams({ from: "/channels/$accountId/whatsapp-profile" });
+    return page(<WhatsAppProfilePage accountId={params.accountId} />, "channels.manage");
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -171,6 +185,7 @@ const routeTree = rootRoute.addChildren([
   channelsRoute,
   chatSetupRoute,
   pageDetailsRoute,
+  whatsAppProfileRoute,
 ]);
 
 export const router = createRouter({
