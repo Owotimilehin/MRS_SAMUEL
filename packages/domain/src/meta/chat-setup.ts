@@ -9,7 +9,7 @@
  * The pure functions come first (Meta's shape <-> ours, the plan of calls); the
  * Graph calls and publishChatSetup follow.
  */
-import { and, asc, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
 import { channelChatSetup, inboxPhoneNumber, outboxEvent, type DbClient } from "@ms/db";
 import {
   CHAT_SETUP_LIMITS,
@@ -325,19 +325,21 @@ export const NOT_SHOWING_TEXT = "Meta accepted the change but is not showing it 
  * Instagram together) sit in the last 10 minutes, the time the next one is allowed; else null.
  */
 export async function nextPublishAllowedAt(db: DbClient, pageId: string, now = new Date()): Promise<Date | null> {
+  const since = new Date(now.getTime() - WINDOW_MS);
+  // pushed_at is the latest try, so a version with any try in the window has pushed_at in it too.
   const rows = await db
-    .select({ pushedAt: channelChatSetup.pushedAt })
+    .select({ pushedAt: channelChatSetup.pushedAt, pushTries: channelChatSetup.pushTries })
     .from(channelChatSetup)
     .innerJoin(inboxPhoneNumber, eq(inboxPhoneNumber.id, channelChatSetup.accountId))
-    .where(
-      and(
-        eq(inboxPhoneNumber.pageExternalId, pageId),
-        gt(channelChatSetup.pushedAt, new Date(now.getTime() - WINDOW_MS)),
-      ),
-    )
-    .orderBy(asc(channelChatSetup.pushedAt));
-  if (rows.length < MAX_PUBLISHES_PER_WINDOW) return null;
-  const leaves = rows[rows.length - MAX_PUBLISHES_PER_WINDOW]!.pushedAt!;
+    .where(and(eq(inboxPhoneNumber.pageExternalId, pageId), gt(channelChatSetup.pushedAt, since)));
+  // Every try counts, a "Try again" of the same version included (M6).
+  const tries = rows
+    .flatMap((r) => (r.pushTries && r.pushTries.length > 0 ? r.pushTries : [r.pushedAt!]))
+    .map((t) => new Date(t))
+    .filter((t) => t.getTime() > since.getTime())
+    .sort((a, b) => a.getTime() - b.getTime());
+  if (tries.length < MAX_PUBLISHES_PER_WINDOW) return null;
+  const leaves = tries[tries.length - MAX_PUBLISHES_PER_WINDOW]!;
   return new Date(leaves.getTime() + WINDOW_MS);
 }
 
@@ -417,6 +419,7 @@ export async function publishChatSetup(
       status: "pushing",
       pushedByUserId: input.userId,
       pushedAt: new Date(),
+      pushTries: sql`array_append(coalesce(${channelChatSetup.pushTries}, '{}'::timestamptz[]), now())`,
       steps: [],
       errorCode: null,
       errorMessage: null,

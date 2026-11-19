@@ -73,6 +73,23 @@ const store = new Map<string, MetaTemplate>();
 let calls: GraphCall[] = [];
 let createMode: CreateMode = "ok";
 let seqId = 0;
+/** When set, the next create or edit that reaches Meta waits on it before Meta answers (one use). */
+let holdNextWrite: { arrived: () => void; release: Promise<void> } | null = null;
+async function maybeHold(): Promise<void> {
+  const hold = holdNextWrite;
+  if (!hold) return;
+  holdNextWrite = null;
+  hold.arrived();
+  await hold.release;
+}
+/** Holds the next create or edit at Meta. `arrived` resolves when the call is there; `release()` lets Meta answer. */
+function holdMetaWrite(): { arrived: Promise<void>; release: () => void } {
+  let arrivedFn!: () => void;
+  let release!: () => void;
+  const arrived = new Promise<void>((r) => (arrivedFn = r));
+  holdNextWrite = { arrived: arrivedFn, release: new Promise<void>((r) => (release = r)) };
+  return { arrived, release };
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -114,6 +131,7 @@ function installGraphStub(): void {
         const category = createMode === "marketing" ? "MARKETING" : String(b.category);
         store.set(id, { id, name: String(b.name), language: String(b.language), status: "PENDING", category, components: b.components as unknown[] });
         if (createMode === "timeout-created") throw new TypeError("fetch failed");
+        await maybeHold();
         return json({ id, status: "PENDING", category });
       }
     }
@@ -122,6 +140,7 @@ function installGraphStub(): void {
       if (method === "GET") return json(held);
       if (method === "POST") {
         held.components = (body!.components as unknown[]) ?? held.components;
+        await maybeHold();
         return json({ success: true });
       }
     }
@@ -553,6 +572,58 @@ describe("template authoring routes", () => {
     expect(res.status).toBe(409);
     expect((await err(res)).message).toBe("This template is already being sent. Wait a moment.");
     expect(calls).toHaveLength(0);
+  });
+
+  it("M4: a second submit of changes to an approved template, while the first is still being sent, is refused", async () => {
+    const t = await seedMeta({ n: 54 });
+    const stamp = (await data(await api("PUT", `/${t.id}/draft`, { draft: draftFor(55), draft_updated_at: null }))).draft_updated_at!;
+    const hold = holdMetaWrite();
+    try {
+      const first = api("POST", `/${t.id}/submit`, { draft_updated_at: stamp, accept_warnings: false });
+      await hold.arrived; // the first edit is at Meta and has not been answered
+      const second = await api("POST", `/${t.id}/submit`, { draft_updated_at: stamp, accept_warnings: false });
+      expect(second.status).toBe(409);
+      expect(await err(second)).toMatchObject({ message: "This template is already being sent. Wait a moment.", details: { reason: "in_flight" } });
+      hold.release();
+      expect((await first).status).toBe(200);
+    } finally {
+      hold.release();
+      holdNextWrite = null;
+    }
+    expect(metaPosts("T954")).toHaveLength(1);
+    const row = await reload(t.id);
+    expect(row.lastError).toBeNull();
+    expect(row.metaEditTimes).toHaveLength(1);
+  });
+
+  it("M12: a draft saved while a submit is in flight is kept when the submit completes", async () => {
+    const d = await newDraft(nextName("sub_keep"), draftFor(56));
+    const hold = holdMetaWrite();
+    let newerStamp: string | null = null;
+    try {
+      const sending = api("POST", `/${d.id}/submit`, { draft_updated_at: d.draft_updated_at, accept_warnings: false });
+      await hold.arrived;
+      setClock("2026-11-20T09:00:05.000Z");
+      const saved = await api("PUT", `/${d.id}/draft`, { draft: draftFor(57), draft_updated_at: d.draft_updated_at });
+      expect(saved.status).toBe(200);
+      newerStamp = (await data(saved)).draft_updated_at;
+      hold.release();
+      expect((await sending).status).toBe(200);
+    } finally {
+      hold.release();
+      holdNextWrite = null;
+    }
+    const row = await reload(d.id);
+    // What was sent is what Meta holds; the newer text is still there as unsent changes.
+    expect(row.status).toBe("PENDING");
+    expect(row.components).toEqual(componentsFor(56));
+    expect(row.draft).toMatchObject({ body: { text: draftFor(57).body.text } });
+    expect(row.draftUpdatedAt?.toISOString()).toBe(newerStamp);
+
+    // The usual case is unchanged: nothing saved meanwhile, so the draft is cleared.
+    const plain = await newDraft(nextName("sub_clear"), draftFor(58));
+    expect((await api("POST", `/${plain.id}/submit`, { draft_updated_at: plain.draft_updated_at, accept_warnings: false })).status).toBe(200);
+    expect(await reload(plain.id)).toMatchObject({ draft: null, draftUpdatedAt: null });
   });
 
   it("submit edit of an approved template records the edit and refuses a second one the same day", async () => {

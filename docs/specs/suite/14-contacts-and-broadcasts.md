@@ -4,7 +4,7 @@ Read `00-foundation.md` first (section 9 overrides the rest). Size L, suggested 
 
 | | Phase A: Contacts | Phase B: Broadcasts on WhatsApp |
 |---|---|---|
-| Migration | `0082_contacts.sql` (journal `when` 1787300000000) | `0083_broadcasts.sql` (journal `when` 1787400000000) |
+| Migration | `0082_contacts.sql` (journal `when` 1787300000000) | `0086_broadcasts.sql` (journal `when` 1787700000000) |
 | Table prefix | `contact_` | `broadcast_` |
 | Permissions | `contacts.view`, `contacts.manage` | `broadcasts.send` (owner only) |
 | Needs Meta | No | Yes: spec 06 templates, and Meta unblocking the account |
@@ -305,7 +305,7 @@ Journal entry: `{ "idx": <last idx on master + 1; 74 on this branch today>, "ver
 - `contact_origin`: where a contact created here came from. `customer.source` cannot gain values (ruling 9.2.7), so a hand-added or imported contact gets the `customer_source` the person chose and this row records the truth.
 - `contact_import_row.raw` is the row as uploaded (`{ "<header>": "<cell>" }`). `filled` lists the blank fields this import filled on a matched contact, with the values, so the change can be undone by hand.
 
-### 4.3 Migration `packages/db/migrations/0083_broadcasts.sql` (Phase B)
+### 4.3 Migration `packages/db/migrations/0086_broadcasts.sql` (Phase B)
 
 ```sql
 -- Broadcasts (suite spec 14, Phase B). Additive only: new broadcast_* tables. No existing table is altered.
@@ -398,7 +398,7 @@ CREATE TABLE IF NOT EXISTS "broadcast_event" (
 CREATE INDEX IF NOT EXISTS "idx_broadcast_event" ON "broadcast_event" ("broadcast_id","at");
 ```
 
-Journal entry: `{ "idx": <last + 1>, "version": "7", "when": 1787400000000, "tag": "0083_broadcasts", "breakpoints": true }`.
+Journal entry: `{ "idx": <last + 1>, "version": "7", "when": 1787700000000, "tag": "0086_broadcasts", "breakpoints": true }`.
 
 **Column notes**
 
@@ -1233,7 +1233,7 @@ No test calls the real Meta API (rule 3). Integration tests use `setupTestDb`, `
 
 **Phase B**
 
-- [ ] Migration 0083, journal entry and schema are in.
+- [ ] Migration 0086, journal entry and schema are in.
 - [ ] `broadcasts.send` exists and is the owner's only.
 - [ ] The owner switch is off by default and nothing reaches a customer while it is off (test).
 - [ ] A broadcast cannot be confirmed without a test send and the typed count.
@@ -1276,7 +1276,7 @@ No test calls the real Meta API (rule 3). Integration tests use `setupTestDb`, `
 
 **Phase B** (a separate pull request, after Phase A is merged)
 
-15. Permission `broadcasts.send`; migration 0083, journal, schema.
+15. Permission `broadcasts.send`; migration 0086, journal, schema.
 16. `packages/shared/src/broadcasts.ts` with unit tests.
 17. `meta.ts` changes (`headerMedia.id`, `sendMessage` options, callback data) and `send.ts` (`auto: "broadcast"`); unit tests; run every existing send test unchanged.
 18. `audience.ts` (`buildAudience`, `dailyAllowance`); `meta/broadcasts.ts` (`classifyBroadcastError`, `uploadWaMedia`, `getMmStatus`); tests.
@@ -1302,7 +1302,7 @@ No test calls the real Meta API (rule 3). Integration tests use `setupTestDb`, `
 | Q-A6 | Search scans `contact_summary`. Add the `pg_trgm` extension for an indexed search? | Not now: extensions need database rights the migrations have not used before. Revisit above 100,000 contacts |
 | Q-A7 | How long are contact details kept? | No automatic deletion in this version; erase on request. The owner should set a period with legal advice **[legal check]** |
 | Q-A8 | `customer_source` has no value for "imported" or "added by hand", and ruling 9.2.7 forbids adding one | The person chooses one of the five shop values; `contact_origin` records the truth and the "Came from" filter reads both |
-| Q-A9 | The foundation's D9 menu table and section 6 reservations do not list spec 14 | This spec adds the "Customers" menu group, migrations 0082 and 0083 and the prefixes `contact_` and `broadcast_`, as instructed. The foundation should be updated in the same pull request that merges this spec |
+| Q-A9 | The foundation's D9 menu table and section 6 reservations do not list spec 14 | This spec adds the "Customers" menu group, migrations 0082 and 0086 and the prefixes `contact_` and `broadcast_`, as instructed. The foundation should be updated in the same pull request that merges this spec |
 
 **Phase B: the owner must decide these before broadcasts are used**
 

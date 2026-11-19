@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { inboxPhoneNumber, inboxTemplate, inboxWebhookEvent, outboxEvent } from "@ms/db";
+import { syncTemplatesForWaba } from "@ms/domain";
 import { setupTestDb } from "./helpers.js";
 
 /**
@@ -19,6 +20,8 @@ const T0 = 1_790_000_000; // unix seconds; the events' own time
 
 const graphCalls: { url: string; method: string }[] = [];
 let metaTemplates: Record<string, unknown>[] = [];
+/** When set, runs after Meta has built its list answer and before we receive it. */
+let afterList: (() => Promise<void>) | null = null;
 function installGraphStub(): void {
   const real = globalThis.fetch;
   globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
@@ -26,7 +29,9 @@ function installGraphStub(): void {
     if (url.startsWith("https://graph.facebook.com/")) {
       graphCalls.push({ url, method: init?.method ?? "GET" });
       if (url.includes(`/${WABA}/message_templates`)) {
-        return new Response(JSON.stringify({ data: metaTemplates }), { status: 200 });
+        const answer = JSON.stringify({ data: metaTemplates });
+        if (afterList) await afterList();
+        return new Response(answer, { status: 200 });
       }
       return new Response(JSON.stringify({ error: { message: "unexpected call", code: 100 } }), { status: 400 });
     }
@@ -175,6 +180,40 @@ describe("template webhooks", () => {
     expect(after.status).toBe("APPROVED");
     expect(after.rejectedReason).toBeNull();
     expect(await alerts(t.id)).toEqual([]);
+  });
+
+  it("M11: a status event in the same second as our own last change is not dropped as stale", async () => {
+    // Our clock is in milliseconds, Meta's event time in whole seconds: 400 ms into the same second is not "newer".
+    const t = await addTemplate({ status: "PENDING", statusChangedAt: new Date(T0 * 1000 + 400) });
+    await status(t, "APPROVED", { reason: "NONE" });
+    expect((await reload(t.id)).status).toBe("APPROVED");
+    // A change a full second later still wins over the event.
+    const later = await addTemplate({ status: "PAUSED", statusChangedAt: new Date((T0 + 1) * 1000) });
+    await status(later, "APPROVED", { reason: "NONE" });
+    expect((await reload(later.id)).status).toBe("PAUSED");
+  });
+
+  it("M3: the sync does not put back a status that changed after its list was fetched", async () => {
+    const now = new Date((T0 + 500) * 1000);
+    const cfg = { token: "itest-token", graphVersion: "v23.0" };
+    const raced = await addTemplate({ status: "APPROVED", statusChangedAt: new Date((T0 - 100) * 1000) });
+    const quiet = await addTemplate({ status: "PENDING", statusChangedAt: new Date((T0 - 100) * 1000) });
+    const asMeta = (t: typeof raced) => ({ id: t.metaTemplateId, name: t.name, language: t.language, status: "APPROVED", category: "UTILITY", components: t.components });
+    metaTemplates = [asMeta(raced), asMeta(quiet)];
+    // Meta's list still says APPROVED; a moment later the template is paused (a webhook, or staff in the suite).
+    afterList = async () => {
+      await db.update(inboxTemplate).set({ status: "PAUSED", statusChangedAt: new Date(now.getTime() + 2_000) }).where(eq(inboxTemplate.id, raced.id));
+    };
+    try {
+      await syncTemplatesForWaba(db, cfg, WABA, now);
+    } finally {
+      afterList = null;
+    }
+    const after = await reload(raced.id);
+    expect(after.status).toBe("PAUSED");
+    expect(after.statusChangedAt?.getTime()).toBe(now.getTime() + 2_000);
+    // A row nobody touched still takes Meta's status.
+    expect(await reload(quiet.id)).toMatchObject({ status: "APPROVED", statusChangedAt: now });
   });
 
   it("quality update to RED sets quality and raises one alert, not two", async () => {

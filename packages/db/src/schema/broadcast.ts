@@ -6,7 +6,7 @@ import { contactList } from "./contact.js";
 import { inboxMessage, inboxPhoneNumber, inboxTemplate } from "./inbox.js";
 
 /**
- * Broadcasts on WhatsApp (suite spec 14, Phase B; migration 0083). Everything
+ * Broadcasts on WhatsApp (suite spec 14, Phase B; migration 0086). Everything
  * lives under the `broadcast_` prefix. One approved template sent to a list.
  *
  * The CHECK constraints (status, route, recipient state) live in the SQL

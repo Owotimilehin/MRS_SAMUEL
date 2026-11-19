@@ -46,6 +46,8 @@ let subscribedApps: { id: string; subscribed_fields: string[] }[] = [];
 /** When set, POST {page}/subscribed_apps answers with this error. */
 let subscribeError: { status: number; error: Record<string, unknown> } | null = null;
 let midCounter = 0;
+/** When set, runs when Meta receives a send, before it answers; throwing makes the call fail with no answer. */
+let onSend: ((body: Record<string, unknown>) => Promise<void>) | null = null;
 
 function installGraphStub(): void {
   const real = globalThis.fetch;
@@ -72,6 +74,7 @@ function installGraphStub(): void {
     }
     if (path.endsWith("/messages") && method === "POST") {
       if (body?.sender_action) return ok({ recipient_id: (body.recipient as { id: string }).id });
+      if (onSend) await onSend(body!);
       const err = sendErrors.shift();
       if (err) return fail(err);
       return ok({ recipient_id: (body?.recipient as { id: string }).id, message_id: `m_out_${++midCounter}` });
@@ -700,6 +703,29 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     } finally {
       META_SEND_RETRY_DELAYS_MS.splice(0, META_SEND_RETRY_DELAYS_MS.length, ...saved);
       sendErrors.length = 0;
+    }
+  });
+
+  it("M1: an echo that arrives before the send's answer times out keeps the message sent", async () => {
+    const from = "24000000000001651";
+    const conv = await threadFor(from);
+    // Meta delivered the message and sent its echo, but the HTTP answer never came back.
+    onSend = async (body) => {
+      const metadata = (body.message as { metadata: string }).metadata;
+      const echo = { sender: { id: PAGE_ID }, recipient: { id: from }, timestamp: Date.now(), message: { mid: "m_echo_before_timeout", is_echo: true, app_id: Number(OUR_APP_ID), metadata, text: "Are you there?" } };
+      expect((await postWebhook(pageEvent(echo))).status).toBe(200);
+      throw new Error("The operation was aborted due to timeout");
+    };
+    try {
+      const res = await reply(conv.id, { type: "text", body: "Are you there?" });
+      const { data } = (await res.json()) as { data: { id: string; status: string } };
+      expect(sendsTo(from)).toHaveLength(1);
+      const row = await reload(data.id);
+      expect(row).toMatchObject({ status: "sent", waMessageId: "m_echo_before_timeout", errorCode: null, errorMessage: null });
+      expect(data.status).toBe("sent");
+      expect(res.status).toBe(201);
+    } finally {
+      onSend = null;
     }
   });
 

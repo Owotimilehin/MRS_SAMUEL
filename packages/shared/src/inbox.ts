@@ -50,7 +50,9 @@ export function channelForKind(kind: ChannelKind): IdentityChannel {
   return kind === "phone" ? "whatsapp" : kind;
 }
 
-const BSUID_RE = /^[A-Z]{2}\.(ENT\.)?[A-Za-z0-9]{1,128}$/;
+// Meta does not promise the shape of a user ID, so nothing stricter than this: not empty, no spaces,
+// not all digits (that is a phone's wa_id), and no longer than 256 characters.
+const BSUID_RE = /^(?!\d+$)\S{1,256}$/;
 
 /**
  * A WhatsApp business-scoped user ID ("US.1349…" or "US.ENT.1181…"), as

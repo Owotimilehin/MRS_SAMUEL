@@ -220,6 +220,8 @@ export interface IngestResult {
   flowsUpdated: number;
   /** Form events that are only worth a log line (CLIENT_ERROR_RATE). */
   flowNotices: string[];
+  /** Customer messages with no usable sender (no phone, no user ID): the event is left unprocessed, never dropped. */
+  noSender: number;
 }
 
 /**
@@ -228,7 +230,7 @@ export interface IngestResult {
  * thrown) so other entries in the same payload still process.
  */
 export async function ingestWhatsAppPayload(db: DbExecutor, payload: WaWebhookPayload): Promise<IngestResult> {
-  const result: IngestResult = { messagesCreated: 0, statusesApplied: 0, unknownNumbers: [], templatesUpdated: 0, templateResyncWabas: [], flowsUpdated: 0, flowNotices: [] };
+  const result: IngestResult = { messagesCreated: 0, statusesApplied: 0, unknownNumbers: [], templatesUpdated: 0, templateResyncWabas: [], flowsUpdated: 0, flowNotices: [], noSender: 0 };
 
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
@@ -295,7 +297,9 @@ export async function ingestWhatsAppPayload(db: DbExecutor, payload: WaWebhookPa
         (m.from ? map.get(m.from) : undefined) ?? (m.from_user_id ? map.get(m.from_user_id) : undefined) ?? null;
 
       for (const m of value.messages ?? []) {
-        if (await ingestMessage(db, number.id, m, lookup(names, m), lookup(usernames, m))) result.messagesCreated++;
+        const made = await ingestMessage(db, number.id, m, lookup(names, m), lookup(usernames, m));
+        if (made === "no_sender") result.noSender++;
+        else if (made) result.messagesCreated++;
       }
       for (const s of value.statuses ?? []) {
         if (await applyStatus(db, s)) result.statusesApplied++;
@@ -311,7 +315,7 @@ async function ingestMessage(
   m: WaInboundMessage,
   profileName: string | null,
   username: string | null,
-): Promise<boolean> {
+): Promise<boolean | "no_sender"> {
   // Cheap duplicate check before creating any customer/conversation rows.
   const [dupe] = await db.select({ id: inboxMessage.id }).from(inboxMessage).where(eq(inboxMessage.waMessageId, m.id));
   if (dupe) return false;
@@ -320,7 +324,7 @@ async function ingestMessage(
   // only a business-scoped user ID (rule R14). Neither → nothing identifies them.
   const phone = m.from ? toE164(m.from) : null;
   const userId = m.from_user_id && isBsuid(m.from_user_id) ? m.from_user_id : null;
-  if (!phone && !userId) return false;
+  if (!phone && !userId) return "no_sender";
 
   if (m.type === "system") await applySystemChange(db, m);
 
@@ -512,6 +516,14 @@ export async function finishWebhookEvent(db: DbExecutor, eventId: string, result
     await db
       .update(inboxWebhookEvent)
       .set({ attempts: PARKED_ATTEMPTS, lastError: `unknown_number:${result.unknownNumbers.join(",")}` })
+      .where(eq(inboxWebhookEvent.id, eventId));
+    return;
+  }
+  if (result.noSender > 0) {
+    // Not processed and not dropped: the worker retries up to its limit, then alerts the owner.
+    await db
+      .update(inboxWebhookEvent)
+      .set({ attempts: sql`${inboxWebhookEvent.attempts} + 1`, lastError: "no_sender" })
       .where(eq(inboxWebhookEvent.id, eventId));
     return;
   }

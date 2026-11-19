@@ -663,7 +663,8 @@ async function sendMetaFromConversation(
       ? classifyMessagingError(e, name, ctx.label)
       : { cls: "refusal" as const, staffText: `${name} refused this message.`, retryable: false };
     const code = metaErrorCode(e);
-    [final] = (await db
+    // The echo may have confirmed this send while its answer was lost: only a row with no Meta id is failed.
+    const [failedRow] = (await db
       .update(inboxMessage)
       .set({
         status: "failed",
@@ -677,8 +678,9 @@ async function sendMetaFromConversation(
           ...(cls.cls === "config" ? { config: true, account: ctx.lineExternalId } : {}),
         },
       })
-      .where(eq(inboxMessage.id, queued!.id))
-      .returning()) as [SentMessage];
+      .where(and(eq(inboxMessage.id, queued!.id), isNull(inboxMessage.waMessageId)))
+      .returning()) as SentMessage[];
+    final = failedRow ?? (await db.select().from(inboxMessage).where(eq(inboxMessage.id, queued!.id)))[0]!;
     if (cls.cls === "config") {
       // Rule R20: mark the line; the caller raises the owner alert (payload.config).
       await db
