@@ -13,3 +13,4 @@ export * from "./meta/upload.js";
 export * from "./meta/whatsapp-profile.js";
 export * from "./meta/catalogue.js";
 export * from "./meta/catalogue-chat.js";
+export * from "./meta/ads.js";
