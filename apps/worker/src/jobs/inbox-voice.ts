@@ -233,7 +233,8 @@ export async function sendMissedCallFollowups(
       customerName: customer.name,
     })
     .from(inboxCall)
-    .innerJoin(inboxPhoneNumber, eq(inboxPhoneNumber.id, inboxCall.phoneNumberId))
+    // Only phone lines take calls; a Page or Instagram account never sends a follow-up.
+    .innerJoin(inboxPhoneNumber, and(eq(inboxPhoneNumber.id, inboxCall.phoneNumberId), eq(inboxPhoneNumber.kind, "phone")))
     .innerJoin(customer, eq(customer.id, inboxCall.customerId))
     .where(
       and(
@@ -290,8 +291,15 @@ export async function sendMissedCallFollowups(
       if (row.channels !== "voice" && row.waPhoneNumberId) {
         conversationId = call.conversationId;
       } else if (row.fallbackId) {
-        const { conversation } = await findOrOpenConversation(db, call.customerId, row.fallbackId, now);
-        conversationId = conversation.id;
+        // The fallback must be a WhatsApp phone line too, never a Page.
+        const [fallback] = await db
+          .select({ id: inboxPhoneNumber.id })
+          .from(inboxPhoneNumber)
+          .where(and(eq(inboxPhoneNumber.id, row.fallbackId), eq(inboxPhoneNumber.kind, "phone")));
+        if (fallback) {
+          const { conversation } = await findOrOpenConversation(db, call.customerId, fallback.id, now);
+          conversationId = conversation.id;
+        }
       }
       if (!conversationId) {
         logger.info({ callId: call.id }, "missed-call follow-up skipped: no WhatsApp number to send from");
