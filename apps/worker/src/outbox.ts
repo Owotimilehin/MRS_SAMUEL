@@ -497,6 +497,14 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         chatIds: [owner],
         text: `⚠️ *Meta sent a policy warning for the Page*\nOpen Meta Business Suite → Page quality to read it.`,
       };
+    case "channels.chat_setup_config":
+      return {
+        chatIds: [owner],
+        text:
+          `Chat set-up: Meta refused a change for ${String(p["label"] ?? "a channel")}: ${String(p["message"] ?? "no reason given")} ` +
+          `(code ${String(p["code"] ?? "unknown")}). Open Channels in the suite to check the connection.\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
     case "inbox.webhook_dead":
       return {
         chatIds: [owner],

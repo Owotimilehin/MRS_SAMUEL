@@ -9,7 +9,7 @@
  * The pure functions come first (Meta's shape <-> ours, the plan of calls); the
  * Graph calls and publishChatSetup follow.
  */
-import { and, asc, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
 import { channelChatSetup, inboxPhoneNumber, outboxEvent, type DbClient } from "@ms/db";
 import {
   CHAT_SETUP_LIMITS,
@@ -573,7 +573,7 @@ export async function repairStuckPublish(db: DbClient, accountId: string, now = 
       and(
         eq(channelChatSetup.accountId, accountId),
         eq(channelChatSetup.status, "pushing"),
-        sql`${channelChatSetup.pushedAt} < ${new Date(now.getTime() - REPAIR_AFTER_MS)}`,
+        lt(channelChatSetup.pushedAt, new Date(now.getTime() - REPAIR_AFTER_MS)),
       ),
     );
 }

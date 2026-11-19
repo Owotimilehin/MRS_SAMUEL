@@ -239,7 +239,9 @@ beforeEach(() => {
   });
   vi.stubGlobal("fetch", fetchMock);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("Messenger Profile calls", () => {
   it("readMessengerProfile: messenger asks for four fields; instagram adds platform and asks for two; returns data[0] or {}", async () => {
