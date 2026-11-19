@@ -497,6 +497,14 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         chatIds: [owner],
         text: `⚠️ *Meta sent a policy warning for the Page*\nOpen Meta Business Suite → Page quality to read it.`,
       };
+    case "channels.page_config":
+      return {
+        chatIds: [owner],
+        text:
+          `Page details: Facebook refused a change to ${String(p["label"] ?? "a Page")}: ${String(p["message"] ?? "no reason given")} ` +
+          `(code ${String(p["code"] ?? "unknown")}).\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
     case "channels.chat_setup_config":
       return {
         chatIds: [owner],

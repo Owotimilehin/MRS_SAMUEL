@@ -52,6 +52,7 @@ import { inboxSettingsRoutes } from "./routes/inbox-settings.js";
 import { inboxReportRoutes } from "./routes/inbox-reports.js";
 import { channelRoutes } from "./routes/channels.js";
 import { channelChatSetupRoutes } from "./routes/channel-chat-setup.js";
+import { channelPageRoutes } from "./routes/channel-page-details.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
@@ -136,6 +137,7 @@ export function buildApp(): Hono {
   // Business suite: channel accounts (Facebook Page, Instagram).
   // Chat set-up is mounted first so its longer path wins over /v1/channels/:id.
   app.route("/v1/channels/:accountId/chat-setup", channelChatSetupRoutes(db));
+  app.route("/v1/channels/:accountId/page", channelPageRoutes(db));
   app.route("/v1/channels", channelRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
