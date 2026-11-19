@@ -34,4 +34,7 @@ describe("where a person lands", () => {
     expect(firstAllowedPage(["templates.manage", "inbox.settings"])).toBe("/templates");
     expect(firstAllowedPage(["templates.manage"])).toBe("/templates");
   });
+  it("keeps Templates and forms lit on the Forms tab", () => {
+    expect(activeNavTo("/templates/forms", LINKS)).toBe("/templates");
+  });
 });

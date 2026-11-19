@@ -1,8 +1,8 @@
 /* Template authoring (suite spec 06). Every class starts with tpl-. */
 .tpl-page { display: grid; gap: 14px; }
 .tpl-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
-.tpl-tabs button { background: none; border: 0; padding: 8px 14px; font-size: 14px; font-weight: 600; color: var(--ink-soft); cursor: pointer; border-bottom: 3px solid transparent; }
-.tpl-tabs button.is-active { color: var(--ink); border-bottom-color: var(--accent); }
+.tpl-tabs a { padding: 8px 14px; font-size: 14px; font-weight: 600; color: var(--ink-soft); text-decoration: none; border-bottom: 3px solid transparent; }
+.tpl-tabs a.is-active { color: var(--ink); border-bottom-color: var(--accent); }
 .tpl-intro { margin: 0; color: var(--ink-soft); font-size: 14px; max-width: 760px; }
 .tpl-toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
 .tpl-toolbar .btn { display: inline-flex; gap: 6px; align-items: center; }
@@ -103,6 +103,19 @@
 .tpl-starter-list li.is-there { opacity: 0.6; }
 .tpl-starter-list label { display: flex; gap: 10px; align-items: flex-start; }
 .tpl-starter-body { display: block; font-size: 13px; color: var(--ink-soft); margin-top: 4px; }
+
+/* Forms tab (suite spec 07, 7.2). Cards are full width; the buttons wrap on a phone. */
+.tpl-forms { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.tpl-formcard { display: grid; gap: 8px; padding: 14px 16px; min-width: 0; }
+.tpl-formcard__desc { font-size: 14px; overflow-wrap: anywhere; }
+.tpl-formcard__errors { margin: 0; padding-left: 18px; font-size: 13px; color: var(--danger); overflow-wrap: anywhere; }
+.tpl-formcard__actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tpl-formcard__actions .btn { display: inline-flex; gap: 6px; align-items: center; }
+.tpl-formcard__locked { display: flex; gap: 8px 12px; flex-wrap: wrap; align-items: center; }
+.tpl-keys { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.tpl-keys li { display: flex; gap: 8px 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 8px; }
+.tpl-keys__who { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-width: 0; overflow-wrap: anywhere; }
+.tpl-keys__error { flex-basis: 100%; }
 
 @media (max-width: 899px) {
   .tpl-cols { grid-template-columns: minmax(0, 1fr); }

@@ -44,7 +44,7 @@ const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
   "WhatsAppProfilePage",
 );
 
-const TemplatesPage = lazyNamed(() => import("./features/templates/TemplatesPage.js"), "TemplatesPage");
+const TemplatesPage = lazyNamed<{ tab?: "messages" | "forms" }>(() => import("./features/templates/TemplatesPage.js"), "TemplatesPage");
 const TemplateEditorPage = lazyNamed<{ templateId: string }>(() => import("./features/templates/TemplateEditorPage.js"), "TemplateEditorPage");
 
 const SUITE_LOGIN_COPY: LoginCopy = {
@@ -184,6 +184,13 @@ const templatesRoute = createRoute({
   component: () => page(<TemplatesPage />, "templates.manage"),
 });
 
+// The Forms tab (WhatsApp Flows, suite spec 07). A fixed address, so it wins over /templates/$templateId.
+const templateFormsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/templates/forms",
+  component: () => page(<TemplatesPage tab="forms" />, "templates.manage"),
+});
+
 const templateEditorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/templates/$templateId",
@@ -205,6 +212,7 @@ const routeTree = rootRoute.addChildren([
   pageDetailsRoute,
   whatsAppProfileRoute,
   templatesRoute,
+  templateFormsRoute,
   templateEditorRoute,
 ]);
 
