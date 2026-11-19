@@ -102,6 +102,8 @@ export interface ChatSetupView {
     at: string;
     error_message: string | null;
     error_code: string | null;
+    /** What that version asked for (the editors start from it after a failed publish). */
+    config: ChatSetupConfig;
   } | null;
   can_publish_at: string | null;
 }
@@ -247,6 +249,7 @@ async function buildView(db: DbClient, account: ChannelAccount, read: LiveRead):
           at: (last.row.pushedAt ?? last.row.updatedAt).toISOString(),
           error_message: last.row.errorMessage,
           error_code: last.row.errorCode,
+          config: asConfig(last.row.config, kind),
         }
       : null,
     can_publish_at: allowedAt ? allowedAt.toISOString() : null,

@@ -158,6 +158,13 @@ function ChannelsList(): JSX.Element {
                             </Link>
                           ) : (
                             <>
+                              <Link
+                                to="/channels/$accountId/chat-setup"
+                                params={{ accountId: row.id }}
+                                className="btn btn--subtle btn--sm"
+                              >
+                                Chat set-up
+                              </Link>
                               <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEditing(row)}>
                                 Edit
                               </button>

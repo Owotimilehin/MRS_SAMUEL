@@ -37,6 +37,7 @@ const InboxPage = lazyNamed<{ conversationId?: string }>(() => import("@admin/ro
 const InboxSettingsPage = lazyNamed(() => import("@admin/routes/inbox/settings.js"), "InboxSettingsPage");
 const InboxReportsPage = lazyNamed(() => import("@admin/routes/inbox/reports.js"), "InboxReportsPage");
 const ChannelsPage = lazyNamed(() => import("./features/channels/ChannelsPage.js"), "ChannelsPage");
+const ChatSetupPage = lazyNamed<{ accountId: string }>(() => import("./features/chat-setup/ChatSetupPage.js"), "ChatSetupPage");
 
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
@@ -141,6 +142,15 @@ const channelsRoute = createRoute({
   component: () => page(<ChannelsPage />, "channels.manage"),
 });
 
+const chatSetupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/channels/$accountId/chat-setup",
+  component: () => {
+    const params = useParams({ from: "/channels/$accountId/chat-setup" });
+    return page(<ChatSetupPage accountId={params.accountId} />, "channels.manage");
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -149,6 +159,7 @@ const routeTree = rootRoute.addChildren([
   inboxReportsRoute,
   inboxConversationRoute,
   channelsRoute,
+  chatSetupRoute,
 ]);
 
 export const router = createRouter({
