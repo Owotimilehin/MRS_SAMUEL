@@ -29,4 +29,9 @@ function SuiteCustomerLink({ customerId, children, style }: CustomerLinkProps): 
   );
 }
 
-export const suiteHost: HostApp = { Shell: SuiteShell, CustomerLink: SuiteCustomerLink };
+export const suiteHost: HostApp = {
+  Shell: SuiteShell,
+  CustomerLink: SuiteCustomerLink,
+  // Comments live in the suite (spec 03): the inbox timeline links a private reply back to its comment.
+  commentHref: (threadId) => `/comments/${encodeURIComponent(threadId)}`,
+};

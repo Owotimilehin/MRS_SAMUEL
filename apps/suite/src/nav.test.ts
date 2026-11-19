@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { activeNavTo, firstAllowedPage } from "./nav.js";
 
-const LINKS = ["/inbox", "/inbox/reports", "/channels", "/templates", "/inbox/settings"] as const;
+const LINKS = ["/inbox", "/comments", "/inbox/reports", "/channels", "/templates", "/inbox/settings"] as const;
 
 describe("suite menu", () => {
   it("lights Inbox for the list and for an open conversation", () => {
@@ -33,5 +33,12 @@ describe("where a person lands", () => {
     expect(activeNavTo("/templates/7f3c-template", LINKS)).toBe("/templates");
     expect(firstAllowedPage(["templates.manage", "inbox.settings"])).toBe("/templates");
     expect(firstAllowedPage(["templates.manage"])).toBe("/templates");
+  });
+  it("lights Comments on its list and on an open thread, and someone with only Comments lands there", () => {
+    expect(activeNavTo("/comments", LINKS)).toBe("/comments");
+    expect(activeNavTo("/comments/7f3c-thread", LINKS)).toBe("/comments");
+    expect(firstAllowedPage(["social.comments"])).toBe("/comments");
+    expect(firstAllowedPage(["social.comments", "inbox.view"])).toBe("/inbox");
+    expect(firstAllowedPage(["social.comments", "inbox.reports"])).toBe("/comments");
   });
 });
