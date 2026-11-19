@@ -32,8 +32,13 @@ describe("channel accounts and identities", () => {
     expect(isBsuid("2347067220914")).toBe(false);
     expect(isBsuid("")).toBe(false);
     expect(isBsuid(null)).toBe(false);
-    expect(isBsuid("us.123")).toBe(false);
-    expect(isBsuid("US.")).toBe(false);
+    // Review fix M2: Meta does not promise the shape, so any non-digit id without spaces is accepted.
+    expect(isBsuid("us.123")).toBe(true);
+    expect(isBsuid("US.")).toBe(true);
+    expect(isBsuid("abc-DEF_123:xyz")).toBe(true);
+    expect(isBsuid("US. 123")).toBe(false);
+    expect(isBsuid(" ")).toBe(false);
+    expect(isBsuid("x".repeat(257))).toBe(false);
   });
   it("labels each channel in plain words", () => {
     expect(IDENTITY_CHANNELS.map(channelLabel)).toEqual(["WhatsApp", "Facebook Messenger", "Instagram"]);

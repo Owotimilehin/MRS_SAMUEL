@@ -6,9 +6,9 @@ import postgres from "postgres";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
-import { createDbClient, customer, inboxConversation, inboxIdentity, inboxMessage, inboxPhoneNumber } from "@ms/db";
+import { createDbClient, customer, inboxConversation, inboxIdentity, inboxMessage, inboxPhoneNumber, inboxWebhookEvent, outboxEvent } from "@ms/db";
 import { clearPageTokenCache, PAGE_WEBHOOK_FIELDS } from "@ms/domain";
-import { downloadPendingMedia, MAX_LINKED_MEDIA_BYTES } from "./inbox-whatsapp.js";
+import { downloadPendingMedia, MAX_LINKED_MEDIA_BYTES, retryWebhookEvents } from "./inbox-whatsapp.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./inbox-meta.js";
 import type { RecordingStore } from "./inbox-recording-store.js";
 
@@ -249,5 +249,37 @@ describe("spec 02 worker: profiles and subscriptions", () => {
     graphCalls.length = 0;
     expect(await ensureMetaSubscriptions(db, log, cfg)).toBe(0);
     expect(graphCalls.filter((c) => c.method === "POST")).toHaveLength(0);
+  });
+
+  it("M2: a WhatsApp event whose message has no usable sender is retried up to the limit, then raises one owner alert and stops", async () => {
+    const WA_ID = "1098765499";
+    await db.insert(inboxPhoneNumber).values({ e164: "+2348000000499", label: "Main", channels: "whatsapp", waPhoneNumberId: WA_ID });
+    const payload = {
+      object: "whatsapp_business_account",
+      entry: [{ id: "WABA1", changes: [{ field: "messages", value: { metadata: { phone_number_id: WA_ID }, messages: [{ id: "wamid.m2.nobody", timestamp: "1795000000", type: "text", text: { body: "?" } }] } }] }],
+    };
+    const old = new Date("2026-01-01T00:00:00Z"); // long past every back-off
+    const [ev] = await db.insert(inboxWebhookEvent).values({ source: "meta", kind: "messages", payload, attempts: 6, receivedAt: old }).returning();
+    const reloadEv = async () => (await db.select().from(inboxWebhookEvent).where(eq(inboxWebhookEvent.id, ev!.id)))[0]!;
+    const alerts = async () =>
+      (await db.select().from(outboxEvent).where(eq(outboxEvent.eventType, "inbox.webhook_dead"))).filter((o) => (o.payload as { webhook_event_id?: string }).webhook_event_id === ev!.id);
+    const warned: object[] = [];
+    const logSpy = { ...log, warn: (o: object) => void warned.push(o) };
+
+    expect(await retryWebhookEvents(db, logSpy)).toBe(0);
+    expect(await reloadEv()).toMatchObject({ processedAt: null, lastError: "no_sender", attempts: 7 });
+    expect(await alerts()).toHaveLength(0);
+
+    expect(await retryWebhookEvents(db, logSpy)).toBe(0);
+    expect(await reloadEv()).toMatchObject({ processedAt: null, lastError: "no_sender", attempts: 8 });
+    expect(await alerts()).toHaveLength(1);
+
+    // At the limit the job no longer picks it up: no loop, no second alert.
+    expect(await retryWebhookEvents(db, logSpy)).toBe(0);
+    expect(await reloadEv()).toMatchObject({ attempts: 8 });
+    expect(await alerts()).toHaveLength(1);
+    expect(warned).toHaveLength(2);
+    expect(JSON.stringify(warned)).not.toContain("wamid.m2.nobody");
+    expect(await db.select().from(inboxMessage).where(eq(inboxMessage.waMessageId, "wamid.m2.nobody"))).toHaveLength(0);
   });
 });

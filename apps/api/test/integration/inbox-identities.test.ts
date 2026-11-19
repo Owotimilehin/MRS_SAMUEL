@@ -311,7 +311,7 @@ describe("suite spec 01 — customer identities", () => {
     expect(ev!.processedAt).not.toBeNull();
   });
 
-  it("a WhatsApp message with neither a phone nor a user ID is ignored and its event marked processed (R14)", async () => {
+  it("a WhatsApp message with neither a phone nor a user ID is not stored, and its event is left unprocessed with no_sender (R14, review fix M2)", async () => {
     const payload = inboundPayload({
       wamid: "wamid.nobody",
       message: { id: "wamid.nobody", timestamp: String(Math.floor(Date.now() / 1000)), type: "text", text: { body: "?" } },
@@ -320,6 +320,19 @@ describe("suite spec 01 — customer identities", () => {
     expect(await messageByWamid("wamid.nobody")).toBeUndefined();
     const events = await db.select().from(inboxWebhookEvent);
     const ev = events.find((e) => JSON.stringify(e.payload).includes("wamid.nobody"));
+    // Review fix M2: no longer marked processed silently; the worker retries, then alerts the owner.
+    expect(ev!.processedAt).toBeNull();
+    expect(ev!.lastError).toBe("no_sender");
+    expect(ev!.attempts).toBe(1);
+  });
+
+  it("M2: a user ID in a shape we have not seen before is still accepted as the sender", async () => {
+    const odd = "ng-ent:Ab_12.xyz";
+    expect((await postWebhook(inboundPayload({ wamid: "wamid.bsuid.odd", userId: odd, name: "Odd", text: "new shape" }))).status).toBe(200);
+    expect((await messageByWamid("wamid.bsuid.odd"))?.body).toBe("new shape");
+    expect(await waIdentity(odd)).toBeTruthy();
+    const events = await db.select().from(inboxWebhookEvent);
+    const ev = events.find((e) => JSON.stringify(e.payload).includes("wamid.bsuid.odd"));
     expect(ev!.processedAt).not.toBeNull();
   });
 

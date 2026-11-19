@@ -64,6 +64,7 @@ export async function retryWebhookEvents(db: DbClient, log: Log): Promise<number
   let done = 0;
   for (const ev of due) {
     const resyncWabas: string[] = [];
+    let noSender = 0;
     try {
       await db.transaction(async (tx) => {
         const payload = ev.payload as { object?: string; entry?: unknown[] };
@@ -76,9 +77,22 @@ export async function retryWebhookEvents(db: DbClient, log: Log): Promise<number
           const res = await ingestWhatsAppPayload(tx, ev.payload as WaWebhookPayload);
           await finishWebhookEvent(tx, ev.id, res);
           resyncWabas.push(...res.templateResyncWabas);
+          noSender = res.noSender;
         }
       });
-      done++;
+      if (noSender > 0) {
+        // finishWebhookEvent left it unprocessed and counted the attempt: stop at the limit and tell the owner.
+        const attempts = ev.attempts + 1;
+        log.warn({ eventId: ev.id, attempts }, "whatsapp message with no usable sender; event left unprocessed");
+        if (attempts >= MAX_WEBHOOK_ATTEMPTS) {
+          await db.insert(outboxEvent).values({
+            eventType: "inbox.webhook_dead",
+            payload: { webhook_event_id: ev.id, error: "a message arrived with no sender we can use (no_sender)" },
+          });
+        }
+      } else {
+        done++;
+      }
       // A template event for a template we do not hold: one sync of that account, after the commit.
       const cfg = resyncWabas.length > 0 ? metaConfigFromEnv() : null;
       for (const waba of cfg ? resyncWabas : []) {
