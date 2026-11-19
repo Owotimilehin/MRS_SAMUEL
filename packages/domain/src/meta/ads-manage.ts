@@ -15,6 +15,10 @@
  *  3. THE DAILY CAP is checked in our code before any call that could raise
  *     spending, from a fresh read of Meta (checkCap). If Meta cannot be read
  *     the action is refused. A refused action makes no write to Meta.
+ *     Turning on and changing a budget first take the ONE account-wide claim
+ *     (claimAccount) and hold it until their writes are recorded, so two
+ *     actions at the same moment cannot each pass the cap on a reading that
+ *     misses the other.
  *  4. CREATED SWITCHED OFF. Every create body carries status "PAUSED";
  *     metaWrite() refuses a create whose body says anything else.
  *  5. THE TYPED TOTAL is worked out here, on the server, from the stored draft
@@ -32,6 +36,7 @@
 import crypto from "node:crypto";
 import { and, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import {
+  adAccountLink,
   adActionLog,
   adCampaignCache,
   adDraft,
@@ -131,6 +136,7 @@ export const ADS_CAP_UNKNOWN = "We could not check current budgets with Meta, so
 export const ADS_VERIFY_MISMATCH =
   "Meta saved a different budget or state than we sent. Do not turn this advert on. Check it in Meta Ads Manager.";
 export const ADS_IN_PROGRESS = "This is already in progress.";
+export const ADS_ACCOUNT_BUSY = "Another change to your adverts is being made right now. Try again in a moment.";
 
 export interface PersonActor {
   kind: "person";
@@ -1182,6 +1188,64 @@ async function readAdsetFresh(cfg: MetaConfig, a: SuiteAdvert): Promise<FreshAds
   return { dailyNaira: units / f, status: String(aset.status ?? ""), end, campaignStatus: String(camp?.status ?? "") };
 }
 
+/**
+ * How long the account-wide claim lasts if it is never given back (a crash).
+ * Every call to Meta gives up after 15 seconds, and the claim is renewed just
+ * before the first write, so the writes of one action (at most three, and one
+ * read to settle a missing answer) always finish inside it.
+ */
+const ACCOUNT_CLAIM_SECONDS = 120;
+
+interface AccountClaim {
+  linkId: string;
+  /** The exact busy_until this action wrote: only its holder may renew or release it. */
+  token: string;
+}
+
+const claimUntil = sql`now() + make_interval(secs => ${ACCOUNT_CLAIM_SECONDS})`;
+
+/**
+ * Take the one claim on the ad account, or refuse. Every action that can raise
+ * live spending takes it BEFORE it reads Meta for the cap and holds it until
+ * its writes are recorded, so a second action can never check the cap against
+ * a reading that misses the first. It is one conditional UPDATE (the same
+ * compare-and-set as claimAdvert), not a transaction held open across the calls
+ * to Meta, and it runs out by itself.
+ */
+async function claimAccount(db: DbClient, link: AdAccountLinkRow): Promise<AccountClaim> {
+  const [row] = await db
+    .update(adAccountLink)
+    .set({ busyUntil: claimUntil })
+    .where(and(eq(adAccountLink.id, link.id), or(isNull(adAccountLink.busyUntil), lt(adAccountLink.busyUntil, sql`now()`))))
+    .returning({ token: sql<string>`${adAccountLink.busyUntil}::text` });
+  if (!row) throw new AdsManageError("in_progress", ADS_ACCOUNT_BUSY);
+  return { linkId: link.id, token: row.token };
+}
+
+/**
+ * Just before the first write: make sure the claim is still ours and give it
+ * its full time again. If it ran out while Meta was slow and someone else took
+ * the account, this action stops here, having sent nothing.
+ */
+async function holdAccount(db: DbClient, claim: AccountClaim): Promise<void> {
+  const [row] = await db
+    .update(adAccountLink)
+    .set({ busyUntil: claimUntil })
+    .where(and(eq(adAccountLink.id, claim.linkId), sql`${adAccountLink.busyUntil} = ${claim.token}::timestamptz`))
+    .returning({ token: sql<string>`${adAccountLink.busyUntil}::text` });
+  if (!row) throw new AdsManageError("in_progress", ADS_ACCOUNT_BUSY);
+  claim.token = row.token;
+}
+
+/** Give the claim back. Only our own: a claim someone else took after ours ran out is left alone. */
+async function releaseAccount(db: DbClient, claim: AccountClaim): Promise<void> {
+  await db
+    .update(adAccountLink)
+    .set({ busyUntil: null })
+    .where(and(eq(adAccountLink.id, claim.linkId), sql`${adAccountLink.busyUntil} = ${claim.token}::timestamptz`))
+    .catch(() => undefined);
+}
+
 /** Claim the advert for one action so a double click cannot run it twice. Released by time (30 seconds, A7). */
 async function claimAdvert(db: DbExecutor, draftId: string): Promise<void> {
   const [row] = await db
@@ -1234,13 +1298,34 @@ export async function turnOnAdvert(
   const now = opts.now ?? new Date();
   await assertActorMayManage(db, actor);
   const a = await suiteAdvert(db, { campaignExternalId });
+  // One money action per ad account at a time: claimed before anything is read from Meta.
+  const claim = await claimAccount(db, a.link);
+  try {
+    await turnOnClaimed(db, cfg, campaignExternalId, actor, opts.typed, now, a, claim);
+  } finally {
+    await releaseAccount(db, claim);
+  }
+}
+
+/** The body of turnOnAdvert, run while the account-wide claim is held. */
+async function turnOnClaimed(
+  db: DbClient,
+  cfg: MetaConfig,
+  campaignExternalId: string,
+  actor: PersonActor,
+  typed: string,
+  now: Date,
+  a: SuiteAdvert,
+  claim: AccountClaim,
+): Promise<void> {
   const fresh = await readAdsetFresh(cfg, a);
   if (fresh.end.getTime() <= now.getTime()) throw new AdsManageError("ended", "This advert's end date has passed. Create a new one.");
   const remaining = remainingMaxSpend(fresh.dailyNaira, now, fresh.end);
   const confirmText = confirmTextFor(remaining);
-  if (normaliseTyped(opts.typed) !== confirmText) throw new AdsManageError("wrong_total", "Type the total exactly as shown to confirm.");
+  if (normaliseTyped(typed) !== confirmText) throw new AdsManageError("wrong_total", "Type the total exactly as shown to confirm.");
   const cap = await checkCap(cfg, a.link, a.settings, { requestedDaily: fresh.dailyNaira, excludeAdsetExternalId: a.adsetId, now });
   if (!cap.ok) throw await blockedByCap(db, a.link, actor, "turn_on", "campaign", campaignExternalId, cap);
+  await holdAccount(db, claim);
   await claimAdvert(db, a.draft.id);
 
   const name = a.campaign.name ?? "advert";
@@ -1342,9 +1427,30 @@ export async function changeDailyBudget(
 ): Promise<{ before: number; after: number }> {
   const now = opts.now ?? new Date();
   await assertActorMayManage(db, actor);
+  // One money action per ad account at a time: claimed before anything is read from Meta.
+  const { link } = await assertCanManage(db);
+  const claim = await claimAccount(db, link);
+  try {
+    return await changeBudgetClaimed(db, cfg, adsetExternalId, newDaily, actor, opts.typed, now, claim);
+  } finally {
+    await releaseAccount(db, claim);
+  }
+}
+
+/** The body of changeDailyBudget, run while the account-wide claim is held. */
+async function changeBudgetClaimed(
+  db: DbClient,
+  cfg: MetaConfig,
+  adsetExternalId: string,
+  newDaily: number,
+  actor: PersonActor,
+  typed: string,
+  now: Date,
+  claim: AccountClaim,
+): Promise<{ before: number; after: number }> {
   const { a, fresh, cap, remaining } = await budgetPlan(db, cfg, adsetExternalId, newDaily, now);
   const confirmText = confirmTextFor(remaining);
-  if (normaliseTyped(opts.typed) !== confirmText) throw new AdsManageError("wrong_total", "Type the total exactly as shown to confirm.");
+  if (normaliseTyped(typed) !== confirmText) throw new AdsManageError("wrong_total", "Type the total exactly as shown to confirm.");
   if (!cap.ok) throw await blockedByCap(db, a.link, actor, "budget_change", "adset", adsetExternalId, cap);
   // Meta allows 4 budget changes an hour per ad set (A7). Counted from the log: only requests that went to Meta.
   const [recent] = await db
@@ -1360,6 +1466,7 @@ export async function changeDailyBudget(
       ),
     );
   if ((recent?.n ?? 0) >= 4) throw new AdsManageError("too_many_changes", "Meta allows a budget to change 4 times an hour. Try again later.");
+  await holdAccount(db, claim);
   await claimAdvert(db, a.draft.id);
 
   const units = unitsFor(newDaily, a.link);

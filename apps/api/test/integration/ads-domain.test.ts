@@ -942,6 +942,117 @@ describe("ads: domain rules with a database", () => {
     });
   });
 
+  // ── The account-wide claim: two actions at the same moment (review finding F1) ──
+
+  describe("two actions at the same moment cannot both pass the cap", () => {
+    const BUSY = "Another change to your adverts is being made right now. Try again in a moment.";
+
+    /**
+     * Hold every write that could raise spending until BOTH actions have read the
+     * live ad sets for the cap (the race), or until one of them has been refused
+     * (the fix). No timers: the test is the same on a fast and a slow machine.
+     */
+    function holdWritesUntilBothHaveReadTheCap() {
+      let capReads = 0;
+      let open!: () => void;
+      const gate = new Promise<void>((resolve) => (open = resolve));
+      fake.override = async (call) => {
+        if (call.method === "GET" && call.edge === `${ACT}/adsets` && ++capReads >= 2) open();
+        if (call.method === "POST" && (call.body?.status === "ACTIVE" || call.body?.daily_budget !== undefined)) await gate;
+        return null;
+      };
+      return <T>(p: Promise<T>) =>
+        p.then(
+          () => ({ ok: true as const, err: null }),
+          (err: AdsManageError) => {
+            open();
+            return { ok: false as const, err };
+          },
+        );
+    }
+    /** What Meta would be spending a day right now: every live ad set under a live campaign, in naira. */
+    const liveDaily = () =>
+      [...fake.adsets.values()]
+        .filter((a) => a.status === "ACTIVE" && fake.campaigns.get(String(a.campaign_id))?.status === "ACTIVE")
+        .reduce((sum, a) => sum + Number(a.daily_budget) / 100, 0);
+
+    it("two turn-ons at once: exactly one goes through, the other is refused with no write, and live budgets stay within the cap", async () => {
+      await link();
+      const cap = 3000;
+      await managing(cap);
+      const a = await createdAdvert({ name: "Advert A" });
+      const b = await createdAdvert({ name: "Advert B" });
+      const settle = holdWritesUntilBothHaveReadTheCap();
+      const results = await Promise.all([
+        settle(turnOnAdvert(db, cfg, a.campaignExternalId!, owner, { typed: "6000" })),
+        settle(turnOnAdvert(db, cfg, b.campaignExternalId!, owner, { typed: "6000" })),
+      ]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      const refused = results.find((r) => !r.ok)!;
+      expect(refused.err).toMatchObject({ code: "in_progress", staffMessage: BUSY });
+      expect(liveDaily()).toBeLessThanOrEqual(cap);
+      // The refused action sent nothing to Meta: only one advert's three objects were switched on.
+      const winner = results[0]!.ok ? a : b;
+      expect(fake.adWrites().map((w) => w.edge)).toEqual([winner.adExternalId, winner.adsetExternalId, winner.campaignExternalId]);
+      // The claim is given back when the action ends, so the next action is not held up.
+      expect((await db.select().from(adAccountLink))[0]!.busyUntil).toBeNull();
+    });
+
+    it("a turn-on racing a budget rise on another, live advert: exactly one goes through", async () => {
+      await link();
+      const cap = 4500;
+      await managing(cap);
+      const a = await createdAdvert({ name: "Advert A" });
+      const b = await createdAdvert({ name: "Advert B" });
+      await turnOnAdvert(db, cfg, a.campaignExternalId!, owner, { typed: "6000" });
+      await db.update(adDraft).set({ lockedAt: null });
+      fake.calls = [];
+      const settle = holdWritesUntilBothHaveReadTheCap();
+      // Each fits alone: A to ₦3,000 with B off, or B on (₦2,000) beside A's ₦2,000. Together they would be ₦5,000.
+      const results = await Promise.all([
+        settle(changeDailyBudget(db, cfg, a.adsetExternalId!, 3000, owner, { typed: "9000" })),
+        settle(turnOnAdvert(db, cfg, b.campaignExternalId!, owner, { typed: "6000" })),
+      ]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.find((r) => !r.ok)!.err).toMatchObject({ code: "in_progress", staffMessage: BUSY });
+      expect(liveDaily()).toBeLessThanOrEqual(cap);
+      const writes = fake.adWrites().map((w) => w.edge);
+      expect(writes).toEqual(results[0]!.ok ? [a.adsetExternalId] : [b.adExternalId, b.adsetExternalId, b.campaignExternalId]);
+    });
+
+    it("while the claim is held nothing is read from or sent to Meta; a claim left by a crash expires by itself", async () => {
+      await link();
+      await managing(10000);
+      const a = await createdAdvert();
+      // Someone else's action is under way.
+      await db.update(adAccountLink).set({ busyUntil: sql`now() + interval '1 minute'` });
+      await expect(turnOnAdvert(db, cfg, a.campaignExternalId!, owner, { typed: "6000" })).rejects.toMatchObject({ code: "in_progress", staffMessage: BUSY });
+      await expect(changeDailyBudget(db, cfg, a.adsetExternalId!, 3000, owner, { typed: "9000" })).rejects.toMatchObject({ code: "in_progress", staffMessage: BUSY });
+      expect(fake.calls).toEqual([]);
+      // Their claim is untouched by the refusals.
+      expect((await db.select().from(adAccountLink))[0]!.busyUntil).not.toBeNull();
+      // It was never released (a crash): once its time has passed, the account is free again.
+      await db.update(adAccountLink).set({ busyUntil: sql`now() - interval '1 second'` });
+      await turnOnAdvert(db, cfg, a.campaignExternalId!, owner, { typed: "6000" });
+      expect(fake.campaigns.get(a.campaignExternalId!)!.status).toBe("ACTIVE");
+    });
+
+    it("a claim that ran out while Meta was slow is not relied on: the action stops before its first write", async () => {
+      await link();
+      await managing(10000);
+      const a = await createdAdvert();
+      // While this action reads the cap, its claim runs out and another action takes the account.
+      fake.override = async (call) => {
+        if (call.method === "GET" && call.edge === `${ACT}/adsets`) await db.update(adAccountLink).set({ busyUntil: sql`now() + interval '1 minute'` });
+        return null;
+      };
+      await expect(turnOnAdvert(db, cfg, a.campaignExternalId!, owner, { typed: "6000" })).rejects.toMatchObject({ code: "in_progress", staffMessage: BUSY });
+      expect(fake.writes()).toEqual([]);
+      // The other action's claim was not released by the one that lost it.
+      expect((await db.select().from(adAccountLink))[0]!.busyUntil).not.toBeNull();
+    });
+  });
+
   describe("pauseObject", () => {
     it("pauses anything in the linked account with the master switch off, and nothing outside it", async () => {
       await link();

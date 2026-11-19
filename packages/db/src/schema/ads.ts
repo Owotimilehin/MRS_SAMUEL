@@ -51,6 +51,8 @@ export const adAccountLink = pgTable(
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     lastErrorCode: text("last_error_code"),
     lastErrorMessage: text("last_error_message"),
+    /** The one account-wide claim taken before the cap is checked and held until the writes are recorded (migration 0085). Expires by itself. */
+    busyUntil: timestamp("busy_until", { withTimezone: true }),
   },
   (t) => ({
     uqOneActive: uniqueIndex("uq_ad_account_link_one_active").on(t.isActive).where(sql`${t.isActive}`),
@@ -261,6 +263,8 @@ export const adDraft = pgTable("ad_draft", {
   confirmedBy: uuid("confirmed_by").references(() => adminUser.id, { onDelete: "set null" }),
   confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
   confirmedHash: text("confirmed_hash"),
+  /** The ad account this draft was confirmed and started against (migration 0085); it is never carried on in another. */
+  adAccountId: text("ad_account_id"),
   lockedAt: timestamp("locked_at", { withTimezone: true }),
   errorCode: text("error_code"),
   errorMessage: text("error_message"),
