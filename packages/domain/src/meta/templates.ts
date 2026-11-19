@@ -246,11 +246,13 @@ async function findRow(db: DbExecutor, wabaId: string, id: string | null, name: 
  * there is none. A local DRAFT whose key Meta now has takes Meta's values and keeps its `draft` as
  * unsent changes. `draft` is never touched. Fields Meta did not send are left as they were.
  * A move into REJECTED, PAUSED or DISABLED raises the same owner alert the webhook would.
+ * `listedAt` is when Meta's answer was asked for (the sync passes it): a row whose status changed
+ * after that keeps its status, because the answer is older than the change.
  */
-export async function applyMetaTemplate(db: DbExecutor, wabaId: string, t: MetaTemplateFull, now: Date): Promise<void> {
+export async function applyMetaTemplate(db: DbExecutor, wabaId: string, t: MetaTemplateFull, now: Date, listedAt?: Date): Promise<void> {
   const language = normaliseTemplateLanguage(t.language);
   const row = await findRow(db, wabaId, String(t.id), t.name, language);
-  const status = String(t.status).toUpperCase();
+  let status = String(t.status).toUpperCase();
   const rejected = t.rejected_reason === undefined ? undefined : t.rejected_reason && t.rejected_reason !== "NONE" ? t.rejected_reason : null;
 
   if (!row) {
@@ -284,6 +286,7 @@ export async function applyMetaTemplate(db: DbExecutor, wabaId: string, t: MetaT
       });
     return;
   }
+  if (listedAt && row.statusChangedAt !== null && row.statusChangedAt.getTime() > listedAt.getTime()) status = row.status;
 
   const set: Partial<typeof inboxTemplate.$inferInsert> = {
     status,
@@ -323,8 +326,9 @@ export async function applyMetaTemplate(db: DbExecutor, wabaId: string, t: MetaT
  * Returns how many templates Meta returned.
  */
 export async function syncTemplatesForWaba(db: DbExecutor, cfg: MetaConfig, wabaId: string, now: Date = new Date()): Promise<number> {
+  // `now` was taken before the list is fetched: a status that changed after it is newer than the list.
   const templates = await listTemplatesFull(cfg, wabaId);
-  for (const t of templates) await applyMetaTemplate(db, wabaId, t, now);
+  for (const t of templates) await applyMetaTemplate(db, wabaId, t, now, now);
 
   const ids = templates.map((t) => String(t.id));
   const keys = new Set(templates.map((t) => `${t.name}::${normaliseTemplateLanguage(t.language)}`));
@@ -382,7 +386,8 @@ export async function applyTemplateWebhook(
 
   if (field === "message_template_status_update") {
     const event = String(value.event ?? "").toUpperCase();
-    const stale = row.statusChangedAt !== null && row.statusChangedAt.getTime() > eventTime.getTime();
+    // Meta's event time is in whole seconds and our clock in milliseconds: an event in the same second is not stale.
+    const stale = row.statusChangedAt !== null && Math.floor(row.statusChangedAt.getTime() / 1000) > Math.floor(eventTime.getTime() / 1000);
     const setStatus = (status: string): void => {
       if (stale) return;
       set.status = status;
