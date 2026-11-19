@@ -28,6 +28,10 @@ const Env = z.object({
   META_VERIFY_TOKEN: z.preprocess(emptyToUndef, z.string().optional()),
   META_SYSTEM_USER_TOKEN: z.preprocess(emptyToUndef, z.string().optional()),
   META_GRAPH_VERSION: z.preprocess(emptyToUndef, z.string().optional()),
+  /** The Meta app's numeric ID (not a secret). Tells our own Messenger echoes from other apps' (suite spec 02). */
+  META_APP_ID: z.preprocess(emptyToUndef, z.string().optional()),
+  /** "true" once Meta has approved the Human Agent feature: staff may reply up to 7 days (suite spec 02). */
+  META_HUMAN_AGENT_ENABLED: z.preprocess(emptyToUndef, z.string().optional()),
   TWILIO_ACCOUNT_SID: z.preprocess(emptyToUndef, z.string().optional()),
   TWILIO_API_KEY_SID: z.preprocess(emptyToUndef, z.string().optional()),
   TWILIO_API_KEY_SECRET: z.preprocess(emptyToUndef, z.string().optional()),
