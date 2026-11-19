@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.9.0",
+    "@aws-sdk/client-s3": "3.696.0",
+    "@aws-sdk/s3-request-presigner": "3.696.0",
     "@ms/db": "workspace:*",
     "@ms/domain": "workspace:*",
     "@ms/shared": "workspace:*",

@@ -14,6 +14,7 @@ import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
+import { publishDuePosts, reconcileUnknownTargets } from "./jobs/social-publish.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -55,6 +56,9 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "inbox_template_sync", everyMs: 60 * 60_000, last: 0, run: () => syncAllTemplates(db, logger) },
     { name: "inbox_identity_profiles", everyMs: 30_000, last: 0, run: () => refreshIdentityProfiles(db, logger) },
     { name: "inbox_meta_subscriptions", everyMs: 60 * 60_000, last: 0, run: () => ensureMetaSubscriptions(db, logger) },
+    // Posts to Facebook and Instagram (suite spec 09). Only posts a person approved are ever sent.
+    { name: "social_publish", everyMs: 30_000, last: 0, run: () => publishDuePosts(db, logger) },
+    { name: "social_publish_reconcile", everyMs: 60_000, last: 0, run: () => reconcileUnknownTargets(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {
