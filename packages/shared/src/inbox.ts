@@ -274,6 +274,17 @@ export function messagePreview(type: string, body: string | null | undefined): s
       return "📍 Location";
     case "template":
       return "Template message";
+    // Messenger and Instagram (suite spec 02).
+    case "share":
+      return "Shared a post";
+    case "story_mention":
+      return "Mentioned you in their story";
+    case "reaction":
+      return "Reacted to a message";
+    case "interactive":
+      return "Tapped a button";
+    case "referral":
+      return "Opened the chat";
     default:
       return "Message";
   }

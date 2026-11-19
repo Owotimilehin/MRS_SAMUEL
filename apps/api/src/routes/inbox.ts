@@ -535,6 +535,7 @@ export function inboxRoutes(db: DbClient) {
         team: team ? { id: team.id, name: team.name } : null,
         window_remaining_ms: waWindowRemainingMs(conv.lastInboundWaAt),
         human_agent_remaining_ms: humanAgentMs(conv.channel, conv.lastInboundWaAt),
+        human_agent_enabled: process.env.META_HUMAN_AGENT_ENABLED === "true",
         can_use_number: canUseNumber(c.get("inboxViewer"), conv.phoneNumberId),
       },
     });

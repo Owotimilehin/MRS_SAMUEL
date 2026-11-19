@@ -28,6 +28,10 @@ export interface InboxNumberLite {
   kind?: ChannelKind;
   /** The Page name, or the Instagram username without "@". */
   external_name?: string | null;
+  /** Conversation detail only: false when the line is switched off under Channels. */
+  is_active?: boolean;
+  /** Conversation detail only (spec 02): why messages on this line are not going out, in plain words. */
+  problem_text?: string | null;
 }
 
 export interface InboxMe {
@@ -72,6 +76,8 @@ export interface ConversationRow {
   assignee_id: string | null;
   assignee_name: string | null;
   window_remaining_ms: number;
+  /** Messenger/Instagram with Human Agent on: ms left of the 7-day window (spec 02). */
+  human_agent_remaining_ms?: number;
 }
 
 export interface ConversationPage {
@@ -96,6 +102,10 @@ export interface ConversationDetail {
   assignee: { id: string; name: string } | null;
   team: { id: string; name: string } | null;
   window_remaining_ms: number;
+  /** Messenger/Instagram with Human Agent on: ms left of the 7-day window (spec 02). */
+  human_agent_remaining_ms?: number;
+  /** True when the server lets staff answer Messenger/Instagram up to 7 days (META_HUMAN_AGENT_ENABLED). */
+  human_agent_enabled?: boolean;
   can_use_number: boolean;
   channel?: IdentityChannel;
   /** The identity that last wrote in this thread; replies go to it. */
@@ -128,6 +138,22 @@ export interface TimelineMessage {
   error_message: string | null;
   sender_name: string | null;
   created_at: string;
+  // Messenger and Instagram (spec 02); absent on older servers.
+  channel?: IdentityChannel;
+  /** The customer edited it. */
+  edited?: boolean;
+  /** The customer unsent it: body and media are gone. */
+  deleted?: boolean;
+  /** Answered from Meta's own apps, not from the suite. */
+  external_sender?: boolean;
+  /** A reply to one of our stories. */
+  story_reply?: boolean;
+  /** A shared post's link, or a story mention's link while the story can still exist. */
+  link?: string | null;
+  /** The advert the customer came from. */
+  advert?: string | null;
+  /** A tapped Messenger/Instagram button: "Tapped a starter question" and the like. */
+  tap_caption?: string | null;
 }
 
 export interface CallSummary {
