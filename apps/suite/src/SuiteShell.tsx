@@ -17,6 +17,7 @@ import {
   Menu,
   MessagesSquare,
   Share2,
+  ShoppingBag,
   SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
@@ -32,7 +33,7 @@ import { activeNavTo } from "./nav.js";
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/inbox/reports" | "/inbox/settings" | "/channels";
+  to: "/inbox" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/catalogue";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -43,6 +44,10 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   {
     heading: "Conversations",
     items: [{ to: "/inbox", label: "Inbox", Icon: MessagesSquare, cap: "inbox.view" }],
+  },
+  {
+    heading: "Selling",
+    items: [{ to: "/catalogue", label: "Catalogue", Icon: ShoppingBag, cap: "catalogue.manage" }],
   },
   {
     heading: "Insight",

@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Facebook, Instagram, MessageCircle } from "lucide-react";
 import { ConfirmModal } from "../ConfirmModal.js";
+import { ChatOrders } from "./ChatOrderCard.js";
 import { CustomerLink } from "../../lib/app-frame.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import {
@@ -83,6 +84,8 @@ export function ContactPanel({
 
   return (
     <>
+      {/* Carts this customer sent from the WhatsApp catalogue (suite spec 08). Nothing shows when there are none. */}
+      <ChatOrders conversationId={currentConversationId} can={can} />
       <div>
         <div className="t-eyebrow">Contact</div>
         <div style={{ fontWeight: 800, fontSize: 16 }}>{contactName(c.name, c.phone, handle)}</div>

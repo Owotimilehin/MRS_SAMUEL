@@ -90,6 +90,8 @@ export const CAPABILITIES = [
   // Numbers, teams, hours, phone menu, quick replies, template sync.
   "inbox.settings",
   "inbox.reports",
+  // Catalogue: connect, sync and repair the Meta catalogue (spec 08).
+  "catalogue.manage",
   // Connect and configure channel accounts (Facebook Page, Instagram); later:
   // chat set-up, WhatsApp profile, Page details. Admins, not managers.
   "channels.manage",
@@ -140,6 +142,7 @@ const ADMIN_CAPS: Capability[] = [
   "inbox.settings",
   "inbox.reports",
   "channels.manage",
+  "catalogue.manage",
 ];
 
 const MANAGER_CAPS: Capability[] = [

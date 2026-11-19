@@ -44,6 +44,8 @@ const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
   "WhatsAppProfilePage",
 );
 
+const CataloguePage = lazyNamed(() => import("./features/catalogue/CataloguePage.js"), "CataloguePage");
+
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
   line1: "Every customer,",
@@ -175,6 +177,12 @@ const whatsAppProfileRoute = createRoute({
   },
 });
 
+const catalogueRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/catalogue",
+  component: () => page(<CataloguePage />, "catalogue.manage"),
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -186,6 +194,7 @@ const routeTree = rootRoute.addChildren([
   chatSetupRoute,
   pageDetailsRoute,
   whatsAppProfileRoute,
+  catalogueRoute,
 ]);
 
 export const router = createRouter({

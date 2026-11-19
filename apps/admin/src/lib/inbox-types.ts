@@ -391,3 +391,86 @@ export interface InboxReport {
   staff_calls: Array<{ user_id: string | null; calls: number; talk_s: number }>;
   per_number: Array<{ number_id: string; label: string; conversations: number }>;
 }
+
+// ── Selling in chat (suite spec 08) ──────────────────────────────────────────
+
+/** An item staff may send from the catalogue. */
+export interface SendableItem {
+  retailer_id: string;
+  title: string;
+  price_ngn: number | null;
+  availability: "in stock" | "out of stock" | null;
+  picture_url: string | null;
+  category: string | null;
+}
+
+export interface CatalogueSendable {
+  /** Null when no catalogue is connected to WhatsApp: the Products button is then hidden. */
+  catalog_id: string | null;
+  items: SendableItem[];
+}
+
+export type ChatOrderState = "new" | "asked" | "awaiting_address" | "ready" | "placed" | "cancelled";
+
+/** One line of a customer's cart, at the shop's own price. */
+export interface ChatOrderLine {
+  retailer_id: string;
+  variant_id: string | null;
+  name: string;
+  size_ml: number | null;
+  quantity: number;
+  shop_price_ngn: number | null;
+  line_total_ngn: number | null;
+  /** What WhatsApp showed the customer. For display only. */
+  meta_price: number | null;
+  price_differs: boolean;
+  sellable: boolean;
+  in_stock: boolean;
+}
+
+export interface ChatOrder {
+  id: string;
+  state: ChatOrderState;
+  created_at: string;
+  cart_note: string | null;
+  fulfilment: "delivery" | "pickup" | null;
+  address: string | null;
+  problem: string | null;
+  payment_link_sent_at: string | null;
+  lines: ChatOrderLine[];
+  subtotal_ngn: number;
+  order: {
+    id: string;
+    order_number: string;
+    status: string;
+    payment_status: string;
+    total_ngn: number;
+    delivery_fee_ngn: number;
+    is_preorder?: boolean;
+    admin_url: string;
+  } | null;
+}
+
+export interface ChatOrderList {
+  data: ChatOrder[];
+  online_branch: { id: string; name: string } | null;
+  /** The customer's saved address, to prefill the delivery address. */
+  default_address: string | null;
+}
+
+export interface PlaceChatOrderInput {
+  fulfilment: "delivery" | "pickup";
+  address?: string;
+  delivery_fee_ngn: number;
+  items: { variant_id: string; quantity: number }[];
+  notes?: string;
+}
+
+export interface PlacedChatOrder {
+  order_number: string;
+  total_ngn: number;
+  is_preorder: boolean;
+  payment_link: string | null;
+  /** The order exists, but the link or the message did not go: show this to the person. */
+  warning?: string;
+}
