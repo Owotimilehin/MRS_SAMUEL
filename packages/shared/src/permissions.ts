@@ -95,6 +95,11 @@ export const CAPABILITIES = [
   // Connect and configure channel accounts (Facebook Page, Instagram); later:
   // chat set-up, WhatsApp profile, Page details. Admins, not managers.
   "channels.manage",
+  // See ad spend and results (suite spec 12).
+  "ads.view",
+  // Owner-only by default: create, switch on, pause and change adverts — this spends money.
+  // Deliberately NOT in ADMIN_CAPS/MANAGER_CAPS. Grantable per-user via overrides.
+  "ads.manage",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -143,6 +148,7 @@ const ADMIN_CAPS: Capability[] = [
   "inbox.reports",
   "channels.manage",
   "catalogue.manage",
+  "ads.view",
 ];
 
 const MANAGER_CAPS: Capability[] = [
