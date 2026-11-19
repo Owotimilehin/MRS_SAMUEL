@@ -117,6 +117,85 @@ export function fitsTextLimit(channel: "whatsapp" | "messenger" | "instagram", t
   return (lim.unit === "bytes" ? utf8Bytes(text) : [...text].length) <= lim.max;
 }
 
+export type UploadKind = "image" | "document" | "audio" | "video";
+export type UploadRule = { kind: UploadKind; maxBytes: number };
+
+const MB = 1024 * 1024;
+const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/**
+ * Which files each channel may send, and how big (spec 02, 5.6). The WhatsApp
+ * entry is the list the inbox has always used (moved here unchanged). The
+ * Messenger formats are [unverified] at Meta (S7), so the list is cautious.
+ */
+export const UPLOAD_RULES: Record<"whatsapp" | "messenger" | "instagram", Record<string, UploadRule>> = {
+  whatsapp: {
+    "image/jpeg": { kind: "image", maxBytes: 5 * MB },
+    "image/png": { kind: "image", maxBytes: 5 * MB },
+    "application/pdf": { kind: "document", maxBytes: 16 * MB },
+    [DOCX]: { kind: "document", maxBytes: 16 * MB },
+    [XLSX]: { kind: "document", maxBytes: 16 * MB },
+    "text/plain": { kind: "document", maxBytes: 16 * MB },
+    "audio/mpeg": { kind: "audio", maxBytes: 16 * MB },
+    "audio/ogg": { kind: "audio", maxBytes: 16 * MB },
+    "audio/aac": { kind: "audio", maxBytes: 16 * MB },
+    "video/mp4": { kind: "video", maxBytes: 16 * MB },
+  },
+  messenger: {
+    "image/jpeg": { kind: "image", maxBytes: 25 * MB },
+    "image/png": { kind: "image", maxBytes: 25 * MB },
+    "image/gif": { kind: "image", maxBytes: 25 * MB },
+    "audio/mpeg": { kind: "audio", maxBytes: 25 * MB },
+    "audio/mp4": { kind: "audio", maxBytes: 25 * MB },
+    "audio/aac": { kind: "audio", maxBytes: 25 * MB },
+    "video/mp4": { kind: "video", maxBytes: 25 * MB },
+    "application/pdf": { kind: "document", maxBytes: 25 * MB },
+    [DOCX]: { kind: "document", maxBytes: 25 * MB },
+    [XLSX]: { kind: "document", maxBytes: 25 * MB },
+    "text/plain": { kind: "document", maxBytes: 25 * MB },
+  },
+  instagram: {
+    "image/jpeg": { kind: "image", maxBytes: 8 * MB },
+    "image/png": { kind: "image", maxBytes: 8 * MB },
+    "audio/aac": { kind: "audio", maxBytes: 25 * MB },
+    "audio/mp4": { kind: "audio", maxBytes: 25 * MB },
+    "audio/wav": { kind: "audio", maxBytes: 25 * MB },
+    "audio/x-wav": { kind: "audio", maxBytes: 25 * MB },
+    "video/mp4": { kind: "video", maxBytes: 25 * MB },
+    "video/quicktime": { kind: "video", maxBytes: 25 * MB },
+    "video/webm": { kind: "video", maxBytes: 25 * MB },
+    "application/pdf": { kind: "document", maxBytes: 25 * MB },
+  },
+};
+
+const UPLOAD_CHANNEL_NAME = { whatsapp: "WhatsApp", messenger: "Messenger", instagram: "Instagram" } as const;
+
+/** The file picker's accept list for a channel. */
+export function uploadAccept(channel: "whatsapp" | "messenger" | "instagram"): string {
+  return Object.keys(UPLOAD_RULES[channel]).join(",");
+}
+
+/**
+ * Why this file can't be sent on this channel, in plain words, or null when it
+ * can. Runs in the composer before any upload, and mirrors the server's check.
+ */
+export function uploadProblem(
+  channel: "whatsapp" | "messenger" | "instagram",
+  file: { type: string; size: number },
+): string | null {
+  const name = UPLOAD_CHANNEL_NAME[channel];
+  const rule = UPLOAD_RULES[channel][file.type];
+  if (channel === "instagram" && file.type.startsWith("image/") && (!rule || file.size > rule.maxBytes)) {
+    return "Instagram only takes JPEG or PNG pictures up to 8 MB.";
+  }
+  if (!rule) return `${name} can't send this kind of file.`;
+  if (file.size <= 0 || file.size > rule.maxBytes) {
+    return `This file is too large for ${name} (limit ${Math.round(rule.maxBytes / MB)} MB).`;
+  }
+  return null;
+}
+
 export interface HoursRule {
   /** 0 = Sunday … 6 = Saturday, in the profile's time zone. */
   weekday: number;

@@ -318,6 +318,26 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     return row!;
   }
   const reload = async (id: string) => (await db.select().from(inboxMessage).where(eq(inboxMessage.id, id)))[0]!;
+
+  type TimelineMessage = {
+    id: string;
+    media_pending: boolean;
+    story_reply: boolean;
+    external_sender: boolean;
+    link: string | null;
+    advert: string | null;
+    edited: boolean;
+    deleted: boolean;
+    channel: string;
+    tap_caption: string | null;
+  };
+  /** One message row as the timeline route returns it. */
+  async function timelineMessage(conversationId: string, messageId: string): Promise<TimelineMessage | undefined> {
+    const res = await fetch(`${baseUrl}/v1/inbox/conversations/${conversationId}/timeline`, { headers: { cookie: await loginOwner() } });
+    expect(res.status).toBe(200);
+    const items = ((await res.json()) as { data: { kind: string; data: TimelineMessage }[] }).data;
+    return items.find((i) => i.kind === "message" && i.data.id === messageId)?.data;
+  }
   const reloadConv = async (id: string) => (await db.select().from(inboxConversation).where(eq(inboxConversation.id, id)))[0]!;
 
   it("a story mention is saved without media_url", async () => {
@@ -332,6 +352,35 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     expect(msg).toMatchObject({ type: "story_mention", body: "Mentioned you in their story", mediaUrl: null, mediaId: null });
     // The link stays only in the raw copy (offered for 24 hours), never downloaded.
     expect(JSON.stringify(msg!.payload)).toContain("https://cdn.example.test/story1");
+    const row = await timelineMessage(msg!.conversationId, msg!.id);
+    expect(row).toMatchObject({ link: "https://cdn.example.test/story1", media_pending: false });
+  });
+
+  it("an image attachment is saved with media_url and reported as media_pending", async () => {
+    const ev = {
+      sender: { id: "24000000000000202" },
+      recipient: { id: PAGE_ID },
+      timestamp: Date.now(),
+      message: { mid: "m_image_1", attachments: [{ type: "image", payload: { url: "https://cdn.example.test/photo.jpg" } }] },
+    };
+    await postWebhook(pageEvent(ev));
+    const [msg] = await messagesByMidPrefix("m_image_1");
+    expect(msg).toMatchObject({ type: "image", mediaUrl: "https://cdn.example.test/photo.jpg", mediaKey: null, mediaId: null });
+    expect((await timelineMessage(msg!.conversationId, msg!.id))?.media_pending).toBe(true);
+  });
+
+  it("a story reply is flagged story_reply in the timeline", async () => {
+    const ev = textEvent({
+      object: "instagram",
+      mid: "ig_story_reply_1",
+      text: "Is the mango one still on?",
+      from: "980000000000000202",
+      extra: { reply_to: { story: { url: "https://cdn.example.test/our-story", id: "17900000000000001" } } },
+    });
+    await postWebhook(pageEvent(ev, { object: "instagram" }));
+    const [msg] = await messagesByMidPrefix("ig_story_reply_1");
+    expect(msg).toMatchObject({ type: "text", direction: "in" });
+    expect((await timelineMessage(msg!.conversationId, msg!.id))?.story_reply).toBe(true);
   });
 
   it("a postback and a reaction open the reply window; a referral opens it without unread or alert", async () => {
@@ -363,6 +412,8 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     const [pb] = await messagesByMidPrefix(`pb:${from}:`);
     expect(pb).toMatchObject({ type: "interactive", direction: "in", body: "Starter question 2" });
     expect((pb!.payload as { postback: { payload: string } }).postback.payload).toBe("ms:v1:ice:2");
+    expect((await timelineMessage(conv.id, pb!.id))?.tap_caption).toBe("Tapped a starter question");
+    expect((await timelineMessage(conv.id, ref!.id))?.advert).toBeNull(); // the referral row's body says it instead
     c = await reloadConv(conv.id);
     expect(c.unreadCount).toBe(1);
     expect(c.lastInboundWaAt!.getTime()).toBe(pbTs);
@@ -428,10 +479,7 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     const [row] = await messagesByMidPrefix("m_echo_old");
     expect(row).toMatchObject({ direction: "out", status: "sent", senderUserId: null, body: "Answered in the Page inbox" });
     expect((row!.payload as { echo: { app_id: string } }).echo.app_id).toBe(OUR_APP_ID);
-    const owner = await loginOwner();
-    const tl = await fetch(`${baseUrl}/v1/inbox/conversations/${row!.conversationId}/timeline`, { headers: { cookie: owner } });
-    const items = ((await tl.json()) as { data: { kind?: string; id: string; external_sender?: boolean }[] }).data;
-    expect(items.find((i) => i.id === row!.id)?.external_sender).toBe(true);
+    expect((await timelineMessage(row!.conversationId, row!.id))?.external_sender).toBe(true);
   });
 
   it("an echo from another app id is inserted at once", async () => {
@@ -688,5 +736,41 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     expect((await reply(fb.id, { type: "text", body: "Hi from the agent" }, cookie)).status).toBe(201);
     expect((await fetch(`${baseUrl}/v1/inbox/conversations/${ig.id}`, { headers: { cookie } })).status).toBe(404);
     expect((await reply(ig.id, { type: "text", body: "not allowed" }, cookie)).status).toBe(404);
+  });
+
+  it("uploads use the channel's rules when conversation_id is given", async () => {
+    const cookie = await loginOwner();
+    const ig = await threadFor("980000000000001901", "instagram");
+    const fb = await threadFor("24000000000001901");
+    const upload = (b: Record<string, unknown>) =>
+      fetch(`${baseUrl}/v1/inbox/uploads`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(b) });
+    const msg = async (r: Response) => ((await r.json()) as { error: { message: string } }).error.message;
+
+    // WhatsApp rules (and wording) without a conversation, as before.
+    const wa = await upload({ filename: "a.gif", content_type: "image/gif", size_bytes: 1000 });
+    expect(wa.status).toBe(400);
+    expect(await msg(wa)).toBe("This file type can't be sent on WhatsApp: image/gif");
+
+    const gif = await upload({ filename: "a.gif", content_type: "image/gif", size_bytes: 1000, conversation_id: ig.id });
+    expect(gif.status).toBe(400);
+    expect(await msg(gif)).toBe("This kind of file can't be sent on Instagram: image/gif");
+    const big = await upload({ filename: "a.jpg", content_type: "image/jpeg", size_bytes: 9 * 1024 * 1024, conversation_id: ig.id });
+    expect(big.status).toBe(400);
+    expect(await msg(big)).toBe("This file is too large for Instagram (limit 8 MB)");
+    // Allowed on Messenger: it passes the rules and only stops because this test has no storage configured.
+    const ok = await upload({ filename: "a.jpg", content_type: "image/jpeg", size_bytes: 9 * 1024 * 1024, conversation_id: fb.id });
+    expect(ok.status).toBe(503);
+  });
+
+  it("no response body or stored row contains the stubbed page token", async () => {
+    const cookie = await loginOwner();
+    const list = await fetch(`${baseUrl}/v1/inbox/conversations?view=all`, { headers: { cookie } });
+    expect(await list.text()).not.toContain(PAGE_TOKEN);
+    const channels = await fetch(`${baseUrl}/v1/channels`, { headers: { cookie } });
+    expect(await channels.text()).not.toContain(PAGE_TOKEN);
+    for (const table of ["inbox_message", "inbox_webhook_event", "inbox_phone_number", "inbox_identity", "outbox_event", "audit_log"]) {
+      const rows = await db.execute(sql.raw(`select count(*)::int as n from ${table} where ${table}::text like '%${PAGE_TOKEN}%'`));
+      expect((rows as unknown as { n: number }[])[0]!.n).toBe(0);
+    }
   });
 });
