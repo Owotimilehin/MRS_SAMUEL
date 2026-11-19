@@ -516,6 +516,15 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `(code ${String(p["code"] ?? "unknown")}).\n` +
           `👉 ${SUITE_URL}/channels`,
       };
+    case "lead.fetch_blocked":
+      return {
+        chatIds: [owner],
+        text:
+          `📋 *Leads cannot be read*\n` +
+          `Meta refused (${String(p["code"] ?? "?")}): ${String(p["message"] ?? "no reason given")}\n` +
+          `Check Leads Access in Business Settings.\n` +
+          `👉 ${SUITE_URL}/leads`,
+      };
     case "channels.chat_setup_config":
       return {
         chatIds: [owner],

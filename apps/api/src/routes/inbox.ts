@@ -19,6 +19,7 @@ import {
   inboxTeamMember,
   inboxTemplate,
   inboxWebhookEvent,
+  lead,
   type DbClient,
 } from "@ms/db";
 import {
@@ -958,6 +959,24 @@ export function inboxRoutes(db: DbClient) {
         await tx.delete(inboxConversation).where(inArray(inboxConversation.id, convIds));
       }
       const gone = await tx.delete(inboxIdentity).where(eq(inboxIdentity.customerId, id)).returning({ id: inboxIdentity.id });
+      // Their lead-form answers (suite spec 13): blanked, the row stays so report counts stay true.
+      // (lead.conversation_id is cleared by its ON DELETE SET NULL when the conversations go.)
+      const leads = await tx
+        .update(lead)
+        .set({
+          answers: [],
+          fullName: null,
+          phoneRaw: null,
+          phoneE164: null,
+          email: null,
+          consent: null,
+          whatsappConsent: false,
+          note: null,
+          erasedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(lead.customerId, id))
+        .returning({ id: lead.id });
       // Raw webhook copies of their messages and calls: by phone digits and by every identity ID.
       const needles = new Set<string>();
       const d = digits(cust.phone);
@@ -972,6 +991,7 @@ export function inboxRoutes(db: DbClient) {
         calls: calls.length,
         recordings: recs.length,
         identities: gone.length,
+        leads: leads.length,
         keys: [...recs.map((x) => x.key), ...msgs.map((x) => x.key)],
       };
     });
@@ -1036,6 +1056,8 @@ export function inboxRoutes(db: DbClient) {
             })
             .where(eq(inboxConversation.id, clash.id));
           await publishInboxEvent(tx, signalFor("conversation.updated", conv));
+          // A lead that opened this thread now points at the kept one (suite spec 13).
+          await tx.update(lead).set({ conversationId: clash.id }).where(eq(lead.conversationId, conv.id));
           await tx.delete(inboxConversation).where(eq(inboxConversation.id, conv.id));
           await publishInboxEvent(tx, signalFor("conversation.updated", clash));
         } else {
@@ -1051,6 +1073,8 @@ export function inboxRoutes(db: DbClient) {
         .set({ customerId: intoId, updatedAt: new Date() })
         .where(eq(inboxIdentity.customerId, fromId))
         .returning({ id: inboxIdentity.id });
+      // Their leads move to the kept contact too (suite spec 13).
+      await tx.update(lead).set({ customerId: intoId, updatedAt: new Date() }).where(eq(lead.customerId, fromId));
       return { conversations: convs.length, identities: identities.length };
     });
     await writeAudit(db, c, {
