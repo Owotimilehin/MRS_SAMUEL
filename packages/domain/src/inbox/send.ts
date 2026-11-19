@@ -11,10 +11,12 @@ import {
   inboxMessage,
   inboxPhoneNumber,
   inboxTemplate,
+  waFlow,
   type DbClient,
 } from "@ms/db";
 import {
   fitsTextLimit,
+  flowDef,
   headerMediaLabel,
   humanAgentRemainingMs,
   isBsuid,
@@ -27,6 +29,8 @@ import {
 } from "@ms/shared";
 import { and, isNull, or, sql } from "drizzle-orm";
 import { classifyMessagingError, sendMetaMessage, type MetaSendContent } from "../meta/messaging.js";
+import { explainFlowError } from "../meta/flows.js";
+import { makeFlowToken } from "../meta/flow-token.js";
 import {
   MetaApiError,
   renderTemplateBody,
@@ -40,6 +44,9 @@ import {
 const BSUID_NOT_SUPPORTED = "131062";
 const BSUID_NOT_SUPPORTED_TEXT =
   "Not sent: WhatsApp can't deliver this kind of message to a customer who has hidden their number.";
+
+/** Meta refusals of a form message that have a plain sentence of their own (suite spec 07, 5.3). */
+const FLOW_SEND_CODES = new Set(["132068", "132069", "131047", "131026"]);
 
 /**
  * Who a WhatsApp reply goes to (rule R13), first match wins: the
@@ -95,6 +102,16 @@ export interface SendInput {
    * timeline can label it and so the same automatic message is not sent twice.
    */
   auto?: "after_hours";
+  /**
+   * Extra facts kept on the message's payload from the moment it is queued, and kept if the send
+   * fails (suite spec 07: `flow` says which form a message carries, so its answer can be matched).
+   */
+  payloadExtra?: Record<string, unknown>;
+  /**
+   * The secret that signs form tokens (the API's JWT_SIGNING_KEY). Needed only to send a template
+   * whose button opens a form; without it such a template is refused before Meta is called.
+   */
+  flowTokenSecret?: string;
 }
 
 type TemplateContent = Extract<OutboundContent, { type: "template" }>;
@@ -140,6 +157,11 @@ export function prepareTemplateContent(needs: TemplateNeeds, content: TemplateCo
       }
       return { index: b.index, text: given };
     });
+  }
+  // Form buttons carry our token (set by sendFromConversation); only the template's own form buttons are kept.
+  if (needs.flowButtons.length && content.flowButtons?.length) {
+    const kept = needs.flowButtons.flatMap((b) => content.flowButtons!.filter((f) => f.index === b.index).slice(0, 1));
+    if (kept.length) out.flowButtons = kept;
   }
   return out;
 }
@@ -200,6 +222,8 @@ export async function sendFromConversation(
   let mediaKey = input.mediaKey ?? null;
   let mediaMime = input.mediaMime ?? null;
   let mediaFilename = "filename" in content ? (content.filename ?? null) : null;
+  // Set when a template's button opens a form: kept on the message so the answer is matched to the form.
+  let templateFlow: Record<string, unknown> | null = null;
   if (input.content.type === "template") {
     const [tpl] = await db
       .select()
@@ -215,7 +239,30 @@ export async function sendFromConversation(
       throw new InboxSendError("template_not_approved", `Template ${input.content.name} is not approved`);
     }
     // Refuse what the inbox can't send, or what is missing, before calling Meta.
-    const prepared = prepareTemplateContent(templateNeeds(tpl.components, tpl.category), input.content);
+    const needs = templateNeeds(tpl.components, tpl.category);
+    let templateContent = input.content;
+    const formButton = needs.sendable ? needs.flowButtons[0] : undefined;
+    if (formButton) {
+      // A button that opens a form (suite spec 07, 5.5a): it must be one of ours and live, and it carries our token.
+      const [flowRow] = formButton.flowId ? await db.select().from(waFlow).where(eq(waFlow.metaFlowId, formButton.flowId)) : [];
+      const def = flowRow ? flowDef(flowRow.key) : null;
+      if (!flowRow || !def) {
+        throw new InboxSendError(
+          "template_unsupported",
+          "This template opens a form the suite does not know. Sync forms under Templates and forms, or use another template.",
+        );
+      }
+      if (flowRow.status !== "PUBLISHED") {
+        throw new InboxSendError("template_unsupported", "The form behind this template is not live at WhatsApp.");
+      }
+      if (!input.flowTokenSecret) {
+        throw new InboxSendError("template_unsupported", "This template opens a form, so it can only be sent by a person from the inbox.");
+      }
+      const token = makeFlowToken(input.flowTokenSecret, def.key, ctx.conv.id, now);
+      templateContent = { ...input.content, flowButtons: [{ index: formButton.index, flowToken: token }] };
+      templateFlow = { key: def.key, flow_row_id: flowRow.id, token, title: def.title, cta: formButton.text };
+    }
+    const prepared = prepareTemplateContent(needs, templateContent);
     content = prepared;
     if (prepared.headerMedia) {
       mediaFilename = prepared.headerMedia.filename ?? null;
@@ -232,10 +279,14 @@ export async function sendFromConversation(
         "More than 24 hours since the customer's last message — send a template instead",
       );
     }
-    body = input.content.type === "text" ? input.content.body : (input.content.caption ?? null);
+    body =
+      input.content.type === "text" || input.content.type === "flow" ? input.content.body : (input.content.caption ?? null);
   }
+  const payloadExtra: Record<string, unknown> = { ...(input.payloadExtra ?? {}), ...(templateFlow ? { flow: templateFlow } : {}) };
+  const hasExtra = (): boolean => Object.keys(payloadExtra).length > 0;
 
   const type = input.content.type;
+  const carriesForm = type === "flow" || "flow" in payloadExtra;
   const [queued] = await db
     .insert(inboxMessage)
     .values({
@@ -252,7 +303,7 @@ export async function sendFromConversation(
       senderUserId: input.userId,
       // Written with the row, before Meta is called: a crash mid-send leaves
       // the marker behind, so an automatic message is never sent twice.
-      ...(input.auto ? { payload: { auto: input.auto } } : {}),
+      ...(input.auto || hasExtra() ? { payload: { ...payloadExtra, ...(input.auto ? { auto: input.auto } : {}) } } : {}),
       createdAt: now,
     })
     .returning();
@@ -269,19 +320,22 @@ export async function sendFromConversation(
     const e = err instanceof MetaApiError ? err : null;
     const metaMessage = err instanceof Error ? err.message : String(err);
     const bsuidRefused = e?.code === BSUID_NOT_SUPPORTED;
+    // A form that Meta blocked, throttled or could not show: say so in plain words, keep Meta's own.
+    const flowRefused = carriesForm && e !== null && e.code !== null && FLOW_SEND_CODES.has(e.code);
     [final] = (await db
       .update(inboxMessage)
       .set({
         status: "failed",
         errorCode: e?.code ?? null,
-        errorMessage: bsuidRefused ? BSUID_NOT_SUPPORTED_TEXT : metaMessage,
+        errorMessage: bsuidRefused ? BSUID_NOT_SUPPORTED_TEXT : flowRefused ? explainFlowError(e) : metaMessage,
         // unconfirmed: it may have been delivered — staff should check before
         // resending. retryable: certainly not sent and worth another try.
         payload: {
+          ...payloadExtra,
           ...(input.auto ? { auto: input.auto } : {}),
           unconfirmed: e?.delivery === "unknown",
           retryable: e !== null && e.delivery === "not_sent" && e.retryable,
-          ...(bsuidRefused ? { meta_message: metaMessage } : {}),
+          ...(bsuidRefused || flowRefused ? { meta_message: metaMessage } : {}),
         },
       })
       .where(eq(inboxMessage.id, queued!.id))
@@ -383,6 +437,7 @@ async function sendMetaFromConversation(
   // 4–6. What this channel can carry (rule R16: refused before anything is written).
   const content = input.content;
   if (content.type === "template") throw new InboxSendError("not_supported", "Templates are only for WhatsApp.");
+  if (content.type === "flow") throw new InboxSendError("not_supported", "Forms are only for WhatsApp.");
   // The out-of-hours reply (inbox-gaps) is WhatsApp-only; its job never picks these threads, and this keeps it so.
   if (input.auto) throw new InboxSendError("not_supported", "Automatic replies are only for WhatsApp.");
   if (content.type !== "text" && content.caption) {

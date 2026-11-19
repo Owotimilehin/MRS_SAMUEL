@@ -9,8 +9,8 @@
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
-import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
-import { adminUser, inboxPhoneNumber, inboxTemplate, type DbClient } from "@ms/db";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
+import { adminUser, inboxPhoneNumber, inboxTemplate, waFlow, type DbClient } from "@ms/db";
 import {
   MetaApiError,
   applyMetaTemplate,
@@ -34,12 +34,14 @@ import {
   blanksIn,
   draftToComponents,
   editsLeft,
+  flowDef,
   nextEditAt,
   normaliseTemplateLanguage,
   templateCategoryLabel,
   templateEditability,
   validateDraft,
   validateTemplateName,
+  type DraftFlowTarget,
   type DraftProblem,
   type TemplateDraft,
 } from "@ms/shared";
@@ -94,6 +96,8 @@ const ButtonSchema = z.union([
   z.object({ type: z.literal("QUICK_REPLY"), text: Str }).strict(),
   z.object({ type: z.literal("URL"), text: Str, url: z.string().max(5000), example: Str }).strict(),
   z.object({ type: z.literal("PHONE_NUMBER"), text: Str, phone: z.string().max(100) }).strict(),
+  // A button that opens a built-in WhatsApp form (suite spec 07). "" until a form is chosen.
+  z.object({ type: z.literal("FLOW"), text: Str, flowKey: z.string().max(60) }).strict(),
 ]);
 export const DraftSchema = z
   .object({
@@ -184,9 +188,29 @@ async function namesFor(db: DbClient, rows: Row[]): Promise<Map<string, string>>
   return new Map(users.map((u) => [u.id, u.name ?? u.email]));
 }
 
-function toDto(row: Row, now: Date, names: Map<string, string>) {
-  const edit = templateEditability({ status: row.status, category: row.category, components: row.components, reviewInfo: row.reviewInfo });
+/** Meta's Flow ID -> our form key, for every form we hold (suite spec 07): lets a template with a form button be edited. */
+async function flowKeysMap(db: DbClient): Promise<Record<string, string>> {
+  const rows = await db.select({ id: waFlow.metaFlowId, key: waFlow.key }).from(waFlow).where(isNotNull(waFlow.metaFlowId));
+  return Object.fromEntries(rows.map((x) => [x.id!, x.key]));
+}
+
+/** The Flow IDs a template's buttons name. */
+function flowIdsIn(components: readonly unknown[] | null): string[] {
+  const out: string[] = [];
+  for (const c of (components ?? []) as { type?: unknown; buttons?: unknown }[]) {
+    if (String(c?.type).toUpperCase() !== "BUTTONS" || !Array.isArray(c.buttons)) continue;
+    for (const b of c.buttons as { type?: unknown; flow_id?: unknown }[]) {
+      if (String(b?.type).toUpperCase() === "FLOW" && (typeof b.flow_id === "string" || typeof b.flow_id === "number")) out.push(String(b.flow_id));
+    }
+  }
+  return out;
+}
+
+function toDto(row: Row, now: Date, names: Map<string, string>, flowKeys: Record<string, string>) {
+  const edit = templateEditability({ status: row.status, category: row.category, components: row.components, reviewInfo: row.reviewInfo, flowKeys });
   return {
+    // Only the forms this template's own buttons open.
+    flow_keys: Object.fromEntries(flowIdsIn(row.components).flatMap((id) => (flowKeys[id] ? [[id, flowKeys[id]!]] : []))),
     id: row.id,
     waba_id: row.wabaId,
     name: row.name,
@@ -219,7 +243,7 @@ function toDto(row: Row, now: Date, names: Map<string, string>) {
 async function dtoOf(db: DbClient, id: string) {
   const [row] = await db.select().from(inboxTemplate).where(eq(inboxTemplate.id, id));
   if (!row) throw new BusinessError("not_found", "not found", 404);
-  return toDto(row, templateDeps.now(), await namesFor(db, [row]));
+  return toDto(row, templateDeps.now(), await namesFor(db, [row]), await flowKeysMap(db));
 }
 
 /** The body and small print a template holds, for the duplicate check. */
@@ -309,7 +333,8 @@ export function templateRoutes(db: DbClient) {
       .orderBy(asc(inboxTemplate.name), asc(inboxTemplate.language));
     const names = await namesFor(db, rows);
     const now = templateDeps.now();
-    return c.json({ data: rows.map((x) => toDto(x, now, names)) });
+    const flowKeys = await flowKeysMap(db);
+    return c.json({ data: rows.map((x) => toDto(x, now, names, flowKeys)) });
   });
 
   r.get("/options", async (c) => {
@@ -438,14 +463,14 @@ export function templateRoutes(db: DbClient) {
 
   r.get("/:id", async (c) => {
     const row = await loadRow(db, c);
-    return c.json({ data: toDto(row, templateDeps.now(), await namesFor(db, [row])) });
+    return c.json({ data: toDto(row, templateDeps.now(), await namesFor(db, [row]), await flowKeysMap(db)) });
   });
 
   /** Save the editable copy. A second person's save is refused rather than overwritten. */
   r.put("/:id/draft", async (c) => {
     const row = await loadRow(db, c);
     const body = SaveBody.parse(await c.req.json());
-    const edit = templateEditability({ status: row.status, category: row.category, components: row.components, reviewInfo: row.reviewInfo });
+    const edit = templateEditability({ status: row.status, category: row.category, components: row.components, reviewInfo: row.reviewInfo, flowKeys: await flowKeysMap(db) });
     if (!edit.editable) throw new BusinessError("conflict", edit.reason ?? "This template cannot be changed.", 409, { reason: "not_editable" });
     const stale = new BusinessError("conflict", CHANGED_ELSEWHERE, 409, { reason: "changed_elsewhere" });
     if (!sameStamp(row.draftUpdatedAt, body.draft_updated_at)) throw stale;
@@ -566,15 +591,16 @@ export function templateRoutes(db: DbClient) {
         throw new BusinessError("validation_failed", "Read the warnings first, then tick the box to send anyway.", 400, { reason: "warnings", problems });
       }
 
+      const flowKeys = await flowKeysMap(tx as unknown as DbClient);
       let mode: "create" | "edit";
       if (row.status === "DRAFT") mode = "create";
       else if (["APPROVED", "REJECTED", "PAUSED"].includes(row.status)) {
-        const edit = templateEditability({ status: row.status, category: row.category, components: row.components, reviewInfo: row.reviewInfo });
+        const edit = templateEditability({ status: row.status, category: row.category, components: row.components, reviewInfo: row.reviewInfo, flowKeys });
         if (!edit.editable) throw new BusinessError("conflict", edit.reason ?? "This template cannot be changed.", 409, { reason: "not_editable" });
         if (!row.metaTemplateId) throw new BusinessError("conflict", SYNC_FIRST, 409);
         mode = "edit";
       } else {
-        const edit = templateEditability({ status: row.status, category: row.category, components: row.components, reviewInfo: row.reviewInfo });
+        const edit = templateEditability({ status: row.status, category: row.category, components: row.components, reviewInfo: row.reviewInfo, flowKeys });
         throw new BusinessError("conflict", edit.reason ?? "This template cannot be changed in its current state.", 409, { reason: "not_editable" });
       }
 
@@ -607,12 +633,36 @@ export function templateRoutes(db: DbClient) {
       if (draft.header && draft.header.format !== "TEXT" && !appIdOf(cfg)) {
         throw new BusinessError("service_unavailable", SAMPLE_NOT_SET_UP, 503);
       }
+      // A form button (suite spec 07, 5.5a): the form must be one of ours and live on this account.
+      const flows: Record<string, DraftFlowTarget> = {};
+      for (const b of draft.buttons) {
+        if (b.type !== "FLOW") continue;
+        const def = flowDef(b.flowKey);
+        const versions = def
+          ? await tx
+              .select()
+              .from(waFlow)
+              .where(and(eq(waFlow.wabaId, row.wabaId), eq(waFlow.key, def.key), eq(waFlow.status, "PUBLISHED"), isNotNull(waFlow.metaFlowId)))
+              .orderBy(desc(waFlow.version))
+              .limit(1)
+          : [];
+        const liveForm = versions[0];
+        if (!def || !liveForm) {
+          throw new BusinessError(
+            "conflict",
+            `The form behind the “${b.text.trim() || "form"}” button is not live at WhatsApp. Publish it under Forms first, or choose another form.`,
+            409,
+            { reason: "form_not_live" },
+          );
+        }
+        flows[def.key] = { flowId: liveForm.metaFlowId!, action: def.usesEndpoint ? "data_exchange" : "navigate", screen: def.entryScreen };
+      }
 
       // Step 7: mark the attempt.
       await tx.update(inboxTemplate).set({ submittedBy: userId, submittedAt: now, lastError: null }).where(eq(inboxTemplate.id, row.id));
-      return { row, draft, mode };
+      return { row, draft, mode, flows, flowKeys };
     });
-    const { row, draft, mode } = claim;
+    const { row, draft, mode, flows } = claim;
 
     const fail = async (err: unknown): Promise<never> => {
       const message = err instanceof MetaApiError ? explainTemplateError(err) : err instanceof BusinessError ? err.message : "Something went wrong on our side. Check the list in a minute before trying again.";
@@ -647,8 +697,8 @@ export function templateRoutes(db: DbClient) {
         if (sniffMime(bytes) !== h.sampleMime) throw new BusinessError("validation_failed", BAD_SAMPLE, 400);
         handle = await uploadFileToMeta(cfg, appIdOf(cfg)!, { bytes, mimeType: h.sampleMime, fileName: h.sampleName || "sample" });
       }
-      components = draftToComponents(draft, handle);
-      altComponents = blanksIn(draft.body.text).length > 0 ? draftToComponents(draft, handle, { flatBodyExamples: true }) : undefined;
+      components = draftToComponents(draft, handle, { flows });
+      altComponents = blanksIn(draft.body.text).length > 0 ? draftToComponents(draft, handle, { flatBodyExamples: true, flows }) : undefined;
     } catch (err) {
       return fail(err);
     }

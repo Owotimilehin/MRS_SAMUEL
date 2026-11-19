@@ -19,13 +19,22 @@ import {
   inboxTeamMember,
   inboxTemplate,
   inboxWebhookEvent,
+  waFlow,
+  waFlowResponse,
   type DbClient,
+  type FlowResponseAction,
 } from "@ms/db";
 import {
   InboxSendError,
   canSeeConversation,
   canUseNumber,
   conversationScope,
+  flowJson,
+  SLOT_OVERBOOKED_TEXT,
+  flowResponseCard,
+  loadFlowPrivateKey,
+  makeFlowToken,
+  slotOverbooked,
   syncTemplatesForWaba,
   markRead,
   metaConfigFromEnv,
@@ -39,7 +48,11 @@ import {
 } from "@ms/domain";
 import {
   IDENTITY_CHANNELS,
+  FLOW_MESSAGE_LIMITS,
+  WA_FLOWS,
   describeChatSetupPayload,
+  flowAddressLine,
+  flowDef,
   humanAgentRemainingMs,
   resolveCapabilities,
   templateNeeds,
@@ -282,6 +295,22 @@ const SendBody = z.discriminatedUnion("type", [
       .default([]),
   }),
 ]);
+
+/** Send a form (suite spec 07, 5.5). `test` sends a draft to try it out; it needs templates.manage as well. */
+const FlowSendBody = z
+  .object({
+    flow_key: z.string().min(1).max(60),
+    message: z.string().trim().min(1).max(FLOW_MESSAGE_LIMITS.body).optional(),
+    test: z.boolean().optional(),
+  })
+  .strict();
+
+const FlowActionBody = z.object({ action: z.enum(["handled", "reopen", "save_address", "add_note"]) }).strict();
+
+/** Forms the inbox can send: built-in ones whose JSON is in this build (Phase B only once it has been created). */
+function sendableForms(rows: { key: string }[]) {
+  return WA_FLOWS.filter((f) => flowJson(f.key) !== null && (f.phase === "A" || rows.some((x) => x.key === f.key)));
+}
 
 const PatchBody = z
   .object({
@@ -659,6 +688,8 @@ export function inboxRoutes(db: DbClient) {
         content,
         mediaKey,
         mediaMime,
+        // A template whose button opens a form carries a signed token (suite spec 07).
+        flowTokenSecret: env.JWT_SIGNING_KEY,
       });
       await audit(db, c, "inbox.message_send", "inbox_message", msg.id, { conversation_id: conv.id, type: msg.type, status: msg.status });
       // Messenger/Instagram configuration problem (spec 02, rule R20): tell the owner once a day per account.
@@ -677,6 +708,192 @@ export function inboxRoutes(db: DbClient) {
       }
       throw err;
     }
+  });
+
+  // ── WhatsApp forms (suite spec 07) ──
+
+  /** The forms staff can send, and whether each is live at WhatsApp. No Meta call. */
+  r.get("/flows", async (c) => {
+    // With a conversation, "live" means live on that conversation's WhatsApp account.
+    const convId = c.req.query("conversation_id");
+    let waba: string | null = null;
+    if (convId) {
+      const conv = await visibleConversation(db, c, convId);
+      const [num] = await db.select({ waba: inboxPhoneNumber.wabaId }).from(inboxPhoneNumber).where(eq(inboxPhoneNumber.id, conv.phoneNumberId));
+      waba = num?.waba ?? null;
+    }
+    const rows = await db
+      .select({ key: waFlow.key, status: waFlow.status, metaFlowId: waFlow.metaFlowId })
+      .from(waFlow)
+      .where(waba ? eq(waFlow.wabaId, waba) : undefined);
+    const usable = rows.filter((x) => x.metaFlowId !== null);
+    return c.json({
+      data: sendableForms(rows).map((f) => ({
+        key: f.key,
+        title: f.title,
+        description: f.description,
+        cta: f.cta,
+        default_message: f.defaultMessage,
+        live: usable.some((x) => x.key === f.key && x.status === "PUBLISHED"),
+        testable: usable.some((x) => x.key === f.key && (x.status === "DRAFT" || x.status === "PUBLISHED")),
+      })),
+    });
+  });
+
+  /**
+   * Send a form in a chat: a message with a button that opens the form inside WhatsApp. A person
+   * pressed "Send form"; nothing here runs on its own. Inside the 24-hour window only (checked by
+   * sendFromConversation before Meta is called).
+   */
+  r.post("/conversations/:id/flows", async (c) => {
+    need(c, "inbox.reply");
+    const conv = await visibleConversation(db, c, c.req.param("id"));
+    const v = c.get("inboxViewer");
+    if (!canUseNumber(v, conv.phoneNumberId)) throw new BusinessError("forbidden", "You can't reply from this number", 403);
+    const body = FlowSendBody.parse(await c.req.json());
+    const def = flowDef(body.flow_key);
+    if (!def || flowJson(def.key) === null) throw new BusinessError("validation_failed", "Unknown form.", 400);
+    const test = body.test === true;
+    if (test) need(c, "templates.manage");
+    if (conv.channel !== "whatsapp") throw new BusinessError("conflict", "Forms are only for WhatsApp.", 409, { reason: "not_supported" });
+
+    const [num] = await db.select({ waba: inboxPhoneNumber.wabaId }).from(inboxPhoneNumber).where(eq(inboxPhoneNumber.id, conv.phoneNumberId));
+    const candidates = num?.waba
+      ? await db
+          .select()
+          .from(waFlow)
+          .where(and(eq(waFlow.wabaId, num.waba), eq(waFlow.key, def.key)))
+          .orderBy(desc(waFlow.version))
+      : [];
+    const row = candidates.find((x) => x.metaFlowId !== null && (x.status === "PUBLISHED" || (test && x.status === "DRAFT")));
+    if (!row) {
+      throw new BusinessError(
+        "conflict",
+        test
+          ? "This form is not at WhatsApp yet. Create it under Templates and forms first."
+          : "This form is not live at WhatsApp yet. Ask an admin to publish it under Templates and forms.",
+        409,
+        { reason: "form_not_live" },
+      );
+    }
+    // A form that talks to our server cannot work while the server has no key (rule 23).
+    if (def.usesEndpoint && loadFlowPrivateKey(process.env) === null) {
+      throw new BusinessError("conflict", "The secure connection is not set up on this server yet.", 409, { reason: "no_secure_connection" });
+    }
+    const mode = row.status === "PUBLISHED" ? "published" : "draft";
+    const token = makeFlowToken(env.JWT_SIGNING_KEY, def.key, conv.id, new Date());
+
+    try {
+      const msg = await sendFromConversation(db, metaConfigFromEnv(), {
+        conversationId: conv.id,
+        userId: v.userId,
+        content: {
+          type: "flow",
+          flowId: row.metaFlowId!,
+          flowToken: token,
+          cta: def.cta,
+          body: body.message ?? def.defaultMessage,
+          action: def.usesEndpoint ? "data_exchange" : "navigate",
+          screen: def.entryScreen,
+          mode,
+        },
+        payloadExtra: { flow: { key: def.key, flow_row_id: row.id, token, title: def.title, cta: def.cta, ...(test ? { test: true } : {}) } },
+      });
+      await writeAudit(db, c, {
+        action: "inbox.flow_send",
+        entityType: "inbox_conversation",
+        entityId: conv.id,
+        after: { flow_key: def.key, message_id: msg.id, status: msg.status, mode, flow_version: row.version },
+        notify: false,
+      });
+      return c.json({ data: msg }, msg.status === "failed" ? 502 : 201);
+    } catch (err) {
+      if (err instanceof InboxSendError) {
+        const status = err.code === "not_configured" ? 503 : 409;
+        throw new BusinessError(status === 503 ? "service_unavailable" : "conflict", err.message, status, { reason: err.code });
+      }
+      throw err;
+    }
+  });
+
+  /**
+   * What staff do with a completed form: mark it handled, undo that, save a delivery address to
+   * the contact, or copy the answers into a note. Nothing here sends anything to the customer.
+   */
+  r.post("/flow-responses/:id/action", async (c) => {
+    need(c, "inbox.reply");
+    const id = c.req.param("id");
+    if (!z.string().uuid().safeParse(id).success) throw new BusinessError("not_found", "not found", 404);
+    const [resp] = await db.select().from(waFlowResponse).where(eq(waFlowResponse.id, id));
+    if (!resp) throw new BusinessError("not_found", "not found", 404);
+    const conv = await visibleConversation(db, c, resp.conversationId);
+    const { action } = FlowActionBody.parse(await c.req.json());
+    const v = c.get("inboxViewer");
+    const now = new Date();
+    const card = flowResponseCard(resp.flowKey, resp.data);
+    const entry = (detail?: string): FlowResponseAction => ({ action, by: v.userId, at: now.toISOString(), ...(detail ? { detail } : {}) });
+    const append = (e: FlowResponseAction) => sql`${waFlowResponse.actions} || ${JSON.stringify([e])}::jsonb`;
+    let before: unknown;
+    let after: unknown;
+    let result: Record<string, unknown> = {};
+
+    if (action === "handled") {
+      const done = await db
+        .update(waFlowResponse)
+        .set({ status: "handled", handledBy: v.userId, handledAt: now, actions: append(entry()) })
+        .where(and(eq(waFlowResponse.id, resp.id), eq(waFlowResponse.status, "new")))
+        .returning({ id: waFlowResponse.id });
+      if (done.length === 0) throw new BusinessError("conflict", "This form is already marked as handled.", 409);
+      before = { status: "new" };
+      after = { status: "handled" };
+    } else if (action === "reopen") {
+      const done = await db
+        .update(waFlowResponse)
+        .set({ status: "new", handledBy: null, handledAt: null, actions: append(entry()) })
+        .where(and(eq(waFlowResponse.id, resp.id), eq(waFlowResponse.status, "handled")))
+        .returning({ id: waFlowResponse.id });
+      if (done.length === 0) throw new BusinessError("conflict", "This form is not marked as handled.", 409);
+      before = { status: "handled" };
+      after = { status: "new" };
+    } else if (action === "save_address") {
+      if (resp.flowKey !== "delivery_address") {
+        throw new BusinessError("conflict", "Only a delivery address form can be saved to the contact.", 409);
+      }
+      const address = flowAddressLine(resp.data);
+      if (!address) throw new BusinessError("conflict", "This answer has no address to save.", 409);
+      // The only place a form changes a customer record, and only on this button press (rule 14).
+      const saved = await db.transaction(async (tx) => {
+        const [cust] = await tx.select({ address: customer.defaultAddress }).from(customer).where(eq(customer.id, conv.customerId)).for("update");
+        if (!cust) throw new BusinessError("not_found", "not found", 404);
+        await tx.update(customer).set({ defaultAddress: address, updatedAt: now }).where(eq(customer.id, conv.customerId));
+        await tx.update(waFlowResponse).set({ actions: append(entry("Saved to the contact")) }).where(eq(waFlowResponse.id, resp.id));
+        return { before: cust.address ?? null, after: address };
+      });
+      before = { default_address: saved.before };
+      after = { default_address: saved.after };
+      result = saved;
+    } else {
+      need(c, "inbox.notes");
+      const text = [card.title, ...card.rows.map((row) => `${row.label}: ${row.value}`)].join("\n").slice(0, 4000);
+      const [note] = await db.insert(inboxNote).values({ conversationId: conv.id, authorUserId: v.userId, body: text }).returning();
+      await db.update(waFlowResponse).set({ actions: append(entry("Added to notes")) }).where(eq(waFlowResponse.id, resp.id));
+      await publishInboxEvent(db, signalFor("note.created", conv, note!.id));
+      after = { note_id: note!.id };
+      result = { note_id: note!.id };
+    }
+
+    await writeAudit(db, c, {
+      action: "inbox.flow_response_action",
+      entityType: "wa_flow_response",
+      entityId: resp.id,
+      before,
+      after: { action, flow_key: resp.flowKey, conversation_id: conv.id, ...(after as Record<string, unknown>) },
+      notify: false,
+    });
+    // Open screens redraw the card.
+    await publishInboxEvent(db, signalFor("message.status", conv, resp.messageId));
+    const [fresh] = await db.select({ status: waFlowResponse.status, handledAt: waFlowResponse.handledAt }).from(waFlowResponse).where(eq(waFlowResponse.id, resp.id));
+    return c.json({ data: { id: resp.id, status: fresh?.status ?? resp.status, handled_at: fresh?.handledAt ?? null, ...result } });
   });
 
   r.post("/conversations/:id/notes", async (c) => {
@@ -994,6 +1211,7 @@ export function inboxRoutes(db: DbClient) {
       let calls: { id: string }[] = [];
       let recs: { key: string | null }[] = [];
       let msgs: { key: string | null }[] = [];
+      let forms: { id: string }[] = [];
       if (convIds.length) {
         calls = await tx.select({ id: inboxCall.id }).from(inboxCall).where(inArray(inboxCall.conversationId, convIds));
         const callIds = calls.map((x) => x.id);
@@ -1001,6 +1219,8 @@ export function inboxRoutes(db: DbClient) {
           ? await tx.delete(inboxRecording).where(inArray(inboxRecording.callId, callIds)).returning({ key: inboxRecording.storageKey })
           : [];
         if (callIds.length) await tx.delete(inboxCall).where(inArray(inboxCall.id, callIds));
+        // Their form answers (suite spec 07, rule 16) go first, before the messages they hang off.
+        forms = await tx.delete(waFlowResponse).where(inArray(waFlowResponse.conversationId, convIds)).returning({ id: waFlowResponse.id });
         msgs = await tx.delete(inboxMessage).where(inArray(inboxMessage.conversationId, convIds)).returning({ key: inboxMessage.mediaKey });
         await tx.delete(inboxNote).where(inArray(inboxNote.conversationId, convIds));
         for (const conv of convs) await publishInboxEvent(tx, signalFor("conversation.updated", conv));
@@ -1020,6 +1240,7 @@ export function inboxRoutes(db: DbClient) {
         messages: msgs.length,
         calls: calls.length,
         recordings: recs.length,
+        form_answers: forms.length,
         identities: gone.length,
         keys: [...recs.map((x) => x.key), ...msgs.map((x) => x.key)],
       };
@@ -1070,6 +1291,8 @@ export function inboxRoutes(db: DbClient) {
         if (clash) {
           // Both have a live thread on this number: fold this one into the target's.
           await tx.update(inboxMessage).set({ conversationId: clash.id }).where(eq(inboxMessage.conversationId, conv.id));
+          // Form answers follow their messages (ruling 9.2.8); otherwise deleting the folded thread would delete them.
+          await tx.update(waFlowResponse).set({ conversationId: clash.id }).where(eq(waFlowResponse.conversationId, conv.id));
           await tx.update(inboxNote).set({ conversationId: clash.id }).where(eq(inboxNote.conversationId, conv.id));
           await tx.update(inboxCall).set({ conversationId: clash.id, customerId: intoId }).where(eq(inboxCall.conversationId, conv.id));
           await tx
@@ -1199,6 +1422,7 @@ async function buildTimelinePage(
   if (conversationIds.length === 0) return { data: [], has_more: false, next_before: null };
   const take = opts.limit + 1;
   const staff = alias(adminUser, "staff");
+  const handler = alias(adminUser, "flow_handler");
 
   const messages = await db
     .select({
@@ -1241,10 +1465,21 @@ async function buildTimelinePage(
       // Sent by the system, not a person: "after_hours" (closed-hours reply) or "system" (e.g. missed-call follow-up).
       // A Messenger/Instagram echo answered from Meta's own apps is a person, not the system (external_sender above).
       auto: sql<string | null>`case when ${inboxMessage.direction} = 'out' and ${inboxMessage.senderUserId} is null and not coalesce(${inboxMessage.payload} ? 'echo', false) then coalesce(${inboxMessage.payload}->>'auto', 'system') end`,
+      // A WhatsApp form (suite spec 07): what we sent, and the customer's answers.
+      flow_sent_title: sql<string | null>`case when ${inboxMessage.direction} = 'out' and ${inboxMessage.type} = 'flow' then ${inboxMessage.payload} #>> '{flow,title}' end`,
+      flow_sent_cta: sql<string | null>`case when ${inboxMessage.direction} = 'out' and ${inboxMessage.type} = 'flow' then ${inboxMessage.payload} #>> '{flow,cta}' end`,
+      flow_response_id: waFlowResponse.id,
+      flow_key: waFlowResponse.flowKey,
+      flow_data: waFlowResponse.data,
+      flow_status: waFlowResponse.status,
+      flow_handled_at: waFlowResponse.handledAt,
+      flow_handled_by_name: sql<string | null>`coalesce(${handler.name}, ${handler.email})`,
       created_at: inboxMessage.createdAt,
     })
     .from(inboxMessage)
     .leftJoin(staff, eq(staff.id, inboxMessage.senderUserId))
+    .leftJoin(waFlowResponse, eq(waFlowResponse.messageId, inboxMessage.id))
+    .leftJoin(handler, eq(handler.id, waFlowResponse.handledBy))
     .where(and(inArray(inboxMessage.conversationId, conversationIds), ...(opts.before ? [lt(inboxMessage.createdAt, opts.before)] : [])))
     .orderBy(desc(inboxMessage.createdAt))
     .limit(take);
@@ -1265,6 +1500,14 @@ async function buildTimelinePage(
     .where(and(inArray(inboxCall.conversationId, conversationIds), ...(opts.before ? [lt(inboxCall.startedAt, opts.before)] : [])))
     .orderBy(desc(inboxCall.startedAt))
     .limit(take);
+
+  // A delivery-time booking that arrived after its window was already full gets an amber line (5.10).
+  const overbooked = new Set<string>();
+  for (const m of messages) {
+    if (m.flow_response_id && m.flow_key === "delivery_slot" && (await slotOverbooked(db, { id: m.flow_response_id, data: m.flow_data ?? {} }))) {
+      overbooked.add(m.flow_response_id);
+    }
+  }
 
   const recordings = calls.length
     ? await db.select().from(inboxRecording).where(inArray(inboxRecording.callId, calls.map((x) => x.id)))
@@ -1287,11 +1530,24 @@ async function buildTimelinePage(
     .limit(take);
 
   const items: TimelineItem[] = [
-    ...messages.map(({ tap_payload, ...m }) => ({
+    ...messages.map(({ tap_payload, flow_sent_title, flow_sent_cta, flow_response_id, flow_key, flow_data, flow_status, flow_handled_at, flow_handled_by_name, ...m }) => ({
       kind: "message" as const,
       at: m.created_at.toISOString(),
       data: {
         ...m,
+        flow_sent: flow_sent_title !== null || flow_sent_cta !== null ? { title: flow_sent_title ?? "Form", cta: flow_sent_cta ?? "Open form" } : null,
+        flow_response:
+          flow_response_id !== null && flow_key !== null
+            ? {
+                id: flow_response_id,
+                flow_key,
+                status: flow_status ?? "new",
+                handled_by_name: flow_handled_by_name,
+                handled_at: flow_handled_at ? flow_handled_at.toISOString() : null,
+                ...flowResponseCard(flow_key, flow_data ?? {}),
+                warning: overbooked.has(flow_response_id) ? SLOT_OVERBOOKED_TEXT : null,
+              }
+            : null,
         // A tapped Messenger/Instagram button: what it was (spec 04, section 5.6). Null otherwise.
         tap_caption: m.type === "interactive" && tap_payload !== null ? (describeChatSetupPayload(tap_payload)?.caption ?? "Tapped a button") : null,
       },

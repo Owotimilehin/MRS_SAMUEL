@@ -59,6 +59,48 @@ describe("buildSendPayload", () => {
   });
 });
 
+describe("buildSendPayload for a WhatsApp form (suite spec 07)", () => {
+  const flow = { type: "flow" as const, flowId: "9001", flowToken: "tok", cta: "Add address", body: "Please fill this in.", mode: "published" as const };
+  it("buildSendPayload builds an interactive flow message for navigate and for data_exchange", () => {
+    expect(buildSendPayload("2347000000000", { ...flow, action: "navigate", screen: "ADDRESS" })).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "2347000000000",
+      type: "interactive",
+      interactive: {
+        type: "flow",
+        body: { text: "Please fill this in." },
+        action: {
+          name: "flow",
+          parameters: {
+            flow_message_version: "3",
+            flow_id: "9001",
+            flow_cta: "Add address",
+            flow_token: "tok",
+            flow_action: "navigate",
+            flow_action_payload: { screen: "ADDRESS" },
+            mode: "published",
+          },
+        },
+      },
+    });
+    const exchange = buildSendPayload({ bsuid: "NG.123" }, { ...flow, action: "data_exchange", screen: "PICK_DAY", mode: "draft", footer: "Mrs. Samuel" }) as {
+      recipient?: string;
+      interactive: { footer?: unknown; action: { parameters: Record<string, unknown> } };
+    };
+    expect(exchange.recipient).toBe("NG.123");
+    expect(exchange.interactive.footer).toEqual({ text: "Mrs. Samuel" });
+    expect(exchange.interactive.action.parameters).toEqual({
+      flow_message_version: "3",
+      flow_id: "9001",
+      flow_cta: "Add address",
+      flow_token: "tok",
+      flow_action: "data_exchange",
+      mode: "draft",
+    });
+  });
+});
+
 describe("buildSendPayload recipients", () => {
   it("buildSendPayload uses recipient for a BSUID and to for a phone", () => {
     const phone = buildSendPayload("2347000000000", { type: "text", body: "hi" });
@@ -244,6 +286,21 @@ describe("parseInbound", () => {
       type: "system",
       body: "WhatsApp updated this customer's details.",
     });
+  });
+});
+
+describe("parseInbound for a completed form (suite spec 07)", () => {
+  it("parseInbound gives an nfm_reply the body \"Completed a form\"", () => {
+    const p = parseInbound({
+      id: "wamid.F1",
+      from: "2347000000000",
+      type: "interactive",
+      interactive: { type: "nfm_reply", nfm_reply: { name: "flow", body: "Sent", response_json: '{"flow_token":"t"}' } },
+    });
+    expect(p).toEqual({ type: "interactive", body: "Completed a form", mediaId: null, mediaMime: null, mediaFilename: null });
+    // Ordinary button taps are unchanged.
+    expect(parseInbound({ id: "wamid.B1", from: "2347000000000", type: "interactive", interactive: { type: "button_reply", button_reply: { id: "1", title: "Yes" } } }).body).toBe("Yes");
+    expect(parseInbound({ id: "wamid.B2", from: "2347000000000", type: "interactive", interactive: { type: "other" } }).body).toBeNull();
   });
 });
 

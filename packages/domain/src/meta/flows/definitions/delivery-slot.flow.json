@@ -1,0 +1,131 @@
+{
+  "version": "7.3",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "PICK_DAY": [
+      "PICK_TIME"
+    ],
+    "PICK_TIME": []
+  },
+  "screens": [
+    {
+      "id": "PICK_DAY",
+      "title": "Choose a day",
+      "data": {
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "2026-11-20",
+              "title": "Fri 20 Nov"
+            }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextSubheading",
+            "text": "Which day suits you?"
+          },
+          {
+            "type": "RadioButtonsGroup",
+            "name": "day",
+            "label": "Delivery day",
+            "required": true,
+            "data-source": "${data.days}"
+          },
+          {
+            "type": "Footer",
+            "label": "See times",
+            "on-click-action": {
+              "name": "data_exchange",
+              "payload": {
+                "day": "${form.day}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "PICK_TIME",
+      "title": "Choose a time",
+      "terminal": true,
+      "success": true,
+      "data": {
+        "day": {
+          "type": "string",
+          "__example__": "2026-11-20"
+        },
+        "day_label": {
+          "type": "string",
+          "__example__": "Fri 20 Nov"
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "11:00-13:00",
+              "title": "11am to 1pm"
+            }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextSubheading",
+            "text": "${data.day_label}"
+          },
+          {
+            "type": "RadioButtonsGroup",
+            "name": "slot",
+            "label": "Delivery time",
+            "required": true,
+            "data-source": "${data.slots}"
+          },
+          {
+            "type": "TextCaption",
+            "text": "We will confirm your time in the chat."
+          },
+          {
+            "type": "Footer",
+            "label": "Book this time",
+            "on-click-action": {
+              "name": "data_exchange",
+              "payload": {
+                "day": "${data.day}",
+                "slot": "${form.slot}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Paperclip, MessageSquareText, FileText, X, StickyNote, Clock } from "lucide-react";
+import { Paperclip, MessageSquareText, FileText, X, StickyNote, Clock, ClipboardList } from "lucide-react";
 import { headerMediaLabel, humanAgentRemainingMs, templateNeeds, uploadProblem, waWindowRemainingMs } from "@ms/shared";
 import { ChannelIcon } from "./ChannelIcon.js";
 import { Modal } from "../Modal.js";
+import { FlowPicker, FLOW_WINDOW_HINT } from "./FlowPicker.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import { humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
@@ -53,6 +54,7 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
   const [busy, setBusy] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showFlows, setShowFlows] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const lastTyping = useRef<number | null>(null);
 
@@ -73,12 +75,23 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
   });
   const name = channelName(rs.channel);
 
+  // Forms (spec 07) are WhatsApp-only; the button appears once the server lists at least one.
+  const flowsQ = useQuery({
+    queryKey: inboxKeys.flowsFor(conv.id),
+    queryFn: () => inboxApi.flows(conv.id),
+    enabled: canReply && waNumber && !metaLine,
+    staleTime: 60_000,
+  });
+  const flows = flowsQ.data ?? [];
+  const canSendForm = canReply && waNumber && !metaLine && flows.length > 0;
+
   // Reset the draft when switching conversations.
   useEffect(() => {
     setText("");
     setFile(null);
     setFileProblem(null);
     setMode(canReply && replyLine ? "reply" : "note");
+    setShowFlows(false);
     lastTyping.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conv.id]);
@@ -183,6 +196,16 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
             <button type="button" className="btn btn--primary btn--sm" onClick={() => setShowTemplates(true)}>
               Send a template
             </button>
+          )}
+          {canSendForm && (
+            <>
+              <button type="button" className="btn btn--subtle btn--sm" disabled title={FLOW_WINDOW_HINT}>
+                <ClipboardList size={14} aria-hidden /> Send a form
+              </button>
+              <div style={{ flexBasis: "100%", fontSize: 12, color: "var(--ink-soft)" }}>
+                {FLOW_WINDOW_HINT}
+              </div>
+            </>
           )}
         </div>
   );
@@ -296,6 +319,18 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
                   <FileText size={16} />
                 </button>
               )}
+              {canSendForm && (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  aria-label="Send a form"
+                  title={win.open ? "Send a form" : FLOW_WINDOW_HINT}
+                  disabled={!win.open}
+                  onClick={() => setShowFlows(true)}
+                >
+                  <ClipboardList size={16} />
+                </button>
+              )}
             </>
           )}
           <textarea
@@ -341,6 +376,18 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
           onPick={(qr) => {
             setText((t) => (t ? `${t}\n${qr.body}` : qr.body));
             setShowQuick(false);
+          }}
+        />
+      )}
+      {showFlows && canSendForm && win.open && (
+        <FlowPicker
+          conversationId={conv.id}
+          flows={flows}
+          canTest={can("templates.manage")}
+          onClose={() => setShowFlows(false)}
+          onSent={() => {
+            setShowFlows(false);
+            onSent();
           }}
         />
       )}

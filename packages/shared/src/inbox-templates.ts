@@ -11,6 +11,7 @@
  *   - FOOTER
  *   - BUTTONS of type URL (fixed, or with one {{1}} blank), PHONE_NUMBER
  *     and QUICK_REPLY
+ *   - one BUTTON of type FLOW (opens a WhatsApp form; suite spec 07)
  * Anything else — and anything this code does not recognise — is reported as
  * not sendable with a plain-English reason, so a new Meta feature is refused
  * cleanly instead of failing at Meta.
@@ -46,6 +47,8 @@ export interface TemplateNeeds {
   footerText: string | null;
   /** Labels of every button, in order, for the preview. */
   buttonLabels: string[];
+  /** Buttons that open a WhatsApp form (suite spec 07). `flowId` is Meta's Flow ID, null when Meta did not list it. */
+  flowButtons: { index: number; text: string; flowId: string | null }[];
 }
 
 const PLACEHOLDER = /\{\{\s*([^{}]*?)\s*\}\}/g;
@@ -74,7 +77,6 @@ const cant = (what: string): string => `This template ${what}, which the inbox c
 const UNSENDABLE_BUTTONS: Record<string, string> = {
   COPY_CODE: "has a copy-code button",
   OTP: "is a login-code message",
-  FLOW: "opens a form",
   CATALOG: "shows the product catalogue",
   MPM: "shows a list of products",
   SPM: "shows a product",
@@ -94,6 +96,7 @@ export function templateNeeds(components: readonly unknown[] | null | undefined,
     urlButtons: [],
     footerText: null,
     buttonLabels: [],
+    flowButtons: [],
   };
   const problems: string[] = [];
   let named = false;
@@ -146,6 +149,14 @@ export function templateNeeds(components: readonly unknown[] | null | undefined,
             named ||= p.named;
             if (p.max > 1) problems.push(cant("has a link with more than one blank"));
             else if (p.max === 1) needs.urlButtons.push({ index, text: str(b?.text) ?? "Link", url });
+          } else if (bType === "FLOW") {
+            // Nothing for staff to fill in: the send adds our signed token.
+            const id = b?.flow_id;
+            needs.flowButtons.push({
+              index,
+              text: str(b?.text) ?? "Form",
+              flowId: typeof id === "string" && id.trim() !== "" ? id : typeof id === "number" ? String(id) : null,
+            });
           } else if (bType === "PHONE_NUMBER" || bType === "QUICK_REPLY") {
             // Nothing to fill in.
           } else {
@@ -165,6 +176,7 @@ export function templateNeeds(components: readonly unknown[] | null | undefined,
     }
   }
   if (named) problems.push(cant("uses named blanks"));
+  if (needs.flowButtons.length > 1) problems.push("This template has more than one form button, which the inbox can't send yet");
 
   if (problems.length > 0) {
     // The most telling reason first: a carousel explains more than its buttons do.

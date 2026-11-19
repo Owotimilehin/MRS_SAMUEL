@@ -33,11 +33,28 @@ describe("buttons", () => {
     const url = newButton("URL");
     const phone = newButton("PHONE_NUMBER");
     const menu = (b: Parameters<typeof buttonMenu>[0]) => Object.fromEntries(buttonMenu(b).map((m) => [m.kind, m.disabled]));
-    expect(menu([])).toEqual({ QUICK_REPLY: null, URL: null, PHONE_NUMBER: null });
+    expect(menu([])).toEqual({ QUICK_REPLY: null, URL: null, PHONE_NUMBER: null, FLOW: null });
     expect(menu([url, url])).toMatchObject({ URL: "Two links at most", QUICK_REPLY: null });
     expect(menu([phone])).toMatchObject({ PHONE_NUMBER: "One phone number at most", URL: null });
     const ten = Array.from({ length: 10 }, () => newButton("QUICK_REPLY"));
-    expect(menu(ten)).toEqual({ QUICK_REPLY: "Ten buttons at most", URL: "Ten buttons at most", PHONE_NUMBER: "Ten buttons at most" });
+    expect(menu(ten)).toEqual({
+      QUICK_REPLY: "Ten buttons at most",
+      URL: "Ten buttons at most",
+      PHONE_NUMBER: "Ten buttons at most",
+      FLOW: "Ten buttons at most",
+    });
+  });
+  it("offers one form button, and names it in the menu", () => {
+    const form = newButton("FLOW");
+    expect(form).toEqual({ type: "FLOW", text: "", flowKey: "" });
+    const entry = (b: Parameters<typeof buttonMenu>[0]) => buttonMenu(b).find((m) => m.kind === "FLOW");
+    expect(buttonMenu([]).map((m) => m.label)).toEqual(["Reply button", "Link button", "Call button", "Form button"]);
+    expect(entry([])).toEqual({ kind: "FLOW", label: "Form button", disabled: null });
+    expect(entry([form])?.disabled).toBe("One form button at most");
+    expect(entry([newButton("URL"), newButton("PHONE_NUMBER")])?.disabled).toBeNull();
+    // The form button counts toward the ten.
+    const nine = Array.from({ length: 9 }, () => newButton("QUICK_REPLY"));
+    expect(entry([...nine, form])?.disabled).toBe("Ten buttons at most");
   });
   it("moves a button and ignores a move off the end", () => {
     expect(moveButton(["a", "b", "c"], 1, -1)).toEqual(["b", "a", "c"]);

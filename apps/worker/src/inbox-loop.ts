@@ -9,7 +9,14 @@
 import { sql } from "drizzle-orm";
 import type { DbClient } from "@ms/db";
 import { runJob } from "./jobs/run-job.js";
-import { retryWebhookEvents, downloadPendingMedia, sendAutoReplies, syncAllTemplates, refreshPendingTemplates } from "./jobs/inbox-whatsapp.js";
+import {
+  retryWebhookEvents,
+  downloadPendingMedia,
+  sendAutoReplies,
+  syncAllTemplates,
+  refreshPendingTemplates,
+  syncAllFlows,
+} from "./jobs/inbox-whatsapp.js";
 import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-voice.js";
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
@@ -55,6 +62,8 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "inbox_followups", everyMs: 60_000, last: 0, run: () => sendMissedCallFollowups(db, logger) },
     { name: "inbox_template_sync", everyMs: 60 * 60_000, last: 0, run: () => syncAllTemplates(db, logger) },
     { name: "inbox_template_pending", everyMs: 5 * 60_000, last: 0, run: () => refreshPendingTemplates(db, logger) },
+    // WhatsApp forms (suite spec 07): status only; no job creates, publishes, retires or sends a form.
+    { name: "wa_flow_sync", everyMs: 60 * 60_000, last: 0, run: () => syncAllFlows(db, logger) },
     { name: "inbox_identity_profiles", everyMs: 30_000, last: 0, run: () => refreshIdentityProfiles(db, logger) },
     { name: "inbox_meta_subscriptions", everyMs: 60 * 60_000, last: 0, run: () => ensureMetaSubscriptions(db, logger) },
   ];

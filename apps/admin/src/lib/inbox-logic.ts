@@ -3,7 +3,15 @@
  * unit-tested: list tabs per capability, timeline day grouping, reconnect
  * backoff, template variables, and the small label/format helpers.
  */
-import { TEXT_LIMIT, headerMediaLabel, uploadAccept, type TemplateHeaderMedia, type TemplateNeeds } from "@ms/shared";
+import {
+  TEXT_LIMIT,
+  formatFlowValue as sharedFormatFlowValue,
+  headerMediaLabel,
+  uploadAccept,
+  type FlowFieldKind,
+  type TemplateHeaderMedia,
+  type TemplateNeeds,
+} from "@ms/shared";
 import type {
   CallOutcome,
   Channels,
@@ -924,4 +932,52 @@ export function replyState(conv: ReplyStateInput): ReplyState {
 export function textUsage(text: string, limit: { max: number; unit: "characters" | "bytes" }): { used: number; over: boolean } {
   const used = limit.unit === "bytes" ? new TextEncoder().encode(text).length : [...text].length;
   return { used, over: used > limit.max };
+}
+
+// ── WhatsApp forms (suite spec 07) ───────────────────────────────────────────
+
+/**
+ * The buttons under a form answer, in display order. Nothing without
+ * `inbox.reply` (the server refuses every action without it); "Add to notes"
+ * also needs `inbox.notes`; "Save as their address" is for the delivery-address form only.
+ */
+export function flowCardActions(
+  response: { status: string; flow_key: string },
+  canReply: boolean,
+  canNote: boolean = canReply,
+): string[] {
+  if (!canReply) return [];
+  const out: string[] = [];
+  if (response.status === "new") out.push("handled");
+  else if (response.status === "handled") out.push("reopen");
+  if (canNote) out.push("add_note");
+  if (response.flow_key === "delivery_address") out.push("save_address");
+  return out;
+}
+
+const FLOW_KINDS: readonly string[] = ["text", "phone", "choice", "multi", "date", "longtext"];
+
+/** An answer as plain text for the card. An unknown kind is treated as "other". */
+export function formatFlowValue(kind: string, value: unknown): string {
+  return sharedFormatFlowValue(FLOW_KINDS.includes(kind) ? (kind as FlowFieldKind) : "other", value);
+}
+
+/** The grey pill on a handled form answer: "Handled by Ada, 09:05" (Lagos time, as in the chat list). */
+export function flowHandledText(
+  response: { handled_by_name: string | null; handled_at: string | null },
+  now: Date = new Date(),
+): string {
+  const who = response.handled_by_name?.trim() ? `Handled by ${staffLabel(response.handled_by_name)}` : "Handled";
+  return response.handled_at ? `${who}, ${listTime(response.handled_at, now)}` : who;
+}
+
+/**
+ * The address "Save as their address" will write, built from the card's rows the
+ * way the server builds it: "{House and street}, {Area}. Landmark: {Landmark}".
+ */
+export function flowAddressPreview(rows: ReadonlyArray<{ label: string; value: string }>): string {
+  const get = (label: string): string => rows.find((r) => r.label === label)?.value.trim() ?? "";
+  const head = [get("House and street"), get("Area")].filter(Boolean).join(", ");
+  const landmark = get("Landmark");
+  return `${head}${head ? "." : ""}${landmark ? `${head ? " " : ""}Landmark: ${landmark}` : ""}`.slice(0, 500);
 }

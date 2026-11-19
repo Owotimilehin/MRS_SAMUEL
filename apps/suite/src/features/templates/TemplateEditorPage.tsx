@@ -10,7 +10,7 @@ import { ArrowDown, ArrowUp, Eye, Plus, Trash2, Upload } from "lucide-react";
 import { ConfirmModal } from "@admin/components/ConfirmModal.js";
 import { DataState } from "@admin/components/DataState.js";
 import { Modal } from "@admin/components/Modal.js";
-import { ApiError } from "@admin/lib/api.js";
+import { ApiError, humanizeError } from "@admin/lib/api.js";
 import { Frame } from "@admin/lib/app-frame.js";
 import { useCan } from "@admin/lib/auth.js";
 import { humanTemplateName, languageName } from "@admin/lib/inbox-logic.js";
@@ -25,6 +25,8 @@ import {
   type TemplateDraft,
 } from "@ms/shared";
 import { DeleteTemplateDialog } from "./DeleteTemplateDialog.js";
+import { flowKeys, flowsApi } from "./forms/flows-api.js";
+import { formButtonChoices } from "./forms/form-labels.js";
 import { SubmitDialog } from "./SubmitDialog.js";
 import { TemplateChecks } from "./TemplateChecks.js";
 import { TemplatePreview } from "./TemplatePreview.js";
@@ -124,6 +126,10 @@ function Editor({
   const navigate = useNavigate();
   const list = useQuery({ queryKey: templateKeys.list, queryFn: templatesApi.list, refetchOnWindowFocus: false });
   const options = useQuery({ queryKey: templateKeys.options, queryFn: templatesApi.options, refetchOnWindowFocus: false });
+
+  // The forms a form button may open (suite spec 07, 5.5a). Asked for only once the draft has such a button.
+  const [wantForms, setWantForms] = useState(() => (draftOfRow(initial)?.buttons ?? []).some((b) => b.type === "FLOW"));
+  const formsQ = useQuery({ queryKey: flowKeys.inboxFlows, queryFn: flowsApi.inboxFlows, refetchOnWindowFocus: false, enabled: wantForms });
 
   const [row, setRow] = useState(initial);
   const [saved, setSaved] = useState<TemplateDraft | null>(() => draftOfRow(initial));
@@ -517,7 +523,7 @@ function Editor({
             {draft.buttons.map((b, i) => (
               <div className="tpl-button" key={i}>
                 <div className="tpl-button__head">
-                  <strong>{b.type === "QUICK_REPLY" ? "Reply button" : b.type === "URL" ? "Link button" : "Call button"}</strong>
+                  <strong>{b.type === "QUICK_REPLY" ? "Reply button" : b.type === "URL" ? "Link button" : b.type === "FLOW" ? "Form button" : "Call button"}</strong>
                   <span className="tpl-button__tools">
                     <button type="button" className="btn btn--ghost btn--sm" aria-label="Move up" disabled={i === 0} onClick={() => update({ ...draft, buttons: moveButton(draft.buttons, i, -1) })}>
                       <ArrowUp size={13} />
@@ -558,6 +564,29 @@ function Editor({
                     <input id={`tpl-bp-${i}`} className="input" inputMode="tel" value={b.phone} onChange={(e) => setButton(i, { ...b, phone: e.target.value })} />
                   </div>
                 )}
+                {b.type === "FLOW" &&
+                  (() => {
+                    const choices = formButtonChoices(formsQ.data ?? [], b.flowKey);
+                    const noneLive = formsQ.data !== undefined && !formsQ.data.some((f) => f.live);
+                    return (
+                      <div className="field">
+                        <label className="field__label" htmlFor={`tpl-bf-${i}`}>Which form?</label>
+                        <span className="field__hint">The customer taps it to open the form. Only one form button per template.</span>
+                        {(choices.length > 0 || !noneLive) && (
+                          <select id={`tpl-bf-${i}`} className="select" value={b.flowKey} disabled={formsQ.isLoading} onChange={(e) => setButton(i, { ...b, flowKey: e.target.value })}>
+                            <option value="">{formsQ.isLoading ? "Loading…" : "Choose a form"}</option>
+                            {choices.map((c) => (
+                              <option key={c.key} value={c.key}>
+                                {c.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {noneLive && <span className="field__hint">No form is live yet. Publish one under Forms first.</span>}
+                        {formsQ.error ? <span className="field__error">{humanizeError(formsQ.error)}</span> : null}
+                      </div>
+                    );
+                  })()}
               </div>
             ))}
             <details className="tpl-menu">
@@ -572,6 +601,7 @@ function Editor({
                       className="btn btn--ghost btn--sm"
                       disabled={m.disabled !== null}
                       onClick={(e) => {
+                        if (m.kind === "FLOW") setWantForms(true);
                         update({ ...draft, buttons: [...draft.buttons, newButton(m.kind as ButtonKind)] });
                         (e.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
                       }}

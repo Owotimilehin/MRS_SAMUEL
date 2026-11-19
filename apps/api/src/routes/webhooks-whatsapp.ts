@@ -109,6 +109,7 @@ export async function processStoredWhatsAppEvent(
       return res;
     });
     if (result.templateResyncWabas.length > 0) resyncTemplates(db, result.templateResyncWabas);
+    if (result.flowNotices.length > 0) logger.warn({ events: result.flowNotices }, "whatsapp form: client error rate reported by Meta");
     if (result.unknownNumbers.length > 0) {
       logger.warn({ unknown: result.unknownNumbers }, "whatsapp webhook for unknown business number (parked)");
       await alertUnknownNumbers(db, result.unknownNumbers, eventId);

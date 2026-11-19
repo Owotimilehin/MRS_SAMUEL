@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { templateNeeds } from "@ms/shared";
 import {
+  flowAddressPreview,
+  flowCardActions,
+  flowHandledText,
+  formatFlowValue,
   replyState,
   textUsage,
   WHATSAPP_ACCEPT,
@@ -692,5 +696,60 @@ describe("replyState (suite spec 02, table 7.3)", () => {
     expect(messageTicks("read", "instagram")).toEqual({ marks: "✓✓", read: true, label: "Read" });
     expect(messageTicks("delivered", "messenger").marks).toBe("✓✓");
     expect(messageTicks("delivered").label).toBe("Delivered");
+  });
+});
+
+describe("WhatsApp forms (spec 07)", () => {
+  const fresh = { status: "new", flow_key: "complaint" };
+  it("flowCardActions: nothing without inbox.reply", () => {
+    expect(flowCardActions(fresh, false)).toEqual([]);
+    expect(flowCardActions({ status: "new", flow_key: "delivery_address" }, false, true)).toEqual([]);
+  });
+  it("flowCardActions: handled or reopen by status, then notes", () => {
+    expect(flowCardActions(fresh, true)).toEqual(["handled", "add_note"]);
+    expect(flowCardActions({ status: "handled", flow_key: "complaint" }, true)).toEqual(["reopen", "add_note"]);
+    expect(flowCardActions({ status: "archived", flow_key: "unknown" }, true)).toEqual(["add_note"]);
+  });
+  it("flowCardActions: notes need inbox.notes", () => {
+    expect(flowCardActions(fresh, true, false)).toEqual(["handled"]);
+  });
+  it("flowCardActions: save_address only for a delivery address, last", () => {
+    expect(flowCardActions({ status: "new", flow_key: "delivery_address" }, true)).toEqual(["handled", "add_note", "save_address"]);
+    expect(flowCardActions({ status: "handled", flow_key: "delivery_address" }, true, false)).toEqual(["reopen", "save_address"]);
+    expect(flowCardActions({ status: "new", flow_key: "bulk_order" }, true)).not.toContain("save_address");
+  });
+  it("formatFlowValue: plain text by kind", () => {
+    expect(formatFlowValue("text", "  12 Bode Thomas  ")).toBe("12 Bode Thomas");
+    expect(formatFlowValue("date", "2026-11-20")).toBe("Fri 20 Nov 2026");
+    expect(formatFlowValue("date", "Fri 20 Nov 2026")).toBe("Fri 20 Nov 2026");
+    expect(formatFlowValue("multi", ["a", "", "b"])).toBe("a, b");
+    expect(formatFlowValue("longtext", "line one\nline two")).toBe("line one\nline two");
+    expect(formatFlowValue("choice", "Lekki")).toBe("Lekki");
+    expect(formatFlowValue("text", null)).toBe("");
+    expect(formatFlowValue("text", 3)).toBe("3");
+  });
+  it("formatFlowValue: an unknown kind is shown as it came, and markup stays text", () => {
+    expect(formatFlowValue("mystery", " <b>hi</b> ")).toBe("<b>hi</b>");
+    expect(formatFlowValue("other", { a: 1 })).toBe('{"a":1}');
+  });
+  it("flowHandledText: name and Lagos time", () => {
+    const now = new Date("2026-11-17T10:00:00Z");
+    expect(flowHandledText({ handled_by_name: "Ada", handled_at: "2026-11-17T08:05:00Z" }, now)).toBe("Handled by Ada, 09:05");
+    expect(flowHandledText({ handled_by_name: "ada@example.com", handled_at: "2026-11-16T12:00:00Z" }, now)).toBe("Handled by ada, Yesterday");
+    expect(flowHandledText({ handled_by_name: null, handled_at: "2026-10-01T12:00:00Z" }, now)).toBe("Handled, 1 Oct");
+    expect(flowHandledText({ handled_by_name: "Ada", handled_at: null }, now)).toBe("Handled by Ada");
+  });
+  it("flowAddressPreview: street, area and the landmark only when given", () => {
+    const rows = [
+      { label: "Receiver", value: "Ada" },
+      { label: "House and street", value: "12 Bode Thomas" },
+      { label: "Area", value: "Surulere" },
+    ];
+    expect(flowAddressPreview(rows)).toBe("12 Bode Thomas, Surulere.");
+    expect(flowAddressPreview([...rows, { label: "Landmark", value: "Opposite the bank" }])).toBe(
+      "12 Bode Thomas, Surulere. Landmark: Opposite the bank",
+    );
+    expect(flowAddressPreview([{ label: "Landmark", value: "By the gate" }])).toBe("Landmark: By the gate");
+    expect(flowAddressPreview([])).toBe("");
   });
 });

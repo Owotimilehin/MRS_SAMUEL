@@ -209,6 +209,24 @@ export type OutboundContent =
       headerMedia?: { type: "image" | "video" | "document"; link: string; filename?: string };
       /** The blank at the end of a link button; `index` is the button's position from 0. */
       buttonParams?: { index: number; text: string }[];
+      /** A button that opens a WhatsApp form (suite spec 07): our signed token for it; `index` is the button's position from 0. */
+      flowButtons?: { index: number; flowToken: string }[];
+    }
+  /** A WhatsApp form (Flow) sent as an interactive message inside the 24-hour window (suite spec 07). */
+  | {
+      type: "flow";
+      /** Meta's Flow ID. */
+      flowId: string;
+      /** Our signed token; comes back with the answer. */
+      flowToken: string;
+      /** The button text. */
+      cta: string;
+      body: string;
+      footer?: string;
+      action: "navigate" | "data_exchange";
+      /** The entry screen, for `navigate`. */
+      screen?: string;
+      mode: "published" | "draft";
     };
 
 /**
@@ -220,6 +238,8 @@ export type OutboundContent =
  *           (video → video: { link }; document → document: { link, filename })
  *   body    { type: "body", parameters: [{ type: "text", text }, …] }
  *   button  { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text }] }
+ *           { type: "button", sub_type: "flow", index: "1", parameters: [{ type: "action", action: { flow_token } }] }
+ *           (buttons go in the order of their index; no flow_action_data is sent)
  * `index` is sent as a string, as in Meta's examples.
  */
 export function buildTemplateComponents(
@@ -237,14 +257,22 @@ export function buildTemplateComponents(
   if (content.bodyParams?.length) {
     components.push({ type: "body", parameters: content.bodyParams.map((t) => ({ type: "text", text: t })) });
   }
-  for (const b of [...(content.buttonParams ?? [])].sort((x, y) => x.index - y.index)) {
-    components.push({
-      type: "button",
-      sub_type: "url",
-      index: String(b.index),
-      parameters: [{ type: "text", text: b.text }],
+  const buttons: { index: number; component: Record<string, unknown> }[] = [];
+  for (const b of content.buttonParams ?? []) {
+    buttons.push({
+      index: b.index,
+      component: { type: "button", sub_type: "url", index: String(b.index), parameters: [{ type: "text", text: b.text }] },
     });
   }
+  for (const b of content.flowButtons ?? []) {
+    buttons.push({
+      index: b.index,
+      component: { type: "button", sub_type: "flow", index: String(b.index), parameters: [{ type: "action", action: { flow_token: b.flowToken } }] },
+    });
+  }
+  // Link buttons first on a tie (there is none in practice: one button per position).
+  buttons.sort((x, y) => x.index - y.index);
+  components.push(...buttons.map((b) => b.component));
   return components;
 }
 
@@ -275,6 +303,29 @@ export function buildSendPayload(to: WaRecipient, content: OutboundContent): Rec
         },
       };
     }
+    case "flow":
+      // No `data` is sent for the entry screen; `flow_action_payload` only goes with `navigate`.
+      return {
+        ...base,
+        type: "interactive",
+        interactive: {
+          type: "flow",
+          body: { text: content.body },
+          ...(content.footer ? { footer: { text: content.footer } } : {}),
+          action: {
+            name: "flow",
+            parameters: {
+              flow_message_version: "3",
+              flow_id: content.flowId,
+              flow_cta: content.cta,
+              flow_token: content.flowToken,
+              flow_action: content.action,
+              ...(content.action === "navigate" ? { flow_action_payload: { screen: content.screen } } : {}),
+              mode: content.mode,
+            },
+          },
+        },
+      };
     default: {
       const media: Record<string, unknown> = { link: content.link };
       if (content.caption && content.type !== "audio") media.caption = content.caption;

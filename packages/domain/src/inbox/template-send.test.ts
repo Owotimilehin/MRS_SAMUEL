@@ -118,3 +118,57 @@ describe("prepareTemplateContent", () => {
     ).toEqual({ ...tpl, bodyParams: ["Ada"] });
   });
 });
+
+describe("a template button that opens a form (suite spec 07, 5.5a)", () => {
+  const body = { type: "BODY", text: "Tap the button to tell us your delivery address." };
+  const formButton = { type: "FLOW", text: "Add address", flow_id: "9001", flow_action: "navigate", navigate_screen: "ADDRESS" };
+
+  it("buildTemplateComponents adds the flow button with sub_type flow, a string index and the token", () => {
+    expect(buildTemplateComponents({ ...tpl, flowButtons: [{ index: 0, flowToken: "tok.1" }] })).toEqual([
+      { type: "button", sub_type: "flow", index: "0", parameters: [{ type: "action", action: { flow_token: "tok.1" } }] },
+    ]);
+    // No flow_action_data is sent.
+    expect(JSON.stringify(buildTemplateComponents({ ...tpl, flowButtons: [{ index: 2, flowToken: "t" }] }))).not.toContain("flow_action_data");
+  });
+
+  it("prepareTemplateContent keeps link-button values and form buttons together in index order", () => {
+    const needs = templateNeeds(
+      [
+        body,
+        {
+          type: "BUTTONS",
+          buttons: [
+            { type: "URL", text: "Track order", url: "https://shop.example/track/{{1}}" },
+            formButton,
+            { type: "URL", text: "Receipt", url: "https://shop.example/r/{{1}}" },
+          ],
+        },
+      ],
+      "UTILITY",
+    );
+    expect(needs.sendable).toBe(true);
+    const prepared = prepareTemplateContent(needs, {
+      ...tpl,
+      buttonParams: [
+        { index: 2, text: "r-9" },
+        { index: 0, text: "abc" },
+      ],
+      flowButtons: [
+        { index: 1, flowToken: "tok.1" },
+        { index: 7, flowToken: "not-a-button-of-this-template" },
+      ],
+    });
+    expect(prepared.flowButtons).toEqual([{ index: 1, flowToken: "tok.1" }]);
+    expect(buildTemplateComponents(prepared)).toEqual([
+      { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: "abc" }] },
+      { type: "button", sub_type: "flow", index: "1", parameters: [{ type: "action", action: { flow_token: "tok.1" } }] },
+      { type: "button", sub_type: "url", index: "2", parameters: [{ type: "text", text: "r-9" }] },
+    ]);
+  });
+
+  it("a template without a form button drops any form token it is handed; two form buttons are refused", () => {
+    expect(prepareTemplateContent(templateNeeds([body], "UTILITY"), { ...tpl, flowButtons: [{ index: 0, flowToken: "t" }] }).flowButtons).toBeUndefined();
+    const two = templateNeeds([body, { type: "BUTTONS", buttons: [formButton, { ...formButton, text: "Again" }] }], "UTILITY");
+    expect(() => prepareTemplateContent(two, tpl)).toThrow(InboxSendError);
+  });
+});

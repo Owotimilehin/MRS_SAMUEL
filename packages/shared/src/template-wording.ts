@@ -89,6 +89,8 @@ export function templateEditability(row: {
   category: string | null;
   components: readonly unknown[] | null;
   reviewInfo?: { locked?: boolean } | null;
+  /** Meta's Flow ID -> our form key, for templates with a form button (suite spec 07). */
+  flowKeys?: Readonly<Record<string, string>>;
 }): { editable: boolean; reason: string | null } {
   if (row.status === "DRAFT") return { editable: true, reason: null };
   if (row.status === "PENDING" || row.status === "IN_APPEAL") {
@@ -101,8 +103,11 @@ export function templateEditability(row: {
     return { editable: false, reason: "This template cannot be changed in its current state." };
   }
   if (row.reviewInfo?.locked) return { editable: false, reason: "WhatsApp has locked this template." };
-  if (!componentsToDraft(row.components ?? [], row.category)) {
+  if (!componentsToDraft(row.components ?? [], row.category, row.flowKeys ? { flowKeys: row.flowKeys } : {})) {
     const needs = templateNeeds(row.components ?? [], row.category);
+    if (needs.sendable && needs.flowButtons.length > 0) {
+      return { editable: false, reason: "This template opens a form the suite does not know. Change it in WhatsApp Manager." };
+    }
     const why = needs.reason ?? "This template has a part the suite cannot edit yet";
     return {
       editable: false,

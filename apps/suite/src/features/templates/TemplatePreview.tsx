@@ -3,7 +3,7 @@
  * examples filled in, the small print, a time and the buttons. A blank that has no example yet is
  * highlighted in amber. It is only a picture: WhatsApp may draw the real one slightly differently.
  */
-import { CornerUpLeft, ExternalLink, FileText, Image as ImageIcon, List, Phone, Video } from "lucide-react";
+import { ClipboardList, CornerUpLeft, ExternalLink, FileText, Image as ImageIcon, List, Phone, Video } from "lucide-react";
 import { draftPreview, type TemplateDraft } from "@ms/shared";
 
 function Filled({ text }: { text: string }): JSX.Element {
@@ -70,7 +70,7 @@ export function TemplatePreview({
         </div>
         {p.buttons.slice(0, shown).map((label, i) => {
           const kind = kinds[i];
-          const Icon = kind === "URL" ? ExternalLink : kind === "PHONE_NUMBER" ? Phone : CornerUpLeft;
+          const Icon = kind === "URL" ? ExternalLink : kind === "PHONE_NUMBER" ? Phone : kind === "FLOW" ? ClipboardList : CornerUpLeft;
           return (
             <div key={i} className="tpl-btn-row">
               <Icon size={14} aria-hidden="true" />

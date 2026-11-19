@@ -11,6 +11,9 @@ import type {
   ConversationDetail,
   ConversationPage,
   EraseResult,
+  FlowActionResult,
+  FlowResponseAction,
+  InboxFlow,
   InboxMe,
   InboxTeamLite,
   InboxTemplate,
@@ -34,6 +37,9 @@ export const inboxKeys = {
   quickReplies: ["inbox", "quick-replies"] as const,
   unread: ["inbox", "unread"] as const,
   notifyLevel: ["inbox", "notify-level"] as const,
+  /** Forms that can be sent (spec 07). With a conversation, "live" is for that chat's WhatsApp account. */
+  flows: ["inbox", "flows"] as const,
+  flowsFor: (conversationId: string) => ["inbox", "flows", conversationId] as const,
 };
 
 export interface ConversationFilters {
@@ -131,6 +137,33 @@ export const inboxApi = {
       button_params?: { index: number; text: string }[];
     },
   ) => postMessage(id, { type: "template", ...t }),
+
+  /** Forms the composer can offer (spec 07). */
+  flows: async (conversationId?: string) =>
+    (await api<{ data: InboxFlow[] }>(`/inbox/flows${qs({ conversation_id: conversationId })}`)).data,
+  /**
+   * Send a form into the chat. No toast for a refusal (409 window closed or form
+   * not live, 403, 400): the picker shows the server's message itself. A 502 is a
+   * send that reached the timeline as failed or unconfirmed, worded as for any message.
+   */
+  sendFlow: async (id: string, f: { flow_key: string; message?: string; test?: boolean }): Promise<unknown> => {
+    try {
+      return await api(`/inbox/conversations/${id}/flows`, { method: "POST", body: JSON.stringify(f) }, { silentError: true });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 502) {
+        toast.error("That message didn't go through normally. Check how it's marked in the chat before sending again.");
+      }
+      throw err;
+    }
+  },
+  /** Mark a form answer handled or not, copy it to the notes, or save its address to the contact. */
+  flowResponseAction: async (responseId: string, action: FlowResponseAction) =>
+    (
+      await api<{ data: FlowActionResult }>(`/inbox/flow-responses/${responseId}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      })
+    ).data,
 
   addNote: (id: string, body: string) =>
     api(`/inbox/conversations/${id}/notes`, { method: "POST", body: JSON.stringify({ body }) }),
