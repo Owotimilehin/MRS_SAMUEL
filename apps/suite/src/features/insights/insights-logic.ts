@@ -99,12 +99,16 @@ export function lastUpdatedText(iso: string | null): string {
     weekday: "short",
     day: "numeric",
     month: "short",
-    hour: "numeric",
+    hour: "2-digit",
     minute: "2-digit",
-    hour12: true,
+    hourCycle: "h23",
   }).formatToParts(d);
   const get = (t: string): string => parts.find((p) => p.type === t)?.value ?? "";
-  return `${get("weekday")} ${get("day")} ${get("month")}, ${get("hour")}:${get("minute")} ${get("dayPeriod").toLowerCase()}`;
+  // The 12-hour clock is worked out here, not by the browser: some browsers
+  // write half past midnight as "0:30 am" for British English.
+  const hour24 = Number(get("hour")) % 24;
+  const hour12 = hour24 % 12 || 12;
+  return `${get("weekday")} ${get("day")} ${get("month")}, ${hour12}:${get("minute")} ${hour24 < 12 ? "am" : "pm"}`;
 }
 
 /** "10 Nov" from a post's publish time, in Lagos. */

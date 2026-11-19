@@ -89,6 +89,8 @@ describe("insights wording", () => {
   it("lastUpdatedText: Lagos time whatever the machine's zone", () => {
     expect(lastUpdatedText("2026-11-19T09:04:00.000Z")).toBe("Thu 19 Nov, 10:04 am");
     expect(lastUpdatedText("2026-11-19T23:30:00.000Z")).toBe("Fri 20 Nov, 12:30 am");
+    expect(lastUpdatedText("2026-11-19T11:05:00.000Z")).toBe("Thu 19 Nov, 12:05 pm");
+    expect(lastUpdatedText("2026-11-19T14:45:00.000Z")).toBe("Thu 19 Nov, 3:45 pm");
     expect(lastUpdatedText(null)).toBe("Not collected yet");
   });
 
