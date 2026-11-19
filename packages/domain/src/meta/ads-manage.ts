@@ -1061,10 +1061,23 @@ async function pauseAtMeta(
     const seen = await adsGraph<{ status?: string }>(cfg, "GET", `${externalId}?fields=status`).catch(() => null);
     if (seen?.status !== "PAUSED") throw err;
   }
+  // Keep our own list honest until the next sync: the object is off, and so is everything under a paused campaign.
   await db
     .update(adCampaignCache)
-    .set({ status: "PAUSED", ...(level === "campaign" ? { effectiveStatus: "PAUSED" } : {}), syncedAt: new Date() })
+    .set({ status: "PAUSED", effectiveStatus: "PAUSED", syncedAt: new Date() })
     .where(and(eq(adCampaignCache.level, level), eq(adCampaignCache.externalId, externalId)));
+  if (level === "campaign") {
+    await db
+      .update(adCampaignCache)
+      .set({ effectiveStatus: "CAMPAIGN_PAUSED", syncedAt: new Date() })
+      .where(
+        and(
+          inArray(adCampaignCache.level, ["adset", "ad"]),
+          eq(adCampaignCache.campaignExternalId, externalId),
+          inArray(adCampaignCache.effectiveStatus, ["ACTIVE", "PENDING_REVIEW", "IN_PROCESS"]),
+        ),
+      );
+  }
 }
 
 /**
@@ -1257,16 +1270,20 @@ export async function turnOnAdvert(
       throw new AdsManageError("not_confirmed_by_meta", "Meta did not confirm. The advert is still off. Try again.");
     }
   }
+  // Our own list, until the next sync reads Meta's: switched on, and the advert itself waiting for Meta's check (R8).
   await db
     .update(adCampaignCache)
-    .set({ status: "ACTIVE", syncedAt: new Date() })
+    .set({ status: "ACTIVE", effectiveStatus: "ACTIVE", syncedAt: new Date() })
     .where(
       or(
         and(eq(adCampaignCache.level, "campaign"), eq(adCampaignCache.externalId, campaignExternalId)),
         and(eq(adCampaignCache.level, "adset"), eq(adCampaignCache.externalId, a.adsetId)),
-        and(eq(adCampaignCache.level, "ad"), eq(adCampaignCache.externalId, a.adId)),
       ),
     );
+  await db
+    .update(adCampaignCache)
+    .set({ status: "ACTIVE", effectiveStatus: "PENDING_REVIEW", syncedAt: new Date() })
+    .where(and(eq(adCampaignCache.level, "ad"), eq(adCampaignCache.externalId, a.adId)));
 }
 
 export interface BudgetPreview {

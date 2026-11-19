@@ -859,6 +859,19 @@ describe("ads: domain rules with a database", () => {
       // The cap was read from Meta before the first write.
       const firstWrite = fake.calls.findIndex((c) => c.method === "POST");
       expect(fake.calls.slice(0, firstWrite).some((c) => c.edge === `${ACT}/adsets`)).toBe(true);
+      // Our own list says so at once (the next sync reads Meta's own words).
+      const cached = await db.select().from(adCampaignCache);
+      expect(cached.map((c) => [c.level, c.status, c.effectiveStatus]).sort()).toEqual([
+        ["ad", "ACTIVE", "PENDING_REVIEW"],
+        ["adset", "ACTIVE", "ACTIVE"],
+        ["campaign", "ACTIVE", "ACTIVE"],
+      ]);
+      await pauseObject(db, cfg, "campaign", d.campaignExternalId!, owner, "Paused.");
+      expect((await db.select().from(adCampaignCache)).map((c) => [c.level, c.effectiveStatus]).sort()).toEqual([
+        ["ad", "CAMPAIGN_PAUSED"],
+        ["adset", "CAMPAIGN_PAUSED"],
+        ["campaign", "PAUSED"],
+      ]);
       const rows = (await logRows()).filter((r) => r.action === "turn_on");
       expect(rows.filter((r) => r.phase === "requested")).toHaveLength(3);
       expect(rows[0]!.summary).toContain("₦6,000 in total");
