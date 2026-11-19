@@ -1,0 +1,36 @@
+/* Catalogue page (suite spec 08). Every class starts with cat-. */
+.cat-page { display: grid; gap: 12px; padding-bottom: 48px; }
+.cat-sub { color: var(--ink-soft); margin: 0; }
+.cat-card { display: grid; gap: 12px; }
+.cat-h { margin: 0; font-size: 16px; font-weight: 700; }
+.cat-fine { font-size: 12px; color: var(--ink-soft); margin: 0; }
+.cat-strip { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); font-size: 14px; }
+.cat-strip--warn { background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.4); color: #92400e; }
+.cat-strip--bad { background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.35); color: var(--danger-ink, #b91c1c); }
+.cat-row { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line); }
+.cat-row:first-of-type { border-top: 0; }
+.cat-row__text { display: grid; gap: 2px; min-width: 0; flex: 1 1 260px; }
+.cat-row__label { font-weight: 700; }
+.cat-switch { display: flex; align-items: center; gap: 10px; }
+.cat-switch input { width: 22px; height: 22px; flex: none; }
+.cat-switch input:disabled { opacity: 0.5; }
+.cat-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cat-chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.cat-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cat-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cat-tools .input { flex: 1 1 200px; min-width: 0; }
+.cat-thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: contain; background: rgba(20, 24, 31, 0.05); flex: none; }
+.cat-item { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.cat-item__title { font-weight: 700; overflow-wrap: anywhere; }
+.cat-item__why { font-size: 12px; color: var(--danger-ink, #b91c1c); }
+.cat-link { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; color: inherit; }
+.cat-steps { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-soft); display: grid; gap: 4px; }
+.cat-more { position: relative; }
+.cat-more__menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; min-width: 220px; display: grid; padding: 6px; }
+.cat-more__menu button { text-align: left; background: none; border: 0; padding: 8px 10px; border-radius: 8px; font: inherit; cursor: pointer; }
+.cat-more__menu button:hover { background: rgba(20, 24, 31, 0.06); }
+.cat-quote { background: rgba(20, 24, 31, 0.05); border-radius: 12px; padding: 10px 12px; font-size: 13px; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .cat-row { flex-direction: column; }
+  .cat-tools .btn { flex: 1 1 auto; }
+}

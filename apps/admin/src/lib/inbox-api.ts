@@ -34,6 +34,9 @@ export const inboxKeys = {
   quickReplies: ["inbox", "quick-replies"] as const,
   unread: ["inbox", "unread"] as const,
   notifyLevel: ["inbox", "notify-level"] as const,
+  // Selling in chat (suite spec 08).
+  catalogueSendable: ["inbox", "catalogue-sendable"] as const,
+  chatOrders: (conversationId: string) => ["inbox", "chat-orders", conversationId] as const,
 };
 
 export interface ConversationFilters {
