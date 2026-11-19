@@ -5,6 +5,9 @@
  */
 import { eq } from "drizzle-orm";
 import {
+  appSetting,
+  broadcast,
+  broadcastRecipient,
   customer,
   inboxConversation,
   inboxIdentity,
@@ -15,12 +18,16 @@ import {
   type DbClient,
 } from "@ms/db";
 import {
+  BROADCAST_CALLBACK_PREFIX,
+  BROADCAST_CATEGORIES,
+  BROADCAST_SETTINGS_KEY,
   fitsTextLimit,
   flowDef,
   headerMediaLabel,
   humanAgentRemainingMs,
   isBsuid,
   messagePreview,
+  readBroadcastSettings,
   templateNeeds,
   toE164,
   waIdFromE164,
@@ -81,7 +88,11 @@ export class InboxSendError extends Error {
       | "not_supported"
       | "too_long"
       | "no_recipient"
-      | "account_off",
+      | "account_off"
+      /** A broadcast send while the owner switch is off, or while the broadcast is not sending (suite spec 14). */
+      | "broadcast_off"
+      /** A broadcast send for a recipient that is not claimed, or that already has a message: never sent twice. */
+      | "broadcast_duplicate",
     message: string,
   ) {
     super(message);
@@ -101,8 +112,16 @@ export interface SendInput {
    * Set for messages no person sent. Kept on the message (payload.auto) so the
    * timeline can label it and so the same automatic message is not sent twice.
    * "opt_out" / "opt_in": the one answer to a customer's own STOP or START (suite spec 14, R29).
+   * "broadcast": one recipient's turn in a WhatsApp broadcast (suite spec 14, Phase B); needs `broadcast`.
    */
-  auto?: "after_hours" | "opt_out" | "opt_in";
+  auto?: "after_hours" | "opt_out" | "opt_in" | "broadcast";
+  /**
+   * Which broadcast and which recipient row this send is for. The message goes to the number
+   * fixed on that row at confirmation. The send is refused, before Meta is called, unless the
+   * owner switch is on, the broadcast is sending, and the row is claimed and has no message yet.
+   * `noCallback`: leave out the callback value (Meta refused it earlier in this broadcast).
+   */
+  broadcast?: { broadcastId: string; recipientId: string; route: "cloud" | "mm"; noCallback?: boolean };
   /**
    * Extra facts kept on the message's payload from the moment it is queued, and kept if the send
    * fails (suite spec 07: `flow` says which form a message carries, so its answer can be matched).
@@ -169,6 +188,37 @@ export function prepareTemplateContent(needs: TemplateNeeds, content: TemplateCo
 
 export type SentMessage = typeof inboxMessage.$inferSelect;
 
+const BROADCASTS_OFF_TEXT = "Broadcasts are switched off. The owner can switch them on in Broadcast settings.";
+
+/**
+ * The gate every broadcast send passes (suite spec 14, rules R40, R56, R57). Reads only; throws
+ * before anything is written or sent. Returns the number fixed on the recipient row.
+ */
+async function broadcastGate(
+  db: DbClient,
+  input: SendInput,
+  linePhoneNumberId: string,
+): Promise<{ to: WaRecipient; broadcastId: string; recipientId: string; route: "cloud" | "mm"; noCallback: boolean }> {
+  const b = input.broadcast;
+  if (!b) throw new InboxSendError("broadcast_off", "A broadcast send must name its broadcast and recipient");
+  if (input.userId !== null) throw new InboxSendError("not_supported", "A broadcast send is made by the worker, not in a person's name");
+  if (input.content.type !== "template") throw new InboxSendError("not_supported", "A broadcast can only send an approved template");
+  const [setting] = await db.select({ value: appSetting.value }).from(appSetting).where(eq(appSetting.key, BROADCAST_SETTINGS_KEY));
+  if (!readBroadcastSettings(setting?.value).enabled) throw new InboxSendError("broadcast_off", BROADCASTS_OFF_TEXT);
+  const [row] = await db.select().from(broadcast).where(eq(broadcast.id, b.broadcastId));
+  if (!row || row.status !== "sending" || row.phoneNumberId !== linePhoneNumberId) {
+    throw new InboxSendError("broadcast_off", "This broadcast is not sending");
+  }
+  const [r] = await db.select().from(broadcastRecipient).where(eq(broadcastRecipient.id, b.recipientId));
+  if (!r || r.broadcastId !== row.id || r.state !== "sending" || r.messageId) {
+    throw new InboxSendError("broadcast_duplicate", "This person's message has already been handled; it is not sent again");
+  }
+  const toWa = r.toWa ?? "";
+  const to: WaRecipient | null = /^\d{8,15}$/.test(toWa) ? toWa : isBsuid(toWa) ? { bsuid: toWa } : null;
+  if (!to) throw new InboxSendError("no_phone", "This person has no WhatsApp number to send to");
+  return { to, broadcastId: row.id, recipientId: r.id, route: b.route, noCallback: b.noCallback === true };
+}
+
 export async function sendFromConversation(
   db: DbClient,
   cfg: MetaConfig | null,
@@ -210,10 +260,17 @@ export async function sendFromConversation(
     throw new InboxSendError("no_whatsapp", "This business number has no WhatsApp");
   }
   const waNumberId = ctx.waPhoneNumberId;
-  const to = whatsappRecipient(
-    ctx.identityChannel ? { channel: ctx.identityChannel, externalId: ctx.identityExternalId } : null,
-    ctx.phone,
-  );
+  // A broadcast send (suite spec 14, Phase B) goes to the number fixed on its recipient row at
+  // confirmation, and is refused here, before anything is written or sent, unless the owner
+  // switch is on, the broadcast is sending and the row is claimed with no message yet.
+  const bc = input.auto === "broadcast" ? await broadcastGate(db, input, ctx.conv.phoneNumberId) : null;
+  if (input.broadcast && !bc) throw new InboxSendError("not_supported", "Only a broadcast send may name a broadcast");
+  const to = bc
+    ? bc.to
+    : whatsappRecipient(
+        ctx.identityChannel ? { channel: ctx.identityChannel, externalId: ctx.identityExternalId } : null,
+        ctx.phone,
+      );
   if (!to) throw new InboxSendError("no_phone", "This customer has no phone number or WhatsApp ID to send to");
 
   let body: string | null = null;
@@ -225,6 +282,7 @@ export async function sendFromConversation(
   let mediaFilename = "filename" in content ? (content.filename ?? null) : null;
   // Set when a template's button opens a form: kept on the message so the answer is matched to the form.
   let templateFlow: Record<string, unknown> | null = null;
+  let templateCategory = "";
   if (input.content.type === "template") {
     const [tpl] = await db
       .select()
@@ -239,6 +297,11 @@ export async function sendFromConversation(
     if (!tpl || tpl.status.toUpperCase() !== "APPROVED") {
       throw new InboxSendError("template_not_approved", `Template ${input.content.name} is not approved`);
     }
+    // A broadcast carries promotions and updates only (rule R41); anything else is refused before Meta is called.
+    if (bc && !(BROADCAST_CATEGORIES as readonly string[]).includes((tpl.category ?? "").toUpperCase())) {
+      throw new InboxSendError("template_unsupported", "Only promotion and update templates can be broadcast");
+    }
+    templateCategory = (tpl.category ?? "").toUpperCase();
     // Refuse what the inbox can't send, or what is missing, before calling Meta.
     const needs = templateNeeds(tpl.components, tpl.category);
     let templateContent = input.content;
@@ -287,14 +350,17 @@ export async function sendFromConversation(
           ? input.content.preview
           : (input.content.caption ?? null);
   }
-  const payloadExtra: Record<string, unknown> = { ...(input.payloadExtra ?? {}), ...(templateFlow ? { flow: templateFlow } : {}) };
+  const payloadExtra: Record<string, unknown> = {
+    ...(input.payloadExtra ?? {}),
+    ...(templateFlow ? { flow: templateFlow } : {}),
+    // Which broadcast and recipient this message belongs to, kept from the moment it is queued.
+    ...(bc ? { broadcast_id: bc.broadcastId, recipient_id: bc.recipientId } : {}),
+  };
   const hasExtra = (): boolean => Object.keys(payloadExtra).length > 0;
 
   const type = input.content.type;
   const carriesForm = type === "flow" || "flow" in payloadExtra;
-  const [queued] = await db
-    .insert(inboxMessage)
-    .values({
+  const queuedValues: typeof inboxMessage.$inferInsert = {
       conversationId: ctx.conv.id,
       direction: "out",
       type,
@@ -319,15 +385,61 @@ export async function sendFromConversation(
           }
         : {}),
       createdAt: now,
-    })
-    .returning();
+  };
+  let queued: SentMessage | undefined;
+  if (bc) {
+    // The queued message and its link to the recipient row are written together and committed
+    // BEFORE Meta is called (foundation rule 9). The row is locked and checked again, so two
+    // callers for the same recipient can never both get past this point. No Meta call is made
+    // inside this transaction.
+    queued = await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(broadcastRecipient).where(eq(broadcastRecipient.id, bc.recipientId)).for("update");
+      if (!r || r.broadcastId !== bc.broadcastId || r.state !== "sending" || r.messageId) {
+        throw new InboxSendError("broadcast_duplicate", "This person's message has already been handled; it is not sent again");
+      }
+      const [row] = await tx.insert(inboxMessage).values(queuedValues).returning();
+      await tx.update(broadcastRecipient).set({ messageId: row!.id }).where(eq(broadcastRecipient.id, bc.recipientId));
+      return row;
+    });
+  } else {
+    [queued] = await db.insert(inboxMessage).values(queuedValues).returning();
+  }
 
   let final: SentMessage;
   try {
-    const wamid = await sendMessage(cfg, waNumberId, to, content);
+    let wamid: string;
+    let callbackRefused = false;
+    if (bc) {
+      const endpoint = bc.route === "mm" && templateCategory === "MARKETING" ? ("marketing_messages" as const) : ("messages" as const);
+      const callbackData = bc.noCallback ? undefined : BROADCAST_CALLBACK_PREFIX + bc.recipientId;
+      try {
+        wamid = await sendMessage(cfg, waNumberId, to, content, { endpoint, ...(callbackData ? { callbackData } : {}) });
+      } catch (err) {
+        // Meta answered "invalid parameter" (code 100) and so did NOT send: the callback value is the one
+        // thing here Meta's reference does not list (suite spec 14, Q-B8). Ask once more without it.
+        // Never done after a timeout or any answer that leaves the outcome unknown.
+        const refused = err instanceof MetaApiError && err.code === "100" && err.delivery === "not_sent" && err.status < 500;
+        if (!callbackData || !refused) throw err;
+        wamid = await sendMessage(cfg, waNumberId, to, content, { endpoint });
+        callbackRefused = true;
+      }
+    } else {
+      wamid = await sendMessage(cfg, waNumberId, to, content);
+    }
     [final] = (await db
       .update(inboxMessage)
-      .set({ waMessageId: wamid, status: "sent" })
+      .set(
+        bc
+          ? {
+              waMessageId: wamid,
+              // A delivery report can arrive before this line runs (rule R58): never move the status back.
+              status: sql`case when ${inboxMessage.status} in ('queued','failed') then 'sent'::inbox_message_status else ${inboxMessage.status} end`,
+              ...(callbackRefused
+                ? { payload: sql`coalesce(${inboxMessage.payload}, '{}'::jsonb) || '{"callback_refused":true}'::jsonb` }
+                : {}),
+            }
+          : { waMessageId: wamid, status: "sent" },
+      )
       .where(eq(inboxMessage.id, queued!.id))
       .returning()) as [SentMessage];
   } catch (err) {
@@ -350,11 +462,18 @@ export async function sendFromConversation(
           unconfirmed: e?.delivery === "unknown",
           retryable: e !== null && e.delivery === "not_sent" && e.retryable,
           ...(bsuidRefused || flowRefused ? { meta_message: metaMessage } : {}),
+          // The broadcast engine sorts a refusal by Meta's code and the HTTP status (suite spec 14, section 3).
+          ...(bc && e ? { http_status: e.status } : {}),
         },
       })
       .where(eq(inboxMessage.id, queued!.id))
       .returning()) as [SentMessage];
   }
+
+  // A broadcast must not disturb the inbox (suite spec 14, 5.10): it assigns nobody, is not a
+  // first reply, does not change the preview or the order of the list, and signals no screen.
+  // The message is in the thread when someone opens it.
+  if (bc) return final;
 
   const isFirstStaffReply = input.userId !== null && !ctx.conv.firstResponseAt && final.status !== "failed";
   // Auto-assign an unassigned thread to whoever replies first.
