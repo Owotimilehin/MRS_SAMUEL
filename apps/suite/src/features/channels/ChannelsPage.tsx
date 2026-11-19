@@ -15,7 +15,7 @@ import { inboxKeys } from "@admin/lib/inbox-api.js";
 import { toast } from "@admin/lib/toast.js";
 import "@admin/components/inbox/inbox.css";
 import { channelKeys, channelsApi, type ChannelRow } from "./channels-api.js";
-import { secondLine, usedForText } from "./channels-logic.js";
+import { secondLine, statusOf, usedForText } from "./channels-logic.js";
 import { ConnectDialog } from "./ConnectDialog.js";
 import { EditChannelDialog } from "./EditChannelDialog.js";
 
@@ -145,7 +145,7 @@ function ChannelsList(): JSX.Element {
                       <td data-label="Team">{row.team_name ?? "No team"}</td>
                       <td data-label="Hours">{row.hours_profile_name ?? "Always open"}</td>
                       <td data-label="Status">
-                        {row.is_active ? <span className="pill pill--success">On</span> : <span className="pill">Switched off</span>}
+                        <StatusCell row={row} />
                       </td>
                       <td className="table__num" data-label="Open chats">
                         {row.open_conversations}
@@ -190,6 +190,14 @@ function ChannelsList(): JSX.Element {
           </div>
         </DataState>
       </section>
+      <section className="card" style={{ marginTop: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Before customers outside the team can message you</div>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--ink-soft)" }}>
+          <li>Meta must verify the business.</li>
+          <li>Meta must review the app (the technical lead submits this).</li>
+          <li>Until then, only people added as testers can be answered.</li>
+        </ul>
+      </section>
       <p style={{ color: "var(--ink-soft)", fontSize: 13, marginTop: 12 }}>
         Staff who only see some channels will not see chats from a new one until you tick it for them in{" "}
         <Link to="/inbox/settings">Settings</Link>, Staff access.
@@ -215,5 +223,17 @@ function ChannelsList(): JSX.Element {
         </ConfirmModal>
       )}
     </Frame>
+  );
+}
+
+/** Status column: on/off, and for a Page or Instagram account whether messages come in (spec 02, 7.6). */
+function StatusCell({ row }: { row: ChannelRow }): JSX.Element {
+  const st = statusOf(row);
+  const cls = st.tone === "off" ? "pill" : `pill pill--${st.tone}`;
+  return (
+    <>
+      <span className={cls}>{st.text}</span>
+      {st.detail && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 4 }}>{st.detail}</div>}
+    </>
   );
 }

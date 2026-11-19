@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deadTokens, pushTitle, wantsPush, type PushMessage } from "./inbox-push.js";
+import { deadTokens, latestPushable, pushBody, pushTitle, wantsPush, type PushMessage } from "./inbox-push.js";
 import type { InboxViewer } from "@ms/domain";
 
 const viewer: InboxViewer = { userId: "U1", capabilities: ["inbox.view"], teamIds: ["T1"], numberIds: ["N1"] };
@@ -43,5 +43,26 @@ describe("pushTitle", () => {
     expect(pushTitle({ ...none, identityName: "Ada FB", identityUsername: "ada" })).toBe("Ada FB");
     expect(pushTitle({ ...none, identityUsername: "ada" })).toBe("@ada");
     expect(pushTitle(none)).toBe("New message");
+  });
+});
+
+describe("push wording per channel (suite spec 02)", () => {
+  const none = { name: null, phone: null, identityName: null, identityUsername: null };
+  it("push body names the channel", () => {
+    expect(pushBody("messenger", "text", "Hello")).toBe("Messenger: Hello");
+    expect(pushBody("instagram", "image", null)).toBe("Instagram: 📷 Photo");
+    expect(pushBody("whatsapp", "text", "Hi")).toBe("WhatsApp: Hi");
+    expect(pushBody("messenger", "text", "x".repeat(300))).toHaveLength(120);
+    expect(pushTitle(none, "instagram")).toBe("New Instagram message");
+  });
+  it("referral rows are not pushed", () => {
+    const pending = [
+      { id: "M1", type: "text", conversationId: "C1" },
+      { id: "M2", type: "referral", conversationId: "C1" },
+      { id: "M3", type: "referral", conversationId: "C2" },
+    ];
+    const picked = latestPushable(pending);
+    expect([...picked.keys()]).toEqual(["C1"]);
+    expect(picked.get("C1")!.id).toBe("M1"); // the referral after it does not replace it
   });
 });

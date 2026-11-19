@@ -42,6 +42,8 @@ export interface ConversationFilters {
   number?: string;
   label?: string;
   q?: string;
+  /** Only chats from this channel (spec 02). */
+  channel?: "whatsapp" | "messenger" | "instagram";
 }
 
 /**
@@ -84,7 +86,7 @@ export const inboxApi = {
 
   conversations: (f: ConversationFilters, before?: string) =>
     api<ConversationPage>(
-      `/inbox/conversations${qs({ status: f.status, view: f.view, number: f.number, label: f.label, q: f.q, before })}`,
+      `/inbox/conversations${qs({ status: f.status, view: f.view, number: f.number, label: f.label, q: f.q, channel: f.channel, before })}`,
     ),
   conversation: async (id: string) => (await api<{ data: ConversationDetail }>(`/inbox/conversations/${id}`)).data,
   /**
@@ -132,13 +134,23 @@ export const inboxApi = {
    */
   upload: async (
     file: File,
+    /** When given, the server checks the file against that conversation's channel (spec 02). */
+    conversationId?: string,
   ): Promise<{ object_key: string; media_token: string; kind: "image" | "document" | "audio" | "video" }> => {
     const contentType = file.type || "application/octet-stream";
     const res = await api<{
       data: { upload_url: string; object_key: string; media_token: string; kind: "image" | "document" | "audio" | "video" };
     }>(
       "/inbox/uploads",
-      { method: "POST", body: JSON.stringify({ filename: file.name, content_type: contentType, size_bytes: file.size }) },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: contentType,
+          size_bytes: file.size,
+          ...(conversationId ? { conversation_id: conversationId } : {}),
+        }),
+      },
     );
     const put = await fetch(res.data.upload_url, { method: "PUT", body: file, headers: { "content-type": contentType } });
     if (!put.ok) throw new Error("The file didn't upload. Check your connection and try again.");

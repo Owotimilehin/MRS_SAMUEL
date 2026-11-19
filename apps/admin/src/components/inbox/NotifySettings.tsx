@@ -48,6 +48,7 @@ export function NotifySettings({ onClose }: { onClose: () => void }): JSX.Elemen
   return (
     <Modal title="Notifications" onClose={onClose} maxWidth={460}>
       <div className="ibx-notify">
+        <p className="ibx-notify__note">Sound and pop-ups for new customer messages on WhatsApp, Messenger and Instagram.</p>
         <fieldset className="ibx-notify__group">
           <legend>Tell me about</legend>
           {LEVELS.map((l) => (

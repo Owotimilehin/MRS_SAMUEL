@@ -893,6 +893,7 @@ export function inboxRoutes(db: DbClient) {
         number_label: inboxPhoneNumber.label,
         last_activity_at: inboxConversation.lastActivityAt,
         labels: inboxConversation.labels,
+        channel: inboxConversation.channel,
       })
       .from(inboxConversation)
       .innerJoin(inboxPhoneNumber, eq(inboxPhoneNumber.id, inboxConversation.phoneNumberId))

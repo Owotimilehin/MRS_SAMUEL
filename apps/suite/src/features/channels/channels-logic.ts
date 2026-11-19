@@ -35,6 +35,17 @@ export function secondLine(row: RowFacts): string {
   }
 }
 
+/** The Status column (spec 01 and 02, 7.6). Page and Instagram rows also say whether messages come in. */
+export function statusOf(
+  row: Pick<ChannelRow, "kind" | "is_active" | "webhook_subscribed_at" | "problem_text">,
+): { tone: "success" | "warning" | "danger" | "off"; text: string; detail: string | null } {
+  if (!row.is_active) return { tone: "off", text: "Switched off", detail: null };
+  if (row.kind === "phone") return { tone: "success", text: "On", detail: null };
+  if (row.problem_text) return { tone: "danger", text: "Problem", detail: row.problem_text };
+  if (!row.webhook_subscribed_at) return { tone: "warning", text: "On · not receiving messages yet", detail: null };
+  return { tone: "success", text: "On · receiving messages", detail: null };
+}
+
 /** The read-only line in the edit dialog. */
 export function connectedToText(row: Pick<RowFacts, "kind" | "external_name">): string {
   return row.kind === "instagram"

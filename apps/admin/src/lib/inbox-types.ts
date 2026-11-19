@@ -266,6 +266,8 @@ export interface ContactInfo {
     number_label: string;
     last_activity_at: string;
     labels: string[];
+    /** Absent on servers before spec 02. */
+    channel?: IdentityChannel;
   }>;
 }
 

@@ -58,6 +58,11 @@
 .ibx-tabs--fit { gap: 4px; }
 .ibx-tabs--fit .ibx-tab { flex: 1 0 auto; padding: 0 8px; }
 .ibx-filters { display: flex; gap: 6px; }
+/* Spec 02: All / WhatsApp / Messenger / Instagram. Icons only on a phone. */
+.ibx-channel-filter { display: flex; gap: 4px; flex-wrap: wrap; }
+.ibx-channel-filter .btn { display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 480px) { .ibx-channel-filter__name { display: none; } }
+.ibx-channel-icon { vertical-align: -1px; }
 .ibx-filters .select { flex: 1; min-width: 0; font-size: 12px; height: 36px; }
 .ibx-list__body { overflow-y: auto; flex: 1; }
 .ibx-list__body > .empty { margin: 12px; padding: 32px 18px; }
@@ -319,3 +324,16 @@
   .table.ibx-stack tbody td.ibx-stack__actions { padding-top: 8px; }
   .table.ibx-stack tbody td.ibx-stack__actions[style] { text-align: left !important; }
 }
+
+/* ── Messenger and Instagram (suite spec 02) ── */
+.ibx-msg__sub { font-size: 11px; color: var(--text-muted, #6B7280); margin-bottom: 2px; }
+.ibx-msg__deleted { font-style: italic; color: var(--text-muted, #6B7280); }
+.ibx-msg__caption { font-size: 11px; color: var(--text-muted, #6B7280); margin-top: 2px; }
+.ibx-msg__advert { display: inline-block; margin-top: 4px; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(59,130,246,0.12); color: #1D4ED8; }
+.ibx-system-line { text-align: center; font-size: 12px; color: var(--text-muted, #6B7280); margin: 8px auto; max-width: 80%; }
+.ibx-composer__banner { background: rgba(220,38,38,0.08); color: #991B1B; border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-bottom: 6px; }
+.ibx-composer__closed { padding: 10px 12px; font-size: 13px; line-height: 1.45; }
+.ibx-composer__closed-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.ibx-composer__count { font-size: 11px; color: var(--text-muted, #6B7280); text-align: right; }
+.ibx-composer__count.is-over { color: #B91C1C; }
+.ibx-composer__problem { color: #B91C1C; font-size: 12px; margin-top: 4px; }

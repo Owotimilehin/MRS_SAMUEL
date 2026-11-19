@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Paperclip, MessageCircle, MessageSquareText, FileText, X, StickyNote, Clock } from "lucide-react";
-import { waWindowRemainingMs } from "@ms/shared";
+import { Link } from "@tanstack/react-router";
+import { Paperclip, MessageSquareText, FileText, X, StickyNote, Clock } from "lucide-react";
+import { humanAgentRemainingMs, uploadProblem, waWindowRemainingMs } from "@ms/shared";
+import { ChannelIcon } from "./ChannelIcon.js";
 import { Modal } from "../Modal.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import { humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
 import {
   countTemplateParams,
+  channelName,
   fillTemplate,
   humanTemplateName,
+  replyState,
+  textUsage,
   languageName,
   sendTypeForMime,
   shouldSendTyping,
@@ -25,16 +30,23 @@ interface Props {
   onSent: () => void;
 }
 
-/** Reply box: WhatsApp text/file/template, or an internal note. */
+/**
+ * Reply box: WhatsApp text/file/template, a Messenger or Instagram reply
+ * (spec 02: no templates, no captions, the channel's own limits), or an
+ * internal note.
+ */
 export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
   const canReply = can("inbox.reply") && conv.can_use_number;
   const canNote = can("inbox.notes");
-  // Replies go out on WhatsApp from a phone line; Messenger and Instagram replies arrive with spec 02.
+  // WhatsApp replies go out from a phone line; Messenger and Instagram from their Page.
   const phoneLine = (conv.number?.kind ?? "phone") === "phone";
   const waNumber = phoneLine && conv.number?.channels !== "voice";
-  const [mode, setMode] = useState<"reply" | "note">(canReply && waNumber ? "reply" : "note");
+  const metaLine = !phoneLine && (conv.channel === "messenger" || conv.channel === "instagram");
+  const replyLine = waNumber || metaLine;
+  const [mode, setMode] = useState<"reply" | "note">(canReply && replyLine ? "reply" : "note");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [fileProblem, setFileProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -49,20 +61,32 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
   }, []);
   const remaining = conv.lastInboundWaAt ? waWindowRemainingMs(conv.lastInboundWaAt, new Date(now)) : 0;
   const win = windowText(remaining);
+  const rs = replyState({
+    ...(conv.channel ? { channel: conv.channel } : {}),
+    number: conv.number,
+    window_remaining_ms: remaining,
+    human_agent_remaining_ms: conv.human_agent_enabled && conv.lastInboundWaAt ? humanAgentRemainingMs(conv.lastInboundWaAt, new Date(now)) : 0,
+    human_agent_enabled: conv.human_agent_enabled === true,
+  });
+  const name = channelName(rs.channel);
 
   // Reset the draft when switching conversations.
   useEffect(() => {
     setText("");
     setFile(null);
-    setMode(canReply && waNumber ? "reply" : "note");
+    setFileProblem(null);
+    setMode(canReply && replyLine ? "reply" : "note");
     lastTyping.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conv.id]);
 
   if (!canReply && !canNote) return null;
 
-  const replyMode = mode === "reply" && canReply && waNumber;
-  const freeTextBlocked = replyMode && !win.open;
+  const replyMode = mode === "reply" && canReply && replyLine;
+  // WhatsApp: outside 24 h only a template. Messenger/Instagram: closed (or switched off) means no reply at all.
+  const freeTextBlocked = replyMode && (metaLine ? rs.mode === "closed" || rs.mode === "off" : !win.open);
+  const usage = textUsage(text, rs.textLimit);
+  const tooLong = replyMode && metaLine && usage.over;
 
   function onType(v: string): void {
     setText(v);
@@ -91,11 +115,23 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
       }
       return;
     }
-    if (freeTextBlocked) return;
+    if (freeTextBlocked || tooLong) return;
     if (!body && !file) return;
     setBusy(true);
     try {
-      if (file) {
+      if (file && metaLine) {
+        // No captions on Messenger/Instagram: the file first, then the text as its own message.
+        const up = await inboxApi.upload(file, conv.id);
+        await inboxApi.sendMedia(conv.id, {
+          type: sendTypeForMime(file.type || "application/octet-stream"),
+          media_key: up.object_key,
+          media_token: up.media_token,
+          mime: file.type || "application/octet-stream",
+          filename: file.name,
+        });
+        setFile(null);
+        if (body) await inboxApi.sendText(conv.id, body);
+      } else if (file) {
         const up = await inboxApi.upload(file);
         await inboxApi.sendMedia(conv.id, {
           type: sendTypeForMime(file.type || "application/octet-stream"),
@@ -129,9 +165,12 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
     }
   }
 
-  // Shown instead of the reply box once WhatsApp's 24-hour window has closed.
-  const windowClosed = canReply && waNumber && !win.open;
-  const closedNotice = (hidden: boolean): JSX.Element => (
+  // Shown instead of the reply box once the reply window has closed.
+  const windowClosed = canReply && (waNumber ? !win.open : metaLine && (rs.mode === "closed" || rs.mode === "off"));
+  const closedNotice = (hidden: boolean): JSX.Element =>
+    metaLine ? (
+      <MetaClosedNotice conv={conv} hidden={hidden} rsMode={rs.mode} statusText={rs.statusText} name={name} closedWindow={rs.closedWindow} canNote={canNote} onNote={() => setMode("note")} />
+    ) : (
         <div className="ibx-comp__closed" aria-hidden={hidden || undefined} style={hidden ? { visibility: "hidden" } : undefined}>
           <div className="ibx-comp__closed-text">
             It's more than 24 hours since the customer last wrote, so WhatsApp only accepts a template.{" "}
@@ -149,7 +188,7 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
     <div className={`ibx-comp${mode === "note" ? " ibx-comp--note" : ""}`}>
       <div className="ibx-comp__top">
         <div className="ibx-comp__modes" role="tablist" aria-label="Reply or note">
-          {canReply && waNumber && (
+          {canReply && replyLine && (
             <button
               type="button"
               role="tab"
@@ -157,7 +196,7 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
               className={`ibx-tab${mode === "reply" ? " is-active" : ""}`}
               onClick={() => setMode("reply")}
             >
-              <MessageCircle size={13} aria-hidden /> WhatsApp reply
+              <ChannelIcon channel={rs.channel} size={13} /> {rs.tabLabel}
             </button>
           )}
           {canNote && (
@@ -177,16 +216,25 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
       <div className="ibx-comp__status">
         {mode === "note" ? (
           <span className="ibx-comp__hint">Only staff can see notes.</span>
+        ) : replyMode && metaLine ? (
+          <span className={`ibx-comp__window ibx-comp__window--${rs.mode === "open" ? "open" : "closed"}`} style={rs.mode === "human_agent" ? { color: "#92400E" } : undefined}>
+            <Clock size={13} aria-hidden /> {rs.mode === "off" ? "Replies switched off" : rs.statusText}
+          </span>
         ) : replyMode ? (
           <span className={`ibx-comp__window ibx-comp__window--${win.open ? "open" : "closed"}`}>
             <Clock size={13} aria-hidden /> {win.open ? win.text : "Reply window closed"}
           </span>
         ) : null}
       </div>
+      {mode === "reply" && metaLine && rs.banner && (
+        <div className="ibx-composer__banner" role="alert">
+          {rs.banner}
+        </div>
+      )}
       {phoneLine && !waNumber && mode === "reply" && (
         <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>This number is for calls only — WhatsApp replies aren't possible.</div>
       )}
-      {!phoneLine && (
+      {!phoneLine && !metaLine && (
         <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>Replies on this channel are not switched on yet.</div>
       )}
       {!conv.can_use_number && can("inbox.reply") && (
@@ -223,11 +271,15 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
                 ref={fileRef}
                 type="file"
                 hidden
-                accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                accept={rs.accept}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) setFile(f);
                   e.target.value = "";
+                  if (!f) return;
+                  // Messenger/Instagram: check the channel's rules before any upload.
+                  const problem = metaLine ? uploadProblem(rs.channel, { type: f.type || "application/octet-stream", size: f.size }) : null;
+                  setFileProblem(problem);
+                  if (!problem) setFile(f);
                 }}
               />
               <button type="button" className="btn btn--ghost btn--sm" aria-label="Attach a file" title="Attach a file" onClick={() => fileRef.current?.click()}>
@@ -236,7 +288,7 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
               <button type="button" className="btn btn--ghost btn--sm" aria-label="Quick replies" title="Quick replies" onClick={() => setShowQuick(true)}>
                 <MessageSquareText size={16} />
               </button>
-              {can("inbox.templates") && (
+              {can("inbox.templates") && rs.canTemplate && (
                 <button type="button" className="btn btn--ghost btn--sm" title="Send a template" onClick={() => setShowTemplates(true)}>
                   <FileText size={16} />
                 </button>
@@ -246,17 +298,25 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
           <textarea
             className="textarea"
             rows={2}
-            placeholder={mode === "note" ? "Write a note only staff can see…" : file ? "Add a caption (optional)…" : "Type a reply…"}
+            placeholder={
+              mode === "note"
+                ? "Write a note only staff can see…"
+                : file
+                  ? rs.canCaption
+                    ? "Add a caption (optional)…"
+                    : "Add a message (sent separately)…"
+                  : "Type a reply…"
+            }
             value={text}
             onChange={(e) => onType(e.target.value)}
             onKeyDown={onKey}
             aria-label={mode === "note" ? "Internal note" : "Reply"}
-            maxLength={mode === "note" ? 4000 : file ? 1024 : 4096}
+            maxLength={mode === "note" ? 4000 : metaLine ? (rs.channel === "messenger" ? 1999 : undefined) : file ? 1024 : 4096}
           />
           <button
             type="button"
             className="btn btn--primary btn--sm"
-            disabled={busy || (!text.trim() && !(file && replyMode))}
+            disabled={busy || tooLong || (!text.trim() && !(file && replyMode))}
             onClick={() => void send()}
           >
             {busy ? "Sending…" : mode === "note" ? "Add note" : "Send"}
@@ -264,6 +324,13 @@ export function Composer({ conv, can, onSent }: Props): JSX.Element | null {
         </div>
       )}
       </div>
+      {replyMode && fileProblem && <div className="ibx-composer__problem" role="alert">{fileProblem}</div>}
+      {replyMode && metaLine && rs.textLimit.unit === "bytes" && usage.used >= 800 && (
+        <div className={`ibx-composer__count${usage.over ? " is-over" : ""}`} aria-live="polite">
+          {usage.used} / {rs.textLimit.max}
+          {usage.over ? ` · Too long for ${name}. Shorten it or send it in two parts.` : ""}
+        </div>
+      )}
 
       {showQuick && (
         <QuickReplyPicker
@@ -418,5 +485,55 @@ function TemplatePicker({ conv, onClose, onSent }: { conv: ConversationDetail; o
         </div>
       )}
     </Modal>
+  );
+}
+
+/**
+ * Messenger/Instagram: shown in place of the reply box when the reply window
+ * has closed or the line is switched off (spec 02, 7.3).
+ */
+function MetaClosedNotice(p: {
+  conv: ConversationDetail;
+  hidden: boolean;
+  rsMode: string;
+  statusText: string;
+  name: string;
+  closedWindow: string;
+  canNote: boolean;
+  onNote: () => void;
+}): JSX.Element {
+  const customerId = p.conv.customer?.id ?? p.conv.customerId;
+  const hasPhone = !!p.conv.customer?.phone;
+  const contact = useQuery({
+    queryKey: inboxKeys.contact(customerId),
+    queryFn: () => inboxApi.contact(customerId),
+    enabled: hasPhone && !p.hidden && p.rsMode === "closed",
+    staleTime: 60_000,
+  });
+  const waChat = contact.data?.conversations.find((c) => c.channel === "whatsapp");
+  return (
+    <div className="ibx-comp__closed ibx-composer__closed" aria-hidden={p.hidden || undefined} style={p.hidden ? { visibility: "hidden" } : undefined}>
+      {p.rsMode === "off" ? (
+        <div className="ibx-comp__closed-text">{p.statusText}</div>
+      ) : (
+        <div className="ibx-comp__closed-text">
+          <strong>You can't reply here right now.</strong> {p.name} only lets a business reply within {p.closedWindow} of the
+          customer's last message. What you can do: wait for them to write again (the box opens by itself); message them on
+          WhatsApp or call if you have their number; or add a note for the team.
+        </div>
+      )}
+      <div className="ibx-composer__closed-actions">
+        {p.canNote && (
+          <button type="button" className="btn btn--subtle btn--sm" onClick={p.onNote} tabIndex={p.hidden ? -1 : undefined}>
+            Add a note
+          </button>
+        )}
+        {p.rsMode === "closed" && waChat && (
+          <Link to="/inbox/$conversationId" params={{ conversationId: waChat.id }} className="btn btn--primary btn--sm" tabIndex={p.hidden ? -1 : undefined}>
+            Open their WhatsApp chat
+          </Link>
+        )}
+      </div>
+    </div>
   );
 }
