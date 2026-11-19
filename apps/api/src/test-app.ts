@@ -55,6 +55,7 @@ import { channelChatSetupRoutes } from "./routes/channel-chat-setup.js";
 import { channelPageRoutes } from "./routes/channel-page-details.js";
 import { whatsappProfileRoutes } from "./routes/whatsapp-profile.js";
 import { catalogueRoutes } from "./routes/catalogue.js";
+import { adRoutes } from "./routes/ads.js";
 import { chatOrderRoutes } from "./routes/inbox-chat-orders.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
@@ -147,6 +148,8 @@ export function buildApp(): Hono {
   app.route("/v1/whatsapp-profile", whatsappProfileRoutes(db));
   // Business suite: catalogue sync and selling in chat (suite spec 08).
   app.route("/v1/catalogue", catalogueRoutes(db));
+  // Business suite: ad results, spend and click-to-chat adverts (suite spec 12).
+  app.route("/v1/ads", adRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));
