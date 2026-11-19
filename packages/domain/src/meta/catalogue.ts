@@ -224,11 +224,21 @@ export async function computeDesiredItems(db: DbExecutor, opts: { storefrontBase
 /**
  * Mark that the shop changed. One UPDATE on catalogue_link; a no-op when no
  * row exists. Safe inside any transaction; never calls Meta.
+ *
+ * It can never fail the shop's own write: the UPDATE runs under a savepoint
+ * (or its own short transaction) and any error is swallowed. The worst case is
+ * that the change waits for the regular one-minute pass.
  */
 export async function requestCatalogueSync(db: DbExecutor, reason: string): Promise<void> {
-  await db
-    .update(catalogueLink)
-    .set({ syncRequestedAt: sql`clock_timestamp()`, syncRequestReason: reason.slice(0, 80) });
+  const mark = (x: DbExecutor) =>
+    x.update(catalogueLink).set({ syncRequestedAt: sql`clock_timestamp()`, syncRequestReason: reason.slice(0, 80) });
+  try {
+    const nested = (db as unknown as { transaction?: (fn: (tx: DbExecutor) => Promise<unknown>) => Promise<unknown> }).transaction;
+    if (typeof nested === "function") await nested.call(db, (tx) => mark(tx));
+    else await mark(db);
+  } catch {
+    // Deliberately ignored; see above.
+  }
 }
 
 // ── Graph calls (system-user token) ──────────────────────────────────────────
