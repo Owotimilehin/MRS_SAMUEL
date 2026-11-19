@@ -19,6 +19,7 @@ import {
   MessagesSquare,
   Share2,
   SlidersHorizontal,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import type { Capability } from "@ms/shared";
@@ -33,7 +34,7 @@ import { activeNavTo } from "./nav.js";
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
+  to: "/inbox" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates" | "/contacts";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -44,6 +45,11 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   {
     heading: "Conversations",
     items: [{ to: "/inbox", label: "Inbox", Icon: MessagesSquare, cap: "inbox.view" }],
+  },
+  {
+    // Suite spec 14. Phase B adds "Broadcasts" to this group.
+    heading: "Customers",
+    items: [{ to: "/contacts", label: "Contacts", Icon: Users, cap: "contacts.view" }],
   },
   {
     heading: "Insight",
