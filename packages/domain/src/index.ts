@@ -8,3 +8,4 @@ export * from "./inbox/index.js";
 export * from "./meta/accounts.js";
 export * from "./meta/messaging.js";
 export * from "./meta/chat-setup.js";
+export * from "./meta/page-details.js";
