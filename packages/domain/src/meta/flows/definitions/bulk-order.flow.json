@@ -1,0 +1,122 @@
+{
+  "version": "7.3",
+  "screens": [
+    {
+      "id": "DETAILS",
+      "title": "Bulk order",
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextSubheading",
+            "text": "Tell us about your order"
+          },
+          {
+            "type": "RadioButtonsGroup",
+            "name": "occasion",
+            "label": "What is it for?",
+            "required": true,
+            "data-source": [
+              {
+                "id": "event",
+                "title": "Party or event"
+              },
+              {
+                "id": "office",
+                "title": "Office or staff"
+              },
+              {
+                "id": "resale",
+                "title": "To sell in my shop"
+              },
+              {
+                "id": "other",
+                "title": "Something else"
+              }
+            ]
+          },
+          {
+            "type": "TextInput",
+            "name": "quantity",
+            "label": "How many bottles?",
+            "input-type": "number",
+            "required": true,
+            "helper-text": "A rough number is fine"
+          },
+          {
+            "type": "DatePicker",
+            "name": "needed_by",
+            "label": "When do you need it?",
+            "required": true,
+            "helper-text": "We need at least 3 days' notice"
+          },
+          {
+            "type": "Footer",
+            "label": "Continue",
+            "on-click-action": {
+              "name": "navigate",
+              "next": {
+                "type": "screen",
+                "name": "CONTACT"
+              },
+              "payload": {}
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "CONTACT",
+      "title": "Your details",
+      "terminal": true,
+      "success": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextSubheading",
+            "text": "How do we reach you?"
+          },
+          {
+            "type": "TextInput",
+            "name": "contact_name",
+            "label": "Your name",
+            "input-type": "text",
+            "required": true
+          },
+          {
+            "type": "TextInput",
+            "name": "location",
+            "label": "Delivery area",
+            "input-type": "text",
+            "required": true,
+            "helper-text": "For example Ikeja or Lekki Phase 1"
+          },
+          {
+            "type": "TextArea",
+            "name": "details",
+            "label": "Anything else?",
+            "required": false,
+            "helper-text": "Flavours, bottle size, branding, budget"
+          },
+          {
+            "type": "Footer",
+            "label": "Send enquiry",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "flow_key": "bulk_order",
+                "occasion": "${screen.DETAILS.form.occasion}",
+                "quantity": "${screen.DETAILS.form.quantity}",
+                "needed_by": "${screen.DETAILS.form.needed_by}",
+                "contact_name": "${form.contact_name}",
+                "location": "${form.location}",
+                "details": "${form.details}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
