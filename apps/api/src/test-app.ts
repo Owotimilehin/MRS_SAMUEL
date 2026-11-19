@@ -54,6 +54,7 @@ import { channelRoutes } from "./routes/channels.js";
 import { channelChatSetupRoutes } from "./routes/channel-chat-setup.js";
 import { channelPageRoutes } from "./routes/channel-page-details.js";
 import { whatsappProfileRoutes } from "./routes/whatsapp-profile.js";
+import { leadRoutes } from "./routes/leads.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
@@ -141,6 +142,8 @@ export function buildApp(): Hono {
   app.route("/v1/channels/:accountId/page", channelPageRoutes(db));
   app.route("/v1/channels", channelRoutes(db));
   app.route("/v1/whatsapp-profile", whatsappProfileRoutes(db));
+  // Business suite: leads from Meta lead forms (suite spec 13).
+  app.route("/v1/leads", leadRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));

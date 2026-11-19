@@ -1,5 +1,6 @@
 /** What the suite gives the inbox screens. See @admin/lib/app-frame.tsx. */
-import type { CustomerLinkProps, HostApp } from "@admin/lib/app-frame.js";
+import { Link } from "@tanstack/react-router";
+import type { CustomerLinkProps, HostApp, LeadLinkProps } from "@admin/lib/app-frame.js";
 import { SuiteShell } from "./SuiteShell.js";
 
 /**
@@ -29,4 +30,13 @@ function SuiteCustomerLink({ customerId, children, style }: CustomerLinkProps): 
   );
 }
 
-export const suiteHost: HostApp = { Shell: SuiteShell, CustomerLink: SuiteCustomerLink };
+/** A lead opens on the suite's own Leads page. */
+function SuiteLeadLink({ leadId, children, style }: LeadLinkProps): JSX.Element {
+  return (
+    <Link to="/leads/$leadId" params={{ leadId }} {...(style ? { style } : {})}>
+      {children}
+    </Link>
+  );
+}
+
+export const suiteHost: HostApp = { Shell: SuiteShell, CustomerLink: SuiteCustomerLink, LeadLink: SuiteLeadLink };

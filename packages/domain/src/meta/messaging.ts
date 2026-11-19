@@ -41,13 +41,21 @@ export async function withPageTokenRetry<T>(cfg: MetaConfig, pageId: string, cal
 
 // ── Webhook subscription ─────────────────────────────────────────────────────
 
-/** POST {pageId}/subscribed_apps?subscribed_fields=… with the Page token. Throws MetaApiError. */
-export async function subscribePage(cfg: MetaConfig, pageId: string): Promise<void> {
+/** Field names safe to put in the subscribed_fields list. */
+const WEBHOOK_FIELD = /^[a-z][a-z0-9_]{0,63}$/;
+
+/**
+ * POST {pageId}/subscribed_apps?subscribed_fields=… with the Page token. Throws MetaApiError.
+ * `extraFields` are added to PAGE_WEBHOOK_FIELDS (for example "leadgen", suite spec 13), so a
+ * re-subscription never drops a field another part of the suite switched on.
+ */
+export async function subscribePage(cfg: MetaConfig, pageId: string, extraFields: readonly string[] = []): Promise<void> {
+  const fields = [...new Set<string>([...PAGE_WEBHOOK_FIELDS, ...extraFields.filter((f) => WEBHOOK_FIELD.test(f))])];
   const res = await withPageTokenRetry(cfg, pageId, (token) =>
     graph<{ success?: boolean }>(
       cfg,
       "POST",
-      `${encodeURIComponent(pageId)}/subscribed_apps?subscribed_fields=${PAGE_WEBHOOK_FIELDS.join(",")}`,
+      `${encodeURIComponent(pageId)}/subscribed_apps?subscribed_fields=${fields.join(",")}`,
       undefined,
       { token },
     ),
@@ -57,9 +65,42 @@ export async function subscribePage(cfg: MetaConfig, pageId: string): Promise<vo
   }
 }
 
-interface SubscribedApp {
+export interface SubscribedApp {
   id?: string;
   subscribed_fields?: (string | { name?: string })[];
+}
+
+/**
+ * The webhook fields our app is subscribed to in a GET {pageId}/subscribed_apps answer.
+ * Looks only at the app with id `appId` when it is known, else at every app listed.
+ */
+export function subscribedFieldsOf(apps: readonly SubscribedApp[] | undefined, appId?: string): string[] {
+  const out = new Set<string>();
+  for (const a of apps ?? []) {
+    if (appId && a.id !== appId) continue;
+    for (const f of a.subscribed_fields ?? []) {
+      const name = typeof f === "string" ? f : (f?.name ?? "");
+      if (name) out.add(name);
+    }
+  }
+  return [...out];
+}
+
+/**
+ * Subscribe the Page again, keeping every field it already has (Meta may treat the posted
+ * list as the whole list). If the current list cannot be read, only our own fields are sent.
+ */
+export async function subscribePageKeepingFields(cfg: MetaConfig, pageId: string): Promise<void> {
+  let current: string[] = [];
+  try {
+    const res = await withPageTokenRetry(cfg, pageId, (token) =>
+      graph<{ data?: SubscribedApp[] }>(cfg, "GET", `${encodeURIComponent(pageId)}/subscribed_apps`, undefined, { token }),
+    );
+    current = subscribedFieldsOf(res?.data, cfg.appId);
+  } catch {
+    current = [];
+  }
+  await subscribePage(cfg, pageId, current);
 }
 
 /**

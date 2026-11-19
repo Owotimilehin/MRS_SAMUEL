@@ -15,6 +15,7 @@ import {
   prettyPhone,
 } from "../../lib/inbox-logic.js";
 import { toast } from "../../lib/toast.js";
+import { LeadCards } from "./LeadCard.js";
 import type { ContactInfo, ContactSearchHit, IdentityRow } from "../../lib/inbox-types.js";
 
 type Customer = ContactInfo["customer"];
@@ -101,6 +102,8 @@ export function ContactPanel({
         )}
       </div>
       {identities.length > 0 && <ReachesYouOn identities={identities} />}
+      {/* Lead forms this contact filled in (suite spec 13); only for people who may see leads. */}
+      {can("leads.view") && <LeadCards customerId={customerId} />}
       {editable ? (
         <div style={{ display: "grid", gap: 8 }}>
           <label className="field">

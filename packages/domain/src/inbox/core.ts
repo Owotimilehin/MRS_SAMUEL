@@ -206,7 +206,9 @@ async function touchIdentity(
  * insert a customer.
  *
  * With source "whatsapp" the WhatsApp identity for the number is written for
- * the resulting customer. A call (source "phone") never writes one (rule R8).
+ * the resulting customer. A call (source "phone") never writes one (rule R8),
+ * and neither does a lead form (source "online", suite spec 13): the person
+ * has not written to us on WhatsApp yet.
  *
  * Existing customer rows are never modified. Must run inside a transaction
  * (uses a transaction-scoped advisory lock).
@@ -214,7 +216,7 @@ async function touchIdentity(
 export async function findOrCreateCustomer(
   db: DbExecutor,
   rawPhone: string,
-  opts: { name?: string | null; source: "whatsapp" | "phone" },
+  opts: { name?: string | null; email?: string | null; source: "whatsapp" | "phone" | "online" },
 ): Promise<{ id: string; created: boolean }> {
   const e164 = toE164(rawPhone);
   if (!e164) throw new Error(`unusable phone number: ${rawPhone}`);
@@ -236,7 +238,8 @@ export async function findOrCreateCustomer(
   } else {
     const [row] = await db
       .insert(customer)
-      .values({ phone: e164, name: opts.name ?? null, source: opts.source })
+      // email is set on a NEW row only (a lead form gave it, suite spec 13); existing rows are never changed.
+      .values({ phone: e164, name: opts.name ?? null, email: opts.email ?? null, source: opts.source })
       .returning({ id: customer.id });
     result = { id: row!.id, created: true };
   }

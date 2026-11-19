@@ -14,6 +14,7 @@ import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
+import { backfillLeads, fetchLeads, syncForms } from "./jobs/leads.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -55,6 +56,10 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "inbox_template_sync", everyMs: 60 * 60_000, last: 0, run: () => syncAllTemplates(db, logger) },
     { name: "inbox_identity_profiles", everyMs: 30_000, last: 0, run: () => refreshIdentityProfiles(db, logger) },
     { name: "inbox_meta_subscriptions", everyMs: 60 * 60_000, last: 0, run: () => ensureMetaSubscriptions(db, logger) },
+    // Lead forms (suite spec 13).
+    { name: "lead_fetch", everyMs: 15_000, last: 0, run: () => fetchLeads(db, logger) },
+    { name: "lead_backfill", everyMs: 60_000, last: 0, run: () => backfillLeads(db, logger) },
+    { name: "lead_forms_sync", everyMs: 6 * 60 * 60_000, last: 0, run: () => syncForms(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {

@@ -19,7 +19,7 @@ import {
   MetaApiError,
   publishInboxEvent,
   signalFor,
-  subscribePage,
+  subscribePageKeepingFields,
   updateIdentityProfile,
   type MetaConfig,
 } from "@ms/domain";
@@ -155,7 +155,7 @@ export async function ensureMetaSubscriptions(
       const now = new Date();
       await db.update(inboxPhoneNumber).set({ webhookCheckedAt: now }).where(ofPage);
       if (!subscribed) {
-        await subscribePage(cfg, pageId);
+        await subscribePageKeepingFields(cfg, pageId);
         await db.update(inboxPhoneNumber).set({ webhookSubscribedAt: new Date() }).where(ofPage);
         log.warn({ pageId }, "meta page was not subscribed to our webhooks; subscribed it again");
         resubscribed++;

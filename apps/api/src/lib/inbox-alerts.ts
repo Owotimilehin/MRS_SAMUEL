@@ -12,7 +12,13 @@ import { outboxEvent, type DbExecutor } from "@ms/db";
  */
 export async function alertOnce(
   db: DbExecutor,
-  eventType: "inbox.unknown_channel_account" | "inbox.meta_config" | "inbox.meta_policy" | "channels.page_config",
+  eventType:
+    | "inbox.unknown_channel_account"
+    | "inbox.meta_config"
+    | "inbox.meta_policy"
+    | "channels.page_config"
+    // Suite spec 13: Meta will not let us read leads. Raised by the worker through alertLeadFetchBlocked in @ms/domain.
+    | "lead.fetch_blocked",
   payload: Record<string, unknown> & { account: string },
 ): Promise<boolean> {
   const [recent] = await db

@@ -42,3 +42,4 @@ export * from "./variance-loss.js";
 export * from "./app-setting.js";
 export * from "./inbox.js";
 export * from "./channel.js";
+export * from "./lead.js";
