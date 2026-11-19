@@ -12,6 +12,7 @@ import {
   inboxPhoneNumber,
   inboxTeam,
   inboxWebhookEvent,
+  outboxEvent,
 } from "@ms/db";
 import { clearPageTokenCache } from "@ms/domain";
 import { setupTestDb, seedOwner, loginAs } from "./helpers.js";
@@ -482,6 +483,41 @@ describe("suite spec 02 — Messenger and Instagram direct messages", () => {
     expect((row!.payload as { standby?: boolean }).standby).toBe(true);
     const [ev] = await db.select().from(inboxWebhookEvent).where(sql`${inboxWebhookEvent.payload}::text like '%m_standby_1%'`);
     expect(ev!.kind).toBe("page.standby");
+  });
+
+  // ── Accounts we don't know, or have switched off ───────────────────────────
+
+  it("an event for an unknown account is parked and raises one alert", async () => {
+    const ev1 = pageEvent(textEvent({ mid: "m_unknown_1", text: "anyone?", from: "24000000000000901" }), { entryId: UNKNOWN_PAGE_ID });
+    const ev2 = pageEvent(textEvent({ mid: "m_unknown_2", text: "hello?", from: "24000000000000901" }), { entryId: UNKNOWN_PAGE_ID });
+    expect((await postWebhook(ev1)).status).toBe(200);
+    expect((await postWebhook(ev2)).status).toBe(200);
+    expect(await messagesByMidPrefix("m_unknown_")).toHaveLength(0);
+    const parked = await db.select().from(inboxWebhookEvent).where(sql`${inboxWebhookEvent.lastError} like ${`unknown_account:%messenger:${UNKNOWN_PAGE_ID}%`}`);
+    expect(parked).toHaveLength(2);
+    expect(parked.every((p) => p.processedAt === null && p.attempts >= 1000)).toBe(true);
+    const alerts = await db.select().from(outboxEvent).where(eq(outboxEvent.eventType, "inbox.unknown_channel_account"));
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.payload).toMatchObject({ account: `messenger:${UNKNOWN_PAGE_ID}` });
+  });
+
+  it("an event for a switched-off account creates nothing", async () => {
+    const offPage = "100200300555";
+    await db.insert(inboxPhoneNumber).values({
+      kind: "messenger",
+      e164: null,
+      externalId: offPage,
+      pageExternalId: offPage,
+      label: "Old Page",
+      channels: "whatsapp",
+      isActive: false,
+    });
+    await postWebhook(pageEvent(textEvent({ mid: "m_off_1", text: "hi", from: "24000000000001001" }), { entryId: offPage }));
+    expect(await messagesByMidPrefix("m_off_1")).toHaveLength(0);
+    expect(await db.select().from(inboxIdentity).where(eq(inboxIdentity.externalId, "24000000000001001"))).toHaveLength(0);
+    const [ev] = await db.select().from(inboxWebhookEvent).where(sql`${inboxWebhookEvent.payload}::text like '%m_off_1%'`);
+    expect(ev!.processedAt).not.toBeNull();
+    expect(ev!.lastError).toBe("account_inactive");
   });
 });
 

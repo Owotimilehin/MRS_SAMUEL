@@ -13,6 +13,8 @@ import pino from "pino";
 
 const logger = pino({ base: { service: "ms-worker", part: "outbox" } });
 const ADMIN_URL = process.env.PUBLIC_ADMIN_URL ?? "https://admin.mrssamuel.com";
+/** The Business Suite (suite spec 02 alerts link to its Channels page). */
+const SUITE_URL = (process.env.PUBLIC_SUITE_URL ?? "https://suite.mrssamuel.com").replace(/\/$/, "");
 
 /** Human-friendly delivery time in Lagos, e.g. "Tue 3 Jun, 2:00 PM". */
 function lagosTime(iso: unknown): string {
@@ -472,6 +474,28 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Meta sent a message for phone number ID ${String(p["phone_number_ids"] ?? "?")}, which isn't set up in the inbox. ` +
           `Its messages are kept and come in automatically once you add it under Inbox settings → Numbers.\n` +
           `👉 ${ADMIN_URL}/inbox/settings`,
+      };
+    case "inbox.unknown_channel_account":
+      return {
+        chatIds: [owner],
+        text:
+          `📭 *Message for a Page or Instagram account that isn't connected*\n` +
+          `Meta sent a message for ${String(p["account"] ?? "?")}. It is kept and will come in once you connect it under Channels.\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
+    case "inbox.meta_config":
+      return {
+        chatIds: [owner],
+        text:
+          `⚠️ *Messages are not going out on Facebook or Instagram*\n` +
+          `${String(p["text"] ?? "Meta refused a message.")}\n` +
+          `Meta code ${String(p["code"] ?? "?")}. Open Channels and press Check connection.\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
+    case "inbox.meta_policy":
+      return {
+        chatIds: [owner],
+        text: `⚠️ *Meta sent a policy warning for the Page*\nOpen Meta Business Suite → Page quality to read it.`,
       };
     case "inbox.webhook_dead":
       return {

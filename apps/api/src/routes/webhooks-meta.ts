@@ -13,6 +13,7 @@ import {
 } from "@ms/domain";
 import { env } from "../env.js";
 import { logger } from "../logger.js";
+import { alertOnce } from "../lib/inbox-alerts.js";
 
 /**
  * Meta webhook for Facebook Page and Instagram events (suite spec 02, foundation D6).
@@ -98,7 +99,11 @@ export async function processStoredMetaEvent(
     });
     if (result.unknownAccounts.length > 0) {
       logger.warn({ unknown: result.unknownAccounts }, "meta webhook for an account that isn't connected (parked)");
+      for (const account of result.unknownAccounts) {
+        await alertOnce(db, "inbox.unknown_channel_account", { account, webhook_event_id: eventId });
+      }
     }
+    if (result.policyAlert && entry.id) await alertOnce(db, "inbox.meta_policy", { account: String(entry.id) });
     return result;
   } catch (err) {
     logger.warn({ err, eventId }, "meta webhook processing failed; worker will retry");
