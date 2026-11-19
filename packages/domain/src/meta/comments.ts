@@ -863,7 +863,8 @@ export async function fetchComment(
   commentExternalId: string,
   kind: "comment" | "mention",
 ): Promise<RemoteThread> {
-  const gone = () => new MetaApiError("Unsupported get request. This comment does not exist", 404, "100", false);
+  // An answer with no comment in it proves nothing: a refusal to show, never "deleted".
+  const gone = () => new MetaApiError("Meta returned no comment", 502, null, false);
   if (account.kind === "instagram") {
     if (kind === "mention") {
       const raw = await pageCall<unknown>(

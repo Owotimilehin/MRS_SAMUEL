@@ -14,7 +14,7 @@
  */
 import { eq } from "drizzle-orm";
 import { adminUser, type DbClient } from "@ms/db";
-import { INBOX_NOTIFY_CHANNEL, canSeeConversation, loadViewer, type InboxSignal, type InboxViewer } from "@ms/domain";
+import { INBOX_NOTIFY_CHANNEL, canSeeConversation, canUseNumber, loadViewer, type InboxSignal, type InboxViewer } from "@ms/domain";
 import { resolveCapabilities, type AdminRole, type PermissionOverrides } from "@ms/shared";
 import { logger } from "../logger.js";
 
@@ -32,6 +32,10 @@ let listening: Promise<void> | null = null;
 /** Exported for tests: should this subscriber receive this signal? */
 export function shouldDeliver(viewer: InboxViewer, s: InboxSignal): boolean {
   if (s.event === "call.ringing") return !!s.userIds?.includes(viewer.userId);
+  // Comments (suite spec 03): social.comments plus the existing per-line access, never the conversation rule.
+  if (s.event.startsWith("comment.")) {
+    return viewer.capabilities.includes("social.comments") && !!s.phoneNumberId && canUseNumber(viewer, s.phoneNumberId);
+  }
   if (!s.conversationId || !s.phoneNumberId) return viewer.capabilities.includes("inbox.view_all");
   return canSeeConversation(viewer, {
     phoneNumberId: s.phoneNumberId,
