@@ -21,6 +21,7 @@ export const SUITE_PAGES = [
   { to: "/inbox", cap: "inbox.view" },
   { to: "/inbox/reports", cap: "inbox.reports" },
   { to: "/channels", cap: "channels.manage" },
+  { to: "/templates", cap: "templates.manage" },
   { to: "/inbox/settings", cap: "inbox.settings" },
 ] as const;
 

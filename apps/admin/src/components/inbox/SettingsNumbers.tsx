@@ -444,7 +444,7 @@ export function SettingsTemplates(): JSX.Element {
         <div>
           <h2 className="t-h2">Message templates</h2>
           <p style={{ color: "var(--ink-soft)", fontSize: 13 }}>
-            Templates are created and approved in WhatsApp Manager. Sync to bring the latest here.
+            Templates are written and sent for approval under Templates and forms in the Business Suite. Sync brings the latest here.
           </p>
         </div>
         <button
