@@ -21,6 +21,7 @@ import { describeChatSetupPayload, messagePreview } from "@ms/shared";
 import { channelAccountByExternalId, type ChannelAccount } from "../meta/accounts.js";
 import { findOrCreateCustomerByIdentity, findOrOpenConversation, publishInboxEvent, signalFor, touchConversation, ts } from "./core.js";
 import { PARKED_ATTEMPTS } from "./whatsapp-ingest.js";
+import { ingestLeadgenChange, type LeadgenChange } from "../meta/leads.js";
 
 export type MetaChannel = "messenger" | "instagram";
 
@@ -233,7 +234,16 @@ export interface MetaEntryContext {
  * register theirs here (foundation ruling 9.2.3). Return true when handled.
  */
 export type MetaChangeHandler = (ctx: MetaEntryContext, change: { field: string; value: unknown }) => Promise<boolean>;
-export const META_CHANGE_HANDLERS: Record<string, MetaChangeHandler> = {};
+export const META_CHANGE_HANDLERS: Record<string, MetaChangeHandler> = {
+  // Suite spec 13: a filled-in lead form. Only the IDs are stored here (no call to Meta);
+  // the worker fetches the lead itself. Safe to process twice (unique leadgen_id).
+  "page.leadgen": async (ctx, change) => {
+    const value = (change.value ?? {}) as LeadgenChange;
+    // The entry is for this Page (ingestMetaEntry matched it to a connected, switched-on account).
+    await ingestLeadgenChange(ctx.db, { ...value, page_id: ctx.account.externalId });
+    return true;
+  },
+};
 
 function emptyResult(): MetaIngestResult {
   return { messagesCreated: 0, updates: 0, unknownAccounts: [], inactive: false, ignored: false, policyAlert: false };
