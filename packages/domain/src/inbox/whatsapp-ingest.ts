@@ -17,6 +17,7 @@ import {
   type DbExecutor,
 } from "@ms/db";
 import { isBsuid, messagePreview, toE164, WHATSAPP_ACCOUNT_KEY } from "@ms/shared";
+import { applyTemplateWebhook, TEMPLATE_WEBHOOK_FIELDS, wabaIsOurs } from "../meta/templates.js";
 import { findOrOpenConversation, publishInboxEvent, resolveWhatsAppCustomer, signalFor, touchConversation, ts } from "./core.js";
 
 /**
@@ -101,7 +102,7 @@ interface WaChangeValue {
 
 export interface WaWebhookPayload {
   object?: string;
-  entry?: { id?: string; changes?: { field?: string; value?: WaChangeValue }[] }[];
+  entry?: { id?: string; time?: number; changes?: { field?: string; value?: WaChangeValue }[] }[];
 }
 
 // ── Message parsing ─────────────────────────────────────────────────────────
@@ -168,6 +169,11 @@ export function parseInbound(m: WaInboundMessage): {
   };
 }
 
+/** When Meta says the entry happened (unix seconds), else now. */
+function entryTime(entry: { time?: number }): Date {
+  return typeof entry.time === "number" && entry.time > 0 ? new Date(entry.time * 1000) : new Date();
+}
+
 function tsToDate(ts: string | undefined): Date {
   const n = Number(ts);
   return Number.isFinite(n) && n > 0 ? new Date(n * 1000) : new Date();
@@ -181,6 +187,10 @@ export interface IngestResult {
   messagesCreated: number;
   statusesApplied: number;
   unknownNumbers: string[];
+  /** Template status, quality or category events applied to a row (suite spec 06). */
+  templatesUpdated: number;
+  /** WhatsApp accounts that sent an event for a template we do not hold: sync each once after the commit. */
+  templateResyncWabas: string[];
 }
 
 /**
@@ -189,7 +199,7 @@ export interface IngestResult {
  * thrown) so other entries in the same payload still process.
  */
 export async function ingestWhatsAppPayload(db: DbExecutor, payload: WaWebhookPayload): Promise<IngestResult> {
-  const result: IngestResult = { messagesCreated: 0, statusesApplied: 0, unknownNumbers: [] };
+  const result: IngestResult = { messagesCreated: 0, statusesApplied: 0, unknownNumbers: [], templatesUpdated: 0, templateResyncWabas: [] };
 
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
@@ -197,6 +207,22 @@ export async function ingestWhatsAppPayload(db: DbExecutor, payload: WaWebhookPa
 
       if (change.field === "phone_number_quality_update") {
         await applyQualityUpdate(db, value);
+        continue;
+      }
+      if ((TEMPLATE_WEBHOOK_FIELDS as readonly string[]).includes(change.field ?? "")) {
+        // Template review, quality and category news. Events for an account we do not hold are ignored.
+        const known = entry.id ? await wabaIsOurs(db, entry.id) : false;
+        if (known) {
+          const r = await applyTemplateWebhook(
+            db,
+            entry.id!,
+            change.field!,
+            value as unknown as Record<string, unknown>,
+            entryTime(entry),
+          );
+          if (r.applied) result.templatesUpdated++;
+          if (r.resync && !result.templateResyncWabas.includes(entry.id!)) result.templateResyncWabas.push(entry.id!);
+        }
         continue;
       }
       if (change.field !== "messages") continue;

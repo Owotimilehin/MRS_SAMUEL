@@ -1,7 +1,7 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { and, asc, desc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import {
   adminUser,
   customer,
@@ -26,7 +26,7 @@ import {
   canSeeConversation,
   canUseNumber,
   conversationScope,
-  listTemplates,
+  syncTemplatesForWaba,
   markRead,
   metaConfigFromEnv,
   publishInboxEvent,
@@ -828,7 +828,8 @@ export function inboxRoutes(db: DbClient) {
 
   // ── Templates and quick replies ──
   r.get("/templates", async (c) => {
-    const rows = await db.select().from(inboxTemplate).orderBy(asc(inboxTemplate.name));
+    // Drafts live only in the suite (spec 06): the picker and older apps never see them.
+    const rows = await db.select().from(inboxTemplate).where(ne(inboxTemplate.status, "DRAFT")).orderBy(asc(inboxTemplate.name));
     return c.json({
       data: rows.map((t) => {
         const needs = templateNeeds(t.components, t.category);
@@ -1172,29 +1173,6 @@ export function inboxRoutes(db: DbClient) {
 }
 
 // ── Helpers shared with settings / worker-style jobs ─────────────────────────
-
-export async function syncTemplatesForWaba(db: DbClient, cfg: NonNullable<ReturnType<typeof metaConfigFromEnv>>, wabaId: string): Promise<number> {
-  const templates = await listTemplates(cfg, wabaId);
-  const now = new Date();
-  for (const t of templates) {
-    await db
-      .insert(inboxTemplate)
-      .values({
-        wabaId,
-        name: t.name,
-        language: t.language,
-        category: t.category ?? null,
-        status: t.status,
-        components: t.components ?? [],
-        syncedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [inboxTemplate.wabaId, inboxTemplate.name, inboxTemplate.language],
-        set: { status: t.status, category: t.category ?? null, components: t.components ?? [], syncedAt: now },
-      });
-  }
-  return templates.length;
-}
 
 type TimelineItem =
   | { kind: "message"; at: string; data: Record<string, unknown> }

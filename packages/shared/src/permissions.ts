@@ -93,6 +93,9 @@ export const CAPABILITIES = [
   // Connect and configure channel accounts (Facebook Page, Instagram); later:
   // chat set-up, WhatsApp profile, Page details. Admins, not managers.
   "channels.manage",
+  // Write, submit and delete WhatsApp message templates (and later Flows). Admins, not managers
+  // (managers keep inbox.templates: send only).
+  "templates.manage",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -140,6 +143,7 @@ const ADMIN_CAPS: Capability[] = [
   "inbox.settings",
   "inbox.reports",
   "channels.manage",
+  "templates.manage",
 ];
 
 const MANAGER_CAPS: Capability[] = [

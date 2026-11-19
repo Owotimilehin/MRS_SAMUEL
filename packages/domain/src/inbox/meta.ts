@@ -155,7 +155,14 @@ export async function graphRaw<T>(
   if (!res.ok) {
     const err = (
       json as {
-        error?: { message?: string; code?: number; error_subcode?: number; error_data?: { details?: string } };
+        error?: {
+          message?: string;
+          code?: number;
+          error_subcode?: number;
+          error_user_title?: string;
+          error_user_msg?: string;
+          error_data?: { details?: string };
+        };
       } | null
     )?.error;
     const code = err?.code != null ? String(err.code) : null;
@@ -163,6 +170,11 @@ export async function graphRaw<T>(
     const detail = err?.error_data?.details;
     const msg = [err?.message ?? `Meta API ${res.status}`, detail].filter(Boolean).join(": ");
     const retryable = res.status >= 500 || res.status === 429 || (code !== null && RETRYABLE_CODES.has(code));
+    // Meta's own wording for a person (templates and Flows carry it), kept for support and for the screen.
+    const details: Record<string, unknown> = {};
+    if (subcode) details.subcode = subcode;
+    if (typeof err?.error_user_title === "string" && err.error_user_title) details.userTitle = err.error_user_title;
+    if (typeof err?.error_user_msg === "string" && err.error_user_msg) details.userMessage = err.error_user_msg;
     // A structured error means Meta refused it; a bare 5xx leaves it unknown.
     throw new MetaApiError(
       msg,
@@ -171,6 +183,7 @@ export async function graphRaw<T>(
       retryable,
       err || res.status < 500 ? "not_sent" : "unknown",
       subcode,
+      Object.keys(details).length > 0 ? details : undefined,
     );
   }
   return json as T;

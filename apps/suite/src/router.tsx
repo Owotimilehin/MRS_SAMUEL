@@ -44,6 +44,9 @@ const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
   "WhatsAppProfilePage",
 );
 
+const TemplatesPage = lazyNamed(() => import("./features/templates/TemplatesPage.js"), "TemplatesPage");
+const TemplateEditorPage = lazyNamed<{ templateId: string }>(() => import("./features/templates/TemplateEditorPage.js"), "TemplateEditorPage");
+
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
   line1: "Every customer,",
@@ -175,6 +178,21 @@ const whatsAppProfileRoute = createRoute({
   },
 });
 
+const templatesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/templates",
+  component: () => page(<TemplatesPage />, "templates.manage"),
+});
+
+const templateEditorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/templates/$templateId",
+  component: () => {
+    const params = useParams({ from: "/templates/$templateId" });
+    return page(<TemplateEditorPage templateId={params.templateId} />, "templates.manage");
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -186,6 +204,8 @@ const routeTree = rootRoute.addChildren([
   chatSetupRoute,
   pageDetailsRoute,
   whatsAppProfileRoute,
+  templatesRoute,
+  templateEditorRoute,
 ]);
 
 export const router = createRouter({

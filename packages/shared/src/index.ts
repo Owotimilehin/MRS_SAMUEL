@@ -11,3 +11,6 @@ export * from "./chat-setup.js";
 export * from "./page-details.js";
 export * from "./whatsapp-profile.js";
 export * from "./inbox-templates.js";
+export * from "./template-draft.js";
+export * from "./template-starter.js";
+export * from "./template-wording.js";

@@ -435,9 +435,44 @@ export const inboxTemplate = pgTable(
     status: text("status").notNull(),
     components: jsonb("components").$type<unknown[]>().notNull().default([]),
     syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
+    // ── Template authoring (suite spec 06, migration 0075). Status gains one local value, 'DRAFT'.
+    metaTemplateId: text("meta_template_id"),
+    parameterFormat: text("parameter_format"),
+    qualityScore: text("quality_score"),
+    rejectedReason: text("rejected_reason"),
+    reviewInfo: jsonb("review_info").$type<TemplateReviewInfo>(),
+    correctCategory: text("correct_category"),
+    previousCategory: text("previous_category"),
+    categoryChangeAt: timestamp("category_change_at", { withTimezone: true }),
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
+    /** The editable copy (TemplateDraft in @ms/shared). On a Meta-known row: changes not yet sent. */
+    draft: jsonb("draft").$type<Record<string, unknown>>(),
+    draftUpdatedAt: timestamp("draft_updated_at", { withTimezone: true }),
+    draftUpdatedBy: uuid("draft_updated_by").references(() => adminUser.id),
+    createdBy: uuid("created_by").references(() => adminUser.id),
+    submittedBy: uuid("submitted_by").references(() => adminUser.id),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    /** ISO times of our successful edits of an approved template, newest last (30 days kept). */
+    metaEditTimes: jsonb("meta_edit_times").$type<string[]>(),
+    lastError: text("last_error"),
+    starterKey: text("starter_key"),
   },
-  (t) => ({ uq: uniqueIndex("uq_inbox_template").on(t.wabaId, t.name, t.language) }),
+  (t) => ({
+    uq: uniqueIndex("uq_inbox_template").on(t.wabaId, t.name, t.language),
+    uqMetaId: uniqueIndex("uq_inbox_template_meta_id")
+      .on(t.metaTemplateId)
+      .where(sql`meta_template_id is not null`),
+    idxStatus: index("idx_inbox_template_status").on(t.status),
+  }),
 );
+
+export interface TemplateReviewInfo {
+  rejection?: { reason?: string; recommendation?: string };
+  pause?: { title?: string; description?: string };
+  disableDate?: string;
+  flagged?: boolean;
+  locked?: boolean;
+}
 
 export const inboxQuickReply = pgTable("inbox_quick_reply", {
   id: uuid("id").primaryKey().defaultRandom(),

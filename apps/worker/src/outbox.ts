@@ -4,7 +4,7 @@ import {
   customer,
   type DbClient,
 } from "@ms/db";
-import { isOutsideLagos } from "@ms/shared";
+import { isOutsideLagos, templateAlertWording } from "@ms/shared";
 import { sendMessage, channels } from "./notifiers/telegram.js";
 import { sendEmail } from "./notifiers/email.js";
 import { dispatchDeliveryFromEvent } from "./jobs/dispatch-delivery.js";
@@ -495,6 +495,17 @@ export function format(event: { eventType: string; payload: Record<string, unkno
             `👉 ${SUITE_URL}/channels`,
         };
       }
+      // The template screens (suite spec 06) raise it with area "whatsapp_templates".
+      if (p["area"] === "whatsapp_templates") {
+        return {
+          chatIds: [owner],
+          text:
+            `⚠️ *WhatsApp connection problem*\n` +
+            `Meta refused a template request from the suite (code ${String(p["code"] ?? "?")}, ${String(p["area"])}). ` +
+            `The access token or its permissions need checking.\n` +
+            `👉 ${SUITE_URL}/templates`,
+        };
+      }
       return {
         chatIds: [owner],
         text:
@@ -524,6 +535,30 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `(code ${String(p["code"] ?? "unknown")}). Open Channels in the suite to check the connection.\n` +
           `👉 ${SUITE_URL}/channels`,
       };
+    case "inbox.template_alert": {
+      // WhatsApp template news (suite spec 06): refused, paused, switched off, re-filed, archived.
+      const when = (iso: unknown): string | null => {
+        if (typeof iso !== "string" || !iso) return null;
+        const d = new Date(iso);
+        return Number.isNaN(d.getTime())
+          ? null
+          : d.toLocaleDateString("en-NG", { timeZone: "Africa/Lagos", day: "numeric", month: "long", year: "numeric" });
+      };
+      const w = templateAlertWording(String(p["kind"] ?? ""), {
+        reason: p["reason"] ?? p["detail"] ?? null,
+        recommendation: p["recommendation"] ?? null,
+        category: p["category"] ?? null,
+        correctCategory: p["correct_category"] ?? null,
+        at: when(p["at"]),
+      });
+      return {
+        chatIds: [owner],
+        text:
+          `📝 *WhatsApp template: ${w.title}*\n` +
+          `“${String(p["name"] ?? "?")}” (${String(p["language"] ?? "?")}). ${w.sentence}\n` +
+          `👉 ${SUITE_URL}/templates`,
+      };
+    }
     case "inbox.webhook_dead":
       return {
         chatIds: [owner],

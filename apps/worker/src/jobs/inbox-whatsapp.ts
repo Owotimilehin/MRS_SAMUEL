@@ -6,8 +6,9 @@
  *     Meta (short-lived URLs) into private R2 storage, and remove files of
  *     messages the customer unsent
  *   - syncAllTemplates: hourly refresh of message templates from Meta
+ *   - refreshPendingTemplates: every 5 minutes, templates still in review
  */
-import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import {
   inboxConversation,
   inboxMessage,
@@ -23,11 +24,13 @@ import {
   finishWebhookEvent,
   ingestMetaEntry,
   ingestWhatsAppPayload,
-  listTemplates,
+  applyMetaTemplate,
+  getTemplate,
   metaConfigFromEnv,
   publishInboxEvent,
   sendAfterHoursAutoReplies,
   signalFor,
+  syncTemplatesForWaba,
   MetaApiError,
   type MetaEntry,
   type WaWebhookPayload,
@@ -57,6 +60,7 @@ export async function retryWebhookEvents(db: DbClient, log: Log): Promise<number
 
   let done = 0;
   for (const ev of due) {
+    const resyncWabas: string[] = [];
     try {
       await db.transaction(async (tx) => {
         const payload = ev.payload as { object?: string; entry?: unknown[] };
@@ -68,9 +72,19 @@ export async function retryWebhookEvents(db: DbClient, log: Log): Promise<number
         } else {
           const res = await ingestWhatsAppPayload(tx, ev.payload as WaWebhookPayload);
           await finishWebhookEvent(tx, ev.id, res);
+          resyncWabas.push(...res.templateResyncWabas);
         }
       });
       done++;
+      // A template event for a template we do not hold: one sync of that account, after the commit.
+      const cfg = resyncWabas.length > 0 ? metaConfigFromEnv() : null;
+      for (const waba of cfg ? resyncWabas : []) {
+        try {
+          await syncTemplatesForWaba(db, cfg!, waba);
+        } catch (err) {
+          log.warn({ err, waba }, "template re-sync after a webhook failed; the hourly sync will catch up");
+        }
+      }
     } catch (err) {
       const attempts = ev.attempts + 1;
       await db
@@ -308,26 +322,59 @@ export async function syncAllTemplates(db: DbClient, log: Log): Promise<number> 
   for (const { waba } of wabas) {
     if (!waba) continue;
     try {
-      const templates = await listTemplates(cfg, waba);
-      const now = new Date();
-      for (const t of templates) {
-        await db
-          .insert(inboxTemplate)
-          .values({ wabaId: waba, name: t.name, language: t.language, category: t.category ?? null, status: t.status, components: t.components ?? [], syncedAt: now })
-          .onConflictDoUpdate({
-            target: [inboxTemplate.wabaId, inboxTemplate.name, inboxTemplate.language],
-            set: { status: t.status, category: t.category ?? null, components: t.components ?? [], syncedAt: now },
-          });
-      }
-      // Templates deleted in WhatsApp Manager: mark them so they can't be picked.
-      const names = templates.map((t) => `${t.name}::${t.language}`);
-      const existing = await db.select().from(inboxTemplate).where(eq(inboxTemplate.wabaId, waba));
-      const gone = existing.filter((e) => !names.includes(`${e.name}::${e.language}`) && e.status !== "DELETED").map((e) => e.id);
-      if (gone.length) await db.update(inboxTemplate).set({ status: "DELETED", syncedAt: now }).where(inArray(inboxTemplate.id, gone));
-      total += templates.length;
+      // The one sync (packages/domain): keeps local drafts, never marks them deleted.
+      total += await syncTemplatesForWaba(db, cfg, waba);
     } catch (err) {
       log.warn({ err, waba }, "inbox template sync failed");
     }
   }
   return total;
+}
+
+/**
+ * Every 5 minutes: ask Meta about templates still waiting for review (and those whose category change
+ * has come due), so the list moves even when the three template webhook fields are not subscribed
+ * (suite spec 06, section 6). Only reads; never submits, edits or deletes a template. A rate limit
+ * stops the run until the next tick; a refusal for one template is logged and skipped.
+ */
+export async function refreshPendingTemplates(db: DbClient, log: Log, opts: { now?: Date } = {}): Promise<number> {
+  const cfg = metaConfigFromEnv();
+  if (!cfg) return 0;
+  const now = opts.now ?? new Date();
+  const rows = await db
+    .select()
+    .from(inboxTemplate)
+    .where(
+      and(
+        isNotNull(inboxTemplate.metaTemplateId),
+        or(
+          inArray(inboxTemplate.status, ["PENDING", "IN_APPEAL"]),
+          and(
+            isNotNull(inboxTemplate.correctCategory),
+            isNotNull(inboxTemplate.categoryChangeAt),
+            lt(inboxTemplate.categoryChangeAt, now),
+            // Not read since the change fell due.
+            lt(inboxTemplate.syncedAt, sql`${inboxTemplate.categoryChangeAt}`),
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(inboxTemplate.syncedAt), asc(inboxTemplate.id))
+    .limit(20);
+
+  let done = 0;
+  for (const row of rows) {
+    try {
+      const fresh = await getTemplate(cfg, row.metaTemplateId!);
+      await applyMetaTemplate(db, row.wabaId, fresh, now);
+      done++;
+    } catch (err) {
+      if (err instanceof MetaApiError && err.retryable) {
+        log.warn({ err, template: row.id }, "template refresh stopped: Meta is busy");
+        break;
+      }
+      log.warn({ err, template: row.id }, "template refresh skipped one template");
+    }
+  }
+  return done;
 }

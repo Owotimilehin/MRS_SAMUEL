@@ -162,3 +162,35 @@ export async function presignGreetingPut(args: { contentType: string; sizeBytes:
   const cmd = new PutObjectCommand({ Bucket: env.R2_BUCKET!, Key: key, ContentType: args.contentType, ContentLength: args.sizeBytes });
   return { upload_url: await getSignedUrl(getClient(), cmd, { expiresIn: 300 }), object_key: key };
 }
+
+/**
+ * Presigned PUT for a template heading sample (suite spec 06, 5.4) under inbox/template-samples/.
+ * Picture: JPG or PNG up to 5 MB. Video (MP4) and PDF: up to 16 MB. The route checks the first bytes
+ * again at submit time.
+ */
+export const TEMPLATE_SAMPLE_PREFIX = "inbox/template-samples/";
+const TEMPLATE_SAMPLE_TYPES: Record<string, { ext: string; maxBytes: number }> = {
+  "image/jpeg": { ext: "jpg", maxBytes: 5 * 1024 * 1024 },
+  "image/png": { ext: "png", maxBytes: 5 * 1024 * 1024 },
+  "video/mp4": { ext: "mp4", maxBytes: 16 * 1024 * 1024 },
+  "application/pdf": { ext: "pdf", maxBytes: 16 * 1024 * 1024 },
+};
+
+export async function presignTemplateSamplePut(args: {
+  contentType: string;
+  sizeBytes: number;
+}): Promise<PresignPutResult> {
+  const rule = TEMPLATE_SAMPLE_TYPES[args.contentType];
+  if (!rule) throw new BusinessError("validation_failed", "Use a JPG or PNG picture, an MP4 video or a PDF.", 400);
+  if (args.sizeBytes <= 0 || args.sizeBytes > rule.maxBytes) {
+    throw new BusinessError(
+      "validation_failed",
+      `That file is too big. Pictures can be up to 5 MB. Videos and PDFs can be up to 16 MB.`,
+      400,
+    );
+  }
+  const now = new Date();
+  const key = `${TEMPLATE_SAMPLE_PREFIX}${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${uuid()}.${rule.ext}`;
+  const cmd = new PutObjectCommand({ Bucket: env.R2_BUCKET!, Key: key, ContentType: args.contentType, ContentLength: args.sizeBytes });
+  return { upload_url: await getSignedUrl(getClient(), cmd, { expiresIn: 300 }), object_key: key };
+}
