@@ -521,6 +521,35 @@ export function format(event: { eventType: string; payload: Record<string, unkno
         chatIds: [owner],
         text: `🛍️ *Catalogue sync stopped*\nMeta refused our access (${String(p["code"] ?? "")}): ${String(p["message"] ?? "")}\n👉 ${SUITE_URL}/catalogue`,
       };
+    // Ads (suite spec 12). Rules and the safety stop can only pause; these tell the owner when they did.
+    case "ads.config_error":
+      return {
+        chatIds: [owner],
+        text:
+          (p["area"] === "purchases"
+            ? `📣 *Ads: Meta refused a purchase report*\nMeta has not given the suite permission to report purchases`
+            : `📣 *Ads: the suite cannot read the ad account*\nMeta refused our access to ${String(p["name"] ?? "the ad account")}`) +
+          ` (code ${String(p["code"] ?? "unknown")}): ${String(p["message"] ?? "no reason given")}\n👉 ${SUITE_URL}/ads`,
+      };
+    case "ads.rule_fired":
+      return {
+        chatIds: [owner],
+        text: `📣 *Ads: a rule paused an advert*\n${String(p["summary"] ?? `Rule '${String(p["rule"] ?? "")}' paused '${String(p["advert"] ?? "an advert")}'.`)}\nNothing turns it back on by itself.\n👉 ${SUITE_URL}/ads`,
+      };
+    case "ads.safety_stop": {
+      const cur = String(p["currency"] ?? "NGN") === "NGN" ? "₦" : `${String(p["currency"])} `;
+      const paused = Number(p["paused"] ?? 0);
+      return {
+        chatIds: [owner],
+        text:
+          `🛑 *Ads: safety stop*\n${cur}${Number(p["spend"] ?? 0).toLocaleString("en-NG")} spent today, at or over your daily cap of ` +
+          `${cur}${Number(p["cap"] ?? 0).toLocaleString("en-NG")}.\n` +
+          (paused > 0
+            ? `${paused} advert${paused === 1 ? "" : "s"} made in the suite ${paused === 1 ? "was" : "were"} paused. Nothing turns ${paused === 1 ? "it" : "them"} back on by itself.`
+            : `No advert made in the suite was running. Adverts made in Meta Ads Manager are not paused by the suite: check them there.`) +
+          `\n👉 ${SUITE_URL}/ads`,
+      };
+    }
     case "channels.chat_setup_config":
       return {
         chatIds: [owner],
