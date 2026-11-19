@@ -261,7 +261,9 @@ describe("comment Graph calls", () => {
       return out instanceof Response ? out : json(out);
     });
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   it("publishReply posts to {comment}/comments on Facebook and {comment}/replies on Instagram, with the Page token", async () => {
     answer = () => ({ id: "new_1" });
