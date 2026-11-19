@@ -185,3 +185,16 @@ describe("contacts.view and contacts.manage", () => {
     expect(resolveCapabilities("branch_staff")).not.toContain("contacts.manage");
   });
 });
+
+describe("broadcasts.send (suite spec 14, Phase B)", () => {
+  it("broadcasts.send is owner only by default (it messages many customers at once)", () => {
+    expect(resolveCapabilities("owner")).toContain("broadcasts.send");
+    for (const role of ["admin", "manager", "branch_staff"] as const) {
+      expect(ROLE_DEFAULTS[role]).not.toContain("broadcasts.send");
+      expect(resolveCapabilities(role)).not.toContain("broadcasts.send");
+    }
+  });
+  it("broadcasts.send can be granted to a named person", () => {
+    expect(resolveCapabilities("admin", { granted: ["broadcasts.send"], revoked: [] })).toContain("broadcasts.send");
+  });
+});
