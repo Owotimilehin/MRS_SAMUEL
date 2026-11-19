@@ -14,6 +14,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ExternalLink,
+  LineChart,
   Menu,
   MessagesSquare,
   Share2,
@@ -32,7 +33,7 @@ import { activeNavTo } from "./nav.js";
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/inbox/reports" | "/inbox/settings" | "/channels";
+  to: "/inbox" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -46,7 +47,10 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   },
   {
     heading: "Insight",
-    items: [{ to: "/inbox/reports", label: "Reports", Icon: BarChart3, cap: "inbox.reports" }],
+    items: [
+      { to: "/insights", label: "Insights", Icon: LineChart, cap: "insights.view" },
+      { to: "/inbox/reports", label: "Reports", Icon: BarChart3, cap: "inbox.reports" },
+    ],
   },
   {
     heading: "Set-up",

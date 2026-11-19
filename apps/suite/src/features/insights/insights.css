@@ -1,0 +1,65 @@
+/* Insights screen (suite spec 11). Every class starts with ins-. */
+.ins-page { display: grid; gap: 16px; min-width: 0; }
+.ins-page > *, .ins-page .card { min-width: 0; max-width: 100%; }
+.ins-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.ins-bar .field { min-width: 0; }
+.ins-bar .ibx-tabs { align-items: center; height: 40px; flex-wrap: wrap; overflow: visible; }
+.ins-bar .btn { flex: none; }
+.ins-updated { margin-left: auto; font-size: 12px; color: var(--ink-soft); align-self: center; }
+.ins-fine { font-size: 12px; color: var(--ink-soft); margin: 8px 0 0; }
+.ins-bottom { text-align: center; }
+.ins-link { font-weight: 700; text-decoration: underline; color: inherit; }
+
+.ins-notices { display: grid; gap: 8px; margin-bottom: 12px; }
+.ins-notice { padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.14); color: #92400e; font-size: 14px; }
+.ins-notice--bad { background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.35); color: var(--danger-ink, #b91c1c); }
+.ins-first { display: grid; gap: 12px; justify-items: start; }
+.ins-first p { margin: 0; }
+
+.ins-groups { display: grid; gap: 16px; }
+.ins-group__title { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
+.ins-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.ins-tile { min-width: 0; display: grid; }
+/* A dash in place of a number reads as "no figure", not as a figure. */
+.ins-tile.is-none .stat-card__value { color: var(--ink-soft); }
+
+.ins-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.ins-card { display: grid; gap: 4px; align-content: start; }
+.ins-card__head { display: flex; justify-content: space-between; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.ins-card__head .t-h2 { margin: 0; }
+.ins-pick .select { width: auto; max-width: 100%; }
+.ins-chart { height: 260px; min-width: 0; }
+.ins-tip__row { display: flex; align-items: center; gap: 6px; }
+.ins-tip__row strong { margin-left: auto; padding-left: 12px; }
+.ins-tip__dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+.ins-h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+.ins-wa { display: grid; gap: 20px; }
+.ins-ours { padding: 12px 14px; border-radius: 12px; background: rgba(20, 24, 31, 0.05); }
+.ins-check { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0; font-weight: 600; }
+.ins-check input { width: 20px; height: 20px; flex: none; }
+.ins-dialog__foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.ins-sort { background: none; border: 0; padding: 0; font: inherit; font-weight: inherit; color: inherit; cursor: pointer; }
+.ins-net { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; border: 1px solid var(--line); color: var(--ink-soft); }
+.ins-tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: rgba(16, 185, 129, 0.12); color: #065f46; }
+.ins-tag--muted { background: rgba(20, 24, 31, 0.07); color: var(--ink-soft); }
+.ins-page .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+
+@media (max-width: 1100px) {
+  .ins-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Phone: two tiles a row, shorter charts, tables become cards. */
+@media (max-width: 600px) {
+  .ins-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .ins-chart { height: 220px; }
+  .ins-updated { margin-left: 0; flex-basis: 100%; }
+  .ins-posts thead, .ins-cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .ins-posts, .ins-posts tbody, .ins-cards, .ins-cards tbody { display: block; }
+  .ins-posts tr, .ins-cards tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .ins-posts td, .ins-cards td { display: block; border: 0; padding: 0; text-align: left; }
+  .ins-posts td:first-child, .ins-cards td:first-child { grid-column: 1 / -1; font-weight: 600; }
+  .ins-posts td[data-label]:not([data-label=""]):not(:first-child)::before,
+  .ins-cards td[data-label]:not(:first-child)::before { content: attr(data-label) ": "; color: var(--ink-soft); font-size: 12px; }
+}

@@ -516,6 +516,16 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `(code ${String(p["code"] ?? "unknown")}).\n` +
           `👉 ${SUITE_URL}/channels`,
       };
+    case "insights.config_error":
+      // The statistics collector (suite spec 11): the token or a permission stopped a daily read.
+      return {
+        chatIds: [owner],
+        text:
+          `⚠️ *Insights: Meta would not share its figures*\n` +
+          `${String(p["message"] ?? "Meta refused a request for statistics.")}\n` +
+          `${String(p["label"] ?? "Meta")}, Meta code ${String(p["code"] ?? "unknown")}. The figures already collected are kept.\n` +
+          `👉 ${SUITE_URL}/insights`,
+      };
     case "channels.chat_setup_config":
       return {
         chatIds: [owner],

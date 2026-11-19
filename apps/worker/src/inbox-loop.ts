@@ -14,6 +14,7 @@ import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
+import { collectInsightsIfDue } from "./jobs/insights-collect.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -42,6 +43,11 @@ interface Job {
   everyMs: number;
   run: () => Promise<unknown>;
   last: number;
+  /**
+   * The job guards itself against a second worker and must not run inside withJobLock's
+   * open transaction (a run that talks to Meta for minutes: suite spec 11).
+   */
+  ownLock?: true;
 }
 
 export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () => boolean): Promise<void> {
@@ -55,6 +61,7 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "inbox_template_sync", everyMs: 60 * 60_000, last: 0, run: () => syncAllTemplates(db, logger) },
     { name: "inbox_identity_profiles", everyMs: 30_000, last: 0, run: () => refreshIdentityProfiles(db, logger) },
     { name: "inbox_meta_subscriptions", everyMs: 60 * 60_000, last: 0, run: () => ensureMetaSubscriptions(db, logger) },
+    { name: "insights_collect", everyMs: 10 * 60_000, last: 0, ownLock: true, run: () => collectInsightsIfDue(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {
@@ -63,7 +70,7 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
       const now = Date.now();
       if (now - job.last < job.everyMs) continue;
       job.last = now;
-      await runJob(logger, job.name, () => withJobLock(db, job.name, job.run));
+      await runJob(logger, job.name, job.ownLock ? job.run : () => withJobLock(db, job.name, job.run));
     }
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
