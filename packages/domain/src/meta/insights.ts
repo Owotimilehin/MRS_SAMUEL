@@ -442,6 +442,37 @@ async function setStateEntry(db: DbExecutor, map: "sources" | "template_analytic
     .where(eq(appSetting.key, INSIGHTS_STATE_KEY));
 }
 
+/**
+ * Take the "a collection is running" marker, or return false when another worker holds
+ * a fresh one. One statement, no transaction left open: the run that follows talks to
+ * Meta for a minute or more. A marker older than `staleMinutes` (a worker that died)
+ * is taken over.
+ */
+export async function claimInsightsRun(db: DbExecutor, now: Date = new Date(), staleMinutes = 30): Promise<boolean> {
+  await ensureInsightsState(db);
+  const cutoff = new Date(now.getTime() - staleMinutes * 60_000).toISOString();
+  const rows = await db
+    .update(appSetting)
+    .set({ value: sql`${appSetting.value} || ${JSON.stringify({ run_claimed_at: now.toISOString() })}::jsonb`, updatedAt: new Date() })
+    .where(
+      and(
+        eq(appSetting.key, INSIGHTS_STATE_KEY),
+        // ISO times in UTC sort as text.
+        sql`(${appSetting.value}->>'run_claimed_at' is null or ${appSetting.value}->>'run_claimed_at' < ${cutoff})`,
+      ),
+    )
+    .returning({ key: appSetting.key });
+  return rows.length > 0;
+}
+
+/** Give the marker back. */
+export async function releaseInsightsRun(db: DbExecutor): Promise<void> {
+  await db
+    .update(appSetting)
+    .set({ value: sql`${appSetting.value} || '{"run_claimed_at": null}'::jsonb`, updatedAt: new Date() })
+    .where(eq(appSetting.key, INSIGHTS_STATE_KEY));
+}
+
 export async function saveInsightsSourceState(db: DbExecutor, key: string, value: InsightsSourceState): Promise<void> {
   await setStateEntry(db, "sources", key, value);
 }
