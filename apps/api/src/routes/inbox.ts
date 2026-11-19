@@ -4,6 +4,7 @@ import { z } from "zod";
 import { and, asc, desc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import {
   adminUser,
+  catalogueChatOrder,
   customer,
   inboxCall,
   inboxConversation,
@@ -1021,6 +1022,8 @@ export function inboxRoutes(db: DbClient) {
         if (callIds.length) await tx.delete(inboxCall).where(inArray(inboxCall.id, callIds));
         msgs = await tx.delete(inboxMessage).where(inArray(inboxMessage.conversationId, convIds)).returning({ key: inboxMessage.mediaKey });
         await tx.delete(inboxNote).where(inArray(inboxNote.conversationId, convIds));
+        // Carts sent in these chats (suite spec 08, ruling 9.2.8). The shop's orders made from them stay.
+        await tx.delete(catalogueChatOrder).where(inArray(catalogueChatOrder.conversationId, convIds));
         for (const conv of convs) await publishInboxEvent(tx, signalFor("conversation.updated", conv));
         await tx.delete(inboxConversation).where(inArray(inboxConversation.id, convIds));
       }
@@ -1090,6 +1093,11 @@ export function inboxRoutes(db: DbClient) {
           await tx.update(inboxMessage).set({ conversationId: clash.id }).where(eq(inboxMessage.conversationId, conv.id));
           await tx.update(inboxNote).set({ conversationId: clash.id }).where(eq(inboxNote.conversationId, conv.id));
           await tx.update(inboxCall).set({ conversationId: clash.id, customerId: intoId }).where(eq(inboxCall.conversationId, conv.id));
+          // Carts move with the thread, or deleting it below would take them too (suite spec 08, rule R35).
+          await tx
+            .update(catalogueChatOrder)
+            .set({ conversationId: clash.id, customerId: intoId })
+            .where(eq(catalogueChatOrder.conversationId, conv.id));
           await tx
             .update(inboxConversation)
             .set({
@@ -1107,6 +1115,7 @@ export function inboxRoutes(db: DbClient) {
           await publishInboxEvent(tx, signalFor("conversation.updated", clash));
         } else {
           await tx.update(inboxCall).set({ customerId: intoId }).where(eq(inboxCall.conversationId, conv.id));
+          await tx.update(catalogueChatOrder).set({ customerId: intoId }).where(eq(catalogueChatOrder.conversationId, conv.id));
           const [updated] = await tx.update(inboxConversation).set({ customerId: intoId }).where(eq(inboxConversation.id, conv.id)).returning();
           await publishInboxEvent(tx, signalFor("conversation.updated", updated!));
         }

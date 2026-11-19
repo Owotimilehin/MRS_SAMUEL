@@ -55,6 +55,7 @@ import { channelChatSetupRoutes } from "./routes/channel-chat-setup.js";
 import { channelPageRoutes } from "./routes/channel-page-details.js";
 import { whatsappProfileRoutes } from "./routes/whatsapp-profile.js";
 import { catalogueRoutes } from "./routes/catalogue.js";
+import { chatOrderRoutes } from "./routes/inbox-chat-orders.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
@@ -135,6 +136,8 @@ export function buildApp(): Hono {
   app.route("/v1/inbox/settings", inboxSettingsRoutes(db));
   app.route("/v1/inbox/reports", inboxReportRoutes(db));
   app.route("/v1/inbox/voice", voiceAppRoutes(db));
+  // Carts sent from WhatsApp (suite spec 08). Mounted above /v1/inbox so its longer path wins.
+  app.route("/v1/inbox/chat-orders", chatOrderRoutes(db));
   app.route("/v1/inbox", inboxRoutes(db));
   // Business suite: channel accounts (Facebook Page, Instagram).
   // Chat set-up is mounted first so its longer path wins over /v1/channels/:id.
