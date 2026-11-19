@@ -495,6 +495,17 @@ export function format(event: { eventType: string; payload: Record<string, unkno
             `👉 ${SUITE_URL}/channels`,
         };
       }
+      // The forms screens (suite spec 07) raise it with area "whatsapp_flows".
+      if (p["area"] === "whatsapp_flows") {
+        return {
+          chatIds: [owner],
+          text:
+            `⚠️ *WhatsApp connection problem*\n` +
+            `Meta refused a form request from the suite (code ${String(p["code"] ?? "?")}, ${String(p["area"])}). ` +
+            `The access token or its permissions need checking.\n` +
+            `👉 ${SUITE_URL}/templates/forms`,
+        };
+      }
       // The template screens (suite spec 06) raise it with area "whatsapp_templates".
       if (p["area"] === "whatsapp_templates") {
         return {
@@ -513,6 +524,15 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `${String(p["text"] ?? "Meta refused a message.")}\n` +
           `Meta code ${String(p["code"] ?? "?")}. Open Channels and press Check connection.\n` +
           `👉 ${SUITE_URL}/channels`,
+      };
+    case "inbox.flow_complaint":
+      // A complaint form was completed on WhatsApp (suite spec 07). No customer details here.
+      return {
+        chatIds: [owner],
+        text:
+          `⚠️ *A customer reported a problem*\n` +
+          `A complaint form has just been filled in on WhatsApp.\n` +
+          `👉 ${SUITE_URL}/inbox/${String(p["conversation_id"] ?? "")}`,
       };
     case "inbox.meta_policy":
       return {

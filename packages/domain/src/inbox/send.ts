@@ -27,6 +27,7 @@ import {
 } from "@ms/shared";
 import { and, isNull, or, sql } from "drizzle-orm";
 import { classifyMessagingError, sendMetaMessage, type MetaSendContent } from "../meta/messaging.js";
+import { explainFlowError } from "../meta/flows.js";
 import {
   MetaApiError,
   renderTemplateBody,
@@ -40,6 +41,9 @@ import {
 const BSUID_NOT_SUPPORTED = "131062";
 const BSUID_NOT_SUPPORTED_TEXT =
   "Not sent: WhatsApp can't deliver this kind of message to a customer who has hidden their number.";
+
+/** Meta refusals of a form message that have a plain sentence of their own (suite spec 07, 5.3). */
+const FLOW_SEND_CODES = new Set(["132068", "132069", "131047", "131026"]);
 
 /**
  * Who a WhatsApp reply goes to (rule R13), first match wins: the
@@ -244,6 +248,7 @@ export async function sendFromConversation(
   const hasExtra = (): boolean => Object.keys(payloadExtra).length > 0;
 
   const type = input.content.type;
+  const carriesForm = type === "flow" || "flow" in payloadExtra;
   const [queued] = await db
     .insert(inboxMessage)
     .values({
@@ -277,12 +282,14 @@ export async function sendFromConversation(
     const e = err instanceof MetaApiError ? err : null;
     const metaMessage = err instanceof Error ? err.message : String(err);
     const bsuidRefused = e?.code === BSUID_NOT_SUPPORTED;
+    // A form that Meta blocked, throttled or could not show: say so in plain words, keep Meta's own.
+    const flowRefused = carriesForm && e !== null && e.code !== null && FLOW_SEND_CODES.has(e.code);
     [final] = (await db
       .update(inboxMessage)
       .set({
         status: "failed",
         errorCode: e?.code ?? null,
-        errorMessage: bsuidRefused ? BSUID_NOT_SUPPORTED_TEXT : metaMessage,
+        errorMessage: bsuidRefused ? BSUID_NOT_SUPPORTED_TEXT : flowRefused ? explainFlowError(e) : metaMessage,
         // unconfirmed: it may have been delivered — staff should check before
         // resending. retryable: certainly not sent and worth another try.
         payload: {
@@ -290,7 +297,7 @@ export async function sendFromConversation(
           ...(input.auto ? { auto: input.auto } : {}),
           unconfirmed: e?.delivery === "unknown",
           retryable: e !== null && e.delivery === "not_sent" && e.retryable,
-          ...(bsuidRefused ? { meta_message: metaMessage } : {}),
+          ...(bsuidRefused || flowRefused ? { meta_message: metaMessage } : {}),
         },
       })
       .where(eq(inboxMessage.id, queued!.id))
