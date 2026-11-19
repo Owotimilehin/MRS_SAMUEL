@@ -13,6 +13,9 @@ import { outboxEvent, type DbExecutor } from "@ms/db";
  * "inbox.flow_complaint" (suite spec 07) is written by packages/domain inside the webhook transaction, once
  * per completed complaint form, with payload.account = "flow_complaint:<response id>".
  *
+ * "inbox.flow_health" (suite spec 07) is written by packages/domain inside the webhook transaction, with
+ * payload.account = "<Meta flow id>:<kind>", so it dedupes the same way.
+ *
  * The WhatsApp "unknown number" alert keeps its own copy of this pattern in
  * webhooks-whatsapp.ts (its payload key differs; WhatsApp behaviour is unchanged).
  */
@@ -24,7 +27,8 @@ export async function alertOnce(
     | "inbox.meta_policy"
     | "channels.page_config"
     | "inbox.template_alert"
-    | "inbox.flow_complaint",
+    | "inbox.flow_complaint"
+    | "inbox.flow_health",
   payload: Record<string, unknown> & { account: string },
 ): Promise<boolean> {
   const [recent] = await db

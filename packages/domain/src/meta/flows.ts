@@ -5,8 +5,9 @@
  * (foundation rule 7): those calls are made only from a route a signed-in person has confirmed.
  * The sync only reads what Meta already holds. createFlow never asks Meta to publish.
  */
-import { and, eq, isNotNull } from "drizzle-orm";
-import { waFlow, type DbExecutor, type FlowValidationError } from "@ms/db";
+import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
+import { outboxEvent, waFlow, type DbExecutor, type FlowValidationError } from "@ms/db";
+import { flowDef } from "@ms/shared";
 import { graph, graphRaw, MetaApiError, type GraphOptions, type MetaConfig } from "../inbox/meta.js";
 
 const WA: GraphOptions = { service: "WhatsApp" };
@@ -113,6 +114,103 @@ export async function deprecateFlow(cfg: MetaConfig, flowId: string): Promise<vo
 /** Drafts only (Meta refuses anything else). */
 export async function deleteDraftFlow(cfg: MetaConfig, flowId: string): Promise<void> {
   mustSucceed(await graph<{ success?: boolean }>(cfg, "DELETE", flowId, undefined, WA), "deleting the draft");
+}
+
+// ── Phase B: the data endpoint and its key (called only from a route a person confirmed) ──
+
+/** Point a form at our data endpoint. "Flows with endpoints need a connected app." */
+export async function setFlowEndpoint(cfg: MetaConfig, flowId: string, endpointUri: string, applicationId: string): Promise<void> {
+  mustSucceed(
+    await graph<{ success?: boolean }>(cfg, "POST", flowId, { endpoint_uri: endpointUri, application_id: applicationId }, WA),
+    "the form's server address",
+  );
+}
+
+/** Send the PUBLIC half of our key to Meta for one phone number (form-urlencoded). Never the private key. */
+export async function uploadFlowPublicKey(cfg: MetaConfig, phoneNumberId: string, publicKeyPem: string): Promise<void> {
+  if (!publicKeyPem.includes("BEGIN PUBLIC KEY") || publicKeyPem.includes("PRIVATE")) {
+    throw new Error("refusing to send anything but a public key");
+  }
+  const res = await graphRaw<{ success?: boolean }>(
+    cfg,
+    "POST",
+    `${phoneNumberId}/whatsapp_business_encryption`,
+    {
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ business_public_key: publicKeyPem }).toString(),
+    },
+    WA,
+  );
+  mustSucceed(res, "the key");
+}
+
+/** What Meta holds for a number: is a key there, and does its signature check out (VALID or MISMATCH). */
+export async function getFlowPublicKeyStatus(cfg: MetaConfig, phoneNumberId: string): Promise<{ present: boolean; status: string | null }> {
+  type Entry = { business_public_key?: string; business_public_key_signature_status?: string };
+  const res = await graph<Entry & { data?: Entry[] }>(cfg, "GET", `${phoneNumberId}/whatsapp_business_encryption`, undefined, WA);
+  const entry: Entry = Array.isArray(res?.data) ? (res.data[0] ?? {}) : (res ?? {});
+  const present = typeof entry.business_public_key === "string" && entry.business_public_key.trim() !== "";
+  const status = typeof entry.business_public_key_signature_status === "string" ? entry.business_public_key_signature_status.toUpperCase() : null;
+  return { present, status: present ? status : null };
+}
+
+// ── The `flows` webhook field (status changes and endpoint health) ──
+
+const FLOW_HEALTH_EVENTS = new Set(["ENDPOINT_ERROR_RATE", "ENDPOINT_LATENCY", "ENDPOINT_AVAILABILITY", "FLOW_VERSION_EXPIRY_WARNING"]);
+
+/**
+ * Apply one `flows` webhook change. A status change updates the form we hold; a block, a throttle,
+ * an endpoint health warning or an expiry warning tells the owner, at most once per form per kind
+ * per 24 hours. An event for a form we do not hold is ignored (rule 24). CLIENT_ERROR_RATE is only
+ * reported back to the caller for logging.
+ */
+export async function applyFlowWebhook(
+  db: DbExecutor,
+  value: Record<string, unknown>,
+  now: Date = new Date(),
+): Promise<{ applied: boolean; alerted: boolean; event: string | null }> {
+  const event = typeof value.event === "string" ? value.event.toUpperCase() : null;
+  const flowId = typeof value.flow_id === "string" || typeof value.flow_id === "number" ? String(value.flow_id) : null;
+  if (!event || !flowId) return { applied: false, alerted: false, event };
+  const [row] = await db.select().from(waFlow).where(eq(waFlow.metaFlowId, flowId));
+  if (!row) return { applied: false, alerted: false, event };
+
+  let applied = false;
+  let kind: string | null = null;
+  if (event === "FLOW_STATUS_CHANGE") {
+    const next = typeof value.new_status === "string" ? value.new_status.toUpperCase() : "";
+    if (!["DRAFT", "PUBLISHED", "DEPRECATED", "BLOCKED", "THROTTLED"].includes(next)) return { applied: false, alerted: false, event };
+    if (next !== row.status) {
+      await db
+        .update(waFlow)
+        .set({ status: next, ...(next === "DEPRECATED" && !row.retiredAt ? { retiredAt: now } : {}), syncedAt: now, updatedAt: now })
+        .where(eq(waFlow.id, row.id));
+      applied = true;
+    }
+    if (next === "BLOCKED" || next === "THROTTLED") kind = next;
+  } else if (FLOW_HEALTH_EVENTS.has(event)) {
+    kind = event;
+  }
+  if (!kind) return { applied, alerted: false, event };
+
+  const account = `${flowId}:${kind}`;
+  const [recent] = await db
+    .select({ id: outboxEvent.id })
+    .from(outboxEvent)
+    .where(and(eq(outboxEvent.eventType, "inbox.flow_health"), gt(outboxEvent.createdAt, new Date(Date.now() - 24 * 3600_000)), sql`${outboxEvent.payload}->>'account' = ${account}`))
+    .limit(1);
+  if (recent) return { applied, alerted: false, event };
+  await db.insert(outboxEvent).values({
+    eventType: "inbox.flow_health",
+    payload: {
+      account,
+      flow_id: flowId,
+      event: kind,
+      message: typeof value.message === "string" ? value.message.slice(0, 500) : null,
+      title: flowDef(row.key)?.title ?? "A form",
+    },
+  });
+  return { applied, alerted: true, event };
 }
 
 // ── The one sync (the "Sync" button and the hourly job) ──────────────────────

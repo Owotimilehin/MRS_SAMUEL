@@ -525,6 +525,22 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Meta code ${String(p["code"] ?? "?")}. Open Channels and press Check connection.\n` +
           `👉 ${SUITE_URL}/channels`,
       };
+    case "inbox.flow_health": {
+      // WhatsApp reports a problem with a form or with our data endpoint (suite spec 07).
+      const lines: Record<string, string> = {
+        BLOCKED: "WhatsApp has blocked it because our server was failing. Customers cannot open it.",
+        THROTTLED: "WhatsApp is limiting it to 10 sends an hour because our server was slow or failing.",
+        ENDPOINT_ERROR_RATE: "WhatsApp reports our server is slow or failing for this form.",
+        ENDPOINT_LATENCY: "WhatsApp reports our server is slow or failing for this form.",
+        ENDPOINT_AVAILABILITY: "WhatsApp reports our server is slow or failing for this form.",
+        FLOW_VERSION_EXPIRY_WARNING: "Its format version is about to expire. It needs updating before then.",
+      };
+      const line = lines[String(p["event"] ?? "")] ?? "WhatsApp reported a problem with it.";
+      return {
+        chatIds: [owner],
+        text: `⚠️ *WhatsApp form problem*\n${String(p["title"] ?? "A form")}: ${line}\n👉 ${SUITE_URL}/templates/forms`,
+      };
+    }
     case "inbox.flow_complaint":
       // A complaint form was completed on WhatsApp (suite spec 07). No customer details here.
       return {

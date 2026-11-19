@@ -19,6 +19,7 @@ import {
 import { isBsuid, messagePreview, toE164, WHATSAPP_ACCOUNT_KEY } from "@ms/shared";
 import { applyTemplateWebhook, TEMPLATE_WEBHOOK_FIELDS, wabaIsOurs } from "../meta/templates.js";
 import { parseFlowReply, recordFlowResponse } from "../meta/flow-responses.js";
+import { applyFlowWebhook } from "../meta/flows.js";
 import { findOrOpenConversation, publishInboxEvent, resolveWhatsAppCustomer, signalFor, touchConversation, ts } from "./core.js";
 
 /**
@@ -197,6 +198,10 @@ export interface IngestResult {
   templatesUpdated: number;
   /** WhatsApp accounts that sent an event for a template we do not hold: sync each once after the commit. */
   templateResyncWabas: string[];
+  /** `flows` webhook events applied to a form we hold (suite spec 07). */
+  flowsUpdated: number;
+  /** Form events that are only worth a log line (CLIENT_ERROR_RATE). */
+  flowNotices: string[];
 }
 
 /**
@@ -205,7 +210,7 @@ export interface IngestResult {
  * thrown) so other entries in the same payload still process.
  */
 export async function ingestWhatsAppPayload(db: DbExecutor, payload: WaWebhookPayload): Promise<IngestResult> {
-  const result: IngestResult = { messagesCreated: 0, statusesApplied: 0, unknownNumbers: [], templatesUpdated: 0, templateResyncWabas: [] };
+  const result: IngestResult = { messagesCreated: 0, statusesApplied: 0, unknownNumbers: [], templatesUpdated: 0, templateResyncWabas: [], flowsUpdated: 0, flowNotices: [] };
 
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
@@ -229,6 +234,13 @@ export async function ingestWhatsAppPayload(db: DbExecutor, payload: WaWebhookPa
           if (r.applied) result.templatesUpdated++;
           if (r.resync && !result.templateResyncWabas.includes(entry.id!)) result.templateResyncWabas.push(entry.id!);
         }
+        continue;
+      }
+      if (change.field === "flows") {
+        // Form status and endpoint health (suite spec 07). An event for a form we do not hold is ignored.
+        const r = await applyFlowWebhook(db, value as unknown as Record<string, unknown>, entryTime(entry));
+        if (r.applied || r.alerted) result.flowsUpdated++;
+        if (r.event === "CLIENT_ERROR_RATE") result.flowNotices.push(r.event);
         continue;
       }
       if (change.field !== "messages") continue;

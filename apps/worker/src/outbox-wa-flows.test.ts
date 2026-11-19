@@ -23,4 +23,14 @@ describe("owner alerts for WhatsApp forms (suite spec 07)", () => {
     expect(m.text).toContain("/templates/forms");
     expect(m.text).not.toContain("Facebook or Instagram");
   });
+
+  it("a form health alert names the form and says what is wrong in plain words", () => {
+    const text = (event: string): string => format({ eventType: "inbox.flow_health", payload: { account: `9001:${event}`, flow_id: "9001", event, title: "Delivery time", message: null } }).text;
+    expect(text("BLOCKED")).toContain("*WhatsApp form problem*\nDelivery time: WhatsApp has blocked it because our server was failing. Customers cannot open it.");
+    expect(text("THROTTLED")).toContain("limiting it to 10 sends an hour");
+    for (const e of ["ENDPOINT_ERROR_RATE", "ENDPOINT_LATENCY", "ENDPOINT_AVAILABILITY"]) expect(text(e)).toContain("WhatsApp reports our server is slow or failing for this form.");
+    expect(text("FLOW_VERSION_EXPIRY_WARNING")).toContain("Its format version is about to expire. It needs updating before then.");
+    expect(text("SOMETHING_NEW")).toContain("WhatsApp reported a problem with it.");
+    expect(text("BLOCKED")).toContain("/templates/forms");
+  });
 });

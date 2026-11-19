@@ -18,6 +18,12 @@ import {
   deleteDraftFlow,
   deprecateFlow,
   explainFlowError,
+  flowPrivateKeyIsSet,
+  flowPublicKeyPem,
+  getFlowPublicKeyStatus,
+  loadFlowPrivateKey,
+  setFlowEndpoint,
+  uploadFlowPublicKey,
   flowJson,
   flowJsonHash,
   flowJsonText,
@@ -38,6 +44,7 @@ import { writeAudit } from "../middleware/audit.js";
 import { alertOnce } from "../lib/inbox-alerts.js";
 import { BusinessError, pgErrorCode } from "../lib/errors.js";
 import { logger } from "../logger.js";
+import { env } from "../env.js";
 
 const Uuid = z.string().uuid();
 type Row = typeof waFlow.$inferSelect;
@@ -63,9 +70,58 @@ function needCfg(): MetaConfig {
   return cfg;
 }
 
-/** Forms this server can manage: those with a JSON file in this build. */
+const NO_SECURE_CONNECTION = "The secure connection is not set up on this server yet.";
+const KEY_FIRST = "Send our key to WhatsApp first (Secure connection).";
+
+/** Phase B is on only while the server holds a usable private key (rule 23). The key itself never leaves @ms/domain. */
+function phaseBReady(): boolean {
+  return loadFlowPrivateKey(process.env) !== null;
+}
+
+function appIdOf(cfg: MetaConfig): string | null {
+  return cfg.appId && /^\d+$/.test(cfg.appId) ? cfg.appId : null;
+}
+
+/** Where WhatsApp reaches the data endpoint. */
+function endpointUri(): string {
+  return `${env.PUBLIC_API_URL.replace(/\/$/, "")}/v1/webhooks/whatsapp-flows`;
+}
+
+/**
+ * Forms this server can manage: those with a JSON file in this build. Forms that talk to our data
+ * endpoint (Phase B) are listed only when the private key is configured.
+ */
 function managedForms(): FlowDef[] {
-  return WA_FLOWS.filter((f) => flowJson(f.key) !== null);
+  const phaseB = phaseBReady();
+  return WA_FLOWS.filter((f) => flowJson(f.key) !== null && (!f.usesEndpoint || phaseB));
+}
+
+interface NumberRow {
+  id: string;
+  label: string;
+  waPhoneNumberId: string;
+  wabaId: string | null;
+}
+
+async function ourNumbers(db: DbClient): Promise<NumberRow[]> {
+  const rows = await db
+    .select({ id: inboxPhoneNumber.id, label: inboxPhoneNumber.label, wa: inboxPhoneNumber.waPhoneNumberId, wabaId: inboxPhoneNumber.wabaId })
+    .from(inboxPhoneNumber)
+    .where(and(eq(inboxPhoneNumber.kind, "phone"), eq(inboxPhoneNumber.isActive, true), ne(inboxPhoneNumber.channels, "voice")))
+    .orderBy(asc(inboxPhoneNumber.label));
+  return rows.flatMap((x) => (x.wa ? [{ id: x.id, label: x.label, waPhoneNumberId: x.wa, wabaId: x.wabaId }] : []));
+}
+
+/** One number's key state, as Meta reports it. Booleans and Meta's status only: never key text (rule 22). */
+async function keyStatus(cfg: MetaConfig | null, n: NumberRow, configured: boolean) {
+  const base = { number_id: n.id, label: n.label, key_configured: configured, uploaded: false, signature_status: null as string | null, error: null as string | null };
+  if (!configured || !cfg) return base;
+  try {
+    const st = await getFlowPublicKeyStatus(cfg, n.waPhoneNumberId);
+    return { ...base, uploaded: st.present, signature_status: st.status };
+  } catch (err) {
+    return { ...base, error: explainFlowError(err) };
+  }
 }
 
 async function ourWabas(db: DbClient): Promise<{ waba_id: string; label: string }[]> {
@@ -224,6 +280,9 @@ export function waFlowRoutes(db: DbClient) {
       throw new BusinessError("validation_failed", "That WhatsApp account is not set up here.", 400);
     }
     if (flowJson(def.key) === null) throw new BusinessError("not_found", "Unknown form.", 404);
+    // A form that talks to our server needs the key and the app's ID on this server first.
+    const appId = appIdOf(cfg);
+    if (def.usesEndpoint && (!phaseBReady() || !appId)) throw new BusinessError("service_unavailable", NO_SECURE_CONNECTION, 503);
     const existing = await db.select().from(waFlow).where(and(eq(waFlow.wabaId, wabaId), eq(waFlow.key, def.key)));
     if (existing.some((x) => x.status === "DRAFT")) {
       throw new BusinessError("conflict", "There is already a draft of this form. Use it, or delete it first.", 409, { reason: "draft_exists" });
@@ -238,7 +297,7 @@ export function waFlowRoutes(db: DbClient) {
     let errors: Row["validationErrors"] = [];
     let uploadedHash: string | null = hash;
     try {
-      const made = await createFlow(cfg, wabaId, { name, categories: def.categories, flowJson: text });
+      const made = await createFlow(cfg, wabaId, { name, categories: def.categories, flowJson: text, ...(def.usesEndpoint ? { endpointUri: endpointUri() } : {}) });
       metaId = made.id;
       errors = made.validationErrors;
     } catch (err) {
@@ -294,6 +353,17 @@ export function waFlowRoutes(db: DbClient) {
       }
       throw err;
     }
+    // Connect the form to our app and its server address. A failure is kept on the row: it can be
+    // tried again with "Upload again", and the form cannot be published until WhatsApp has it.
+    let endpointNote: string | null = null;
+    if (def.usesEndpoint && appId) {
+      try {
+        await setFlowEndpoint(cfg, metaId, endpointUri(), appId);
+      } catch (err) {
+        endpointNote = `The form was created, but its link to our server was not set: ${explainFlowError(err)}`;
+        await db.update(waFlow).set({ lastError: endpointNote.slice(0, 1000) }).where(eq(waFlow.id, rowId));
+      }
+    }
     await writeAudit(db, c, {
       action: "wa_flow.create",
       entityType: "wa_flow",
@@ -317,6 +387,55 @@ export function waFlowRoutes(db: DbClient) {
     return c.json({ data: { synced } });
   });
 
+  // ── Phase B: the secure connection (the public half of our key at WhatsApp) ──
+
+  /** Per WhatsApp number: is the key set here, is it at WhatsApp, and does WhatsApp accept it. Never key text. */
+  r.get("/encryption", async (c) => {
+    const configured = phaseBReady();
+    const cfg = metaConfigFromEnv();
+    const numbers = await ourNumbers(db);
+    return c.json({
+      data: {
+        key_configured: configured,
+        // The setting is there but cannot be read as an RSA private key: the technical lead needs to look.
+        key_unusable: !configured && flowPrivateKeyIsSet(process.env),
+        numbers: await Promise.all(numbers.map((n) => keyStatus(cfg, n, configured))),
+      },
+    });
+  });
+
+  /** Send the PUBLIC half of our key to WhatsApp for one number. A person confirmed it; safe to repeat. */
+  r.post("/encryption/:numberId/upload", async (c) => {
+    const id = Uuid.safeParse(c.req.param("numberId"));
+    const n = id.success ? (await ourNumbers(db)).find((x) => x.id === id.data) : undefined;
+    if (!n) throw new BusinessError("not_found", "not found", 404);
+    const key = loadFlowPrivateKey(process.env);
+    if (!key) throw new BusinessError("service_unavailable", NO_SECURE_CONNECTION, 503);
+    const cfg = needCfg();
+    try {
+      await uploadFlowPublicKey(cfg, n.waPhoneNumberId, flowPublicKeyPem(key));
+    } catch (err) {
+      // Never any key text in the audit row or the log: only the outcome.
+      await writeAudit(db, c, {
+        action: "wa_flow.key_upload",
+        entityType: "inbox_phone_number",
+        entityId: n.id,
+        after: { label: n.label, result: err instanceof MetaApiError && err.delivery === "unknown" ? "unknown" : "failed", error: explainFlowError(err) },
+        notify: true,
+      });
+      throw await metaFailure(db, err);
+    }
+    const status = await keyStatus(cfg, n, true);
+    await writeAudit(db, c, {
+      action: "wa_flow.key_upload",
+      entityType: "inbox_phone_number",
+      entityId: n.id,
+      after: { label: n.label, result: "sent", uploaded: status.uploaded, signature_status: status.signature_status },
+      notify: true,
+    });
+    return c.json({ data: status });
+  });
+
   r.post("/:key/create", async (c) => {
     const def = flowDef(c.req.param("key"));
     if (!def || flowJson(def.key) === null) throw new BusinessError("not_found", "Unknown form.", 404);
@@ -336,11 +455,14 @@ export function waFlowRoutes(db: DbClient) {
     if (row.status === "DEPRECATED") throw new BusinessError("conflict", "This form is retired. Create a new copy instead.", 409);
     if (!row.metaFlowId) throw new BusinessError("conflict", "This form is not at WhatsApp yet. Create it first.", 409);
     const cfg = needCfg();
+    const appId = appIdOf(cfg);
+    if (def.usesEndpoint && (!phaseBReady() || !appId)) throw new BusinessError("service_unavailable", NO_SECURE_CONNECTION, 503);
     const hash = flowJsonHash(def.key);
     const now = waFlowDeps.now();
     let errors: Row["validationErrors"];
     try {
       errors = await uploadFlowJson(cfg, row.metaFlowId, flowJsonText(def.key));
+      if (def.usesEndpoint && appId) await setFlowEndpoint(cfg, row.metaFlowId, endpointUri(), appId);
     } catch (err) {
       await noteError(db, row.id, err);
       const locked = LIVE_STATUSES.includes(row.status) && isPlainRefusal(err);
@@ -414,6 +536,21 @@ export function waFlowRoutes(db: DbClient) {
       throw new BusinessError("conflict", "Upload the latest version first.", 409, { reason: "stale_upload" });
     }
     const cfg = needCfg();
+    if (def.usesEndpoint) {
+      // Rule 10: the server must hold the key, and WhatsApp must hold a valid copy of its public half for every active number.
+      if (!phaseBReady()) throw new BusinessError("service_unavailable", NO_SECURE_CONNECTION, 503);
+      const numbers = (await ourNumbers(db)).filter((n) => n.wabaId === row.wabaId);
+      try {
+        for (const n of numbers) {
+          const st = await getFlowPublicKeyStatus(cfg, n.waPhoneNumberId);
+          if (!st.present || st.status !== "VALID") throw new BusinessError("conflict", KEY_FIRST, 409, { reason: "key_missing" });
+        }
+      } catch (err) {
+        if (err instanceof BusinessError) throw err;
+        throw await metaFailure(db, err);
+      }
+      if (numbers.length === 0) throw new BusinessError("conflict", KEY_FIRST, 409, { reason: "key_missing" });
+    }
     const before = { key: row.key, version: row.version, status: row.status, meta_flow_id: row.metaFlowId };
 
     let accepted = true;

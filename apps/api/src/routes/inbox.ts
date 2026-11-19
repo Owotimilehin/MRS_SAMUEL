@@ -30,8 +30,11 @@ import {
   canUseNumber,
   conversationScope,
   flowJson,
+  SLOT_OVERBOOKED_TEXT,
   flowResponseCard,
+  loadFlowPrivateKey,
   makeFlowToken,
+  slotOverbooked,
   syncTemplatesForWaba,
   markRead,
   metaConfigFromEnv,
@@ -773,6 +776,10 @@ export function inboxRoutes(db: DbClient) {
         { reason: "form_not_live" },
       );
     }
+    // A form that talks to our server cannot work while the server has no key (rule 23).
+    if (def.usesEndpoint && loadFlowPrivateKey(process.env) === null) {
+      throw new BusinessError("conflict", "The secure connection is not set up on this server yet.", 409, { reason: "no_secure_connection" });
+    }
     const mode = row.status === "PUBLISHED" ? "published" : "draft";
     const token = makeFlowToken(env.JWT_SIGNING_KEY, def.key, conv.id, new Date());
 
@@ -1494,6 +1501,14 @@ async function buildTimelinePage(
     .orderBy(desc(inboxCall.startedAt))
     .limit(take);
 
+  // A delivery-time booking that arrived after its window was already full gets an amber line (5.10).
+  const overbooked = new Set<string>();
+  for (const m of messages) {
+    if (m.flow_response_id && m.flow_key === "delivery_slot" && (await slotOverbooked(db, { id: m.flow_response_id, data: m.flow_data ?? {} }))) {
+      overbooked.add(m.flow_response_id);
+    }
+  }
+
   const recordings = calls.length
     ? await db.select().from(inboxRecording).where(inArray(inboxRecording.callId, calls.map((x) => x.id)))
     : [];
@@ -1530,6 +1545,7 @@ async function buildTimelinePage(
                 handled_by_name: flow_handled_by_name,
                 handled_at: flow_handled_at ? flow_handled_at.toISOString() : null,
                 ...flowResponseCard(flow_key, flow_data ?? {}),
+                warning: overbooked.has(flow_response_id) ? SLOT_OVERBOOKED_TEXT : null,
               }
             : null,
         // A tapped Messenger/Instagram button: what it was (spec 04, section 5.6). Null otherwise.
