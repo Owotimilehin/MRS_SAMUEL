@@ -112,6 +112,8 @@ services:
       META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-}
       META_SYSTEM_USER_TOKEN: ${META_SYSTEM_USER_TOKEN:-}
       META_GRAPH_VERSION: ${META_GRAPH_VERSION:-}
+      # The Meta app's numeric ID (not a secret). Needed only for the WhatsApp profile photo upload.
+      META_APP_ID: ${META_APP_ID:-}
       INBOX_TEMPLATE_LANGUAGE: ${INBOX_TEMPLATE_LANGUAGE:-}
       # Unified inbox: phone calls (Twilio). Empty = calling is off and the
       # call bar stays hidden.
