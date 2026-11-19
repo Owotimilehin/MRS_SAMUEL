@@ -120,9 +120,10 @@ function wholeNumber(v: unknown, min: number, max: number): number | null {
  * search term or point at another list.
  */
 export function parseContactFilter(input: unknown, o: { forSmartList: boolean }): FilterResult {
-  if (input === null || input === undefined) return { ok: true, filter: {} };
-  if (typeof input !== "object" || Array.isArray(input)) return { ok: false, error: "That filter can't be read." };
-  const raw = input as Record<string, unknown>;
+  if (input !== null && input !== undefined && (typeof input !== "object" || Array.isArray(input))) {
+    return { ok: false, error: "That filter can't be read." };
+  }
+  const raw = (input ?? {}) as Record<string, unknown>;
   for (const k of Object.keys(raw)) {
     if (!FILTER_KEYS.has(k)) return { ok: false, error: "That filter can't be read." };
   }
@@ -496,6 +497,7 @@ export type ImportReasonCode =
   | "matched"
   | "same_email"
   | "email_dropped"
+  | "phone_dropped"
   | "stopped";
 
 export function importReason(code: ImportReasonCode, detail?: string | number | null): string {
@@ -524,6 +526,8 @@ function oneReasonText(line: string): string {
       return `Same email as ${detail || "another contact"}, different phone number: check for a duplicate`;
     case "email_dropped":
       return `The email doesn't look right and was left out: “${detail}”`;
+    case "phone_dropped":
+      return `The phone number doesn't look right and was left out: “${detail}”`;
     case "stopped":
       return "Asked us to stop promotions: consent will not be recorded";
     default:
