@@ -113,6 +113,12 @@ export const CAPABILITIES = [
   // Owner-only by default: create, switch on, pause and change adverts — this spends money.
   // Deliberately NOT in ADMIN_CAPS/MANAGER_CAPS. Grantable per-user via overrides.
   "ads.manage",
+  // Contacts (suite spec 14): see the Contacts page, a contact's details and lists.
+  // Owner, admin and manager. Downloads also need inbox.export.
+  "contacts.view",
+  // Edit a contact, add by hand, import, labels, lists, record consent. Owner and admin
+  // (grantable to a named manager).
+  "contacts.manage",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -167,6 +173,8 @@ const ADMIN_CAPS: Capability[] = [
   "insights.view",
   "leads.view",
   "ads.view",
+  "contacts.view",
+  "contacts.manage",
 ];
 
 const MANAGER_CAPS: Capability[] = [
@@ -204,6 +212,7 @@ const MANAGER_CAPS: Capability[] = [
   "social.comments",
   "insights.view",
   "leads.view",
+  "contacts.view",
 ];
 
 const BRANCH_STAFF_CAPS: Capability[] = [

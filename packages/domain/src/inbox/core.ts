@@ -196,6 +196,34 @@ async function touchIdentity(
     .where(eq(inboxIdentity.id, identityId));
 }
 
+/** The matching half of findOrCreateCustomer: lock, identity first, then the phone. */
+async function lockAndMatchPhone(
+  db: DbExecutor,
+  e164: string,
+  key: IdentityKey,
+): Promise<{ id: string; via: "identity" | "phone" } | null> {
+  await lockPhone(db, e164);
+  const ident = await identityByKey(db, key);
+  if (ident?.customerLive) return { id: ident.customerId, via: "identity" };
+  const existing = await matchCustomerByPhone(db, e164);
+  return existing ? { id: existing.id, via: "phone" } : null;
+}
+
+/**
+ * Lock the number, then: a live WhatsApp identity for it wins; else the oldest
+ * live customer whose phone has the same digits. Runs inside a transaction.
+ *
+ * This is the one matching rule (suite spec 14, 5.5): findOrCreateCustomer
+ * (inbox ingest) and findOrCreateContact (hand-add and import) both use it, so
+ * they can never pick different customers for the same number. It never
+ * writes: no customer, no identity. `e164` must already be normalised (toE164).
+ */
+export async function matchCustomerForPhone(db: DbExecutor, e164: string): Promise<{ id: string } | null> {
+  const key: IdentityKey = { channel: "whatsapp", accountExternalId: WHATSAPP_ACCOUNT_KEY, externalId: e164.slice(1) };
+  const match = await lockAndMatchPhone(db, e164, key);
+  return match ? { id: match.id } : null;
+}
+
 /**
  * Find the customer for a phone number, or create one.
  *
@@ -224,14 +252,12 @@ export async function findOrCreateCustomer(
 
   // Serialise per phone number for the rest of this transaction, so two
   // webhooks arriving together for a new customer can't both insert.
-  await lockPhone(db, e164);
-
   // Identity first: after a merge the identity points at the kept contact.
-  const ident = await identityByKey(db, key);
-  if (ident?.customerLive) return { id: ident.customerId, created: false };
+  const match = await lockAndMatchPhone(db, e164, key);
+  if (match?.via === "identity") return { id: match.id, created: false };
 
   let result: { id: string; created: boolean };
-  const existing = await matchCustomerByPhone(db, e164);
+  const existing = match;
   if (existing) {
     // Existing customer rows are never modified by the inbox.
     result = { id: existing.id, created: false };

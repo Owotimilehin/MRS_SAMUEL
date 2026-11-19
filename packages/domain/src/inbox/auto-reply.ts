@@ -13,6 +13,8 @@
  *   - no member of staff has replied in that conversation since closing
  *   - no automatic reply went to that conversation since closing, nor in the
  *     last 12 hours
+ *   - the customer's newest message is not a STOP or START (those get their own
+ *     single confirmation; suite spec 14)
  *
  * At most once: the message row, marked payload.auto = "after_hours", is saved
  * before Meta is called, and that row is what later runs look for. A crash
@@ -22,7 +24,7 @@
  *
  * It is not a staff reply: no sender, no first-response time, no assignment.
  */
-import { and, eq, gte, isNotNull, lte, ne, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, lte, ne, notInArray, sql } from "drizzle-orm";
 import {
   inboxConversation,
   inboxHoliday,
@@ -155,6 +157,24 @@ export async function sendAfterHoursAutoReplies(
       const retryable = (m: (typeof autos)[number]): boolean => m.status === "failed" && m.payload?.retryable === true;
       if (autos.some((m) => !retryable(m))) continue; // already sent (or possibly sent) this closed period / in the last 12h
       if (autos.length >= AUTO_REPLY_MAX_TRIES) continue;
+
+      // A customer who wrote STOP or START gets the one confirmation for that
+      // (suite spec 14, R29), not this reply on top of it.
+      const [newestInbound] = await db
+        .select({ payload: inboxMessage.payload })
+        .from(inboxMessage)
+        .where(
+          and(
+            eq(inboxMessage.conversationId, c.conversationId),
+            eq(inboxMessage.direction, "in"),
+            eq(inboxMessage.channel, "whatsapp"),
+            notInArray(inboxMessage.type, ["reaction", "system"]),
+          ),
+        )
+        .orderBy(desc(inboxMessage.createdAt))
+        .limit(1);
+      const suiteMark = (newestInbound?.payload as { _suite?: { consent?: unknown } } | null | undefined)?._suite;
+      if (suiteMark?.consent) continue;
 
       const msg = await sendFromConversation(
         db,

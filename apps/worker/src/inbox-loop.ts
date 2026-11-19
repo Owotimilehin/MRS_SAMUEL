@@ -27,6 +27,13 @@ import { publishDuePosts, reconcileUnknownTargets } from "./jobs/social-publish.
 import { collectInsightsIfDue } from "./jobs/insights-collect.js";
 import { backfillLeads, fetchLeads, syncForms } from "./jobs/leads.js";
 import { runAdAttribution, runAdGuard, runAdPurchaseReports, runAdSyncIfDue, runAdTouchScan } from "./jobs/ads.js";
+import {
+  applyContactImports,
+  cleanupContactImports,
+  rebuildContactSummaries,
+  refreshContactSummaries,
+  sendContactConsentConfirmations,
+} from "./jobs/contacts.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -102,6 +109,12 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "ads_report_purchases", everyMs: 60_000, last: 0, run: () => runAdPurchaseReports(db, logger) },
     { name: "ads_sync", everyMs: 15 * 60_000, last: 0, run: () => runAdSyncIfDue(db, logger) },
     { name: "ads_guard", everyMs: 15 * 60_000, last: 0, run: () => runAdGuard(db, logger) },
+    // Contacts (suite spec 14, Phase A).
+    { name: "contact_summary_refresh", everyMs: 60_000, last: 0, run: () => refreshContactSummaries(db, logger) },
+    { name: "contact_summary_rebuild", everyMs: 24 * 60 * 60_000, last: 0, run: () => rebuildContactSummaries(db, logger) },
+    { name: "contact_consent_confirm", everyMs: 10_000, last: 0, run: () => sendContactConsentConfirmations(db, logger) },
+    { name: "contact_import_apply", everyMs: 5_000, last: 0, run: () => applyContactImports(db, logger) },
+    { name: "contact_import_cleanup", everyMs: 24 * 60 * 60_000, last: 0, run: () => cleanupContactImports(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {

@@ -172,3 +172,16 @@ describe("ads permissions (suite spec 12)", () => {
     }
   });
 });
+
+describe("contacts.view and contacts.manage", () => {
+  it("view is held by owner, admin and manager; manage by owner and admin only", () => {
+    expect(resolveCapabilities("owner")).toContain("contacts.view");
+    expect(resolveCapabilities("admin")).toContain("contacts.view");
+    expect(resolveCapabilities("manager")).toContain("contacts.view");
+    expect(resolveCapabilities("branch_staff")).not.toContain("contacts.view");
+    expect(resolveCapabilities("owner")).toContain("contacts.manage");
+    expect(resolveCapabilities("admin")).toContain("contacts.manage");
+    expect(resolveCapabilities("manager")).not.toContain("contacts.manage");
+    expect(resolveCapabilities("branch_staff")).not.toContain("contacts.manage");
+  });
+});

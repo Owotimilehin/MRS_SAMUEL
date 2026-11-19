@@ -20,6 +20,7 @@ import { isBsuid, messagePreview, toE164, WHATSAPP_ACCOUNT_KEY } from "@ms/share
 import { applyTemplateWebhook, TEMPLATE_WEBHOOK_FIELDS, wabaIsOurs } from "../meta/templates.js";
 import { parseFlowReply, recordFlowResponse } from "../meta/flow-responses.js";
 import { applyFlowWebhook } from "../meta/flows.js";
+import { applyConsentKeyword, applyUserPreference } from "../contacts/consent.js";
 import { findOrOpenConversation, publishInboxEvent, resolveWhatsAppCustomer, signalFor, touchConversation, ts } from "./core.js";
 import { noteChatOrderMessage, parseOrderMessage } from "../meta/catalogue-chat.js";
 
@@ -260,6 +261,13 @@ export async function ingestWhatsAppPayload(db: DbExecutor, payload: WaWebhookPa
         if (r.event === "CLIENT_ERROR_RATE") result.flowNotices.push(r.event);
         continue;
       }
+      if (change.field === "user_preferences") {
+        // The customer stopped or resumed promotions from us in WhatsApp's own settings (suite spec 14, R31).
+        for (const p of (value as { user_preferences?: unknown[] }).user_preferences ?? []) {
+          await applyUserPreference(db, p as never);
+        }
+        continue;
+      }
       if (change.field !== "messages") continue;
 
       const waNumberId = value.metadata?.phone_number_id;
@@ -345,6 +353,26 @@ async function ingestMessage(
     .onConflictDoNothing({ target: inboxMessage.waMessageId })
     .returning({ id: inboxMessage.id });
   if (!row) return false;
+
+  // STOP and START (suite spec 14, R27). The message is stored, shown and counted
+  // as unread exactly as any other; this only records the customer's wish and
+  // marks the message so the out-of-hours reply is not sent on top of the
+  // confirmation. The customer row itself is never changed.
+  if (fromCustomer) {
+    const kw = await applyConsentKeyword(db, {
+      customerId: who.customerId,
+      messageId: row.id,
+      type: parsed.type,
+      body: parsed.body,
+      at,
+    });
+    if (kw) {
+      await db
+        .update(inboxMessage)
+        .set({ payload: sql`coalesce(${inboxMessage.payload}, '{}'::jsonb) || ${JSON.stringify({ _suite: { consent: kw } })}::jsonb` })
+        .where(eq(inboxMessage.id, row.id));
+    }
+  }
 
   // A completed form (suite spec 07): keep the answers beside the message, name the form in the
   // body and the list preview, and label the chat. Nothing is sent and no contact is changed.

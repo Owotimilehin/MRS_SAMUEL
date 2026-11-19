@@ -25,6 +25,7 @@ import {
   Share2,
   ShoppingBag,
   SlidersHorizontal,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import type { Capability } from "@ms/shared";
@@ -41,7 +42,7 @@ import { useCommentNotifier } from "./features/comments/useCommentNotifier.js";
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/comments" | "/catalogue" | "/posts" | "/leads" | "/ads" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
+  to: "/inbox" | "/comments" | "/contacts" | "/catalogue" | "/posts" | "/leads" | "/ads" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -54,6 +55,8 @@ const NAV: { heading: string; items: NavItem[] }[] = [
     items: [
       { to: "/inbox", label: "Inbox", Icon: MessagesSquare, cap: "inbox.view" },
       { to: "/comments", label: "Comments", Icon: MessageCircle, cap: "social.comments" },
+      // Suite spec 14. Phase B adds "Broadcasts".
+      { to: "/contacts", label: "Contacts", Icon: Users, cap: "contacts.view" },
     ],
   },
   {

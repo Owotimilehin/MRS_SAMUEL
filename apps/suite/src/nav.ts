@@ -20,6 +20,7 @@ export function activeNavTo<T extends string>(pathname: string, links: readonly 
 export const SUITE_PAGES = [
   { to: "/inbox", cap: "inbox.view" },
   { to: "/comments", cap: "social.comments" },
+  { to: "/contacts", cap: "contacts.view" },
   { to: "/catalogue", cap: "catalogue.manage" },
   { to: "/posts", cap: "social.publish" },
   { to: "/leads", cap: "leads.view" },

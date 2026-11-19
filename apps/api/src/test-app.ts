@@ -64,6 +64,7 @@ import { chatOrderRoutes } from "./routes/inbox-chat-orders.js";
 import { socialPostRoutes } from "./routes/social-posts.js";
 import { insightRoutes } from "./routes/insights.js";
 import { leadRoutes } from "./routes/leads.js";
+import { contactRoutes } from "./routes/contacts.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
@@ -169,6 +170,8 @@ export function buildApp(): Hono {
   app.route("/v1/leads", leadRoutes(db));
   // Business suite: ad results, spend and click-to-chat adverts (suite spec 12).
   app.route("/v1/ads", adRoutes(db));
+  // Contacts (suite spec 14, Phase A).
+  app.route("/v1/contacts", contactRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));
