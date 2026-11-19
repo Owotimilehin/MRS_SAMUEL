@@ -3,6 +3,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuid } from "uuid";
 import { env } from "../env.js";
 import { BusinessError } from "./errors.js";
+import { UPLOAD_RULES } from "@ms/shared";
 
 const ALLOWED_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"] as const;
 const MAX_SIZE_BYTES = 8 * 1024 * 1024;
@@ -73,29 +74,34 @@ export async function presignGet(objectKey: string | null | undefined): Promise<
 // ── Unified inbox: private files (WhatsApp media, call recordings) ───────────
 
 /** What staff may attach to a WhatsApp reply, with Meta's own size limits. */
-export const INBOX_UPLOAD_TYPES: Record<string, { kind: "image" | "document" | "audio" | "video"; maxBytes: number }> = {
-  "image/jpeg": { kind: "image", maxBytes: 5 * 1024 * 1024 },
-  "image/png": { kind: "image", maxBytes: 5 * 1024 * 1024 },
-  "application/pdf": { kind: "document", maxBytes: 16 * 1024 * 1024 },
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { kind: "document", maxBytes: 16 * 1024 * 1024 },
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { kind: "document", maxBytes: 16 * 1024 * 1024 },
-  "text/plain": { kind: "document", maxBytes: 16 * 1024 * 1024 },
-  "audio/mpeg": { kind: "audio", maxBytes: 16 * 1024 * 1024 },
-  "audio/ogg": { kind: "audio", maxBytes: 16 * 1024 * 1024 },
-  "audio/aac": { kind: "audio", maxBytes: 16 * 1024 * 1024 },
-  "video/mp4": { kind: "video", maxBytes: 16 * 1024 * 1024 },
-};
+/** WhatsApp's upload list, now kept in @ms/shared (UPLOAD_RULES.whatsapp) so the composer uses the same rules. */
+export const INBOX_UPLOAD_TYPES = UPLOAD_RULES.whatsapp;
 
-/** Presigned PUT for an outgoing inbox attachment under inbox/outgoing/. */
+const UPLOAD_CHANNEL_NAMES = { messenger: "Messenger", instagram: "Instagram" } as const;
+
+/**
+ * Presigned PUT for an outgoing inbox attachment under inbox/outgoing/.
+ * `channel` picks the rules (spec 02, 5.6); WhatsApp (the default) keeps its wording.
+ */
 export async function presignInboxPut(args: {
   filename: string;
   contentType: string;
   sizeBytes: number;
+  channel?: "whatsapp" | "messenger" | "instagram";
 }): Promise<PresignPutResult & { kind: "image" | "document" | "audio" | "video" }> {
-  const rule = INBOX_UPLOAD_TYPES[args.contentType];
-  if (!rule) throw new BusinessError("validation_failed", `This file type can't be sent on WhatsApp: ${args.contentType}`, 400);
-  if (args.sizeBytes <= 0 || args.sizeBytes > rule.maxBytes) {
-    throw new BusinessError("validation_failed", `File is too large (max ${Math.round(rule.maxBytes / 1048576)} MB)`, 400);
+  const channel = args.channel ?? "whatsapp";
+  const rule = UPLOAD_RULES[channel][args.contentType];
+  if (channel === "whatsapp") {
+    if (!rule) throw new BusinessError("validation_failed", `This file type can't be sent on WhatsApp: ${args.contentType}`, 400);
+    if (args.sizeBytes <= 0 || args.sizeBytes > rule.maxBytes) {
+      throw new BusinessError("validation_failed", `File is too large (max ${Math.round(rule.maxBytes / 1048576)} MB)`, 400);
+    }
+  } else {
+    const name = UPLOAD_CHANNEL_NAMES[channel];
+    if (!rule) throw new BusinessError("validation_failed", `This kind of file can't be sent on ${name}: ${args.contentType}`, 400);
+    if (args.sizeBytes <= 0 || args.sizeBytes > rule.maxBytes) {
+      throw new BusinessError("validation_failed", `This file is too large for ${name} (limit ${Math.round(rule.maxBytes / 1048576)} MB)`, 400);
+    }
   }
   const now = new Date();
   const ext = (args.filename.split(".").pop() ?? "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 6) || "bin";

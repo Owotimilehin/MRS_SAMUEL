@@ -52,6 +52,7 @@ import { inboxSettingsRoutes } from "./routes/inbox-settings.js";
 import { inboxReportRoutes } from "./routes/inbox-reports.js";
 import { channelRoutes } from "./routes/channels.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
+import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
 
 let cachedDb: DbClient | null = null;
@@ -147,6 +148,7 @@ export function buildApp(): Hono {
   app.route("/v1/webhooks/opay", opayWebhookRoutes(db));
   app.route("/v1/webhooks/shipbubble", shipbubbleWebhookRoutes(db));
   app.route("/v1/webhooks/whatsapp", whatsappWebhookRoutes(db));
+  app.route("/v1/webhooks/meta", metaWebhookRoutes(db));
   app.route("/v1/voice", voiceWebhookRoutes(db));
   app.route("/v1/webhooks/delivery-reconcile", deliveryReconcileRoutes(db));
 

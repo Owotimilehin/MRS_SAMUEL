@@ -7,6 +7,7 @@ import {
   templateParamCount,
   graph,
   MetaApiError,
+  metaConfigFromEnv,
 } from "./meta.js";
 import { parseInbound } from "./whatsapp-ingest.js";
 import { canSeeConversation, type InboxViewer } from "./scope.js";
@@ -209,5 +210,19 @@ describe("whatsappRecipient (rule R13)", () => {
     expect(whatsappRecipient(null, "0803 123 4567")).toBe("2348031234567");
     expect(whatsappRecipient({ channel: "instagram", externalId: "IGSID" }, null)).toBeNull();
     expect(whatsappRecipient(null, null)).toBeNull();
+  });
+});
+
+describe("metaConfigFromEnv (spec 02)", () => {
+  it("reads META_APP_ID and META_HUMAN_AGENT_ENABLED", () => {
+    const base = { META_SYSTEM_USER_TOKEN: "t" } as NodeJS.ProcessEnv;
+    expect(metaConfigFromEnv({})).toBeNull();
+    const off = metaConfigFromEnv(base)!;
+    expect(off.appId).toBeUndefined();
+    expect(off.humanAgent).toBe(false);
+    const on = metaConfigFromEnv({ ...base, META_APP_ID: "123", META_HUMAN_AGENT_ENABLED: "true" })!;
+    expect(on.appId).toBe("123");
+    expect(on.humanAgent).toBe(true);
+    expect(metaConfigFromEnv({ ...base, META_HUMAN_AGENT_ENABLED: "yes" })!.humanAgent).toBe(false);
   });
 });

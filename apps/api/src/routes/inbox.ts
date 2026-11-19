@@ -31,6 +31,7 @@ import {
   metaConfigFromEnv,
   publishInboxEvent,
   sendFromConversation,
+  sendSenderAction,
   signalFor,
   templateParamCount,
   type InboxViewer,
@@ -38,7 +39,10 @@ import {
 } from "@ms/domain";
 import {
   IDENTITY_CHANNELS,
+  describeChatSetupPayload,
+  humanAgentRemainingMs,
   resolveCapabilities,
+  waWindowOpen,
   waWindowRemainingMs,
   type AdminRole,
   type Capability,
@@ -52,6 +56,7 @@ import { deleteInboxObjects, presignInboxGet, presignInboxPut } from "../lib/r2.
 import { toCsv } from "../lib/csv.js";
 import { reloadViewer, subscribe } from "../inbox/realtime.js";
 import { logger } from "../logger.js";
+import { alertOnce } from "../lib/inbox-alerts.js";
 import { alias } from "drizzle-orm/pg-core";
 import crypto from "node:crypto";
 import { env } from "../env.js";
@@ -193,6 +198,36 @@ function eraseConfirmMatches(
   }
   if (cust.name?.trim()) return typed.toLowerCase() === cust.name.trim().toLowerCase();
   return typed === "DELETE";
+}
+
+// ── Messenger and Instagram helpers (suite spec 02) ──
+
+function isMetaChannel(channel: string): channel is "messenger" | "instagram" {
+  return channel === "messenger" || channel === "instagram";
+}
+
+/** Last typing_on sent to Meta per conversation (in memory; at most one every 10 s). */
+const typingSentAt = new Map<string, number>();
+const TYPING_EVERY_MS = 10_000;
+
+/** Where a sender action for this thread goes: the line's Page and the customer's scoped ID. */
+async function metaTarget(
+  db: DbClient,
+  conv: { phoneNumberId: string; identityId: string | null },
+): Promise<{ pageId: string; recipient: string } | null> {
+  if (!conv.identityId) return null;
+  const [row] = await db
+    .select({ pageId: inboxPhoneNumber.pageExternalId, recipient: inboxIdentity.externalId })
+    .from(inboxPhoneNumber)
+    .innerJoin(inboxIdentity, eq(inboxIdentity.id, conv.identityId))
+    .where(eq(inboxPhoneNumber.id, conv.phoneNumberId));
+  return row?.pageId && row.recipient ? { pageId: row.pageId, recipient: row.recipient } : null;
+}
+
+/** Ms left of the 7-day human-agent window: 0 unless META_HUMAN_AGENT_ENABLED and a Messenger/Instagram thread. */
+function humanAgentMs(channel: string, lastInbound: Date | null, now = new Date()): number {
+  if (process.env.META_HUMAN_AGENT_ENABLED !== "true" || !isMetaChannel(channel)) return 0;
+  return humanAgentRemainingMs(lastInbound, now);
 }
 
 // ── Upload tokens: an attachment can only be sent by whoever uploaded it ──
@@ -456,6 +491,7 @@ export function inboxRoutes(db: DbClient) {
     const page = rows.slice(0, limit).map((row) => ({
       ...row,
       window_remaining_ms: waWindowRemainingMs(row.last_inbound_wa_at, now),
+      human_agent_remaining_ms: humanAgentMs(row.channel, row.last_inbound_wa_at, now),
     }));
     const next = rows.length > limit ? page[page.length - 1]!.last_activity_at.toISOString() : null;
     return c.json({ data: page, next_before: next });
@@ -475,7 +511,16 @@ export function inboxRoutes(db: DbClient) {
         ...conv,
         customer: cust ? { id: cust.id, name: cust.name, phone: cust.phone, email: cust.email, notes: cust.notes } : null,
         number: num
-          ? { id: num.id, label: num.label, e164: num.e164, channels: num.channels, kind: num.kind, external_name: num.externalName }
+          ? {
+              id: num.id,
+              label: num.label,
+              e164: num.e164,
+              channels: num.channels,
+              kind: num.kind,
+              external_name: num.externalName,
+              is_active: num.isActive,
+              problem_text: num.problemText,
+            }
           : null,
         identity: ident
           ? {
@@ -489,6 +534,8 @@ export function inboxRoutes(db: DbClient) {
         assignee: ass ? { id: ass.id, name: ass.name ?? ass.email } : null,
         team: team ? { id: team.id, name: team.name } : null,
         window_remaining_ms: waWindowRemainingMs(conv.lastInboundWaAt),
+        human_agent_remaining_ms: humanAgentMs(conv.channel, conv.lastInboundWaAt),
+        human_agent_enabled: process.env.META_HUMAN_AGENT_ENABLED === "true",
         can_use_number: canUseNumber(c.get("inboxViewer"), conv.phoneNumberId),
       },
     });
@@ -515,8 +562,18 @@ export function inboxRoutes(db: DbClient) {
         .where(eq(inboxConversation.id, conv.id))
         .returning();
       await publishInboxEvent(db, signalFor("conversation.updated", updated!));
-      // Blue ticks on WhatsApp for the newest inbound message (best effort).
       const cfg = metaConfigFromEnv();
+      if (isMetaChannel(conv.channel)) {
+        // Messenger/Instagram: "seen" to the customer, best effort (rule R24).
+        const target = cfg ? await metaTarget(db, conv) : null;
+        if (cfg && target) {
+          sendSenderAction(cfg, target.pageId, target.recipient, "mark_seen").catch((err: unknown) =>
+            logger.warn({ err }, "meta mark-seen failed"),
+          );
+        }
+        return c.json({ ok: true });
+      }
+      // Blue ticks on WhatsApp for the newest inbound message (best effort).
       const [lastIn] = await db
         .select({ wamid: inboxMessage.waMessageId })
         .from(inboxMessage)
@@ -568,6 +625,11 @@ export function inboxRoutes(db: DbClient) {
         mediaMime,
       });
       await audit(db, c, "inbox.message_send", "inbox_message", msg.id, { conversation_id: conv.id, type: msg.type, status: msg.status });
+      // Messenger/Instagram configuration problem (spec 02, rule R20): tell the owner once a day per account.
+      const p = (msg.payload ?? {}) as { config?: boolean; account?: string };
+      if (p.config === true && p.account) {
+        await alertOnce(db, "inbox.meta_config", { account: p.account, code: msg.errorCode ?? "", text: msg.errorMessage ?? "" });
+      }
       return c.json({ data: msg }, msg.status === "failed" ? 502 : 201);
     } catch (err) {
       if (err instanceof InboxSendError) {
@@ -594,6 +656,17 @@ export function inboxRoutes(db: DbClient) {
   r.post("/conversations/:id/typing", async (c) => {
     const conv = await visibleConversation(db, c, c.req.param("id"));
     await publishInboxEvent(db, { ...signalFor("conversation.typing", conv), id: c.get("inboxViewer").userId });
+    // Messenger/Instagram: "typing…" to the customer, at most every 10 s per chat, never awaited (rule R24).
+    if (isMetaChannel(conv.channel) && waWindowOpen(conv.lastInboundWaAt)) {
+      const last = typingSentAt.get(conv.id) ?? 0;
+      const cfg = metaConfigFromEnv();
+      if (cfg && Date.now() - last >= TYPING_EVERY_MS) {
+        typingSentAt.set(conv.id, Date.now());
+        void metaTarget(db, conv)
+          .then((t) => (t ? sendSenderAction(cfg, t.pageId, t.recipient, "typing_on") : undefined))
+          .catch((err: unknown) => logger.warn({ err }, "meta typing signal failed"));
+      }
+    }
     return c.json({ ok: true });
   });
 
@@ -646,9 +719,20 @@ export function inboxRoutes(db: DbClient) {
   r.post("/uploads", async (c) => {
     need(c, "inbox.reply");
     const body = z
-      .object({ filename: z.string().min(1).max(240), content_type: z.string().max(200), size_bytes: z.number().int().positive() })
+      .object({
+        filename: z.string().min(1).max(240),
+        content_type: z.string().max(200),
+        size_bytes: z.number().int().positive(),
+        /** When given, the file is checked against that conversation's channel (spec 02). */
+        conversation_id: z.string().uuid().optional(),
+      })
       .parse(await c.req.json());
-    const res = await presignInboxPut({ filename: body.filename, contentType: body.content_type, sizeBytes: body.size_bytes });
+    let channel: "whatsapp" | "messenger" | "instagram" = "whatsapp";
+    if (body.conversation_id) {
+      const conv = await visibleConversation(db, c, body.conversation_id);
+      if (conv.channel === "messenger" || conv.channel === "instagram") channel = conv.channel;
+    }
+    const res = await presignInboxPut({ filename: body.filename, contentType: body.content_type, sizeBytes: body.size_bytes, channel });
     return c.json({ data: { ...res, media_token: uploadToken(c.get("inboxViewer").userId, res.object_key) } }, 201);
   });
 
@@ -809,6 +893,7 @@ export function inboxRoutes(db: DbClient) {
         number_label: inboxPhoneNumber.label,
         last_activity_at: inboxConversation.lastActivityAt,
         labels: inboxConversation.labels,
+        channel: inboxConversation.channel,
       })
       .from(inboxConversation)
       .innerJoin(inboxPhoneNumber, eq(inboxPhoneNumber.id, inboxConversation.phoneNumberId))
@@ -1097,7 +1182,29 @@ async function buildTimelinePage(
       type: inboxMessage.type,
       body: inboxMessage.body,
       has_media: sql<boolean>`${inboxMessage.mediaKey} is not null`,
-      media_pending: sql<boolean>`${inboxMessage.mediaId} is not null and ${inboxMessage.mediaKey} is null`,
+      media_pending: sql<boolean>`(${inboxMessage.mediaId} is not null or ${inboxMessage.mediaUrl} is not null) and ${inboxMessage.mediaKey} is null`,
+      channel: inboxMessage.channel,
+      edited: sql<boolean>`${inboxMessage.editedAt} is not null`,
+      deleted: sql<boolean>`${inboxMessage.deletedAt} is not null`,
+      // Answered from Meta's own apps (an echo we did not send).
+      external_sender: sql<boolean>`${inboxMessage.direction} = 'out' and ${inboxMessage.senderUserId} is null and coalesce(${inboxMessage.payload} ? 'echo', false)`,
+      story_reply: sql<boolean>`${inboxMessage.payload} #> '{message,reply_to,story}' is not null`,
+      // A shared post's link; a story mention's link only while the story can still exist (24 hours).
+      link: sql<string | null>`case
+        when ${inboxMessage.deletedAt} is not null then null
+        when ${inboxMessage.type} = 'share' then coalesce(
+          ${inboxMessage.payload} -> 'share' ->> 'url',
+          (select a -> 'payload' ->> 'url' from jsonb_array_elements(coalesce(${inboxMessage.payload} #> '{message,attachments}', '[]'::jsonb)) a
+            where a ->> 'type' in ('share','post','ig_post','reel','ig_reel','story','ig_story','media') limit 1))
+        when ${inboxMessage.type} = 'story_mention' and ${inboxMessage.createdAt} > now() - interval '24 hours' then
+          (select a -> 'payload' ->> 'url' from jsonb_array_elements(coalesce(${inboxMessage.payload} #> '{message,attachments}', '[]'::jsonb)) a
+            where a ->> 'type' = 'story_mention' limit 1)
+        else null end`,
+      advert: sql<string | null>`case
+        when ${inboxMessage.payload} #>> '{message,referral,source}' = 'ADS' then ${inboxMessage.payload} #>> '{message,referral,ads_context_data,ad_title}'
+        when ${inboxMessage.payload} #>> '{postback,referral,source}' = 'ADS' then ${inboxMessage.payload} #>> '{postback,referral,ads_context_data,ad_title}'
+        else null end`,
+      tap_payload: sql<string | null>`${inboxMessage.payload} #>> '{postback,payload}'`,
       media_mime: inboxMessage.mediaMime,
       media_filename: inboxMessage.mediaFilename,
       template_name: inboxMessage.templateName,
@@ -1151,7 +1258,15 @@ async function buildTimelinePage(
     .limit(take);
 
   const items: TimelineItem[] = [
-    ...messages.map((m) => ({ kind: "message" as const, at: m.created_at.toISOString(), data: m })),
+    ...messages.map(({ tap_payload, ...m }) => ({
+      kind: "message" as const,
+      at: m.created_at.toISOString(),
+      data: {
+        ...m,
+        // A tapped Messenger/Instagram button: what it was (spec 04, section 5.6). Null otherwise.
+        tap_caption: m.type === "interactive" && tap_payload !== null ? (describeChatSetupPayload(tap_payload)?.caption ?? "Tapped a button") : null,
+      },
+    })),
     ...calls.map((call) => ({
       kind: "call" as const,
       at: call.started_at.toISOString(),

@@ -192,6 +192,15 @@ export const inboxPhoneNumber = pgTable(
     afterHoursText: text("after_hours_text"),
     afterHoursAudioKey: text("after_hours_audio_key"),
     isActive: boolean("is_active").notNull().default(true),
+    /** Messenger/Instagram: when the Page was last subscribed to our app's webhooks (spec 02). */
+    webhookSubscribedAt: timestamp("webhook_subscribed_at", { withTimezone: true }),
+    /** When the subscription was last checked at Meta. */
+    webhookCheckedAt: timestamp("webhook_checked_at", { withTimezone: true }),
+    /** The last configuration problem Meta reported for this account ("<code>/<subcode>"); cleared by the next success. */
+    problemCode: text("problem_code"),
+    /** That problem in plain English, shown as a banner. */
+    problemText: text("problem_text"),
+    problemAt: timestamp("problem_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -296,10 +305,12 @@ export const inboxMessage = pgTable(
       .notNull()
       .references(() => inboxConversation.id),
     direction: inboxDirection("direction").notNull(),
-    /** text | image | audio | video | document | sticker | location | template | interactive | reaction | unsupported */
+    /** text | image | audio | video | document | sticker | location | template | interactive | reaction | unsupported | share | story_mention | referral | system */
     type: text("type").notNull(),
     body: text("body"),
     mediaId: text("media_id"),
+    /** Meta's link to a received file. Short-lived: the worker downloads it to storage and sets this back to null. Never the durable copy (foundation D11). */
+    mediaUrl: text("media_url"),
     mediaKey: text("media_key"),
     mediaMime: text("media_mime"),
     mediaFilename: text("media_filename"),
@@ -319,8 +330,17 @@ export const inboxMessage = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     readAt: timestamp("read_at", { withTimezone: true }),
+    /** When the customer last edited this message (Messenger/Instagram). */
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    /** When the customer unsent this message; body and media are cleared. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (t) => ({ idxConv: index("idx_inbox_msg_conv").on(t.conversationId, t.createdAt) }),
+  (t) => ({
+    idxConv: index("idx_inbox_msg_conv").on(t.conversationId, t.createdAt),
+    idxMediaUrl: index("idx_inbox_msg_media_url")
+      .on(t.createdAt)
+      .where(sql`media_url is not null and media_key is null`),
+  }),
 );
 
 export const inboxNote = pgTable(

@@ -19,7 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useAuthUser } from "../lib/auth.js";
 import { inboxApi, inboxKeys } from "../lib/inbox-api.js";
-import { conversationIdFromPath, identityName, shouldAlertForEvent, titleWithCount } from "../lib/inbox-logic.js";
+import { channelName, conversationIdFromPath, identityName, shouldAlertForEvent, titleWithCount } from "../lib/inbox-logic.js";
 import {
   desktopEnabled,
   playMessageSound,
@@ -113,16 +113,21 @@ export function useInboxNotifier(enabled: boolean): void {
       // Who wrote and what, through the same permission-checked route the inbox uses.
       void inboxApi
         .conversation(convId)
-        .then((c) => ({
-          title: c.customer?.name || c.customer?.phone || identityName(c.identity) || "New message",
-          body: c.lastPreview || "New message",
-        }))
-        .catch(() => ({ title: "New message", body: "Open the inbox to read it." }))
-        .then(({ title, body }) => {
+        .then((c) => {
+          // Spec 02: say which app the message came from.
+          const app = channelName(c.channel ?? "whatsapp");
+          return {
+            app: app as string | null,
+            title: c.customer?.name || c.customer?.phone || identityName(c.identity) || `New ${app} message`,
+            body: c.lastPreview || "New message",
+          };
+        })
+        .catch(() => ({ app: null, title: "New message", body: "Open the inbox to read it." }))
+        .then(({ app, title, body }) => {
           if (active) {
-            toast.info(`New message from ${title}: ${body.slice(0, 80)}`);
+            toast.info(`New ${app ? `${app} ` : ""}message from ${title}: ${body.slice(0, 80)}`);
           } else if (desktopEnabled()) {
-            showDesktopAlert({ conversationId: convId, title, body: body.slice(0, 140) }, open);
+            showDesktopAlert({ conversationId: convId, title: app ? `${title} · ${app}` : title, body: body.slice(0, 140) }, open);
           }
         });
     },

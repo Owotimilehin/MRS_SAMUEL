@@ -3,7 +3,17 @@
  * unit-tested: list tabs per capability, timeline day grouping, reconnect
  * backoff, template variables, and the small label/format helpers.
  */
-import type { CallOutcome, IdentityRow, MessageStatus, TimelineItem, TimelinePage } from "./inbox-types.js";
+import { TEXT_LIMIT, uploadAccept } from "@ms/shared";
+import type {
+  CallOutcome,
+  Channels,
+  ChannelKind,
+  IdentityChannel,
+  IdentityRow,
+  MessageStatus,
+  TimelineItem,
+  TimelinePage,
+} from "./inbox-types.js";
 
 /** Business time zone; staff are in Nigeria. */
 export const INBOX_TZ = "Africa/Lagos";
@@ -215,8 +225,12 @@ export function windowText(remainingMs: number): { open: boolean; text: string }
 
 // ── Messages and calls ───────────────────────────────────────────────────────
 
-/** Tick marks for an outgoing message. */
-export function messageTicks(status: MessageStatus): { marks: string; read: boolean; label: string } {
+/**
+ * Tick marks for an outgoing message. Instagram has no "delivered" state
+ * (spec 02, 3.6): one tick when sent, blue double ticks when read.
+ */
+export function messageTicks(status: MessageStatus, channel?: IdentityChannel): { marks: string; read: boolean; label: string } {
+  if (channel === "instagram" && status === "delivered") return { marks: "✓", read: false, label: "Sent" };
   switch (status) {
     case "queued":
       return { marks: "🕓", read: false, label: "Sending" };
@@ -731,4 +745,101 @@ export function conversationIdFromPath(pathname: string): string | null {
   const m = /^\/inbox\/([^/]+)\/?$/.exec(pathname);
   if (!m) return null;
   return m[1] === "reports" || m[1] === "settings" ? null : m[1]!;
+}
+
+// ── Reply box per channel (suite spec 02, 7.3) ──────────────────────────────
+
+/** The plain name of a channel, as staff see it in sentences. */
+export function channelName(channel: IdentityChannel): "WhatsApp" | "Messenger" | "Instagram" {
+  return channel === "whatsapp" ? "WhatsApp" : channel === "messenger" ? "Messenger" : "Instagram";
+}
+
+/** What the composer needs to know about a conversation. */
+export interface ReplyStateInput {
+  channel?: IdentityChannel;
+  number: { label: string; channels: Channels; kind?: ChannelKind; is_active?: boolean; problem_text?: string | null } | null;
+  window_remaining_ms: number;
+  human_agent_remaining_ms?: number;
+  human_agent_enabled?: boolean;
+}
+
+export interface ReplyState {
+  channel: IdentityChannel;
+  mode: "open" | "human_agent" | "closed" | "calls_only" | "off";
+  /** "WhatsApp reply" | "Messenger reply" | "Instagram reply". */
+  tabLabel: string;
+  statusText: string;
+  canTemplate: boolean;
+  canCaption: boolean;
+  textLimit: { max: number; unit: "characters" | "bytes" };
+  /** The file picker's accept list. */
+  accept: string;
+  /** Red banner above the box: messages on this line are not going out. */
+  banner: string | null;
+  /** In the closed notice: "24 hours", or "7 days" with Human Agent on. */
+  closedWindow: "24 hours" | "7 days";
+}
+
+/** The attach button's list on WhatsApp, unchanged from before spec 02. */
+export const WHATSAPP_ACCEPT = "image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Everything the composer shows for a conversation's channel and reply
+ * window, so the rules are tested without React. WhatsApp behaves exactly as
+ * before; Messenger and Instagram follow spec 02 table 7.3.
+ */
+export function replyState(conv: ReplyStateInput): ReplyState {
+  const channel: IdentityChannel = conv.channel ?? "whatsapp";
+  const name = channelName(channel);
+  const label = conv.number?.label ?? name;
+  const win = windowText(conv.window_remaining_ms);
+  const base = {
+    channel,
+    tabLabel: `${name} reply`,
+    textLimit: TEXT_LIMIT[channel],
+    banner: null as string | null,
+    closedWindow: "24 hours" as const,
+  };
+
+  if (channel === "whatsapp") {
+    const callsOnly = !conv.number || conv.number.channels === "voice" || (conv.number.kind ?? "phone") !== "phone";
+    return {
+      ...base,
+      mode: callsOnly ? "calls_only" : win.open ? "open" : "closed",
+      statusText: win.text,
+      canTemplate: true,
+      canCaption: true,
+      accept: WHATSAPP_ACCEPT,
+    };
+  }
+
+  const meta = {
+    ...base,
+    canTemplate: false,
+    canCaption: false,
+    accept: uploadAccept(channel),
+    banner: conv.number?.problem_text ? `Messages on ${label} are not going out: ${conv.number.problem_text}` : null,
+    closedWindow: (conv.human_agent_enabled ? "7 days" : "24 hours") as "24 hours" | "7 days",
+  };
+  if (conv.number?.is_active === false) {
+    return { ...meta, mode: "off", statusText: `${label} is switched off, so replies can't be sent. Switch it on under Channels.` };
+  }
+  if (win.open) return { ...meta, mode: "open", statusText: win.text };
+  const agentMs = conv.human_agent_remaining_ms ?? 0;
+  if (conv.human_agent_enabled && agentMs > 0) {
+    const days = Math.max(1, Math.ceil(agentMs / DAY_MS));
+    return {
+      ...meta,
+      mode: "human_agent",
+      statusText: `More than 24 hours since they wrote. You can still reply for ${days} more ${days === 1 ? "day" : "days"}, by hand only.`,
+    };
+  }
+  return { ...meta, mode: "closed", statusText: "Reply window closed" };
+}
+
+/** The live byte or character count for the Instagram counter, and whether it is over the limit. */
+export function textUsage(text: string, limit: { max: number; unit: "characters" | "bytes" }): { used: number; over: boolean } {
+  const used = limit.unit === "bytes" ? new TextEncoder().encode(text).length : [...text].length;
+  return { used, over: used > limit.max };
 }

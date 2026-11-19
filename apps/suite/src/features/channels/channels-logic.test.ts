@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   connectReady,
+  statusOf,
   connectedToText,
   connectedToast,
   emptySelection,
@@ -63,5 +64,18 @@ describe("connect dialog", () => {
   it("joins the connected names for the toast", () => {
     expect(connectedToast(["Facebook", "Instagram"])).toBe("Connected: Facebook and Instagram.");
     expect(connectedToast(["Facebook"])).toBe("Connected: Facebook.");
+  });
+});
+
+describe("statusOf (spec 02, 7.6)", () => {
+  const base = { kind: "messenger" as const, is_active: true, webhook_subscribed_at: "2026-11-19T10:00:00Z", problem_text: null };
+  it("says whether a Page or Instagram account is receiving messages", () => {
+    expect(statusOf(base)).toEqual({ tone: "success", text: "On · receiving messages", detail: null });
+    expect(statusOf({ ...base, webhook_subscribed_at: null })).toEqual({ tone: "warning", text: "On · not receiving messages yet", detail: null });
+    expect(statusOf({ ...base, problem_text: "Meta says no." })).toEqual({ tone: "danger", text: "Problem", detail: "Meta says no." });
+    expect(statusOf({ ...base, is_active: false })).toEqual({ tone: "off", text: "Switched off", detail: null });
+  });
+  it("phone lines stay plain On", () => {
+    expect(statusOf({ kind: "phone", is_active: true, webhook_subscribed_at: null, problem_text: null }).text).toBe("On");
   });
 });

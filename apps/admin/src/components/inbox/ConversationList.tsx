@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { NotifySettings } from "./NotifySettings.js";
-import { Bell, Search, Phone, MessageCircle } from "lucide-react";
+import { Bell, Search } from "lucide-react";
+import { ChannelIcon } from "./ChannelIcon.js";
 import { DataState } from "../DataState.js";
 import { useInboxUi } from "../../lib/inbox-ui.js";
 import { inboxApi, inboxKeys, type ConversationFilters } from "../../lib/inbox-api.js";
-import { contactName, emptyListText, listTime, staffLabel, type InboxTab, type InboxTabKey } from "../../lib/inbox-logic.js";
-import type { ConversationRow, InboxMe } from "../../lib/inbox-types.js";
+import { channelName, contactName, emptyListText, listTime, staffLabel, type InboxTab, type InboxTabKey } from "../../lib/inbox-logic.js";
+import type { ConversationRow, IdentityChannel, InboxMe } from "../../lib/inbox-types.js";
+import { channelForKind } from "@ms/shared";
 
 interface Props {
   me: InboxMe;
@@ -24,6 +26,8 @@ interface Props {
 /** Left pane: tabs, search, filters and the conversation rows. */
 export function ConversationList(p: Props): JSX.Element {
   const search = useInboxUi((st) => st.search);
+  const channel = useInboxUi((st) => st.channel);
+  const setChannel = useInboxUi((st) => st.setChannel);
   const setSearch = useInboxUi((st) => st.setSearch);
   const [q, setQ] = useState(() => search.trim());
   const [notifyOpen, setNotifyOpen] = useState(false);
@@ -64,6 +68,7 @@ export function ConversationList(p: Props): JSX.Element {
     ...(p.number ? { number: p.number } : {}),
     ...(p.label ? { label: p.label } : {}),
     ...(q ? { q } : {}),
+    ...(channel ? { channel } : {}),
   };
 
   const list = useInfiniteQuery({
@@ -89,8 +94,15 @@ export function ConversationList(p: Props): JSX.Element {
     return [...s].sort();
   }, [rows, p.label]);
 
-  const empty = emptyListText(current.key, !!q);
   const voiceOnly = new Set(p.me.numbers.filter((n) => n.channels === "voice").map((n) => n.id));
+  // The channels the viewer's lines cover, in a fixed order (spec 02, 7.2).
+  const myChannels = (["whatsapp", "messenger", "instagram"] as const).filter((ch) =>
+    p.me.numbers.some((n) => channelForKind(n.kind ?? "phone") === ch),
+  );
+  const empty = channel
+    ? { title: `No ${channelName(channel)} chats here`, hint: "Try All, or another list." }
+    : emptyListText(current.key, !!q);
+  const showChip = p.me.numbers.length > 1 || myChannels.length > 1;
 
   return (
     <>
@@ -115,7 +127,7 @@ export function ConversationList(p: Props): JSX.Element {
             <input
               className="input"
               type="search"
-              placeholder="Search name or phone…"
+              placeholder="Search name, phone or username…"
               aria-label="Search conversations"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -133,6 +145,31 @@ export function ConversationList(p: Props): JSX.Element {
           </button>
         </div>
         {notifyOpen && <NotifySettings onClose={() => setNotifyOpen(false)} />}
+        {myChannels.length > 1 && (
+          <div className="ibx-channel-filter" role="group" aria-label="Show chats from">
+            <button
+              type="button"
+              className={`btn btn--sm ${channel === "" ? "btn--primary" : "btn--ghost"}`}
+              aria-pressed={channel === ""}
+              onClick={() => setChannel("")}
+            >
+              All
+            </button>
+            {myChannels.map((ch: IdentityChannel) => (
+              <button
+                key={ch}
+                type="button"
+                className={`btn btn--sm ${channel === ch ? "btn--primary" : "btn--ghost"}`}
+                aria-pressed={channel === ch}
+                aria-label={channelName(ch)}
+                onClick={() => setChannel(ch)}
+              >
+                <ChannelIcon channel={ch} size={14} />
+                <span className="ibx-channel-filter__name">{channelName(ch)}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {/* Always shown, so the list doesn't jump when a tab has no labels. */}
         <div className="ibx-filters">
           {p.me.numbers.length > 1 && (
@@ -176,7 +213,7 @@ export function ConversationList(p: Props): JSX.Element {
           emptyHint={empty.hint}
         >
           {rows.map((r) => (
-            <ConversationRowItem key={r.id} row={r} active={r.id === p.selectedId} onSelect={p.onSelect} showNumber={p.me.numbers.length > 1} callsOnly={voiceOnly.has(r.number_id)} />
+            <ConversationRowItem key={r.id} row={r} active={r.id === p.selectedId} onSelect={p.onSelect} showNumber={showChip} callsOnly={voiceOnly.has(r.number_id)} />
           ))}
           {list.hasNextPage && (
             <div style={{ padding: 12, textAlign: "center" }}>
@@ -225,8 +262,8 @@ function ConversationRowItem({
       <span className="ibx-row__unread">{unread && <span className="ibx-badge" aria-label={`${row.unread} unread`}>{row.unread}</span>}</span>
       <span className="ibx-row__meta">
         {showNumber && (
-          <span className="ibx-chip" title={callsOnly ? "Phone calls" : "WhatsApp chat"}>
-            {callsOnly ? <Phone size={10} aria-hidden /> : <MessageCircle size={10} aria-hidden />} {row.number_label}
+          <span className="ibx-chip">
+            <ChannelIcon channel={row.channel} callsOnly={callsOnly} size={10} /> {row.number_label}
           </span>
         )}
         {row.status === "pending" && <span className="ibx-chip ibx-chip--warn">Pending</span>}

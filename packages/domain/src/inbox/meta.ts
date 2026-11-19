@@ -18,6 +18,10 @@ export interface MetaConfig {
   token: string;
   graphVersion: string;
   baseUrl?: string;
+  /** META_APP_ID: our Meta app's numeric ID (tells our Messenger echoes from other apps'). */
+  appId?: string;
+  /** META_HUMAN_AGENT_ENABLED === "true": staff may reply on Messenger/Instagram up to 7 days. */
+  humanAgent?: boolean;
 }
 
 export class MetaApiError extends Error {
@@ -48,6 +52,8 @@ export function metaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): MetaCon
   if (!token) return null;
   const cfg: MetaConfig = { token, graphVersion: env.META_GRAPH_VERSION || "v23.0" };
   if (env.META_GRAPH_BASE_URL) cfg.baseUrl = env.META_GRAPH_BASE_URL;
+  if (env.META_APP_ID) cfg.appId = env.META_APP_ID;
+  cfg.humanAgent = env.META_HUMAN_AGENT_ENABLED === "true";
   return cfg;
 }
 

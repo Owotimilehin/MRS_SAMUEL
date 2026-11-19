@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, Phone, Tag, UserRound, CheckCircle2, RotateCcw } from "lucide-react";
+import { ChannelIcon } from "./ChannelIcon.js";
 import { toE164 } from "@ms/shared";
 import { Modal } from "../Modal.js";
 import { inboxApi } from "../../lib/inbox-api.js";
@@ -81,6 +82,11 @@ export function ConversationHeader({ conv, meId, staff, teams, can, onBack, onCh
           <button type="button" className="ibx-conv__who" onClick={onShowContact} title="Contact details">
             <div className="ibx-conv__name">{name}</div>
             <div className="ibx-conv__sub">
+              {conv.number && (
+                <>
+                  <ChannelIcon channel={conv.channel} callsOnly={(conv.number.kind ?? "phone") === "phone" && conv.number.channels === "voice"} size={12} />{" "}
+                </>
+              )}
               {[
                 conv.number?.label ?? "",
                 conv.team?.name ?? "",

@@ -1,11 +1,13 @@
 /**
  * WhatsApp background jobs for the unified inbox:
  *   - retryWebhookEvents: re-process stored Meta webhooks that failed inline
+ *     (WhatsApp, and Page/Instagram events through ingestMetaEntry)
  *   - downloadPendingMedia: fetch incoming photos/voice notes/documents from
- *     Meta (short-lived URLs) into private R2 storage
+ *     Meta (short-lived URLs) into private R2 storage, and remove files of
+ *     messages the customer unsent
  *   - syncAllTemplates: hourly refresh of message templates from Meta
  */
-import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, notInArray, sql } from "drizzle-orm";
 import {
   inboxConversation,
   inboxMessage,
@@ -17,13 +19,16 @@ import {
 } from "@ms/db";
 import {
   downloadMedia,
+  finishMetaWebhookEvent,
   finishWebhookEvent,
+  ingestMetaEntry,
   ingestWhatsAppPayload,
   listTemplates,
   metaConfigFromEnv,
   publishInboxEvent,
   signalFor,
   MetaApiError,
+  type MetaEntry,
   type WaWebhookPayload,
 } from "@ms/domain";
 import { recordingStoreFromEnv, type RecordingStore } from "./inbox-recording-store.js";
@@ -53,8 +58,16 @@ export async function retryWebhookEvents(db: DbClient, log: Log): Promise<number
   for (const ev of due) {
     try {
       await db.transaction(async (tx) => {
-        const res = await ingestWhatsAppPayload(tx, ev.payload as WaWebhookPayload);
-        await finishWebhookEvent(tx, ev.id, res);
+        const payload = ev.payload as { object?: string; entry?: unknown[] };
+        if (payload.object === "page" || payload.object === "instagram") {
+          // Page and Instagram events: one entry per stored row (spec 02, ruling 9.2.3).
+          const appId = process.env.META_APP_ID;
+          const res = await ingestMetaEntry(tx, payload.object, (payload.entry?.[0] ?? {}) as MetaEntry, appId ? { appId } : {});
+          await finishMetaWebhookEvent(tx, ev.id, res);
+        } else {
+          const res = await ingestWhatsAppPayload(tx, ev.payload as WaWebhookPayload);
+          await finishWebhookEvent(tx, ev.id, res);
+        }
       });
       done++;
     } catch (err) {
@@ -87,6 +100,12 @@ const EXT_BY_MIME: Record<string, string> = {
   "video/mp4": "mp4",
   "video/3gpp": "3gp",
   "application/pdf": "pdf",
+  "image/gif": "gif",
+  "video/quicktime": "mov",
+  "video/webm": "webm",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/x-m4a": "m4a",
 };
 
 export function extensionFor(mime: string | null | undefined, filename?: string | null): string {
@@ -101,9 +120,32 @@ export async function downloadPendingMedia(
   log: Log,
   store: RecordingStore | null = recordingStoreFromEnv(),
 ): Promise<number> {
+  if (!store) return 0;
   const cfg = metaConfigFromEnv();
-  if (!cfg || !store) return 0;
+  let done = 0;
+  if (cfg) done += await downloadWhatsAppMedia(db, log, store, cfg);
+  done += await downloadLinkedMedia(db, log, store);
+  await purgeUnsentMedia(db, log, store);
+  return done;
+}
 
+function mediaKeyFor(m: { id: string; createdAt: Date }, mime: string, filename: string | null): string {
+  const d = m.createdAt;
+  return `inbox/media/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${m.id}.${extensionFor(mime, filename)}`;
+}
+
+async function signalStatus(db: DbClient, conversationId: string, messageId: string): Promise<void> {
+  const [conv] = await db.select().from(inboxConversation).where(eq(inboxConversation.id, conversationId));
+  if (conv) await publishInboxEvent(db, signalFor("message.status", conv, messageId));
+}
+
+/** WhatsApp: resolve the media id at Meta, then fetch it with the token. */
+async function downloadWhatsAppMedia(
+  db: DbClient,
+  log: Log,
+  store: RecordingStore,
+  cfg: NonNullable<ReturnType<typeof metaConfigFromEnv>>,
+): Promise<number> {
   const pending = await db
     .select()
     .from(inboxMessage)
@@ -123,15 +165,13 @@ export async function downloadPendingMedia(
   for (const m of pending) {
     try {
       const { bytes, mimeType } = await downloadMedia(cfg, m.mediaId!);
-      const d = m.createdAt;
-      const key = `inbox/media/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${m.id}.${extensionFor(mimeType, m.mediaFilename)}`;
+      const key = mediaKeyFor(m, mimeType, m.mediaFilename);
       await store.put(key, Buffer.from(bytes), mimeType);
       await db
         .update(inboxMessage)
         .set({ mediaKey: key, mediaMime: mimeType, mediaAttempts: sql`${inboxMessage.mediaAttempts} + 1` })
         .where(eq(inboxMessage.id, m.id));
-      const [conv] = await db.select().from(inboxConversation).where(eq(inboxConversation.id, m.conversationId));
-      if (conv) await publishInboxEvent(db, signalFor("message.status", conv, m.id));
+      await signalStatus(db, m.conversationId, m.id);
       done++;
     } catch (err) {
       const permanent = err instanceof MetaApiError && !err.retryable;
@@ -143,6 +183,105 @@ export async function downloadPendingMedia(
         })
         .where(eq(inboxMessage.id, m.id));
       log.warn({ err, messageId: m.id }, "inbox media download failed");
+    }
+  }
+  return done;
+}
+
+/** Messenger and Instagram files are refused above this size (spec 02, 6.2). */
+export const MAX_LINKED_MEDIA_BYTES = 26 * 1024 * 1024;
+
+/**
+ * Messenger and Instagram: the webhook gave us a short-lived link (media_url).
+ * Fetch it with no authorization header, store it, and clear the link (rule
+ * R26). A 403/404/410 means the link has expired: give up and clear it.
+ * Story mentions and shares never have a media_url, so they are never fetched.
+ */
+async function downloadLinkedMedia(db: DbClient, log: Log, store: RecordingStore): Promise<number> {
+  const pending = await db
+    .select()
+    .from(inboxMessage)
+    .where(
+      and(
+        isNotNull(inboxMessage.mediaUrl),
+        isNull(inboxMessage.mediaKey),
+        isNull(inboxMessage.deletedAt),
+        lt(inboxMessage.mediaAttempts, MAX_MEDIA_ATTEMPTS),
+        gt(inboxMessage.createdAt, sql`now() - interval '14 days'`),
+        notInArray(inboxMessage.type, ["story_mention", "share"]),
+      ),
+    )
+    .orderBy(asc(inboxMessage.createdAt))
+    .limit(10);
+
+  let done = 0;
+  for (const m of pending) {
+    const giveUp = async (errorMessage: string, clearLink: boolean) => {
+      await db
+        .update(inboxMessage)
+        .set({ mediaAttempts: MAX_MEDIA_ATTEMPTS, errorMessage, ...(clearLink ? { mediaUrl: null } : {}) })
+        .where(eq(inboxMessage.id, m.id));
+    };
+    try {
+      const res = await fetch(m.mediaUrl!, { signal: AbortSignal.timeout(60_000) });
+      if (res.status === 403 || res.status === 404 || res.status === 410) {
+        await giveUp("media download: the link expired", true);
+        await signalStatus(db, m.conversationId, m.id);
+        continue;
+      }
+      if (!res.ok) throw new Error(`media download ${res.status}`);
+      const length = Number(res.headers.get("content-length") ?? "0");
+      if (length > MAX_LINKED_MEDIA_BYTES) {
+        await res.body?.cancel();
+        await giveUp("media download: too large", false);
+        continue;
+      }
+      const bytes = Buffer.from(await res.arrayBuffer());
+      if (bytes.length > MAX_LINKED_MEDIA_BYTES) {
+        await giveUp("media download: too large", false);
+        continue;
+      }
+      const mime = (res.headers.get("content-type") ?? "application/octet-stream").split(";")[0]!.trim().toLowerCase();
+      const key = mediaKeyFor(m, mime, m.mediaFilename);
+      await store.put(key, bytes, mime);
+      await db
+        .update(inboxMessage)
+        .set({ mediaKey: key, mediaMime: mime, mediaUrl: null, mediaAttempts: sql`${inboxMessage.mediaAttempts} + 1` })
+        .where(eq(inboxMessage.id, m.id));
+      await signalStatus(db, m.conversationId, m.id);
+      done++;
+    } catch (err) {
+      await db
+        .update(inboxMessage)
+        .set({
+          mediaAttempts: sql`${inboxMessage.mediaAttempts} + 1`,
+          errorMessage: `media download: ${err instanceof Error ? err.message : String(err)}`,
+        })
+        .where(eq(inboxMessage.id, m.id));
+      log.warn({ err, messageId: m.id }, "inbox linked media download failed");
+    }
+  }
+  return done;
+}
+
+/** Remove stored files of messages the customer unsent (payload.purge_key, rule R9). Retried next tick on failure. */
+async function purgeUnsentMedia(db: DbClient, log: Log, store: RecordingStore): Promise<number> {
+  const rows = await db
+    .select({ id: inboxMessage.id, key: sql<string>`${inboxMessage.payload}->>'purge_key'` })
+    .from(inboxMessage)
+    .where(sql`${inboxMessage.payload} ? 'purge_key'`)
+    .limit(20);
+  let done = 0;
+  for (const r of rows) {
+    try {
+      if (r.key) await store.delete(r.key);
+      await db
+        .update(inboxMessage)
+        .set({ payload: sql`${inboxMessage.payload} - 'purge_key'` })
+        .where(eq(inboxMessage.id, r.id));
+      done++;
+    } catch (err) {
+      log.warn({ err, messageId: r.id }, "inbox media purge failed; will retry");
     }
   }
   return done;

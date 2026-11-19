@@ -19,6 +19,11 @@ export interface ChannelRow {
   hours_profile_name: string | null;
   is_active: boolean;
   open_conversations: number;
+  /** Spec 02: when Meta was last told to send this Page's messages to us (absent on older servers). */
+  webhook_subscribed_at?: string | null;
+  /** Spec 02: why messages on this channel are not coming in or going out, in plain words. */
+  problem_text?: string | null;
+  problem_at?: string | null;
 }
 
 export interface NamedOption {

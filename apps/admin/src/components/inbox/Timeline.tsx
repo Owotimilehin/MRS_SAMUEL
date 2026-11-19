@@ -136,6 +136,8 @@ export function Timeline({
 }
 
 function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
+  // Messenger and Instagram rows have their own rendering (spec 02, 7.4); WhatsApp is unchanged.
+  if (m.channel === "messenger" || m.channel === "instagram") return <MetaMessageBubble m={m} />;
   const problem = sendProblem(m);
   const ticks =
     problem === "unconfirmed" ? { marks: "?", read: false, label: "Not confirmed" } : messageTicks(m.status);
@@ -158,6 +160,76 @@ function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
       {problem === "unconfirmed" && <div className="ibx-msg__warn">{UNCONFIRMED_TEXT}</div>}
       <div className="ibx-msg__meta">
         <span>{timeOfDay(m.created_at)}</span>
+        {m.direction === "out" && ticks.marks && (
+          <span className={ticks.read ? "ibx-msg__ticks--read" : undefined} title={ticks.label} aria-label={ticks.label}>
+            {ticks.marks}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** A Messenger or Instagram message (spec 02, table 7.4). */
+function MetaMessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
+  // Where the customer came from: a quiet centred line, not a bubble.
+  if (m.type === "referral") return <div className="ibx-system-line">{m.body}</div>;
+  const channel = m.channel === "instagram" ? "instagram" : "messenger";
+  const problem = sendProblem(m);
+  const ticks =
+    problem === "unconfirmed" ? { marks: "?", read: false, label: "Not confirmed" } : messageTicks(m.status, channel);
+  const showMedia = !m.deleted && (m.has_media || m.media_pending);
+  return (
+    <div className={`ibx-msg ibx-msg--${m.direction}${problem ? ` ibx-msg--${problem}` : ""}`}>
+      {m.direction === "out" && m.external_sender && <div className="ibx-msg__sub">Sent from the Facebook or Instagram app</div>}
+      {m.direction === "out" && !m.external_sender && m.sender_name && (
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{staffLabel(m.sender_name)}</div>
+      )}
+      {m.story_reply && !m.deleted && <div className="ibx-msg__sub">Replied to your story</div>}
+      {m.deleted ? (
+        <div className="ibx-msg__deleted">The customer deleted this message.</div>
+      ) : m.type === "story_mention" ? (
+        <div>
+          Mentioned you in their story.{" "}
+          {m.link ? (
+            <a href={m.link} target="_blank" rel="noreferrer">
+              View story
+            </a>
+          ) : (
+            <span className="ibx-msg__deleted" style={{ fontStyle: "normal" }}>
+              The story is no longer available.
+            </span>
+          )}
+          <div className="ibx-msg__caption">Stories disappear after 24 hours.</div>
+        </div>
+      ) : (
+        <>
+          {showMedia && <MessageMedia m={m} />}
+          {m.type === "interactive" && m.body && !m.tap_caption ? (
+            <div>
+              <span className="ibx-msg__deleted" style={{ fontStyle: "normal" }}>Tapped: </span>
+              {m.body}
+            </div>
+          ) : (
+            m.body && <div>{m.body}</div>
+          )}
+          {m.type === "share" && m.link && (
+            <a href={m.link} target="_blank" rel="noreferrer">
+              Open
+            </a>
+          )}
+          {m.tap_caption && <div className="ibx-msg__caption">{m.tap_caption}</div>}
+          {!m.body && !m.has_media && !m.media_pending && m.type !== "share" && (
+            <div style={{ color: "var(--ink-soft)", fontStyle: "italic" }}>{m.type === "reaction" ? "Reacted to a message" : "Message"}</div>
+          )}
+        </>
+      )}
+      {m.advert && <span className="ibx-msg__advert">From an advert: {m.advert}</span>}
+      {problem === "failed" && <div className="ibx-msg__error">Not sent{m.error_message ? `: ${m.error_message}` : ""}</div>}
+      {problem === "unconfirmed" && <div className="ibx-msg__warn">{UNCONFIRMED_TEXT}</div>}
+      <div className="ibx-msg__meta">
+        <span>{timeOfDay(m.created_at)}</span>
+        {m.edited && !m.deleted && <span>Edited</span>}
         {m.direction === "out" && ticks.marks && (
           <span className={ticks.read ? "ibx-msg__ticks--read" : undefined} title={ticks.label} aria-label={ticks.label}>
             {ticks.marks}

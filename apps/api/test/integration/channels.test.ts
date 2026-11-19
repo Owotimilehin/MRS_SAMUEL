@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { auditLog, inboxHoursProfile, inboxPhoneNumber, inboxTeam } from "@ms/db";
-import { clearPageTokenCache } from "@ms/domain";
+import { clearPageTokenCache, PAGE_WEBHOOK_FIELDS } from "@ms/domain";
 import { setupTestDb, seedOwner, seedUser, loginAs } from "./helpers.js";
 
 /**
@@ -59,6 +59,11 @@ function installGraphStub(): void {
     }
     const page = pages.get(node);
     if (!page) return json({ error: { message: "Unsupported get request", code: 100 } }, 400);
+    // Spec 02: connect and "Check connection" also subscribe the Page to our app's webhooks.
+    if (url.pathname.endsWith("/subscribed_apps")) {
+      if ((init?.method ?? "GET") === "POST") return json({ success: true });
+      return json({ data: [{ id: "itest-app", subscribed_fields: [...PAGE_WEBHOOK_FIELDS] }] });
+    }
     if (fields === "access_token") {
       if (tokenRefused.has(node)) return json({ error: { message: "Permissions error", code: 200 } }, 403);
       return json({ id: page.id, access_token: PAGE_TOKEN });

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  replyState,
+  textUsage,
+  WHATSAPP_ACCEPT,
   contactName,
   eraseConfirmMatches,
   eraseConfirmTarget,
@@ -545,5 +548,78 @@ describe("customer identities (suite spec 01)", () => {
     expect(identityLine({ ...base, channel: "instagram", account_label: "Instagram" })).toBe("Instagram user · Instagram");
     expect(firstIdentityHandle([{ ...base, channel: "whatsapp" }, { ...base, channel: "instagram", username: "ada" }])).toBe("@ada");
     expect(firstIdentityHandle([])).toBeNull();
+  });
+});
+
+describe("replyState (suite spec 02, table 7.3)", () => {
+  const H = 3_600_000;
+  const fb = { label: "Facebook Page", channels: "whatsapp" as const, kind: "messenger" as const, is_active: true, problem_text: null };
+  const ig = { ...fb, label: "Instagram", kind: "instagram" as const };
+  const phone = { label: "Main line", channels: "both" as const, kind: "phone" as const };
+
+  it("any channel, window open: the existing window line", () => {
+    for (const [channel, number] of [["whatsapp", phone], ["messenger", fb], ["instagram", ig]] as const) {
+      const s = replyState({ channel, number, window_remaining_ms: 5 * H + 30 * 60_000 });
+      expect(s.mode).toBe("open");
+      expect(s.statusText).toBe("Reply window open — 5h 30m left");
+    }
+  });
+  it("Messenger / Instagram: no template button, no caption, channel's own files", () => {
+    const s = replyState({ channel: "instagram", number: ig, window_remaining_ms: H });
+    expect(s).toMatchObject({ canTemplate: false, canCaption: false, tabLabel: "Instagram reply" });
+    expect(s.accept).toBe("image/jpeg,image/png,audio/aac,audio/mp4,audio/wav,audio/x-wav,video/mp4,video/quicktime,video/webm,application/pdf");
+    expect(replyState({ channel: "messenger", number: fb, window_remaining_ms: H }).accept).toContain("image/gif");
+  });
+  it("text limit: Instagram counts bytes, Messenger 1999 characters", () => {
+    expect(replyState({ channel: "instagram", number: ig, window_remaining_ms: H }).textLimit).toEqual({ max: 1000, unit: "bytes" });
+    expect(replyState({ channel: "messenger", number: fb, window_remaining_ms: H }).textLimit).toEqual({ max: 1999, unit: "characters" });
+    expect(textUsage("é".repeat(500), { max: 1000, unit: "bytes" })).toEqual({ used: 1000, over: false });
+    expect(textUsage("é".repeat(501), { max: 1000, unit: "bytes" })).toEqual({ used: 1002, over: true });
+  });
+  it("Messenger / Instagram, window closed, Human Agent off", () => {
+    const s = replyState({ channel: "messenger", number: fb, window_remaining_ms: 0, human_agent_remaining_ms: 0, human_agent_enabled: false });
+    expect(s).toMatchObject({ mode: "closed", statusText: "Reply window closed", closedWindow: "24 hours" });
+  });
+  it("Messenger / Instagram, 24 h to 7 days, Human Agent on", () => {
+    const s = replyState({ channel: "instagram", number: ig, window_remaining_ms: 0, human_agent_remaining_ms: 2.5 * 24 * H, human_agent_enabled: true });
+    expect(s.mode).toBe("human_agent");
+    expect(s.statusText).toBe("More than 24 hours since they wrote. You can still reply for 3 more days, by hand only.");
+    const last = replyState({ channel: "instagram", number: ig, window_remaining_ms: 0, human_agent_remaining_ms: H, human_agent_enabled: true });
+    expect(last.statusText).toContain("for 1 more day,");
+  });
+  it("Human Agent on, over 7 days: closed, saying 7 days", () => {
+    const s = replyState({ channel: "messenger", number: fb, window_remaining_ms: 0, human_agent_remaining_ms: 0, human_agent_enabled: true });
+    expect(s).toMatchObject({ mode: "closed", closedWindow: "7 days" });
+  });
+  it("line switched off", () => {
+    const s = replyState({ channel: "messenger", number: { ...fb, is_active: false }, window_remaining_ms: H });
+    expect(s).toMatchObject({ mode: "off", statusText: "Facebook Page is switched off, so replies can't be sent. Switch it on under Channels." });
+  });
+  it("line has a problem: a banner, the box stays usable", () => {
+    const s = replyState({ channel: "instagram", number: { ...ig, problem_text: "Message access is switched off in the Instagram app." }, window_remaining_ms: H });
+    expect(s.mode).toBe("open");
+    expect(s.banner).toBe("Messages on Instagram are not going out: Message access is switched off in the Instagram app.");
+  });
+  it("WhatsApp: exactly as today", () => {
+    expect(replyState({ number: phone, window_remaining_ms: H })).toMatchObject({
+      channel: "whatsapp",
+      mode: "open",
+      canTemplate: true,
+      canCaption: true,
+      accept: WHATSAPP_ACCEPT,
+      tabLabel: "WhatsApp reply",
+      banner: null,
+    });
+    expect(replyState({ channel: "whatsapp", number: phone, window_remaining_ms: 0 })).toMatchObject({
+      mode: "closed",
+      statusText: "The 24-hour reply window is closed. Send a template to restart the chat.",
+    });
+    expect(replyState({ channel: "whatsapp", number: { ...phone, channels: "voice" }, window_remaining_ms: H }).mode).toBe("calls_only");
+  });
+  it("Instagram ticks have no delivered state", () => {
+    expect(messageTicks("delivered", "instagram")).toEqual({ marks: "✓", read: false, label: "Sent" });
+    expect(messageTicks("read", "instagram")).toEqual({ marks: "✓✓", read: true, label: "Read" });
+    expect(messageTicks("delivered", "messenger").marks).toBe("✓✓");
+    expect(messageTicks("delivered").label).toBe("Delivered");
   });
 });

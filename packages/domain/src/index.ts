@@ -6,3 +6,4 @@ export * from "./shipbubble.js";
 export * from "./variance-loss.js";
 export * from "./inbox/index.js";
 export * from "./meta/accounts.js";
+export * from "./meta/messaging.js";
