@@ -113,7 +113,7 @@ describe("refreshPendingTemplates", () => {
 
   it("skips a template Meta refuses to read and carries on", async () => {
     for (let i = 0; i < 3; i++) await seed(i);
-    answer = (id) => (id === "P0" ? new Response(JSON.stringify({ error: { message: "Unsupported get request", code: 100 } }), { status: 400 }) : ok(id, "APPROVED"));
+    answer = (id) => (id === "P0" ? new Response(JSON.stringify({ error: { message: "Object does not exist", code: 803 } }), { status: 400 }) : ok(id, "APPROVED"));
     expect(await refreshPendingTemplates(db, log, { now: NOW })).toBe(2);
     expect(asked).toEqual(["P0", "P1", "P2"]);
     expect(await statusOf(0)).toBe("PENDING");
