@@ -547,6 +547,22 @@ describe("suite spec 04 — /v1/channels/:accountId/chat-setup", () => {
     expect((await rows(fb)).find((r) => r.version === 2)!.status).toBe("draft");
   });
 
+  it("M6: every try of the same version counts towards the 10-minute limit, so a third \"Try again\" is refused", async () => {
+    await saveDraft(fb, FULL);
+    injected.push({ method: "POST", action: "refuse", code: 100, message: "Invalid parameter" });
+    expect((await publish(fb, 1)).status).toBe(502);
+    injected.push({ method: "POST", action: "refuse", code: 100, message: "Invalid parameter" });
+    expect((await publish(fb, 1)).status).toBe(502);
+    expect((await rows(fb))[0]!.status).toBe("failed");
+
+    calls = [];
+    const third = await publish(fb, 1);
+    expect(third.status).toBe(429);
+    expect(third.json.error.message).toMatch(/^Meta allows only a few set-up changes every 10 minutes\./);
+    expect(calls).toHaveLength(0);
+    expect((await call(owner, "GET", url(fb))).json.data.can_publish_at).not.toBeNull();
+  });
+
   it("publish without confirm:true → 400 and nothing reaches Meta", async () => {
     await saveDraft(fb, FULL);
     calls = [];
