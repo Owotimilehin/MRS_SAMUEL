@@ -33,6 +33,10 @@ export class MetaApiError extends Error {
      * dropped connection), so the message may have been delivered.
      */
     public readonly delivery: "not_sent" | "unknown" = "not_sent",
+    /** Meta's error_subcode, when it sent one (foundation C2 classifies by code and subcode). */
+    public readonly subcode: string | null = null,
+    /** Extra structured detail for support (never a token). */
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "MetaApiError";
@@ -61,12 +65,27 @@ export function verifyMetaSignature(rawBody: string, header: string | null | und
 // Meta error codes that are worth a retry (throttling / temporary).
 const RETRYABLE_CODES = new Set(["4", "17", "32", "613", "80007", "130429", "131048", "131056", "1", "2"]);
 
-async function graph<T>(
+export interface GraphOptions {
+  /** Bearer token for this call instead of cfg.token (a Page access token). */
+  token?: string;
+  /** Called with the raw response before the body is read (rate-limit headers and the like). */
+  onResponse?: (res: Response) => void;
+  /** Who we are talking to, for the network-failure wording: "Could not reach {service}". Default "Meta". */
+  service?: string;
+}
+
+/**
+ * One Graph API call. Throws MetaApiError with Meta's code and subcode on a
+ * refusal, and a delivery-"unknown" error when no answer came back.
+ */
+export async function graph<T>(
   cfg: MetaConfig,
   method: "GET" | "POST" | "DELETE",
   path: string,
   body?: unknown,
+  opts: GraphOptions = {},
 ): Promise<T> {
+  const service = opts.service ?? "Meta";
   const base = cfg.baseUrl ?? "https://graph.facebook.com";
   const url = path.startsWith("http") ? path : `${base}/${cfg.graphVersion}/${path.replace(/^\//, "")}`;
   let res: Response;
@@ -75,12 +94,13 @@ async function graph<T>(
     res = await fetch(url, {
       method,
       headers: {
-        authorization: `Bearer ${cfg.token}`,
+        authorization: `Bearer ${opts.token ?? cfg.token}`,
         ...(body ? { "content-type": "application/json" } : {}),
       },
       body: body ? JSON.stringify(body) : null,
       signal: AbortSignal.timeout(15_000),
     });
+    opts.onResponse?.(res);
     text = await res.text();
   } catch (err) {
     // Never connected → certainly not sent. Anything else (timeout, reset
@@ -88,7 +108,7 @@ async function graph<T>(
     const code = String((err as { cause?: { code?: string } }).cause?.code ?? "");
     const neverConnected = ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH"].includes(code);
     throw new MetaApiError(
-      neverConnected ? "Could not reach WhatsApp" : "No answer from WhatsApp",
+      neverConnected ? `Could not reach ${service}` : `No answer from ${service}`,
       0,
       code || null,
       true,
@@ -102,16 +122,31 @@ async function graph<T>(
     json = null;
   }
   if (!res.ok) {
-    const err = (json as { error?: { message?: string; code?: number; error_data?: { details?: string } } } | null)?.error;
+    const err = (
+      json as {
+        error?: { message?: string; code?: number; error_subcode?: number; error_data?: { details?: string } };
+      } | null
+    )?.error;
     const code = err?.code != null ? String(err.code) : null;
+    const subcode = err?.error_subcode != null ? String(err.error_subcode) : null;
     const detail = err?.error_data?.details;
     const msg = [err?.message ?? `Meta API ${res.status}`, detail].filter(Boolean).join(": ");
     const retryable = res.status >= 500 || res.status === 429 || (code !== null && RETRYABLE_CODES.has(code));
     // A structured error means Meta refused it; a bare 5xx leaves it unknown.
-    throw new MetaApiError(msg, res.status, code, retryable, err || res.status < 500 ? "not_sent" : "unknown");
+    throw new MetaApiError(
+      msg,
+      res.status,
+      code,
+      retryable,
+      err || res.status < 500 ? "not_sent" : "unknown",
+      subcode,
+    );
   }
   return json as T;
 }
+
+/** WhatsApp calls keep their "Could not reach WhatsApp" wording. */
+const WA: GraphOptions = { service: "WhatsApp" };
 
 // ── Sending ──────────────────────────────────────────────────────────────────
 
@@ -126,8 +161,18 @@ export type OutboundContent =
       bodyParams?: string[];
     };
 
-export function buildSendPayload(to: string, content: OutboundContent): Record<string, unknown> {
-  const base = { messaging_product: "whatsapp", recipient_type: "individual", to };
+/**
+ * Who a WhatsApp message goes to: a phone number (wa_id digits) or, for a
+ * customer who has hidden their number, a business-scoped user ID (sent as
+ * `recipient` instead of `to`; spec 01, M14).
+ */
+export type WaRecipient = string | { bsuid: string };
+
+export function buildSendPayload(to: WaRecipient, content: OutboundContent): Record<string, unknown> {
+  const base =
+    typeof to === "string"
+      ? { messaging_product: "whatsapp", recipient_type: "individual", to }
+      : { messaging_product: "whatsapp", recipient_type: "individual", recipient: to.bsuid };
   switch (content.type) {
     case "text":
       return { ...base, type: "text", text: { body: content.body, preview_url: true } };
@@ -154,7 +199,7 @@ export function buildSendPayload(to: string, content: OutboundContent): Record<s
 export async function sendMessage(
   cfg: MetaConfig,
   phoneNumberId: string,
-  to: string,
+  to: WaRecipient,
   content: OutboundContent,
 ): Promise<string> {
   const res = await graph<{ messages?: { id: string }[] }>(
@@ -162,6 +207,7 @@ export async function sendMessage(
     "POST",
     `${phoneNumberId}/messages`,
     buildSendPayload(to, content),
+    WA,
   );
   const id = res.messages?.[0]?.id;
   if (!id) throw new MetaApiError("Meta returned no message id", 502, null, true);
@@ -170,11 +216,13 @@ export async function sendMessage(
 
 /** Blue ticks for an incoming message. */
 export async function markRead(cfg: MetaConfig, phoneNumberId: string, waMessageId: string): Promise<void> {
-  await graph(cfg, "POST", `${phoneNumberId}/messages`, {
-    messaging_product: "whatsapp",
-    status: "read",
-    message_id: waMessageId,
-  });
+  await graph(
+    cfg,
+    "POST",
+    `${phoneNumberId}/messages`,
+    { messaging_product: "whatsapp", status: "read", message_id: waMessageId },
+    WA,
+  );
 }
 
 // ── Media ────────────────────────────────────────────────────────────────────
@@ -184,7 +232,7 @@ export async function downloadMedia(
   cfg: MetaConfig,
   mediaId: string,
 ): Promise<{ bytes: Uint8Array; mimeType: string }> {
-  const meta = await graph<{ url: string; mime_type: string }>(cfg, "GET", mediaId);
+  const meta = await graph<{ url: string; mime_type: string }>(cfg, "GET", mediaId, undefined, WA);
   const res = await fetch(meta.url, {
     headers: { authorization: `Bearer ${cfg.token}` },
     signal: AbortSignal.timeout(60_000),
@@ -207,7 +255,7 @@ export async function listTemplates(cfg: MetaConfig, wabaId: string): Promise<Me
   const out: MetaTemplate[] = [];
   let next: string | null = `${wabaId}/message_templates?limit=100&fields=name,language,status,category,components`;
   for (let page = 0; next && page < 50; page++) {
-    const res: { data?: MetaTemplate[]; paging?: { next?: string } } = await graph(cfg, "GET", next);
+    const res: { data?: MetaTemplate[]; paging?: { next?: string } } = await graph(cfg, "GET", next, undefined, WA);
     out.push(...(res.data ?? []));
     next = res.paging?.next ?? null;
   }
@@ -216,7 +264,7 @@ export async function listTemplates(cfg: MetaConfig, wabaId: string): Promise<Me
 
 /** Register a number for Cloud API (6-digit two-step PIN). Meta allows 10 tries / 72h. */
 export async function registerNumber(cfg: MetaConfig, phoneNumberId: string, pin: string): Promise<void> {
-  await graph(cfg, "POST", `${phoneNumberId}/register`, { messaging_product: "whatsapp", pin });
+  await graph(cfg, "POST", `${phoneNumberId}/register`, { messaging_product: "whatsapp", pin }, WA);
 }
 
 export async function getNumberInfo(
@@ -227,6 +275,8 @@ export async function getNumberInfo(
     cfg,
     "GET",
     `${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,status,messaging_limit_tier`,
+    undefined,
+    WA,
   );
 }
 
