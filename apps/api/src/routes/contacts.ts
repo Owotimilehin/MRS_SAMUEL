@@ -1006,14 +1006,29 @@ export function contactRoutes(db: DbClient) {
       throw err;
     }
     const [now] = await db.select().from(customer).where(eq(customer.id, result.customerId));
-    await audit(c, "contacts.create", "customer", result.customerId, {
-      created: result.created,
-      matched_by: result.matchedBy,
-      consent_recorded: result.consentRecorded,
-      ...(result.created
-        ? { name: now?.name, phone: now?.phone, email: now?.email, address: now?.defaultAddress, source: now?.source, source_label: body.source_label ?? null }
-        : {}),
-    });
+    // An existing person is returned untouched, so there is nothing to audit for them
+    // unless their consent was recorded.
+    if (result.created) {
+      await audit(c, "contacts.create", "customer", result.customerId, {
+        created: true,
+        consent_recorded: result.consentRecorded,
+        name: now?.name,
+        phone: now?.phone,
+        email: now?.email,
+        address: now?.defaultAddress,
+        source: now?.source,
+        source_label: body.source_label ?? null,
+      });
+    } else if (result.consentRecorded) {
+      await audit(
+        c,
+        "contacts.consent",
+        "customer",
+        result.customerId,
+        { channel: "whatsapp", purpose: "marketing", state: "granted", from: "add_contact" },
+        { state: "not_asked" },
+      );
+    }
     const data = {
       id: result.customerId,
       created: result.created,

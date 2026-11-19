@@ -503,6 +503,8 @@ describe("contacts routes", () => {
     expect(await data<Record<string, unknown>>(again)).toMatchObject({ id: made.id, created: false, matched_by: "phone", name: "Hand Added" });
     const [after] = await db.select().from(customer).where(eq(customer.id, made.id));
     expect(after).toEqual(row);
+    // Nothing changed, so nothing new is written to the audit log for them.
+    expect(await auditRows("contacts.create", made.id)).toHaveLength(1);
 
     // A yes typed into this form never lifts a stop.
     await db.transaction((tx) => recordConsent(tx, made.id, { channel: "whatsapp", purpose: "marketing", state: "withdrawn", method: "keyword" }));
