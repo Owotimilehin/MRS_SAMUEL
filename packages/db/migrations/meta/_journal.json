@@ -498,6 +498,13 @@
       "when": 1786200000000,
       "tag": "0071_channel_accounts_identities",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1786300000000,
+      "tag": "0072_meta_messaging",
+      "breakpoints": true
     }
   ]
 }
