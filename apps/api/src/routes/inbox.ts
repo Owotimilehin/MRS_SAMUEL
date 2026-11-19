@@ -56,6 +56,8 @@ import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 import { INBOX_UPLOAD_TYPES, deleteInboxObjects, presignInboxGet, presignInboxPut } from "../lib/r2.js";
 import { toCsv } from "../lib/csv.js";
+// Advert taps follow a contact's erase and merge (suite spec 12, ruling 9.2.8). Kept as its own import line.
+import { eraseAdTouchesForCustomer, moveAdTouchesToConversation, moveAdTouchesToCustomer } from "@ms/domain";
 import { reloadViewer, subscribe } from "../inbox/realtime.js";
 import { logger } from "../logger.js";
 import { alertOnce } from "../lib/inbox-alerts.js";
@@ -1027,6 +1029,8 @@ export function inboxRoutes(db: DbClient) {
         for (const conv of convs) await publishInboxEvent(tx, signalFor("conversation.updated", conv));
         await tx.delete(inboxConversation).where(inArray(inboxConversation.id, convIds));
       }
+      // Advert taps and their click IDs (suite spec 12, ruling 9.2.8); those on a deleted thread went by cascade.
+      await eraseAdTouchesForCustomer(tx, id);
       const gone = await tx.delete(inboxIdentity).where(eq(inboxIdentity.customerId, id)).returning({ id: inboxIdentity.id });
       // Raw webhook copies of their messages and calls: by phone digits and by every identity ID.
       const needles = new Set<string>();
@@ -1098,6 +1102,8 @@ export function inboxRoutes(db: DbClient) {
             .update(catalogueChatOrder)
             .set({ conversationId: clash.id, customerId: intoId })
             .where(eq(catalogueChatOrder.conversationId, conv.id));
+          // Advert taps move with the thread too (suite spec 12, ruling 9.2.8).
+          await moveAdTouchesToConversation(tx, conv.id, clash.id, intoId);
           await tx
             .update(inboxConversation)
             .set({
@@ -1120,6 +1126,8 @@ export function inboxRoutes(db: DbClient) {
           await publishInboxEvent(tx, signalFor("conversation.updated", updated!));
         }
       }
+      // Advert taps follow the kept contact, so an order they place is still traced to the advert (suite spec 12).
+      await moveAdTouchesToCustomer(tx, fromId, intoId);
       // Their WhatsApp, Facebook and Instagram identities move too, so future
       // messages land on the kept contact (rule R7).
       const identities = await tx

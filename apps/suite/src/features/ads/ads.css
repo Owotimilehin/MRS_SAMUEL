@@ -1,0 +1,59 @@
+/* Ads (suite spec 12). Every class starts with ads-. */
+.ads-page { display: grid; gap: 14px; padding-bottom: 48px; min-width: 0; }
+.ads-page .card { min-width: 0; max-width: 100%; }
+.ads-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.ads-bar .field { min-width: 0; }
+.ads-bar__right { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ads-fine { font-size: 12px; color: var(--ink-soft); margin: 0; }
+.ads-h { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
+.ads-card { display: grid; gap: 10px; }
+.ads-strip { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); font-size: 14px; }
+.ads-strip--warn { background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.4); color: #92400e; }
+.ads-strip--bad { background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.35); color: var(--danger-ink, #b91c1c); }
+.ads-note { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: rgba(31, 122, 68, 0.05); font-size: 13px; }
+.ads-note h3 { margin: 0 0 4px; font-size: 14px; }
+.ads-note p { margin: 0; }
+.ads-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.ads-tag { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 700; background: rgba(20, 24, 31, 0.07); color: var(--ink-soft); white-space: nowrap; }
+.ads-tag--good { background: rgba(31, 158, 116, 0.14); color: var(--success-ink, #116149); }
+.ads-tag--warn { background: rgba(245, 158, 11, 0.16); color: #92400e; }
+.ads-tag--bad { background: rgba(220, 38, 38, 0.12); color: var(--danger-ink, #b91c1c); }
+.ads-tag--suite { background: rgba(31, 122, 68, 0.12); color: var(--accent); }
+.ads-name { font-weight: 700; overflow-wrap: anywhere; }
+.ads-sub { font-size: 12px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.ads-link { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; color: inherit; }
+.ads-row { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--line); }
+.ads-row:first-of-type { border-top: 0; }
+.ads-row__text { display: grid; gap: 3px; min-width: 0; flex: 1 1 260px; }
+.ads-row__label { font-weight: 700; }
+.ads-switch { display: flex; align-items: center; gap: 10px; }
+.ads-switch input { width: 22px; height: 22px; flex: none; }
+.ads-switch input:disabled { opacity: 0.5; }
+.ads-check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
+.ads-check input { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.ads-form { display: grid; gap: 14px; }
+.ads-form .field { display: grid; gap: 4px; min-width: 0; }
+.ads-form textarea.input { min-height: 84px; resize: vertical; }
+.ads-count { font-size: 12px; color: var(--ink-soft); text-align: right; }
+.ads-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ads-split { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.ads-preview { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; max-width: 340px; }
+.ads-preview__pic { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: rgba(20, 24, 31, 0.06); display: block; }
+.ads-preview__body { padding: 10px 12px; display: grid; gap: 6px; }
+.ads-preview__cta { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-weight: 700; font-size: 13px; text-align: center; }
+.ads-summary { margin: 0; padding-left: 18px; display: grid; gap: 8px; font-size: 14px; }
+.ads-confirm-input { min-height: 44px; font-size: 18px; font-weight: 700; letter-spacing: 0.02em; width: 100%; }
+.ads-log { display: grid; gap: 0; }
+.ads-log__row { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid var(--line); }
+.ads-log__row:first-child { border-top: 0; }
+.ads-log__meta { font-size: 12px; color: var(--ink-soft); }
+.ads-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ads-chartcap { color: var(--ink-soft); font-size: 12px; margin: 0 0 8px; }
+@media (max-width: 760px) {
+  .ads-split, .ads-two { grid-template-columns: minmax(0, 1fr); }
+  .ads-bar__right { margin-left: 0; width: 100%; }
+}
+@media (max-width: 480px) {
+  .ads-row { flex-direction: column; }
+  .ads-bar .btn, .ads-actions .btn { flex: 1 1 auto; }
+}

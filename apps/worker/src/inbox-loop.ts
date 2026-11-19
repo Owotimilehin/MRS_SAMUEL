@@ -15,6 +15,7 @@ import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
 import { runCatalogueBatchCheck, runCatalogueReconcile, runCatalogueSync, runChatOrderJobs } from "./jobs/catalogue.js";
+import { runAdAttribution, runAdGuard, runAdPurchaseReports, runAdSyncIfDue, runAdTouchScan } from "./jobs/ads.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -63,6 +64,13 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "catalogue_reconcile", everyMs: 30 * 60_000, last: 0, run: () => runCatalogueReconcile(db, logger) },
     // Automatic cart questions and order updates: each behind an owner switch, off by default.
     { name: "catalogue_chat_orders", everyMs: 10_000, last: 0, run: () => runChatOrderJobs(db, logger) },
+    // Ads (suite spec 12). Reading only, except: purchase reports (owner switch, off by default) and
+    // ads_guard, which can only PAUSE an advert (the safety stop, and rules behind their owner switch).
+    { name: "ads_touch_scan", everyMs: 60_000, last: 0, run: () => runAdTouchScan(db, logger) },
+    { name: "ads_attribute", everyMs: 5 * 60_000, last: 0, run: () => runAdAttribution(db, logger) },
+    { name: "ads_report_purchases", everyMs: 60_000, last: 0, run: () => runAdPurchaseReports(db, logger) },
+    { name: "ads_sync", everyMs: 15 * 60_000, last: 0, run: () => runAdSyncIfDue(db, logger) },
+    { name: "ads_guard", everyMs: 15 * 60_000, last: 0, run: () => runAdGuard(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {

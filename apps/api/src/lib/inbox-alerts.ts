@@ -18,7 +18,11 @@ export async function alertOnce(
     | "inbox.meta_policy"
     | "channels.page_config"
     // Raised by the catalogue sync in the worker (raiseCatalogueAlert in @ms/domain) with the same once-a-day rule.
-    | "catalogue.sync_blocked",
+    | "catalogue.sync_blocked"
+    // Raised by the ads sync, purchase reports, rules and the safety stop (raiseAdsAlert in @ms/domain), each with a case in outbox.ts.
+    | "ads.config_error"
+    | "ads.rule_fired"
+    | "ads.safety_stop",
   payload: Record<string, unknown> & { account: string },
 ): Promise<boolean> {
   const [recent] = await db

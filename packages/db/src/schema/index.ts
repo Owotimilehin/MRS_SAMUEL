@@ -43,3 +43,4 @@ export * from "./app-setting.js";
 export * from "./inbox.js";
 export * from "./channel.js";
 export * from "./catalogue.js";
+export * from "./ads.js";

@@ -45,6 +45,10 @@ const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
 );
 
 const CataloguePage = lazyNamed(() => import("./features/catalogue/CataloguePage.js"), "CataloguePage");
+// Ads (suite spec 12).
+const AdsPage = lazyNamed(() => import("./features/ads/AdsPage.js"), "AdsPage");
+const AdvertPage = lazyNamed<{ adId: string }>(() => import("./features/ads/AdvertPage.js"), "AdvertPage");
+const AdvertForm = lazyNamed<{ draftId?: string }>(() => import("./features/ads/AdvertForm.js"), "AdvertForm");
 
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
@@ -183,6 +187,34 @@ const catalogueRoute = createRoute({
   component: () => page(<CataloguePage />, "catalogue.manage"),
 });
 
+// Ads (suite spec 12). Reading needs ads.view; the form also checks ads.manage and the owner's switch itself.
+const adsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/ads",
+  component: () => page(<AdsPage />, "ads.view"),
+});
+const adsNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/ads/new",
+  component: () => page(<AdvertForm />, "ads.manage"),
+});
+const adsDraftRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/ads/drafts/$draftId",
+  component: () => {
+    const params = useParams({ from: "/ads/drafts/$draftId" });
+    return page(<AdvertForm draftId={params.draftId} />, "ads.manage");
+  },
+});
+const adsAdvertRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/ads/adverts/$adId",
+  component: () => {
+    const params = useParams({ from: "/ads/adverts/$adId" });
+    return page(<AdvertPage adId={params.adId} />, "ads.view");
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -195,6 +227,10 @@ const routeTree = rootRoute.addChildren([
   pageDetailsRoute,
   whatsAppProfileRoute,
   catalogueRoute,
+  adsRoute,
+  adsNewRoute,
+  adsDraftRoute,
+  adsAdvertRoute,
 ]);
 
 export const router = createRouter({

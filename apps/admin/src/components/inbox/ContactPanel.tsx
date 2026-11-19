@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Facebook, Instagram, MessageCircle } from "lucide-react";
 import { ConfirmModal } from "../ConfirmModal.js";
 import { ChatOrders } from "./ChatOrderCard.js";
+import { AdSourceLine } from "./AdSourceLine.js";
 import { CustomerLink } from "../../lib/app-frame.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import {
@@ -103,6 +104,8 @@ export function ContactPanel({
           </div>
         )}
       </div>
+      {/* "Came from an advert" (suite spec 12). Shows nothing when it did not, and on any error. */}
+      <AdSourceLine conversationId={currentConversationId} />
       {identities.length > 0 && <ReachesYouOn identities={identities} />}
       {editable ? (
         <div style={{ display: "grid", gap: 8 }}>
