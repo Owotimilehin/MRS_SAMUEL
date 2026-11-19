@@ -21,6 +21,7 @@ import {
   inboxWebhookEvent,
   waFlow,
   waFlowResponse,
+  socialComment,
   type DbClient,
   type FlowResponseAction,
 } from "@ms/db";
@@ -1224,6 +1225,12 @@ export function inboxRoutes(db: DbClient) {
         msgs = await tx.delete(inboxMessage).where(inArray(inboxMessage.conversationId, convIds)).returning({ key: inboxMessage.mediaKey });
         await tx.delete(inboxNote).where(inArray(inboxNote.conversationId, convIds));
         for (const conv of convs) await publishInboxEvent(tx, signalFor("conversation.updated", conv));
+        // Comments are public and stay (suite spec 03, Q10); the private message sent about one is inbox
+        // history, so its text and its link to the chat go. Its "sent" mark stays: Meta allows only one.
+        await tx
+          .update(socialComment)
+          .set({ conversationId: null, privateReplyBody: null })
+          .where(inArray(socialComment.conversationId, convIds));
         await tx.delete(inboxConversation).where(inArray(inboxConversation.id, convIds));
       }
       const gone = await tx.delete(inboxIdentity).where(eq(inboxIdentity.customerId, id)).returning({ id: inboxIdentity.id });
@@ -1308,6 +1315,8 @@ export function inboxRoutes(db: DbClient) {
             })
             .where(eq(inboxConversation.id, clash.id));
           await publishInboxEvent(tx, signalFor("conversation.updated", conv));
+          // A private reply to a comment (suite spec 03) keeps pointing at the chat its message moved to.
+          await tx.update(socialComment).set({ conversationId: clash.id }).where(eq(socialComment.conversationId, conv.id));
           await tx.delete(inboxConversation).where(eq(inboxConversation.id, conv.id));
           await publishInboxEvent(tx, signalFor("conversation.updated", clash));
         } else {
@@ -1455,6 +1464,8 @@ async function buildTimelinePage(
         when ${inboxMessage.payload} #>> '{postback,referral,source}' = 'ADS' then ${inboxMessage.payload} #>> '{postback,referral,ads_context_data,ad_title}'
         else null end`,
       tap_payload: sql<string | null>`${inboxMessage.payload} #>> '{postback,payload}'`,
+      // A private reply to a comment (suite spec 03): {thread_id, comment_id, network, excerpt}. Null otherwise.
+      comment_ref: sql<Record<string, unknown> | null>`${inboxMessage.payload} -> 'comment_ref'`,
       media_mime: inboxMessage.mediaMime,
       media_filename: inboxMessage.mediaFilename,
       template_name: inboxMessage.templateName,

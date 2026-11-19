@@ -4,6 +4,7 @@ import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Download, FileText, Tr
 import { ConfirmModal } from "../ConfirmModal.js";
 import { FlowResponseCardView, FlowSentRow } from "./FlowCards.js";
 import { inboxApi } from "../../lib/inbox-api.js";
+import { useCommentHref } from "../../lib/app-frame.js";
 import { humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
 import {
@@ -193,6 +194,18 @@ function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
   );
 }
 
+/** Above a message that was sent as the private reply to a comment (suite spec 03): which comment. */
+function CommentRefLine({ commentRef }: { commentRef: NonNullable<TimelineMessage["comment_ref"]> }): JSX.Element {
+  const href = useCommentHref();
+  const excerpt = commentRef.excerpt?.trim();
+  const text = `Private reply to a comment${excerpt ? `: “${excerpt}”` : ""}`;
+  return (
+    <div className="ibx-msg__caption" style={{ marginTop: 0, marginBottom: 2 }}>
+      {href && commentRef.thread_id ? <a href={href(commentRef.thread_id)}>{text}</a> : text}
+    </div>
+  );
+}
+
 /** A Messenger or Instagram message (spec 02, table 7.4). */
 function MetaMessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
   // Where the customer came from: a quiet centred line, not a bubble.
@@ -204,6 +217,7 @@ function MetaMessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
   const showMedia = !m.deleted && (m.has_media || m.media_pending);
   return (
     <div className={`ibx-msg ibx-msg--${m.direction}${problem ? ` ibx-msg--${problem}` : ""}`}>
+      {m.comment_ref && <CommentRefLine commentRef={m.comment_ref} />}
       {m.direction === "out" && m.external_sender && <div className="ibx-msg__sub">Sent from the Facebook or Instagram app</div>}
       {m.direction === "out" && !m.external_sender && m.sender_name && (
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{staffLabel(m.sender_name)}</div>

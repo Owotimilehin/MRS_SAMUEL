@@ -571,6 +571,16 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `(code ${String(p["code"] ?? "unknown")}). Open Channels in the suite to check the connection.\n` +
           `👉 ${SUITE_URL}/channels`,
       };
+    case "social.comments_config":
+      // Comments (suite spec 03): Meta refused a read or an answer because of our token or permissions.
+      return {
+        chatIds: [owner],
+        text:
+          `Comments: the suite can no longer read or answer comments on ${String(p["label"] ?? "a channel")}. ` +
+          `Meta said: ${String(p["message"] ?? "no reason given")} (code ${String(p["code"] ?? "unknown")}). ` +
+          `Open Channels in the suite to check the connection.\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
     case "inbox.template_alert": {
       // WhatsApp template news (suite spec 06): refused, paused, switched off, re-filed, archived.
       const when = (iso: unknown): string | null => {

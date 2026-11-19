@@ -90,6 +90,10 @@ export const CAPABILITIES = [
   // Numbers, teams, hours, phone menu, quick replies, template sync.
   "inbox.settings",
   "inbox.reports",
+  // ── Suite: comments on Facebook and Instagram posts ──
+  // See and answer comments (suite spec 03). Which accounts a person sees follows
+  // the same per-line access as the inbox (inbox_user_number_access).
+  "social.comments",
   // Connect and configure channel accounts (Facebook Page, Instagram); later:
   // chat set-up, WhatsApp profile, Page details. Admins, not managers.
   "channels.manage",
@@ -142,6 +146,7 @@ const ADMIN_CAPS: Capability[] = [
   "transcripts.view",
   "inbox.settings",
   "inbox.reports",
+  "social.comments",
   "channels.manage",
   "templates.manage",
 ];
@@ -178,6 +183,7 @@ const MANAGER_CAPS: Capability[] = [
   "recordings.listen",
   "transcripts.view",
   "inbox.reports",
+  "social.comments",
 ];
 
 const BRANCH_STAFF_CAPS: Capability[] = [

@@ -44,6 +44,8 @@ const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
   "WhatsAppProfilePage",
 );
 
+const CommentsPage = lazyNamed<{ threadId?: string }>(() => import("./features/comments/CommentsPage.js"), "CommentsPage");
+
 const TemplatesPage = lazyNamed<{ tab?: "messages" | "forms" }>(() => import("./features/templates/TemplatesPage.js"), "TemplatesPage");
 const TemplateEditorPage = lazyNamed<{ templateId: string }>(() => import("./features/templates/TemplateEditorPage.js"), "TemplateEditorPage");
 
@@ -200,6 +202,22 @@ const templateEditorRoute = createRoute({
   },
 });
 
+// Comments on Facebook and Instagram posts (suite spec 03). Open to people with social.comments, with or without the Inbox.
+const commentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/comments",
+  component: () => page(<CommentsPage />, "social.comments"),
+});
+
+const commentThreadRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/comments/$threadId",
+  component: () => {
+    const params = useParams({ from: "/comments/$threadId" });
+    return page(<CommentsPage threadId={params.threadId} />, "social.comments");
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -214,6 +232,8 @@ const routeTree = rootRoute.addChildren([
   templatesRoute,
   templateFormsRoute,
   templateEditorRoute,
+  commentsRoute,
+  commentThreadRoute,
 ]);
 
 export const router = createRouter({

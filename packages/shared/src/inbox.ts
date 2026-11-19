@@ -344,5 +344,8 @@ export const INBOX_EVENTS = [
   "call.ringing",
   "call.updated",
   "recording.processed",
+  // Comments on Facebook and Instagram posts (suite spec 03): `id` is the thread's root comment.
+  "comment.created",
+  "comment.updated",
 ] as const;
 export type InboxEventName = (typeof INBOX_EVENTS)[number];
