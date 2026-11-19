@@ -196,7 +196,14 @@ export type OutboundContent =
       headerMedia?: { type: "image" | "video" | "document"; link: string; filename?: string };
       /** The blank at the end of a link button; `index` is the button's position from 0. */
       buttonParams?: { index: number; text: string }[];
-    };
+    }
+  /**
+   * A WhatsApp interactive message built elsewhere (suite spec 08: a product, a
+   * product list, the menu, reply buttons, a link button). `interactive` is sent
+   * to Meta as it is; `preview` is the plain text kept as the message body for
+   * the staff timeline. WhatsApp only, and only inside the 24-hour window.
+   */
+  | { type: "interactive"; interactive: Record<string, unknown>; preview: string };
 
 /**
  * The `components` array of a template message: only the parts that carry a
@@ -262,6 +269,8 @@ export function buildSendPayload(to: WaRecipient, content: OutboundContent): Rec
         },
       };
     }
+    case "interactive":
+      return { ...base, type: "interactive", interactive: content.interactive };
     default: {
       const media: Record<string, unknown> = { link: content.link };
       if (content.caption && content.type !== "audio") media.caption = content.caption;

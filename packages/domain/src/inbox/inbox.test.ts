@@ -59,6 +59,31 @@ describe("buildSendPayload", () => {
   });
 });
 
+describe("buildSendPayload interactive (suite spec 08)", () => {
+  it("buildSendPayload passes an interactive object through unchanged", () => {
+    const interactive = {
+      type: "product",
+      body: { text: "Try this one" },
+      action: { catalog_id: "123456", product_retailer_id: "v-1" },
+    };
+    const payload = buildSendPayload("2347000000000", { type: "interactive", interactive, preview: "Product: Zobo 330ml" });
+    expect(payload).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "2347000000000",
+      type: "interactive",
+      interactive,
+    });
+    // The preview is ours alone: it never goes to Meta.
+    expect(JSON.stringify(payload)).not.toContain("Product: Zobo");
+    expect(buildSendPayload({ bsuid: "US.1234567890" }, { type: "interactive", interactive, preview: "x" })).toMatchObject({
+      recipient: "US.1234567890",
+      type: "interactive",
+      interactive,
+    });
+  });
+});
+
 describe("buildSendPayload recipients", () => {
   it("buildSendPayload uses recipient for a BSUID and to for a phone", () => {
     const phone = buildSendPayload("2347000000000", { type: "text", body: "hi" });

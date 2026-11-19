@@ -232,7 +232,12 @@ export async function sendFromConversation(
         "More than 24 hours since the customer's last message — send a template instead",
       );
     }
-    body = input.content.type === "text" ? input.content.body : (input.content.caption ?? null);
+    body =
+      input.content.type === "text"
+        ? input.content.body
+        : input.content.type === "interactive"
+          ? input.content.preview
+          : (input.content.caption ?? null);
   }
 
   const type = input.content.type;
@@ -251,8 +256,16 @@ export async function sendFromConversation(
       channel: "whatsapp",
       senderUserId: input.userId,
       // Written with the row, before Meta is called: a crash mid-send leaves
-      // the marker behind, so an automatic message is never sent twice.
-      ...(input.auto ? { payload: { auto: input.auto } } : {}),
+      // the marker behind, so an automatic message is never sent twice. An
+      // interactive message keeps what was sent, so the timeline can draw it later.
+      ...(input.auto || content.type === "interactive"
+        ? {
+            payload: {
+              ...(input.auto ? { auto: input.auto } : {}),
+              ...(content.type === "interactive" ? { interactive: content.interactive } : {}),
+            },
+          }
+        : {}),
       createdAt: now,
     })
     .returning();
@@ -277,8 +290,9 @@ export async function sendFromConversation(
         errorMessage: bsuidRefused ? BSUID_NOT_SUPPORTED_TEXT : metaMessage,
         // unconfirmed: it may have been delivered — staff should check before
         // resending. retryable: certainly not sent and worth another try.
+        // Merged with what the queued row already holds (the automatic marker, an interactive object), never replacing it.
         payload: {
-          ...(input.auto ? { auto: input.auto } : {}),
+          ...((queued!.payload as Record<string, unknown> | null) ?? {}),
           unconfirmed: e?.delivery === "unknown",
           retryable: e !== null && e.delivery === "not_sent" && e.retryable,
           ...(bsuidRefused ? { meta_message: metaMessage } : {}),
@@ -383,6 +397,8 @@ async function sendMetaFromConversation(
   // 4–6. What this channel can carry (rule R16: refused before anything is written).
   const content = input.content;
   if (content.type === "template") throw new InboxSendError("not_supported", "Templates are only for WhatsApp.");
+  // Products, the menu and buttons (suite spec 08) exist on WhatsApp only.
+  if (content.type === "interactive") throw new InboxSendError("no_whatsapp", "Products and buttons can only be sent on WhatsApp.");
   // The out-of-hours reply (inbox-gaps) is WhatsApp-only; its job never picks these threads, and this keeps it so.
   if (input.auto) throw new InboxSendError("not_supported", "Automatic replies are only for WhatsApp.");
   if (content.type !== "text" && content.caption) {

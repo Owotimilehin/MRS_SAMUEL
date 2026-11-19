@@ -58,6 +58,7 @@ import { toCsv } from "../lib/csv.js";
 import { reloadViewer, subscribe } from "../inbox/realtime.js";
 import { logger } from "../logger.js";
 import { alertOnce } from "../lib/inbox-alerts.js";
+import { productSendContent } from "../lib/catalogue-send.js";
 import { alias } from "drizzle-orm/pg-core";
 import crypto from "node:crypto";
 import { env } from "../env.js";
@@ -281,6 +282,9 @@ const SendBody = z.discriminatedUnion("type", [
       .max(10)
       .default([]),
   }),
+  // Products from the catalogue (suite spec 08): one product, a product list, or the whole menu.
+  z.object({ type: z.literal("product"), retailer_ids: z.array(z.string().min(3).max(100)).min(1).max(30), text: z.string().trim().max(1024).optional() }),
+  z.object({ type: z.literal("catalogue"), text: z.string().trim().max(1024).optional() }),
 ]);
 
 const PatchBody = z
@@ -616,8 +620,14 @@ export function inboxRoutes(db: DbClient) {
     let content: OutboundContent;
     let mediaKey: string | null = null;
     let mediaMime: string | null = null;
+    // Set when products are sent (suite spec 08), for the audit entry.
+    let productIds: string[] | null = null;
     if (body.type === "text") {
       content = { type: "text", body: body.body };
+    } else if (body.type === "product" || body.type === "catalogue") {
+      const built = await productSendContent(db, body);
+      content = built.content;
+      productIds = built.retailerIds;
     } else if (body.type === "template") {
       need(c, "inbox.templates");
       content = { type: "template", name: body.name, language: body.language, bodyParams: body.params };
@@ -660,7 +670,16 @@ export function inboxRoutes(db: DbClient) {
         mediaKey,
         mediaMime,
       });
-      await audit(db, c, "inbox.message_send", "inbox_message", msg.id, { conversation_id: conv.id, type: msg.type, status: msg.status });
+      if (productIds) {
+        await audit(db, c, "inbox.send_product", "inbox_message", msg.id, {
+          conversation_id: conv.id,
+          kind: body.type,
+          retailer_ids: productIds,
+          status: msg.status,
+        });
+      } else {
+        await audit(db, c, "inbox.message_send", "inbox_message", msg.id, { conversation_id: conv.id, type: msg.type, status: msg.status });
+      }
       // Messenger/Instagram configuration problem (spec 02, rule R20): tell the owner once a day per account.
       const p = (msg.payload ?? {}) as { config?: boolean; account?: string };
       if (p.config === true && p.account) {
