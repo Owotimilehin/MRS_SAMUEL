@@ -106,6 +106,8 @@ export const CAPABILITIES = [
   "social.publish",
   // See statistics from Facebook, Instagram and WhatsApp (suite spec 11).
   "insights.view",
+  // Leads from Meta lead forms: see, work and report on them (spec 13).
+  "leads.view",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -158,6 +160,7 @@ const ADMIN_CAPS: Capability[] = [
   "catalogue.manage",
   "social.publish",
   "insights.view",
+  "leads.view",
 ];
 
 const MANAGER_CAPS: Capability[] = [
@@ -194,6 +197,7 @@ const MANAGER_CAPS: Capability[] = [
   "inbox.reports",
   "social.comments",
   "insights.view",
+  "leads.view",
 ];
 
 const BRANCH_STAFF_CAPS: Capability[] = [

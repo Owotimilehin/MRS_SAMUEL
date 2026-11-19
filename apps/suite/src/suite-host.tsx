@@ -1,5 +1,6 @@
 /** What the suite gives the inbox screens. See @admin/lib/app-frame.tsx. */
-import type { CustomerLinkProps, HostApp } from "@admin/lib/app-frame.js";
+import { Link } from "@tanstack/react-router";
+import type { CustomerLinkProps, HostApp, LeadLinkProps } from "@admin/lib/app-frame.js";
 import { SuiteShell } from "./SuiteShell.js";
 
 /**
@@ -29,9 +30,20 @@ function SuiteCustomerLink({ customerId, children, style }: CustomerLinkProps): 
   );
 }
 
+/** A lead opens on the suite's own Leads page. */
+function SuiteLeadLink({ leadId, children, style }: LeadLinkProps): JSX.Element {
+  return (
+    <Link to="/leads/$leadId" params={{ leadId }} {...(style ? { style } : {})}>
+      {children}
+    </Link>
+  );
+}
+
 export const suiteHost: HostApp = {
   Shell: SuiteShell,
   CustomerLink: SuiteCustomerLink,
   // Comments live in the suite (spec 03): the inbox timeline links a private reply back to its comment.
   commentHref: (threadId) => `/comments/${encodeURIComponent(threadId)}`,
+  // Leads live in the suite too (spec 13).
+  LeadLink: SuiteLeadLink,
 };

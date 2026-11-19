@@ -46,3 +46,4 @@ export * from "./social.js";
 export * from "./channel.js";
 export * from "./catalogue.js";
 export * from "./insight.js";
+export * from "./lead.js";

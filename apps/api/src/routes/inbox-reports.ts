@@ -42,7 +42,8 @@ export function inboxReportRoutes(db: DbClient) {
     const messagesPerDay = await db
       .select({
         day: lagosDay(inboxMessage.createdAt),
-        inbound: sql<number>`count(*) filter (where ${inboxMessage.direction} = 'in')::int`,
+        // A lead form's announcing note (type "lead", suite spec 13) is not a message from the customer.
+        inbound: sql<number>`count(*) filter (where ${inboxMessage.direction} = 'in' and ${inboxMessage.type} <> 'lead')::int`,
         outbound: sql<number>`count(*) filter (where ${inboxMessage.direction} = 'out')::int`,
       })
       .from(inboxMessage)

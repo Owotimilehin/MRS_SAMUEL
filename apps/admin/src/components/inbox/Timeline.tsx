@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Download, FileText, Trash2, Voicemail, ShoppingBag } from "lucide-react";
+import { ClipboardList, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Download, FileText, Trash2, Voicemail, ShoppingBag } from "lucide-react";
 import { ConfirmModal } from "../ConfirmModal.js";
 import { FlowResponseCardView, FlowSentRow } from "./FlowCards.js";
 import { inboxApi } from "../../lib/inbox-api.js";
@@ -173,6 +173,12 @@ function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
         <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 2 }}>Template: {humanTemplateName(m.template_name)}</div>
       )}
       {(m.has_media || m.media_pending) && <MessageMedia m={m} />}
+      {/* A filled-in lead form (suite spec 13): a normal incoming bubble, marked so it is not taken for a WhatsApp message. */}
+      {m.type === "lead" && (
+        <div className="ibx-msg__sub" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <ClipboardList size={12} aria-hidden /> Lead form
+        </div>
+      )}
       {m.body && (
         <div>
           {/* A cart sent from the catalogue (suite spec 08). */}

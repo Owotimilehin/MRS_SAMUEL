@@ -23,3 +23,4 @@ export * from "./meta/catalogue.js";
 export * from "./meta/catalogue-chat.js";
 export * from "./meta/publishing.js";
 export * from "./meta/insights.js";
+export * from "./meta/leads.js";

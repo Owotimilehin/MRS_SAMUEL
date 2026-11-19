@@ -26,6 +26,12 @@ export interface CustomerLinkProps {
   style?: CSSProperties;
 }
 
+export interface LeadLinkProps {
+  leadId: string;
+  children: ReactNode;
+  style?: CSSProperties;
+}
+
 export interface HostApp {
   /** The page frame: menu, header, and the body the screen renders into. */
   Shell: ComponentType<FrameProps>;
@@ -37,6 +43,8 @@ export interface HostApp {
    * "private reply to a comment" line in the timeline is plain text.
    */
   commentHref?: (threadId: string) => string;
+  /** A link to a lead on the suite's Leads page (suite spec 13). A host without one shows no link. */
+  LeadLink?: ComponentType<LeadLinkProps>;
 }
 
 const HostContext = createContext<HostApp | null>(null);
@@ -64,4 +72,10 @@ export function CustomerLink(props: CustomerLinkProps): JSX.Element {
 /** The address of a comment thread in this app, or null when the app has no Comments section. */
 export function useCommentHref(): ((threadId: string) => string) | null {
   return useHost().commentHref ?? null;
+}
+
+/** The hosting application's link to a lead in the suite; nothing when the host has none. */
+export function LeadLink(props: LeadLinkProps): JSX.Element | null {
+  const { LeadLink: Impl } = useHost();
+  return Impl ? <Impl {...props} /> : null;
 }

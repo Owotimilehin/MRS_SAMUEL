@@ -25,6 +25,7 @@ import { backfillComments, fillCommentDetails, pollComments } from "./jobs/socia
 import { runCatalogueBatchCheck, runCatalogueReconcile, runCatalogueSync, runChatOrderJobs } from "./jobs/catalogue.js";
 import { publishDuePosts, reconcileUnknownTargets } from "./jobs/social-publish.js";
 import { collectInsightsIfDue } from "./jobs/insights-collect.js";
+import { backfillLeads, fetchLeads, syncForms } from "./jobs/leads.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -89,6 +90,10 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "social_publish", everyMs: 30_000, last: 0, run: () => publishDuePosts(db, logger) },
     { name: "social_publish_reconcile", everyMs: 60_000, last: 0, run: () => reconcileUnknownTargets(db, logger) },
     { name: "insights_collect", everyMs: 10 * 60_000, last: 0, ownLock: true, run: () => collectInsightsIfDue(db, logger) },
+    // Lead forms (suite spec 13).
+    { name: "lead_fetch", everyMs: 15_000, last: 0, run: () => fetchLeads(db, logger) },
+    { name: "lead_backfill", everyMs: 60_000, last: 0, run: () => backfillLeads(db, logger) },
+    { name: "lead_forms_sync", everyMs: 6 * 60 * 60_000, last: 0, run: () => syncForms(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {

@@ -590,6 +590,15 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `${String(p["label"] ?? "Meta")}, Meta code ${String(p["code"] ?? "unknown")}. The figures already collected are kept.\n` +
           `👉 ${SUITE_URL}/insights`,
       };
+    case "lead.fetch_blocked":
+      return {
+        chatIds: [owner],
+        text:
+          `📋 *Leads cannot be read*\n` +
+          `Meta refused (${String(p["code"] ?? "?")}): ${String(p["message"] ?? "no reason given")}\n` +
+          `Check Leads Access in Business Settings.\n` +
+          `👉 ${SUITE_URL}/leads`,
+      };
     case "channels.chat_setup_config":
       return {
         chatIds: [owner],

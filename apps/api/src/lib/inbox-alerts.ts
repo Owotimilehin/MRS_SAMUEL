@@ -37,7 +37,9 @@ export async function alertOnce(
     | "catalogue.sync_blocked"
     | "social.publish_config_error"
     // Raised by the statistics collector in the worker (suite spec 11), with the same once-a-day rule.
-    | "insights.config_error",
+    | "insights.config_error"
+    // Suite spec 13: Meta will not let us read leads. Raised by the worker through alertLeadFetchBlocked in @ms/domain.
+    | "lead.fetch_blocked",
   payload: Record<string, unknown> & { account: string },
 ): Promise<boolean> {
   const [recent] = await db
