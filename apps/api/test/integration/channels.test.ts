@@ -20,25 +20,25 @@ type GraphPage = { id: string; name: string; tasks: string[]; instagram_business
 /** What the stubbed Meta knows. Tests change these between steps. */
 const pages = new Map<string, GraphPage>([
   [
-    "1001",
+    "100001",
     {
-      id: "1001",
+      id: "100001",
       name: "Mrs Samuel fruit juice",
       tasks: ["ANALYZE", "MESSAGING", "MODERATE"],
       instagram_business_account: { id: "17840000001", username: "mrs_samuelfruitjuice" },
     },
   ],
   [
-    "1002",
-    { id: "1002", name: "Second Page", tasks: ["ANALYZE"], instagram_business_account: { id: "17840000002", username: "second_ig" } },
+    "100002",
+    { id: "100002", name: "Second Page", tasks: ["ANALYZE"], instagram_business_account: { id: "17840000002", username: "second_ig" } },
   ],
-  ["1003", { id: "1003", name: "No Instagram Page", tasks: ["MESSAGING"] }],
-  ["1004", { id: "1004", name: "Refused Page", tasks: ["MESSAGING"] }],
+  ["100003", { id: "100003", name: "No Instagram Page", tasks: ["MESSAGING"] }],
+  ["100004", { id: "100004", name: "Refused Page", tasks: ["MESSAGING"] }],
 ]);
 /** Pages that appear in me/accounts. */
-const listed = ["1001", "1002"];
+const listed = ["100001", "100002"];
 /** Pages whose token Meta refuses. */
-const tokenRefused = new Set(["1004"]);
+const tokenRefused = new Set(["100004"]);
 
 const graphCalls: string[] = [];
 function json(body: unknown, status = 200): Response {
@@ -139,14 +139,14 @@ describe("suite spec 01 — /v1/channels", () => {
       .values({ e164: "+2348000000000", label: "Main line", channels: "both", wabaId: "WABA1", waPhoneNumberId: "1098765432" })
       .returning();
     phoneId = phone!.id;
-    // Page 1002: its Instagram account is connected and on; its Messenger row is switched off.
+    // Page 100002: its Instagram account is connected and on; its Messenger row is switched off.
     await db.insert(inboxPhoneNumber).values([
-      { kind: "instagram", e164: null, externalId: "17840000002", pageExternalId: "1002", externalName: "second_ig", label: "Second IG", channels: "whatsapp" },
+      { kind: "instagram", e164: null, externalId: "17840000002", pageExternalId: "100002", externalName: "second_ig", label: "Second IG", channels: "whatsapp" },
       {
         kind: "messenger",
         e164: null,
-        externalId: "1002",
-        pageExternalId: "1002",
+        externalId: "100002",
+        pageExternalId: "100002",
         externalName: "Second Page",
         label: "Second FB",
         channels: "whatsapp",
@@ -172,15 +172,15 @@ describe("suite spec 01 — /v1/channels", () => {
     const attempts: [string, string, unknown?][] = [
       ["GET", "/v1/channels"],
       ["GET", "/v1/channels/available"],
-      ["GET", "/v1/channels/available/1001"],
-      ["POST", "/v1/channels/connect", { page_id: "1001", messenger: true, instagram: false }],
+      ["GET", "/v1/channels/available/100001"],
+      ["POST", "/v1/channels/connect", { page_id: "100001", messenger: true, instagram: false }],
       ["PATCH", `/v1/channels/${someId}`, { label: "x" }],
       ["POST", `/v1/channels/${someId}/check`],
     ];
     for (const [method, path, body] of attempts) {
       expect((await call(manager, method, path, body)).status, `${method} ${path}`).toBe(403);
     }
-    expect(await rowOf("messenger", "1001")).toHaveLength(0);
+    expect(await rowOf("messenger", "100001")).toHaveLength(0);
   });
 
   it("GET /available answers 503 in plain words when Meta is not configured", async () => {
@@ -200,14 +200,14 @@ describe("suite spec 01 — /v1/channels", () => {
     expect(res.status).toBe(200);
     expect(res.json.data).toEqual([
       {
-        page_id: "1001",
+        page_id: "100001",
         name: "Mrs Samuel fruit juice",
         can_message: true,
         messenger_connected: false,
         instagram: { id: "17840000001", username: "mrs_samuelfruitjuice", connected: false },
       },
       {
-        page_id: "1002",
+        page_id: "100002",
         name: "Second Page",
         can_message: false,
         messenger_connected: false, // switched off counts as not connected
@@ -215,15 +215,15 @@ describe("suite spec 01 — /v1/channels", () => {
       },
     ]);
 
-    const one = await call(owner, "GET", "/v1/channels/available/1003");
+    const one = await call(owner, "GET", "/v1/channels/available/100003");
     expect(one.status).toBe(200);
-    expect(one.json.data).toEqual({ page_id: "1003", name: "No Instagram Page", can_message: true, messenger_connected: false, instagram: null });
+    expect(one.json.data).toEqual({ page_id: "100003", name: "No Instagram Page", can_message: true, messenger_connected: false, instagram: null });
     expect((await call(owner, "GET", "/v1/channels/available/12ab")).status).toBe(400);
   });
 
   it("POST /connect creates a messenger row and an instagram row with ids taken from Meta, not from the request", async () => {
     const res = await call(owner, "POST", "/v1/channels/connect", {
-      page_id: "1001",
+      page_id: "100001",
       messenger: true,
       instagram: true,
       label_messenger: "Facebook",
@@ -240,8 +240,8 @@ describe("suite spec 01 — /v1/channels", () => {
     expect(rows.find((r) => r.kind === "messenger")).toMatchObject({
       label: "Facebook",
       e164: null,
-      external_id: "1001",
-      page_external_id: "1001",
+      external_id: "100001",
+      page_external_id: "100001",
       external_name: "Mrs Samuel fruit juice",
       channels: "whatsapp",
       default_team_id: teamId,
@@ -252,7 +252,7 @@ describe("suite spec 01 — /v1/channels", () => {
     expect(rows.find((r) => r.kind === "instagram")).toMatchObject({
       label: "Instagram",
       external_id: "17840000001",
-      page_external_id: "1001",
+      page_external_id: "100001",
       external_name: "mrs_samuelfruitjuice",
     });
     expect(await rowOf("instagram", "99999999")).toHaveLength(0);
@@ -270,41 +270,41 @@ describe("suite spec 01 — /v1/channels", () => {
   });
 
   it("POST /connect twice does not duplicate; a switched-off row is switched back on", async () => {
-    const [fb] = await rowOf("messenger", "1001");
-    const again = await call(owner, "POST", "/v1/channels/connect", { page_id: "1001", messenger: true, instagram: false });
+    const [fb] = await rowOf("messenger", "100001");
+    const again = await call(owner, "POST", "/v1/channels/connect", { page_id: "100001", messenger: true, instagram: false });
     expect(again.status).toBe(201);
-    expect(await rowOf("messenger", "1001")).toHaveLength(1);
+    expect(await rowOf("messenger", "100001")).toHaveLength(1);
     expect(again.json.data[0]).toMatchObject({ id: fb!.id, label: "Facebook", default_team_id: teamId }); // kept
 
     expect((await call(owner, "PATCH", `/v1/channels/${fb!.id}`, { is_active: false })).status).toBe(200);
-    const back = await call(owner, "POST", "/v1/channels/connect", { page_id: "1001", messenger: true, instagram: false });
+    const back = await call(owner, "POST", "/v1/channels/connect", { page_id: "100001", messenger: true, instagram: false });
     expect(back.json.data[0]).toMatchObject({ id: fb!.id, is_active: true });
 
-    const [second] = await rowOf("messenger", "1002");
+    const [second] = await rowOf("messenger", "100002");
     expect(second!.isActive).toBe(false);
-    const on = await call(owner, "POST", "/v1/channels/connect", { page_id: "1002", messenger: true, instagram: false });
+    const on = await call(owner, "POST", "/v1/channels/connect", { page_id: "100002", messenger: true, instagram: false });
     expect(on.status).toBe(201);
     expect(on.json.data[0]).toMatchObject({ id: second!.id, is_active: true, label: "Second FB" });
-    expect(await rowOf("messenger", "1002")).toHaveLength(1);
+    expect(await rowOf("messenger", "100002")).toHaveLength(1);
   });
 
   it("POST /connect refuses instagram when the Page has none (400)", async () => {
-    const res = await call(owner, "POST", "/v1/channels/connect", { page_id: "1003", messenger: true, instagram: true });
+    const res = await call(owner, "POST", "/v1/channels/connect", { page_id: "100003", messenger: true, instagram: true });
     expect(res.status).toBe(400);
     expect(res.json.error.message).toBe("This Page has no Instagram account linked to it.");
-    expect(await rowOf("messenger", "1003")).toHaveLength(0);
+    expect(await rowOf("messenger", "100003")).toHaveLength(0);
     // Neither box ticked is a validation error.
-    expect((await call(owner, "POST", "/v1/channels/connect", { page_id: "1003", messenger: false, instagram: false })).status).toBe(400);
+    expect((await call(owner, "POST", "/v1/channels/connect", { page_id: "100003", messenger: false, instagram: false })).status).toBe(400);
   });
 
   it("POST /connect returns 409 with a plain sentence when Meta refuses the Page token", async () => {
-    const res = await call(owner, "POST", "/v1/channels/connect", { page_id: "1004", messenger: true, instagram: false });
+    const res = await call(owner, "POST", "/v1/channels/connect", { page_id: "100004", messenger: true, instagram: false });
     expect(res.status).toBe(409);
     expect(res.json.error.message).toBe(
       "Meta would not give us access to this Page. Check it is assigned to our system user with messaging rights.",
     );
     expect(res.json.error.details.meta_code).toBe("200");
-    expect(await rowOf("messenger", "1004")).toHaveLength(0);
+    expect(await rowOf("messenger", "100004")).toHaveLength(0);
   });
 
   it("PATCH refuses a phone row (400) and updates label, team, hours and is_active on others, with an audit row", async () => {
@@ -328,26 +328,26 @@ describe("suite spec 01 — /v1/channels", () => {
   });
 
   it("POST /:id/check reports a problem when the Instagram account is no longer linked", async () => {
-    const [fb] = await rowOf("messenger", "1001");
+    const [fb] = await rowOf("messenger", "100001");
     const [ig] = await rowOf("instagram", "17840000001");
     const ok = await call(owner, "POST", `/v1/channels/${fb!.id}/check`);
     expect(ok.status).toBe(200);
     expect(ok.json.data).toEqual({ ok: true, problem: null, external_name: "Mrs Samuel fruit juice" });
 
-    pages.set("1001", { ...pages.get("1001")!, instagram_business_account: { id: "17840000999", username: "someone_else" } });
+    pages.set("100001", { ...pages.get("100001")!, instagram_business_account: { id: "17840000999", username: "someone_else" } });
     const bad = await call(owner, "POST", `/v1/channels/${ig!.id}/check`);
     expect(bad.status).toBe(200);
     expect(bad.json.data).toMatchObject({ ok: false, problem: "This Instagram account is no longer linked to the Facebook Page." });
 
     // A refused token is reported in plain words, still 200.
-    tokenRefused.add("1001");
+    tokenRefused.add("100001");
     const refused = await call(owner, "POST", `/v1/channels/${fb!.id}/check`);
     expect(refused.status).toBe(200);
     expect(refused.json.data).toMatchObject({
       ok: false,
       problem: "Meta says we are not allowed to see this Page. Ask the technical lead to check the Page is assigned to our system user.",
     });
-    tokenRefused.delete("1001");
+    tokenRefused.delete("100001");
     expect((await call(owner, "POST", `/v1/channels/${phoneId}/check`)).status).toBe(400);
   });
 
@@ -367,7 +367,7 @@ describe("suite spec 01 — /v1/channels", () => {
   });
 
   it("PATCH /inbox/settings/numbers/:id answers 404 for a messenger row", async () => {
-    const [fb] = await rowOf("messenger", "1001");
+    const [fb] = await rowOf("messenger", "100001");
     const res = await call(owner, "PATCH", `/v1/inbox/settings/numbers/${fb!.id}`, { label: "Changed here" });
     expect(res.status).toBe(404);
     expect((await call(owner, "POST", `/v1/inbox/settings/numbers/${fb!.id}/refresh`)).status).toBe(404);
