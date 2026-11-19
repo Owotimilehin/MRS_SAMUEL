@@ -100,6 +100,22 @@ describe("reads", () => {
     expect(calls[0]!.url).toContain("/me/adaccounts?fields=");
     expect(calls[0]!.method).toBe("GET");
   });
+  it("listAdAccounts falls back to the system user's assigned accounts when Meta refuses me/adaccounts", async () => {
+    const calls = stub((c) => {
+      if (c.url.includes("/me/adaccounts")) return json({ error: { message: "Unsupported get request", code: 100 } }, 400);
+      if (c.url.includes("/me?fields=id")) return json({ id: "61500000000001" });
+      if (c.url.includes("/61500000000001/assigned_ad_accounts")) return json({ data: [{ id: "act_1234500001", account_id: "1234500001", name: "Test Ads", currency: "NGN" }] });
+      return json({ error: { message: "nope", code: 100 } }, 400);
+    });
+    expect((await listAdAccounts(cfg)).map((a) => a.id)).toEqual(["act_1234500001"]);
+    expect(calls).toHaveLength(3);
+    expect(calls.every((c) => c.method === "GET")).toBe(true);
+  });
+  it("listAdAccounts does not hide a token or permission problem behind the fallback", async () => {
+    const calls = stub(() => json({ error: { message: "Invalid OAuth access token", code: 190 } }, 401));
+    await expect(listAdAccounts(cfg)).rejects.toMatchObject({ code: "190" });
+    expect(calls).toHaveLength(1);
+  });
   it("fetchAdInsights asks day by day with the account's attribution setting", async () => {
     const calls = stub(() => json({ data: [] }));
     await fetchAdInsights(cfg, "act_1", "ad", "2026-11-01", "2026-11-08");

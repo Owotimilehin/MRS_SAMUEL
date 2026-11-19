@@ -187,6 +187,28 @@ describe("ads: domain rules with a database", () => {
       expect(l!.lastSyncedAt).toBeNull();
     });
 
+    it("a busy reading that has gone stale does not stop the next sync", async () => {
+      await link();
+      fake.headers = { "x-ad-account-usage": JSON.stringify({ acc_id_util_pct: 95 }) };
+      await syncAdAccount(db, cfg, log);
+      expect(fake.calls).toHaveLength(1);
+      fake.headers = {};
+      fake.calls = [];
+      // Straight away it would still wait…
+      await syncAdAccount(db, cfg, log);
+      expect(fake.calls).toEqual([]);
+      // …six minutes later the old reading says nothing about now.
+      const realNow = Date.now;
+      Date.now = () => realNow() + 6 * 60_000;
+      try {
+        await syncAdAccount(db, cfg, log);
+      } finally {
+        Date.now = realNow;
+      }
+      expect(fake.calls.length).toBeGreaterThan(4);
+      expect((await db.select().from(adAccountLink))[0]!.lastErrorCode).toBeNull();
+    });
+
     it("code 190 records the problem and raises one alert per day", async () => {
       await link();
       fake.override = () => fake.refuse(190, "Invalid OAuth access token", 401);

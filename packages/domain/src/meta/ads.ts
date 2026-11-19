@@ -108,6 +108,8 @@ export function readAdsUsage(headers: Headers, adAccountNumericId: string): AdsU
 }
 
 const usageByAccount = new Map<string, AdsUsage>();
+/** When each account's usage was last heard, so an old "busy" reading cannot stop the sync for ever. */
+const usageHeardAt = new Map<string, number>();
 let currentAccount: string | null = null;
 
 function numericId(adAccountId: string): string {
@@ -126,6 +128,7 @@ export function latestAdsUsage(adAccountId: string): AdsUsage | null {
 /** For tests. */
 export function resetAdsUsage(): void {
   usageByAccount.clear();
+  usageHeardAt.clear();
   currentAccount = null;
 }
 
@@ -135,6 +138,7 @@ function rememberUsage(path: string, res: Response): void {
   const usage = readAdsUsage(res.headers, fromPath);
   if (usage.accountPct === null && usage.businessPct === null && usage.tier === null) return;
   const before = usageByAccount.get(fromPath);
+  usageHeardAt.set(fromPath, Date.now());
   // A response may carry only one of the headers: keep what the other said last time.
   usageByAccount.set(fromPath, {
     accountPct: usage.accountPct ?? before?.accountPct ?? null,
@@ -197,8 +201,21 @@ async function getPaged(
   return { rows, complete: path === null };
 }
 
+/**
+ * The ad accounts the token can use. `me/adaccounts` is [unverified] for a
+ * system user (A9); if Meta refuses that address, the documented system-user
+ * edge `/{system-user-id}/assigned_ad_accounts` is asked instead. Both only read.
+ */
 export async function listAdAccounts(cfg: MetaConfig): Promise<MetaAdAccount[]> {
-  const { rows } = await getPaged(cfg, `me/adaccounts?fields=${ACCOUNT_FIELDS}&limit=100`, 5);
+  let rows: Record<string, unknown>[];
+  try {
+    ({ rows } = await getPaged(cfg, `me/adaccounts?fields=${ACCOUNT_FIELDS}&limit=100`, 5));
+  } catch (err) {
+    if (!(err instanceof MetaApiError) || classifyAdsError(err) !== "refusal") throw err;
+    const me = await adsGraph<{ id?: string }>(cfg, "GET", "me?fields=id");
+    if (!me?.id || !/^\d+$/.test(String(me.id))) throw err;
+    ({ rows } = await getPaged(cfg, `${me.id}/assigned_ad_accounts?fields=${ACCOUNT_FIELDS}&limit=100`, 5));
+  }
   return rows.map((r) => ({
     id: String(r.id ?? ""),
     account_id: String(r.account_id ?? ""),
@@ -419,9 +436,16 @@ export function addDays(day: string, n: number): string {
 
 class AdsBusy extends Error {}
 
+/** Meta's usage score decays over 5 minutes (A3); a reading older than that, or than the wait Meta gave, says nothing about now. */
+const USAGE_FRESH_MS = 5 * 60_000;
+
 function tooBusy(adAccountId: string): boolean {
   const u = latestAdsUsage(adAccountId);
-  return !!u && ((u.accountPct ?? 0) >= 80 || (u.businessPct ?? 0) >= 80);
+  if (!u) return false;
+  const heard = usageHeardAt.get(numericId(adAccountId)) ?? 0;
+  const goodFor = Math.max(USAGE_FRESH_MS, (u.regainSeconds ?? 0) * 1000);
+  if (Date.now() - heard > goodFor) return false;
+  return (u.accountPct ?? 0) >= 80 || (u.businessPct ?? 0) >= 80;
 }
 
 function units(v: unknown): number | null {
