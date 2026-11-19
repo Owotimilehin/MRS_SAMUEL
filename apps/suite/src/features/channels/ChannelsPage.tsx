@@ -153,9 +153,20 @@ function ChannelsList(): JSX.Element {
                       <td className="ibx-stack__actions">
                         <div className="ibx-actions">
                           {row.kind === "phone" ? (
-                            <Link to="/inbox/settings" className="btn btn--subtle btn--sm">
-                              Change in Settings
-                            </Link>
+                            <>
+                              {row.channels !== "voice" && (
+                                <Link
+                                  to="/channels/$accountId/whatsapp-profile"
+                                  params={{ accountId: row.id }}
+                                  className="btn btn--subtle btn--sm"
+                                >
+                                  Business profile
+                                </Link>
+                              )}
+                              <Link to="/inbox/settings" className="btn btn--subtle btn--sm">
+                                Change in Settings
+                              </Link>
+                            </>
                           ) : (
                             <>
                               <Link
