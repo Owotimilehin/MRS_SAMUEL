@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  conversationIdFromPath,
+  shouldAlertForEvent,
+  titleWithCount,
   applyEarlierPage,
   applyNewestPage,
   greetingContentType,
@@ -440,5 +443,52 @@ describe("display helpers", () => {
     const ticks = axisDays(days, 6);
     expect(ticks.length).toBeLessThanOrEqual(6);
     expect(ticks[ticks.length - 1]).toBe("d29");
+  });
+});
+
+describe("new-message alerts", () => {
+  const ctx = { userId: "me", level: "assigned" as const, openConversationId: null, tabActive: true };
+  const incoming = { event: "message.created", direction: "in" as const, conversationId: "c1", assigneeId: null };
+
+  it("alerts for a customer's message in a chat nobody has picked up", () => {
+    expect(shouldAlertForEvent(incoming, ctx)).toBe(true);
+  });
+  it("alerts for a customer's message in my own chat", () => {
+    expect(shouldAlertForEvent({ ...incoming, assigneeId: "me" }, ctx)).toBe(true);
+  });
+  it("stays quiet for a colleague's chat unless I asked for every chat", () => {
+    const theirs = { ...incoming, assigneeId: "someone-else" };
+    expect(shouldAlertForEvent(theirs, ctx)).toBe(false);
+    expect(shouldAlertForEvent(theirs, { ...ctx, level: "all" })).toBe(true);
+  });
+  it("stays quiet when notifications are off", () => {
+    expect(shouldAlertForEvent(incoming, { ...ctx, level: "none" })).toBe(false);
+  });
+  it("never alerts for a message staff sent, a status tick, or an event with no direction", () => {
+    expect(shouldAlertForEvent({ ...incoming, direction: "out" }, ctx)).toBe(false);
+    expect(shouldAlertForEvent({ event: "message.created", conversationId: "c1" }, ctx)).toBe(false);
+    expect(shouldAlertForEvent({ ...incoming, event: "message.status" }, ctx)).toBe(false);
+    expect(shouldAlertForEvent({ ...incoming, event: "conversation.updated" }, ctx)).toBe(false);
+  });
+  it("stays quiet for the chat I am reading, but not when the tab is in the background", () => {
+    expect(shouldAlertForEvent(incoming, { ...ctx, openConversationId: "c1" })).toBe(false);
+    expect(shouldAlertForEvent(incoming, { ...ctx, openConversationId: "c1", tabActive: false })).toBe(true);
+    expect(shouldAlertForEvent(incoming, { ...ctx, openConversationId: "c2" })).toBe(true);
+  });
+
+  it("puts the number waiting at the front of the tab title and takes it off again", () => {
+    expect(titleWithCount("Inbox", 2)).toBe("(2) Inbox");
+    expect(titleWithCount("(2) Inbox", 3)).toBe("(3) Inbox");
+    expect(titleWithCount("(3) Inbox", 0)).toBe("Inbox");
+    expect(titleWithCount("Inbox", 250)).toBe("(99+) Inbox");
+    expect(titleWithCount("(99+) Inbox", 0)).toBe("Inbox");
+  });
+
+  it("reads the open conversation from the address", () => {
+    expect(conversationIdFromPath("/inbox/abc-123")).toBe("abc-123");
+    expect(conversationIdFromPath("/inbox")).toBeNull();
+    expect(conversationIdFromPath("/inbox/reports")).toBeNull();
+    expect(conversationIdFromPath("/inbox/settings")).toBeNull();
+    expect(conversationIdFromPath("/owner/orders/abc")).toBeNull();
   });
 });

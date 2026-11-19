@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { Search, Phone, MessageCircle } from "lucide-react";
+import { NotifySettings } from "./NotifySettings.js";
+import { Bell, Search, Phone, MessageCircle } from "lucide-react";
 import { DataState } from "../DataState.js";
 import { useInboxUi } from "../../lib/inbox-ui.js";
 import { inboxApi, inboxKeys, type ConversationFilters } from "../../lib/inbox-api.js";
@@ -25,6 +26,7 @@ export function ConversationList(p: Props): JSX.Element {
   const search = useInboxUi((st) => st.search);
   const setSearch = useInboxUi((st) => st.setSearch);
   const [q, setQ] = useState(() => search.trim());
+  const [notifyOpen, setNotifyOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
 
@@ -107,18 +109,30 @@ export function ConversationList(p: Props): JSX.Element {
             </button>
           ))}
         </div>
-        <label className="toolbar__search" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Search size={15} aria-hidden />
-          <input
-            className="input"
-            type="search"
-            placeholder="Search name or phone…"
-            aria-label="Search conversations"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ flex: 1 }}
-          />
-        </label>
+        <div className="ibx-list__search">
+          <label className="toolbar__search" style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+            <Search size={15} aria-hidden />
+            <input
+              className="input"
+              type="search"
+              placeholder="Search name or phone…"
+              aria-label="Search conversations"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ flex: 1 }}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm ibx-bell"
+            aria-label="Notifications"
+            title="Notifications: sound and pop-ups for new messages"
+            onClick={() => setNotifyOpen(true)}
+          >
+            <Bell size={16} aria-hidden />
+          </button>
+        </div>
+        {notifyOpen && <NotifySettings onClose={() => setNotifyOpen(false)} />}
         {/* Always shown, so the list doesn't jump when a tab has no labels. */}
         <div className="ibx-filters">
           {p.me.numbers.length > 1 && (

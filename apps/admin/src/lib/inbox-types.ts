@@ -72,6 +72,7 @@ export interface ConversationDetail {
   labels: string[];
   lastInboundWaAt: string | null;
   lastActivityAt: string;
+  lastPreview?: string | null;
   unreadCount: number;
   customer: { id: string; name: string | null; phone: string | null; email: string | null; notes: string | null } | null;
   number: InboxNumberLite | null;
@@ -202,8 +203,15 @@ export interface InboxEvent {
   event: string;
   conversationId?: string;
   phoneNumberId?: string;
+  teamId?: string | null;
+  assigneeId?: string | null;
   id?: string;
+  /** On message.created: "in" when the customer wrote. */
+  direction?: "in" | "out";
 }
+
+/** Which incoming messages alert this person. Saved per user on the server. */
+export type NotifyLevel = "all" | "assigned" | "none";
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 

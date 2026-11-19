@@ -14,6 +14,7 @@ import type {
   InboxMe,
   InboxTeamLite,
   InboxTemplate,
+  NotifyLevel,
   QuickReply,
   StaffMember,
   TimelinePage,
@@ -32,6 +33,7 @@ export const inboxKeys = {
   templates: ["inbox", "templates"] as const,
   quickReplies: ["inbox", "quick-replies"] as const,
   unread: ["inbox", "unread"] as const,
+  notifyLevel: ["inbox", "notify-level"] as const,
 };
 
 export interface ConversationFilters {
@@ -74,6 +76,9 @@ export const inboxApi = {
   me: async () => (await api<{ data: InboxMe }>("/inbox/me")).data,
   unread: async () =>
     (await api<{ data: { messages: number; conversations: number } }>("/inbox/unread")).data,
+  notifyLevel: async () => (await api<{ data: { level: NotifyLevel } }>("/inbox/notifications")).data.level,
+  setNotifyLevel: async (level: NotifyLevel) =>
+    (await api<{ data: { level: NotifyLevel } }>("/inbox/notifications", { method: "PUT", body: JSON.stringify({ level }) })).data.level,
   staff: async () => (await api<{ data: StaffMember[] }>("/inbox/staff")).data,
   teams: async () => (await api<{ data: InboxTeamLite[] }>("/inbox/teams")).data,
 

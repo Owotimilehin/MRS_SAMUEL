@@ -250,7 +250,7 @@ async function ingestMessage(
     unreadIncrement: true,
     at,
   });
-  await publishInboxEvent(db, signalFor("message.created", conv, row.id));
+  await publishInboxEvent(db, { ...signalFor("message.created", conv, row.id), direction: "in" });
   await publishInboxEvent(db, signalFor("conversation.updated", conv));
   return true;
 }

@@ -29,6 +29,16 @@
 
 /* List */
 .ibx-list__head { padding: 12px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+.ibx-list__search { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ibx-bell { flex: none; width: 36px; height: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+/* Notifications dialog */
+.ibx-notify { display: grid; gap: 16px; }
+.ibx-notify__group { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; justify-items: start; }
+.ibx-notify__group legend { padding: 0; margin-bottom: 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted, var(--ink)); }
+.ibx-notify__choice { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.ibx-notify__choice input { margin-top: 3px; flex: none; }
+.ibx-notify__choice span { display: grid; gap: 2px; }
+.ibx-notify__choice small, .ibx-notify__note { font-size: 12.5px; line-height: 1.4; opacity: 0.75; margin: 0; }
 .ibx-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth; }
 .ibx-tabs::-webkit-scrollbar { display: none; }
 /* A fade on whichever side has more tabs to scroll to (set in ConversationList). */

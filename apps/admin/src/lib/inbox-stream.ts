@@ -91,12 +91,28 @@ function open(): void {
   };
 }
 
+/**
+ * How long the connection is kept after the last listener leaves. Moving from
+ * one page to another removes the old page's listener just before the new
+ * page adds its own; without this pause every page change would drop the
+ * connection and could miss a message that arrived in the gap.
+ */
+const LINGER_MS = 2_000;
+let lingerTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function subscribeInboxEvents(l: Listener): () => void {
+  if (lingerTimer) {
+    clearTimeout(lingerTimer);
+    lingerTimer = null;
+  }
   listeners.add(l);
   open();
   return () => {
     listeners.delete(l);
-    if (listeners.size === 0) {
+    if (listeners.size > 0 || lingerTimer) return;
+    lingerTimer = setTimeout(() => {
+      lingerTimer = null;
+      if (listeners.size > 0) return;
       close();
       if (retryTimer) {
         clearTimeout(retryTimer);
@@ -104,7 +120,7 @@ export function subscribeInboxEvents(l: Listener): () => void {
       }
       attempt = 0;
       hadConnection = false;
-    }
+    }, LINGER_MS);
   };
 }
 

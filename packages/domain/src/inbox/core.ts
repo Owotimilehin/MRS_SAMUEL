@@ -29,6 +29,11 @@ export interface InboxSignal {
   id?: string;
   /** For call.ringing: the users being rung. */
   userIds?: string[];
+  /**
+   * For message.created: "in" when the customer wrote. Lets the staff apps
+   * alert on customer messages only, without fetching the message first.
+   */
+  direction?: "in" | "out";
 }
 
 /** Queue a signal. Inside a transaction it is delivered only on commit. */
