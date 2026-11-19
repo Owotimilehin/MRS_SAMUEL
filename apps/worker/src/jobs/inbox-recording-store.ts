@@ -11,6 +11,8 @@ import { createHash, createHmac } from "node:crypto";
 export interface RecordingStore {
   put(key: string, bytes: Buffer, contentType: string): Promise<void>;
   get(key: string): Promise<Buffer>;
+  /** Remove an object. Removing one that is already gone is not an error. */
+  delete(key: string): Promise<void>;
 }
 
 interface R2Config {
@@ -31,7 +33,7 @@ function encodeKey(key: string): string {
 /** Exported for tests. */
 export function signR2Request(
   cfg: R2Config,
-  method: "GET" | "PUT",
+  method: "GET" | "PUT" | "DELETE",
   key: string,
   body: Buffer | null,
   extraHeaders: Record<string, string> = {},
@@ -85,6 +87,12 @@ export class R2RecordingStore implements RecordingStore {
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(60_000) });
     if (!res.ok) throw new Error(`R2 GET ${key} failed ${res.status}`);
     return Buffer.from(await res.arrayBuffer());
+  }
+
+  async delete(key: string): Promise<void> {
+    const { url, headers } = signR2Request(this.cfg, "DELETE", key, null);
+    const res = await fetch(url, { method: "DELETE", headers, signal: AbortSignal.timeout(60_000) });
+    if (!res.ok && res.status !== 404) throw new Error(`R2 DELETE ${key} failed ${res.status}`);
   }
 }
 
