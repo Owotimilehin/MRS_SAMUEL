@@ -495,6 +495,17 @@ export function format(event: { eventType: string; payload: Record<string, unkno
             `👉 ${SUITE_URL}/channels`,
         };
       }
+      // The template screens (suite spec 06) raise it with area "whatsapp_templates".
+      if (p["area"] === "whatsapp_templates") {
+        return {
+          chatIds: [owner],
+          text:
+            `⚠️ *WhatsApp connection problem*\n` +
+            `Meta refused a template request from the suite (code ${String(p["code"] ?? "?")}, ${String(p["area"])}). ` +
+            `The access token or its permissions need checking.\n` +
+            `👉 ${SUITE_URL}/templates`,
+        };
+      }
       return {
         chatIds: [owner],
         text:

@@ -38,4 +38,12 @@ describe("owner alert for WhatsApp templates (suite spec 06)", () => {
       format({ eventType: "inbox.template_alert", payload: { ...base, kind: "category_changed", category: "MARKETING" } }).text,
     ).toContain("now files it under Marketing");
   });
+
+  it("a configuration refusal from the template screens says WhatsApp and links to Templates", () => {
+    const m = format({ eventType: "inbox.meta_config", payload: { account: "whatsapp_templates", area: "whatsapp_templates", code: "190" } });
+    expect(m.text).toContain("WhatsApp connection problem");
+    expect(m.text).toContain("(code 190, whatsapp_templates)");
+    expect(m.text).toContain("/templates");
+    expect(m.text).not.toContain("Facebook or Instagram");
+  });
 });
