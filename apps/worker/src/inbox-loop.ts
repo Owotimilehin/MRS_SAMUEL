@@ -14,6 +14,7 @@ import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
+import { runCatalogueBatchCheck, runCatalogueReconcile, runCatalogueSync } from "./jobs/catalogue.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -56,6 +57,10 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "inbox_template_sync", everyMs: 60 * 60_000, last: 0, run: () => syncAllTemplates(db, logger) },
     { name: "inbox_identity_profiles", everyMs: 30_000, last: 0, run: () => refreshIdentityProfiles(db, logger) },
     { name: "inbox_meta_subscriptions", everyMs: 60 * 60_000, last: 0, run: () => ensureMetaSubscriptions(db, logger) },
+    // Catalogue sync (suite spec 08). Nothing is sent unless the owner has switched sync on.
+    { name: "catalogue_sync", everyMs: 10_000, last: 0, run: () => runCatalogueSync(db, logger) },
+    { name: "catalogue_batch_check", everyMs: 20_000, last: 0, run: () => runCatalogueBatchCheck(db, logger) },
+    { name: "catalogue_reconcile", everyMs: 30 * 60_000, last: 0, run: () => runCatalogueReconcile(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {
