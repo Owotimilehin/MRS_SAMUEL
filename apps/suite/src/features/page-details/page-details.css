@@ -1,0 +1,54 @@
+/* Page details screen (suite spec 10). Every class starts with pd-. */
+.pd-page { display: grid; gap: 12px; padding-bottom: 96px; }
+.pd-card { display: grid; gap: 12px; }
+.pd-h { margin: 0; font-size: 16px; font-weight: 700; }
+.pd-fine { font-size: 12px; color: var(--ink-soft); margin: 0; }
+.pd-top { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.pd-cover { width: 100%; max-height: 180px; object-fit: cover; border-radius: 12px; }
+.pd-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
+.pd-name { font-weight: 700; font-size: 18px; }
+.pd-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid var(--line); }
+.pd-chip--saved { background: rgba(16, 185, 129, 0.12); color: #065f46; }
+.pd-chip--partly_saved, .pd-chip--unknown { background: rgba(245, 158, 11, 0.14); color: #92400e; }
+.pd-chip--refused { background: rgba(220, 38, 38, 0.1); color: var(--danger-ink, #b91c1c); }
+.pd-strip { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); font-size: 14px; }
+.pd-strip--warn { background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.4); color: #92400e; }
+.pd-strip--bad { background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.35); color: var(--danger-ink, #b91c1c); }
+.pd-link { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; color: inherit; }
+.pd-link:disabled { opacity: 0.6; cursor: not-allowed; }
+.pd-count { font-size: 12px; color: var(--ink-soft); }
+.pd-count--over { color: var(--danger); font-weight: 700; }
+.pd-locked { margin: 0; display: grid; gap: 10px; }
+.pd-locked__row { display: grid; gap: 2px; }
+.pd-locked dt { font-size: 12px; color: var(--ink-soft); }
+.pd-locked dd { margin: 0; display: grid; gap: 2px; }
+.pd-box { background: rgba(20, 24, 31, 0.05); border-radius: 12px; padding: 12px 14px; }
+.pd-hours { display: grid; gap: 10px; }
+.pd-day { display: grid; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.pd-switch { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.pd-switch input { width: 20px; height: 20px; }
+.pd-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pd-range .input { flex: 1 1 160px; min-width: 0; }
+.pd-time { max-width: 110px; flex: 0 1 110px !important; }
+.pd-address { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pd-address .input:first-child { grid-column: 1 / -1; }
+.pd-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.pd-diff th[scope="row"] { text-align: left; white-space: nowrap; }
+.pd-bar {
+  position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+  padding: 10px 14px; background: var(--surface, #fff); border-top: 1px solid var(--line); margin: 0 -4px;
+}
+.pd-bar__why { font-size: 13px; color: var(--ink-soft); flex: 1 1 200px; min-width: 0; }
+.pd-bar__buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 480px) {
+  .pd-bar__buttons { width: 100%; }
+  .pd-bar__buttons .btn { flex: 1 1 auto; }
+}
+/* On a phone the before-and-after table becomes two stacked blocks per field: "Now" above "After". */
+@media (max-width: 560px) {
+  .pd-diff thead { display: none; }
+  .pd-diff, .pd-diff tbody, .pd-diff tr, .pd-diff th, .pd-diff td { display: block; width: 100%; }
+  .pd-diff tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .pd-diff td::before { content: attr(data-label) ": "; font-weight: 700; color: var(--ink-soft); }
+  .pd-address { grid-template-columns: minmax(0, 1fr); }
+}

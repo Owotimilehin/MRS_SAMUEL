@@ -111,3 +111,77 @@ describe("till sell-policy capability split", () => {
     }
   });
 });
+
+describe("channels.manage", () => {
+  it("is held by owner and admin, not manager or branch staff", () => {
+    expect(resolveCapabilities("owner")).toContain("channels.manage");
+    expect(resolveCapabilities("admin")).toContain("channels.manage");
+    expect(resolveCapabilities("manager")).not.toContain("channels.manage");
+    expect(resolveCapabilities("branch_staff")).not.toContain("channels.manage");
+  });
+});
+
+describe("templates.manage", () => {
+  it("is held by owner and admin, not manager or branch staff", () => {
+    expect(resolveCapabilities("owner")).toContain("templates.manage");
+    expect(resolveCapabilities("admin")).toContain("templates.manage");
+    expect(resolveCapabilities("manager")).not.toContain("templates.manage");
+    expect(resolveCapabilities("branch_staff")).not.toContain("templates.manage");
+  });
+});
+
+describe("catalogue.manage", () => {
+  it("is held by owner and admin, not by manager or branch staff", () => {
+    expect(resolveCapabilities("owner")).toContain("catalogue.manage");
+    expect(resolveCapabilities("admin")).toContain("catalogue.manage");
+    expect(resolveCapabilities("manager")).not.toContain("catalogue.manage");
+    expect(resolveCapabilities("branch_staff")).not.toContain("catalogue.manage");
+  });
+});
+
+describe("social.publish", () => {
+  it("is held by owner and admin, not manager or branch staff", () => {
+    expect(resolveCapabilities("owner")).toContain("social.publish");
+    expect(resolveCapabilities("admin")).toContain("social.publish");
+    expect(resolveCapabilities("manager")).not.toContain("social.publish");
+    expect(resolveCapabilities("branch_staff")).not.toContain("social.publish");
+  });
+});
+
+describe("insights.view", () => {
+  it("is held by owner, admin and manager, not branch staff", () => {
+    expect(resolveCapabilities("owner")).toContain("insights.view");
+    expect(resolveCapabilities("admin")).toContain("insights.view");
+    expect(resolveCapabilities("manager")).toContain("insights.view");
+    expect(resolveCapabilities("branch_staff")).not.toContain("insights.view");
+  });
+});
+
+describe("ads permissions (suite spec 12)", () => {
+  it("ads.view is held by owner and admin, not manager or branch staff", () => {
+    expect(resolveCapabilities("owner")).toContain("ads.view");
+    expect(resolveCapabilities("admin")).toContain("ads.view");
+    expect(resolveCapabilities("manager")).not.toContain("ads.view");
+    expect(resolveCapabilities("branch_staff")).not.toContain("ads.view");
+  });
+  it("ads.manage is owner only by default (it spends money)", () => {
+    expect(resolveCapabilities("owner")).toContain("ads.manage");
+    for (const role of ["admin", "manager", "branch_staff"] as const) {
+      expect(ROLE_DEFAULTS[role]).not.toContain("ads.manage");
+      expect(resolveCapabilities(role)).not.toContain("ads.manage");
+    }
+  });
+});
+
+describe("contacts.view and contacts.manage", () => {
+  it("view is held by owner, admin and manager; manage by owner and admin only", () => {
+    expect(resolveCapabilities("owner")).toContain("contacts.view");
+    expect(resolveCapabilities("admin")).toContain("contacts.view");
+    expect(resolveCapabilities("manager")).toContain("contacts.view");
+    expect(resolveCapabilities("branch_staff")).not.toContain("contacts.view");
+    expect(resolveCapabilities("owner")).toContain("contacts.manage");
+    expect(resolveCapabilities("admin")).toContain("contacts.manage");
+    expect(resolveCapabilities("manager")).not.toContain("contacts.manage");
+    expect(resolveCapabilities("branch_staff")).not.toContain("contacts.manage");
+  });
+});

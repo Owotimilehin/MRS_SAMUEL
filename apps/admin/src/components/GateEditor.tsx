@@ -15,8 +15,12 @@ const GROUPS: { heading: string; caps: Capability[] }[] = [
       "inbox.view", "inbox.view_team", "inbox.view_all", "inbox.reply", "inbox.assign", "inbox.close", "inbox.notes",
       "inbox.templates", "inbox.export", "calls.answer", "calls.outbound", "recordings.listen", "recordings.download",
       "recordings.delete", "transcripts.view", "inbox.settings", "inbox.reports", "inbox.erase",
+      "social.comments", "channels.manage", "templates.manage", "catalogue.manage",
+      "social.publish", "insights.view", "leads.view",
+      "contacts.view", "contacts.manage",
     ],
   },
+  { heading: "Ads", caps: ["ads.view", "ads.manage"] },
   { heading: "Branch / POS", caps: ["pos.sell", "pos.preorder", "shift_open.submit", "sales.view", "daily_close.submit", "returns.create", "stock.adjust"] },
 ];
 
@@ -77,6 +81,17 @@ const LABEL: Record<Capability, string> = {
   "inbox.reports": "View inbox reports",
   "recordings.delete": "Delete call recordings",
   "inbox.erase": "Delete a customer's inbox history and merge contacts",
+  "social.comments": "See and answer comments (Facebook, Instagram)",
+  "channels.manage": "Connect and set up channels (Facebook, Instagram)",
+  "templates.manage": "Write, send for approval and delete WhatsApp templates",
+  "catalogue.manage": "Connect, sync and repair the WhatsApp catalogue",
+  "social.publish": "Publish posts to Facebook and Instagram",
+  "insights.view": "See statistics from Facebook, Instagram and WhatsApp",
+  "leads.view": "See and work leads from advert forms",
+  "ads.view": "See ad spend and results",
+  "ads.manage": "Create, turn on, pause and change adverts — spends money (owner)",
+  "contacts.view": "See contacts and contact lists",
+  "contacts.manage": "Edit, add and import contacts; labels, lists and consent",
 };
 
 // Silence unused import warning — CAPABILITIES is used at runtime via GROUPS validation.

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { branch, type DbClient } from "@ms/db";
+import { requestCatalogueSync } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -98,6 +99,7 @@ export function branchRoutes(db: DbClient) {
           .where(sql`${branch.id} <> ${id} AND ${branch.isOnlineDefault} = true`);
       }
       const [row] = await tx.update(branch).set(patch).where(eq(branch.id, id)).returning();
+      if (body.is_online_default !== undefined) await requestCatalogueSync(tx, "online_branch_changed");
       return row;
     });
     if (!after) throw new BusinessError("internal_error", "update returned no rows", 500);

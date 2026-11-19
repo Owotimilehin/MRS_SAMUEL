@@ -1,6 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import crypto from "node:crypto";
-import { verifyMetaSignature, buildSendPayload, renderTemplateBody, templateParamCount } from "./meta.js";
+import {
+  verifyMetaSignature,
+  buildSendPayload,
+  renderTemplateBody,
+  templateParamCount,
+  graph,
+  graphRaw,
+  getNumberInfo,
+  numberMessagingLimit,
+  MetaApiError,
+  metaConfigFromEnv,
+} from "./meta.js";
 import { parseInbound } from "./whatsapp-ingest.js";
 import { canSeeConversation, type InboxViewer } from "./scope.js";
 import type { Capability } from "@ms/shared";
@@ -48,6 +59,215 @@ describe("buildSendPayload", () => {
   });
 });
 
+describe("buildSendPayload for a WhatsApp form (suite spec 07)", () => {
+  const flow = { type: "flow" as const, flowId: "9001", flowToken: "tok", cta: "Add address", body: "Please fill this in.", mode: "published" as const };
+  it("buildSendPayload builds an interactive flow message for navigate and for data_exchange", () => {
+    expect(buildSendPayload("2347000000000", { ...flow, action: "navigate", screen: "ADDRESS" })).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "2347000000000",
+      type: "interactive",
+      interactive: {
+        type: "flow",
+        body: { text: "Please fill this in." },
+        action: {
+          name: "flow",
+          parameters: {
+            flow_message_version: "3",
+            flow_id: "9001",
+            flow_cta: "Add address",
+            flow_token: "tok",
+            flow_action: "navigate",
+            flow_action_payload: { screen: "ADDRESS" },
+            mode: "published",
+          },
+        },
+      },
+    });
+    const exchange = buildSendPayload({ bsuid: "NG.123" }, { ...flow, action: "data_exchange", screen: "PICK_DAY", mode: "draft", footer: "Mrs. Samuel" }) as {
+      recipient?: string;
+      interactive: { footer?: unknown; action: { parameters: Record<string, unknown> } };
+    };
+    expect(exchange.recipient).toBe("NG.123");
+    expect(exchange.interactive.footer).toEqual({ text: "Mrs. Samuel" });
+    expect(exchange.interactive.action.parameters).toEqual({
+      flow_message_version: "3",
+      flow_id: "9001",
+      flow_cta: "Add address",
+      flow_token: "tok",
+      flow_action: "data_exchange",
+      mode: "draft",
+    });
+  });
+});
+
+describe("buildSendPayload interactive (suite spec 08)", () => {
+  it("buildSendPayload passes an interactive object through unchanged", () => {
+    const interactive = {
+      type: "product",
+      body: { text: "Try this one" },
+      action: { catalog_id: "123456", product_retailer_id: "v-1" },
+    };
+    const payload = buildSendPayload("2347000000000", { type: "interactive", interactive, preview: "Product: Zobo 330ml" });
+    expect(payload).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "2347000000000",
+      type: "interactive",
+      interactive,
+    });
+    // The preview is ours alone: it never goes to Meta.
+    expect(JSON.stringify(payload)).not.toContain("Product: Zobo");
+    expect(buildSendPayload({ bsuid: "US.1234567890" }, { type: "interactive", interactive, preview: "x" })).toMatchObject({
+      recipient: "US.1234567890",
+      type: "interactive",
+      interactive,
+    });
+  });
+});
+
+describe("buildSendPayload recipients", () => {
+  it("buildSendPayload uses recipient for a BSUID and to for a phone", () => {
+    const phone = buildSendPayload("2347000000000", { type: "text", body: "hi" });
+    expect(phone).toMatchObject({ messaging_product: "whatsapp", recipient_type: "individual", to: "2347000000000" });
+    expect(phone).not.toHaveProperty("recipient");
+    const bsuid = buildSendPayload({ bsuid: "US.13491208655302741918" }, { type: "text", body: "hi" });
+    expect(bsuid).toMatchObject({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      recipient: "US.13491208655302741918",
+      type: "text",
+      text: { body: "hi" },
+    });
+    expect(bsuid).not.toHaveProperty("to");
+  });
+});
+
+describe("graph", () => {
+  const cfg = { token: "SYSTEM-TOKEN-TEST", graphVersion: "v23.0" };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses opts.token as the bearer when given, and reports the response", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: 1 }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const seen: number[] = [];
+    await graph(cfg, "GET", "123?fields=name", undefined, { token: "PAGE-TOKEN-TEST", onResponse: (r) => seen.push(r.status) });
+    const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer PAGE-TOKEN-TEST");
+    expect(seen).toEqual([200]);
+    await graph(cfg, "GET", "123");
+    const init2 = (fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1];
+    expect((init2.headers as Record<string, string>).authorization).toBe("Bearer SYSTEM-TOKEN-TEST");
+  });
+
+  it("keeps Meta's code and subcode on a refusal", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { message: "Outside window", code: 10, error_subcode: 2018278 } }), {
+            status: 400,
+          }),
+      ),
+    );
+    const err = await graph(cfg, "GET", "x").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(MetaApiError);
+    expect((err as MetaApiError).code).toBe("10");
+    expect((err as MetaApiError).subcode).toBe("2018278");
+  });
+
+  it("names Meta (or the caller's service) when it can't connect", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw Object.assign(new Error("fetch failed"), { cause: { code: "ENOTFOUND" } });
+      }),
+    );
+    await expect(graph(cfg, "GET", "x")).rejects.toThrow("Could not reach Meta");
+    await expect(graph(cfg, "GET", "x", undefined, { service: "WhatsApp" })).rejects.toThrow("Could not reach WhatsApp");
+  });
+});
+
+describe("graphRaw", () => {
+  const cfg = { token: "SYSTEM-TOKEN-TEST", graphVersion: "v23.0" };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the raw body with the chosen scheme, headers and timeout, and maps errors like graph", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ h: "H1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const bytes = new Uint8Array([1, 2, 3]);
+    const out = await graphRaw<{ h: string }>(cfg, "POST", "upload:SESSION", {
+      authScheme: "OAuth",
+      headers: { file_offset: "0" },
+      body: bytes,
+      timeoutMs: 60_000,
+    });
+    expect(out).toEqual({ h: "H1" });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://graph.facebook.com/v23.0/upload:SESSION");
+    expect((init.headers as Record<string, string>).authorization).toBe("OAuth SYSTEM-TOKEN-TEST");
+    expect((init.headers as Record<string, string>).file_offset).toBe("0");
+    expect(init.body).toBe(bytes);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: { message: "Bad", code: 190 } }), { status: 401 })),
+    );
+    const err = await graphRaw(cfg, "GET", "x", {}).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(MetaApiError);
+    expect((err as MetaApiError).code).toBe("190");
+    // Bearer is the default scheme.
+    const f2 = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", f2);
+    await graphRaw(cfg, "GET", "y", {});
+    expect(((f2.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>).authorization).toBe(
+      "Bearer SYSTEM-TOKEN-TEST",
+    );
+  });
+});
+
+describe("getNumberInfo", () => {
+  const cfg = { token: "SYSTEM-TOKEN-TEST", graphVersion: "v23.0" };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("asks for the current limit field with the old one, and prefers the current value", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ status: "CONNECTED", whatsapp_business_manager_messaging_limit: "TIER_2K", messaging_limit_tier: "TIER_250" }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const info = await getNumberInfo(cfg, "1098765432");
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toContain("whatsapp_business_manager_messaging_limit");
+    expect(numberMessagingLimit(info)).toBe("TIER_2K");
+    expect(numberMessagingLimit({ messaging_limit_tier: "TIER_250" })).toBe("TIER_250");
+    expect(numberMessagingLimit({})).toBeNull();
+  });
+
+  it("falls back to the old field alone when Meta refuses the new one with code 100", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "nonexisting field", code: 100 } }), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "CONNECTED", messaging_limit_tier: "TIER_250" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const info = await getNumberInfo(cfg, "1098765432");
+    expect((fetchMock.mock.calls[1] as unknown as [string])[0]).not.toContain("whatsapp_business_manager_messaging_limit");
+    expect(numberMessagingLimit(info)).toBe("TIER_250");
+  });
+
+  it("does not hide other refusals", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { message: "token", code: 190 } }), { status: 401 })));
+    await expect(getNumberInfo(cfg, "1")).rejects.toBeInstanceOf(MetaApiError);
+  });
+});
+
 describe("template rendering", () => {
   const components = [{ type: "BODY", text: "Hi {{1}}, sorry we missed your call about {{2}}." }];
   it("fills variables and counts them", () => {
@@ -76,6 +296,59 @@ describe("parseInbound", () => {
       body: "Stop",
     });
     expect(parseInbound({ from: "1", id: "e", type: "ephemeral" }).type).toBe("unsupported");
+  });
+
+  it("parseInbound turns an order message into type order with a cart summary", () => {
+    const order = {
+      catalog_id: "123456",
+      text: "No ice please",
+      product_items: [
+        { product_retailer_id: "v-3f0c1d2e-4b5a-4c6d-8e7f-9a0b1c2d3e4f", quantity: 2, item_price: 1500, currency: "NGN" },
+        { product_retailer_id: "v-9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a", quantity: 1, item_price: 2800, currency: "NGN" },
+      ],
+    };
+    expect(parseInbound({ from: "1", id: "o1", type: "order", order })).toEqual({
+      type: "order",
+      body: 'Sent a cart: 2 items, 3 bottles — "No ice please"',
+      mediaId: null,
+      mediaMime: null,
+      mediaFilename: null,
+    });
+    expect(
+      parseInbound({ from: "1", id: "o2", type: "order", order: { product_items: [{ product_retailer_id: "v-x", quantity: 1 }] } }).body,
+    ).toBe("Sent a cart: 1 item, 1 bottle");
+    // A cart with nothing readable in it is still shown as a cart, never dropped.
+    expect(parseInbound({ from: "1", id: "o3", type: "order" })).toMatchObject({ type: "order", body: "Sent a cart: 0 items, 0 bottles" });
+  });
+
+  it("parseInbound turns a system message into type system with its body", () => {
+    expect(
+      parseInbound({
+        from_user_id: "US.2",
+        id: "s1",
+        type: "system",
+        system: { type: "user_changed_user_id", body: "User changed from US.1 to US.2", user_id: "US.2", previous_user_id: "US.1" },
+      }),
+    ).toEqual({ type: "system", body: "User changed from US.1 to US.2", mediaId: null, mediaMime: null, mediaFilename: null });
+    expect(parseInbound({ id: "s2", type: "system" })).toMatchObject({
+      type: "system",
+      body: "WhatsApp updated this customer's details.",
+    });
+  });
+});
+
+describe("parseInbound for a completed form (suite spec 07)", () => {
+  it("parseInbound gives an nfm_reply the body \"Completed a form\"", () => {
+    const p = parseInbound({
+      id: "wamid.F1",
+      from: "2347000000000",
+      type: "interactive",
+      interactive: { type: "nfm_reply", nfm_reply: { name: "flow", body: "Sent", response_json: '{"flow_token":"t"}' } },
+    });
+    expect(p).toEqual({ type: "interactive", body: "Completed a form", mediaId: null, mediaMime: null, mediaFilename: null });
+    // Ordinary button taps are unchanged.
+    expect(parseInbound({ id: "wamid.B1", from: "2347000000000", type: "interactive", interactive: { type: "button_reply", button_reply: { id: "1", title: "Yes" } } }).body).toBe("Yes");
+    expect(parseInbound({ id: "wamid.B2", from: "2347000000000", type: "interactive", interactive: { type: "other" } }).body).toBeNull();
   });
 });
 
@@ -112,5 +385,30 @@ describe("canSeeConversation", () => {
     expect(canSeeConversation(v, { ...base, assigneeId: "U1" })).toBe(true);
     expect(canSeeConversation(v, { ...base, assigneeId: "U2" })).toBe(false);
     expect(canSeeConversation(v, { ...base, teamId: null })).toBe(false);
+  });
+});
+
+describe("whatsappRecipient (rule R13)", () => {
+  it("prefers the conversation's WhatsApp identity, then the customer's phone", async () => {
+    const { whatsappRecipient } = await import("./send.js");
+    expect(whatsappRecipient({ channel: "whatsapp", externalId: "2347090000041" }, "+2347090000040")).toBe("2347090000041");
+    expect(whatsappRecipient({ channel: "whatsapp", externalId: "NG.1000000000001" }, null)).toEqual({ bsuid: "NG.1000000000001" });
+    expect(whatsappRecipient(null, "0803 123 4567")).toBe("2348031234567");
+    expect(whatsappRecipient({ channel: "instagram", externalId: "IGSID" }, null)).toBeNull();
+    expect(whatsappRecipient(null, null)).toBeNull();
+  });
+});
+
+describe("metaConfigFromEnv (spec 02)", () => {
+  it("reads META_APP_ID and META_HUMAN_AGENT_ENABLED", () => {
+    const base = { META_SYSTEM_USER_TOKEN: "t" } as NodeJS.ProcessEnv;
+    expect(metaConfigFromEnv({})).toBeNull();
+    const off = metaConfigFromEnv(base)!;
+    expect(off.appId).toBeUndefined();
+    expect(off.humanAgent).toBe(false);
+    const on = metaConfigFromEnv({ ...base, META_APP_ID: "123", META_HUMAN_AGENT_ENABLED: "true" })!;
+    expect(on.appId).toBe("123");
+    expect(on.humanAgent).toBe(true);
+    expect(metaConfigFromEnv({ ...base, META_HUMAN_AGENT_ENABLED: "yes" })!.humanAgent).toBe(false);
   });
 });

@@ -112,6 +112,13 @@ services:
       META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-}
       META_SYSTEM_USER_TOKEN: ${META_SYSTEM_USER_TOKEN:-}
       META_GRAPH_VERSION: ${META_GRAPH_VERSION:-}
+      # The Meta app's numeric ID (not a secret). Needed only for the WhatsApp profile photo upload.
+      META_APP_ID: ${META_APP_ID:-}
+      # WhatsApp forms, Phase B (suite spec 07): the private key for the live-form data endpoint
+      # (base64 of the PEM file, on one line) and its passphrase if it has one. Secrets; api only.
+      # Empty = Phase B is off and the endpoint answers 503.
+      WA_FLOW_PRIVATE_KEY_B64: ${WA_FLOW_PRIVATE_KEY_B64:-}
+      WA_FLOW_PRIVATE_KEY_PASSPHRASE: ${WA_FLOW_PRIVATE_KEY_PASSPHRASE:-}
       INBOX_TEMPLATE_LANGUAGE: ${INBOX_TEMPLATE_LANGUAGE:-}
       # Unified inbox: phone calls (Twilio). Empty = calling is off and the
       # call bar stays hidden.
@@ -217,6 +224,22 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    restart: unless-stopped
+
+  # The business suite (suite.<domain>): customer messages, calls and contacts.
+  # Static files behind nginx, which forwards /v1/ to the api service.
+  suite:
+    build:
+      context: .
+      dockerfile: apps/suite/Dockerfile
+      args:
+        VITE_ADMIN_URL: ${PUBLIC_ADMIN_URL:-}
+    ports:
+      - "${HOST_BIND:-0.0.0.0}:3011:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 128m
     restart: unless-stopped
 
   customer:

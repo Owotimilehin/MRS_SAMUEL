@@ -40,7 +40,31 @@ const dateFmt = new Intl.DateTimeFormat("en-GB", {
   month: "long",
 });
 
-export function LoginPage(): JSX.Element {
+export interface LoginCopy {
+  /** Small label beside the logo. */
+  portal: string;
+  /** The two lines of the big heading; the second line's last word is emphasised. */
+  line1: string;
+  line2: string;
+  line2Em: string;
+  lede: string;
+}
+
+const ADMIN_COPY: LoginCopy = {
+  portal: "Operations\u00a0Portal",
+  line1: "Sunrise",
+  line2: "to ",
+  line2Em: "shelf.",
+  lede: "One console for the whole operation — pressing floor to branch till, every bottle traceable to the morning it was made.",
+};
+
+interface LoginPageProps {
+  /** Where to land after signing in when the address has no ?next=. Default: by role (admin app). */
+  defaultDest?: string;
+  copy?: LoginCopy;
+}
+
+export function LoginPage({ defaultDest, copy = ADMIN_COPY }: LoginPageProps = {}): JSX.Element {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -76,7 +100,7 @@ export function LoginPage(): JSX.Element {
       });
       const params = new URLSearchParams(window.location.search);
       const next = params.get("next");
-      const dest = next ?? defaultDestination(res.data.user.role, res.data.user.branch_id);
+      const dest = next ?? defaultDest ?? defaultDestination(res.data.user.role, res.data.user.branch_id);
       // Brief success beat before the redirect so the state change is felt.
       setDone(true);
       window.setTimeout(() => window.location.replace(dest), 520);
@@ -100,22 +124,22 @@ export function LoginPage(): JSX.Element {
 
         <header className="login__brandtop">
           <img src="/brand-logo.png" alt="Mrs. Samuel" className="login__mark" />
-          <span className="login__portal">Operations&nbsp;Portal</span>
+          <span className="login__portal">{copy.portal}</span>
         </header>
 
         <div className="login__statement">
           <span className="login__eyebrow">{greeting}</span>
           <h1 className="login__display">
             <span className="login__line" style={{ animationDelay: "260ms" }}>
-              Sunrise
+              {copy.line1}
             </span>
             <span className="login__line" style={{ animationDelay: "360ms" }}>
-              to <em>shelf.</em>
+              {copy.line2}
+              <em>{copy.line2Em}</em>
             </span>
           </h1>
           <p className="login__lede">
-            One console for the whole operation — pressing floor to branch till, every
-            bottle traceable to the morning it was made.
+            {copy.lede}
           </p>
         </div>
 

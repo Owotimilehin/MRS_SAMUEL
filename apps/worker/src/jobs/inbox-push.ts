@@ -1,5 +1,5 @@
 /**
- * Push notifications for new WhatsApp messages, sent to staff phones through
+ * Push notifications for new WhatsApp, Messenger and Instagram messages, sent to staff phones through
  * Expo's push service. Each person gets a push only for conversations they may
  * see (the same canSeeConversation rule as the inbox), filtered by their
  * notification setting:
@@ -14,6 +14,7 @@ import {
   adminUser,
   customer,
   inboxConversation,
+  inboxIdentity,
   inboxMessage,
   inboxNotifyPref,
   inboxPushToken,
@@ -69,6 +70,49 @@ export const expoPushSender: PushSender = async (messages) => {
   return dead;
 };
 
+/**
+ * The push title: the contact's name, else phone, else what Meta calls them on
+ * the channel (a Facebook name or an Instagram username). Exported for tests.
+ */
+export function pushTitle(
+  conv: {
+    name: string | null;
+    phone: string | null;
+    identityName: string | null;
+    identityUsername: string | null;
+  },
+  /** Spec 02: the last fallback names the app ("New Instagram message"). */
+  channel?: string | null,
+): string {
+  return (
+    conv.name ||
+    conv.phone ||
+    conv.identityName ||
+    (conv.identityUsername ? `@${conv.identityUsername}` : "") ||
+    (channel ? `New ${channelWord(channel)} message` : "New message")
+  );
+}
+
+function channelWord(channel: string): string {
+  return channel === "messenger" ? "Messenger" : channel === "instagram" ? "Instagram" : "WhatsApp";
+}
+
+/** The push body: which app, then the preview, cut to 120 characters (spec 02, 6.6). Exported for tests. */
+export function pushBody(channel: string | null | undefined, type: string, body: string | null): string {
+  return `${channelWord(channel ?? "whatsapp")}: ${messagePreview(type, body)}`.slice(0, 120);
+}
+
+/**
+ * The newest message per conversation that deserves a push. A referral ("came
+ * from an advert") never does (spec 02, rule R14); it is only marked handled.
+ * Exported for tests.
+ */
+export function latestPushable<T extends { type: string; conversationId: string }>(pending: readonly T[]): Map<string, T> {
+  const out = new Map<string, T>();
+  for (const m of pending) if (m.type !== "referral") out.set(m.conversationId, m);
+  return out;
+}
+
 /** Exported for tests. */
 export function wantsPush(
   viewer: InboxViewer,
@@ -100,6 +144,7 @@ export async function sendMessagePushes(db: DbClient, log: Log, send: PushSender
       id: inboxMessage.id,
       type: inboxMessage.type,
       body: inboxMessage.body,
+      channel: inboxMessage.channel,
       conversationId: inboxMessage.conversationId,
     })
     .from(inboxMessage)
@@ -137,14 +182,16 @@ export async function sendMessagePushes(db: DbClient, log: Log, send: PushSender
         assigneeId: inboxConversation.assigneeId,
         name: customer.name,
         phone: customer.phone,
+        identityName: inboxIdentity.displayName,
+        identityUsername: inboxIdentity.username,
       })
       .from(inboxConversation)
       .innerJoin(customer, eq(customer.id, inboxConversation.customerId))
+      .leftJoin(inboxIdentity, eq(inboxIdentity.id, inboxConversation.identityId))
       .where(inArray(inboxConversation.id, convIds));
 
     // One push per conversation per person (the latest message), not one per message.
-    const latestByConv = new Map<string, (typeof pending)[number]>();
-    for (const m of pending) latestByConv.set(m.conversationId, m);
+    const latestByConv = latestPushable(pending);
 
     for (const [convId, msg] of latestByConv) {
       const conv = convs.find((c) => c.id === convId);
@@ -156,8 +203,8 @@ export async function sendMessagePushes(db: DbClient, log: Log, send: PushSender
         if (!wantsPush(viewer, level, conv)) continue;
         outgoing.push({
           to: t.token,
-          title: conv.name || conv.phone || "New WhatsApp message",
-          body: messagePreview(msg.type, msg.body).slice(0, 120),
+          title: pushTitle(conv, msg.channel),
+          body: pushBody(msg.channel, msg.type, msg.body),
           data: { conversationId: convId },
           sound: "default",
           channelId: "messages",

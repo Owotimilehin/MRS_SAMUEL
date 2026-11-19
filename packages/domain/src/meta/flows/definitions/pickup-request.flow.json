@@ -1,0 +1,80 @@
+{
+  "version": "7.3",
+  "screens": [
+    {
+      "id": "PICKUP",
+      "title": "Pickup request",
+      "terminal": true,
+      "success": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextSubheading",
+            "text": "When will you collect?"
+          },
+          {
+            "type": "TextBody",
+            "text": "We will confirm your time in the chat."
+          },
+          {
+            "type": "TextInput",
+            "name": "order_number",
+            "label": "Order number",
+            "input-type": "text",
+            "required": false,
+            "helper-text": "If you have it"
+          },
+          {
+            "type": "DatePicker",
+            "name": "pickup_date",
+            "label": "Pickup day",
+            "required": true
+          },
+          {
+            "type": "RadioButtonsGroup",
+            "name": "pickup_time",
+            "label": "Time of day",
+            "required": true,
+            "data-source": [
+              {
+                "id": "morning",
+                "title": "Morning, 9am to 12pm"
+              },
+              {
+                "id": "afternoon",
+                "title": "Afternoon, 12pm to 4pm"
+              },
+              {
+                "id": "evening",
+                "title": "Evening, 4pm to 7pm"
+              }
+            ]
+          },
+          {
+            "type": "TextInput",
+            "name": "collector_name",
+            "label": "Who will collect?",
+            "input-type": "text",
+            "required": true,
+            "helper-text": "Name of the person coming"
+          },
+          {
+            "type": "Footer",
+            "label": "Request pickup",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "flow_key": "pickup_request",
+                "order_number": "${form.order_number}",
+                "pickup_date": "${form.pickup_date}",
+                "pickup_time": "${form.pickup_time}",
+                "collector_name": "${form.collector_name}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

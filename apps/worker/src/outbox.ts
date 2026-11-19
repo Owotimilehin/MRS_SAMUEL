@@ -4,7 +4,7 @@ import {
   customer,
   type DbClient,
 } from "@ms/db";
-import { isOutsideLagos } from "@ms/shared";
+import { isOutsideLagos, templateAlertWording } from "@ms/shared";
 import { sendMessage, channels } from "./notifiers/telegram.js";
 import { sendEmail } from "./notifiers/email.js";
 import { dispatchDeliveryFromEvent } from "./jobs/dispatch-delivery.js";
@@ -13,6 +13,8 @@ import pino from "pino";
 
 const logger = pino({ base: { service: "ms-worker", part: "outbox" } });
 const ADMIN_URL = process.env.PUBLIC_ADMIN_URL ?? "https://admin.mrssamuel.com";
+/** The Business Suite (suite spec 02 alerts link to its Channels page). */
+const SUITE_URL = (process.env.PUBLIC_SUITE_URL ?? "https://suite.mrssamuel.com").replace(/\/$/, "");
 
 /** Human-friendly delivery time in Lagos, e.g. "Tue 3 Jun, 2:00 PM". */
 function lagosTime(iso: unknown): string {
@@ -473,6 +475,201 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Its messages are kept and come in automatically once you add it under Inbox settings → Numbers.\n` +
           `👉 ${ADMIN_URL}/inbox/settings`,
       };
+    case "inbox.unknown_channel_account":
+      return {
+        chatIds: [owner],
+        text:
+          `📭 *Message for a Page or Instagram account that isn't connected*\n` +
+          `Meta sent a message for ${String(p["account"] ?? "?")}. It is kept and will come in once you connect it under Channels.\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
+    case "inbox.meta_config":
+      // The WhatsApp profile screen (suite spec 05) raises this with area "whatsapp_profile".
+      if (p["area"] === "whatsapp_profile") {
+        return {
+          chatIds: [owner],
+          text:
+            `⚠️ *WhatsApp connection problem*\n` +
+            `Meta refused a request from the suite (code ${String(p["code"] ?? "?")}, ${String(p["area"])}). ` +
+            `The access token or its permissions need checking.\n` +
+            `👉 ${SUITE_URL}/channels`,
+        };
+      }
+      // The forms screens (suite spec 07) raise it with area "whatsapp_flows".
+      if (p["area"] === "whatsapp_flows") {
+        return {
+          chatIds: [owner],
+          text:
+            `⚠️ *WhatsApp connection problem*\n` +
+            `Meta refused a form request from the suite (code ${String(p["code"] ?? "?")}, ${String(p["area"])}). ` +
+            `The access token or its permissions need checking.\n` +
+            `👉 ${SUITE_URL}/templates/forms`,
+        };
+      }
+      // The template screens (suite spec 06) raise it with area "whatsapp_templates".
+      if (p["area"] === "whatsapp_templates") {
+        return {
+          chatIds: [owner],
+          text:
+            `⚠️ *WhatsApp connection problem*\n` +
+            `Meta refused a template request from the suite (code ${String(p["code"] ?? "?")}, ${String(p["area"])}). ` +
+            `The access token or its permissions need checking.\n` +
+            `👉 ${SUITE_URL}/templates`,
+        };
+      }
+      return {
+        chatIds: [owner],
+        text:
+          `⚠️ *Messages are not going out on Facebook or Instagram*\n` +
+          `${String(p["text"] ?? "Meta refused a message.")}\n` +
+          `Meta code ${String(p["code"] ?? "?")}. Open Channels and press Check connection.\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
+    case "inbox.flow_health": {
+      // WhatsApp reports a problem with a form or with our data endpoint (suite spec 07).
+      const lines: Record<string, string> = {
+        BLOCKED: "WhatsApp has blocked it because our server was failing. Customers cannot open it.",
+        THROTTLED: "WhatsApp is limiting it to 10 sends an hour because our server was slow or failing.",
+        ENDPOINT_ERROR_RATE: "WhatsApp reports our server is slow or failing for this form.",
+        ENDPOINT_LATENCY: "WhatsApp reports our server is slow or failing for this form.",
+        ENDPOINT_AVAILABILITY: "WhatsApp reports our server is slow or failing for this form.",
+        FLOW_VERSION_EXPIRY_WARNING: "Its format version is about to expire. It needs updating before then.",
+      };
+      const line = lines[String(p["event"] ?? "")] ?? "WhatsApp reported a problem with it.";
+      return {
+        chatIds: [owner],
+        text: `⚠️ *WhatsApp form problem*\n${String(p["title"] ?? "A form")}: ${line}\n👉 ${SUITE_URL}/templates/forms`,
+      };
+    }
+    case "inbox.flow_complaint":
+      // A complaint form was completed on WhatsApp (suite spec 07). No customer details here.
+      return {
+        chatIds: [owner],
+        text:
+          `⚠️ *A customer reported a problem*\n` +
+          `A complaint form has just been filled in on WhatsApp.\n` +
+          `👉 ${SUITE_URL}/inbox/${String(p["conversation_id"] ?? "")}`,
+      };
+    case "inbox.meta_policy":
+      return {
+        chatIds: [owner],
+        text: `⚠️ *Meta sent a policy warning for the Page*\nOpen Meta Business Suite → Page quality to read it.`,
+      };
+    case "channels.page_config":
+      return {
+        chatIds: [owner],
+        text:
+          `Page details: Facebook refused a change to ${String(p["label"] ?? "a Page")}: ${String(p["message"] ?? "no reason given")} ` +
+          `(code ${String(p["code"] ?? "unknown")}).\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
+    case "catalogue.sync_blocked":
+      return {
+        chatIds: [owner],
+        text: `🛍️ *Catalogue sync stopped*\nMeta refused our access (${String(p["code"] ?? "")}): ${String(p["message"] ?? "")}\n👉 ${SUITE_URL}/catalogue`,
+      };
+    case "social.publish_config_error":
+      // Raised by the publishing worker and the Posts routes (suite spec 09) when Meta refuses for a
+      // token or permission reason. At most one per account per 24 hours.
+      return {
+        chatIds: [owner],
+        text:
+          `⚠️ *A post could not go out on ${p["network"] === "instagram" ? "Instagram" : "Facebook"}*\n` +
+          `Meta refused the suite for ${String(p["label"] ?? "an account")}: ${String(p["message"] ?? "no reason given")} ` +
+          `(code ${String(p["code"] ?? "unknown")}). The access token or its permissions need checking. ` +
+          `The post is marked "Did not post" and can be tried again once this is fixed.\n` +
+          `👉 ${SUITE_URL}/posts`,
+      };
+    case "insights.config_error":
+      // The statistics collector (suite spec 11): the token or a permission stopped a daily read.
+      return {
+        chatIds: [owner],
+        text:
+          `⚠️ *Insights: Meta would not share its figures*\n` +
+          `${String(p["message"] ?? "Meta refused a request for statistics.")}\n` +
+          `${String(p["label"] ?? "Meta")}, Meta code ${String(p["code"] ?? "unknown")}. The figures already collected are kept.\n` +
+          `👉 ${SUITE_URL}/insights`,
+      };
+    case "lead.fetch_blocked":
+      return {
+        chatIds: [owner],
+        text:
+          `📋 *Leads cannot be read*\n` +
+          `Meta refused (${String(p["code"] ?? "?")}): ${String(p["message"] ?? "no reason given")}\n` +
+          `Check Leads Access in Business Settings.\n` +
+          `👉 ${SUITE_URL}/leads`,
+      };
+    // Ads (suite spec 12). Rules and the safety stop can only pause; these tell the owner when they did.
+    case "ads.config_error":
+      return {
+        chatIds: [owner],
+        text:
+          (p["area"] === "purchases"
+            ? `📣 *Ads: Meta refused a purchase report*\nMeta has not given the suite permission to report purchases`
+            : `📣 *Ads: the suite cannot read the ad account*\nMeta refused our access to ${String(p["name"] ?? "the ad account")}`) +
+          ` (code ${String(p["code"] ?? "unknown")}): ${String(p["message"] ?? "no reason given")}\n👉 ${SUITE_URL}/ads`,
+      };
+    case "ads.rule_fired":
+      return {
+        chatIds: [owner],
+        text: `📣 *Ads: a rule paused an advert*\n${String(p["summary"] ?? `Rule '${String(p["rule"] ?? "")}' paused '${String(p["advert"] ?? "an advert")}'.`)}\nNothing turns it back on by itself.\n👉 ${SUITE_URL}/ads`,
+      };
+    case "ads.safety_stop": {
+      const cur = String(p["currency"] ?? "NGN") === "NGN" ? "₦" : `${String(p["currency"])} `;
+      const paused = Number(p["paused"] ?? 0);
+      return {
+        chatIds: [owner],
+        text:
+          `🛑 *Ads: safety stop*\n${cur}${Number(p["spend"] ?? 0).toLocaleString("en-NG")} spent today, at or over your daily cap of ` +
+          `${cur}${Number(p["cap"] ?? 0).toLocaleString("en-NG")}.\n` +
+          (paused > 0
+            ? `${paused} advert${paused === 1 ? "" : "s"} made in the suite ${paused === 1 ? "was" : "were"} paused. Nothing turns ${paused === 1 ? "it" : "them"} back on by itself.`
+            : `No advert made in the suite was running. Adverts made in Meta Ads Manager are not paused by the suite: check them there.`) +
+          `\n👉 ${SUITE_URL}/ads`,
+      };
+    }
+    case "channels.chat_setup_config":
+      return {
+        chatIds: [owner],
+        text:
+          `Chat set-up: Meta refused a change for ${String(p["label"] ?? "a channel")}: ${String(p["message"] ?? "no reason given")} ` +
+          `(code ${String(p["code"] ?? "unknown")}). Open Channels in the suite to check the connection.\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
+    case "social.comments_config":
+      // Comments (suite spec 03): Meta refused a read or an answer because of our token or permissions.
+      return {
+        chatIds: [owner],
+        text:
+          `Comments: the suite can no longer read or answer comments on ${String(p["label"] ?? "a channel")}. ` +
+          `Meta said: ${String(p["message"] ?? "no reason given")} (code ${String(p["code"] ?? "unknown")}). ` +
+          `Open Channels in the suite to check the connection.\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
+    case "inbox.template_alert": {
+      // WhatsApp template news (suite spec 06): refused, paused, switched off, re-filed, archived.
+      const when = (iso: unknown): string | null => {
+        if (typeof iso !== "string" || !iso) return null;
+        const d = new Date(iso);
+        return Number.isNaN(d.getTime())
+          ? null
+          : d.toLocaleDateString("en-NG", { timeZone: "Africa/Lagos", day: "numeric", month: "long", year: "numeric" });
+      };
+      const w = templateAlertWording(String(p["kind"] ?? ""), {
+        reason: p["reason"] ?? p["detail"] ?? null,
+        recommendation: p["recommendation"] ?? null,
+        category: p["category"] ?? null,
+        correctCategory: p["correct_category"] ?? null,
+        at: when(p["at"]),
+      });
+      return {
+        chatIds: [owner],
+        text:
+          `📝 *WhatsApp template: ${w.title}*\n` +
+          `“${String(p["name"] ?? "?")}” (${String(p["language"] ?? "?")}). ${w.sentence}\n` +
+          `👉 ${SUITE_URL}/templates`,
+      };
+    }
     case "inbox.webhook_dead":
       return {
         chatIds: [owner],

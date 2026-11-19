@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { eq, isNull, and, desc, asc } from "drizzle-orm";
 import { z } from "zod";
 import { product, productPrice, productVariant, bottleMaterialIdForSize, type DbClient } from "@ms/db";
+import { requestCatalogueSync } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
@@ -270,6 +271,7 @@ export function productRoutes(db: DbClient) {
         });
         variantsCreated.push({ id: vRow.id, size_ml: v.size_ml, price_ngn: v.price_ngn });
       }
+      await requestCatalogueSync(tx, "product_created");
       return { row, variants: variantsCreated };
     });
 
@@ -314,6 +316,7 @@ export function productRoutes(db: DbClient) {
       .set(updates)
       .where(eq(product.id, id))
       .returning();
+    await requestCatalogueSync(db, "product_updated");
 
     await writeAudit(db, c, {
       action: "product.update",
@@ -350,6 +353,7 @@ export function productRoutes(db: DbClient) {
         .update(productVariant)
         .set({ deletedAt: now, isActive: false })
         .where(and(eq(productVariant.productId, id), isNull(productVariant.deletedAt)));
+      await requestCatalogueSync(tx, "product_deleted");
     });
 
     await writeAudit(db, c, {
@@ -421,6 +425,7 @@ export function productRoutes(db: DbClient) {
           priceNgn: body.price_ngn,
           createdByUserId: auth.userId,
         });
+        await requestCatalogueSync(tx, "variant_added");
         return { id: vRow.id, size_ml: vRow.sizeMl, price_ngn: body.price_ngn, is_active: vRow.isActive };
       }
 
@@ -442,6 +447,7 @@ export function productRoutes(db: DbClient) {
         priceNgn: body.price_ngn,
         createdByUserId: auth.userId,
       });
+      await requestCatalogueSync(tx, "variant_added");
       return { id: vRow.id, size_ml: vRow.sizeMl, price_ngn: body.price_ngn, is_active: vRow.isActive };
     });
 
@@ -507,6 +513,7 @@ export function productRoutes(db: DbClient) {
         priceNgn: body.price_ngn,
         createdByUserId: auth.userId,
       });
+      await requestCatalogueSync(tx, "price_changed");
     });
 
     await writeAudit(db, c, {
@@ -585,6 +592,7 @@ export function productRoutes(db: DbClient) {
         .where(eq(productVariant.id, variantId))
         .returning();
       if (!row) throw new BusinessError("internal_error", "variant update failed", 500);
+      await requestCatalogueSync(tx, "variant_visibility");
       return row;
     });
 

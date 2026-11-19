@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { Download } from "lucide-react";
-import { Shell } from "../../components/Shell.js";
+import { Frame as Shell } from "../../lib/app-frame.js";
 import { StatHero } from "../../components/StatHero.js";
 import { Stat } from "../../components/Stat.js";
 import { DataState } from "../../components/DataState.js";
@@ -130,7 +130,7 @@ export function InboxReportsPage(): JSX.Element {
           <label className="field">
             <span className="field__label">Number</span>
             <select className="select" value={number} onChange={(e) => setNumber(e.target.value)}>
-              <option value="">All numbers</option>
+              <option value="">All channels</option>
               {me.data!.numbers.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.label}

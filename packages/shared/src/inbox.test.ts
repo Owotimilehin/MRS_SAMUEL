@@ -1,5 +1,51 @@
 import { describe, it, expect } from "vitest";
-import { toE164, waWindowOpen, waWindowRemainingMs, isOpenNow, localParts, messagePreview } from "./inbox.js";
+import {
+  toE164,
+  waWindowOpen,
+  waWindowRemainingMs,
+  isOpenNow,
+  localParts,
+  messagePreview,
+  channelForKind,
+  isBsuid,
+  channelLabel,
+  CHANNEL_KINDS,
+  IDENTITY_CHANNELS,
+  WHATSAPP_ACCOUNT_KEY,
+  uploadProblem,
+  uploadAccept,
+  UPLOAD_RULES,
+  fitsTextLimit,
+  humanAgentRemainingMs,
+} from "./inbox.js";
+
+describe("channel accounts and identities", () => {
+  it("channelForKind maps phone to whatsapp and leaves the others", () => {
+    expect(channelForKind("phone")).toBe("whatsapp");
+    expect(channelForKind("messenger")).toBe("messenger");
+    expect(channelForKind("instagram")).toBe("instagram");
+  });
+  it("isBsuid accepts US.123 and US.ENT.123 and rejects digits-only and empty", () => {
+    expect(isBsuid("US.123")).toBe(true);
+    expect(isBsuid("US.13491208655302741918")).toBe(true);
+    expect(isBsuid("US.ENT.11815799212886844830")).toBe(true);
+    expect(isBsuid("2347067220914")).toBe(false);
+    expect(isBsuid("")).toBe(false);
+    expect(isBsuid(null)).toBe(false);
+    // Review fix M2: Meta does not promise the shape, so any non-digit id without spaces is accepted.
+    expect(isBsuid("us.123")).toBe(true);
+    expect(isBsuid("US.")).toBe(true);
+    expect(isBsuid("abc-DEF_123:xyz")).toBe(true);
+    expect(isBsuid("US. 123")).toBe(false);
+    expect(isBsuid(" ")).toBe(false);
+    expect(isBsuid("x".repeat(257))).toBe(false);
+  });
+  it("labels each channel in plain words", () => {
+    expect(IDENTITY_CHANNELS.map(channelLabel)).toEqual(["WhatsApp", "Facebook Messenger", "Instagram"]);
+    expect(CHANNEL_KINDS).toEqual(["phone", "messenger", "instagram"]);
+    expect(WHATSAPP_ACCOUNT_KEY).toBe("global");
+  });
+});
 
 describe("toE164", () => {
   it("normalises Nigerian local and international forms", () => {
@@ -66,5 +112,48 @@ describe("messagePreview", () => {
     expect(messagePreview("text", "  hello ")).toBe("hello");
     expect(messagePreview("image", null)).toBe("📷 Photo");
     expect(messagePreview("weird", "")).toBe("Message");
+  });
+});
+
+describe("Messenger and Instagram rules (suite spec 02)", () => {
+  const MB = 1024 * 1024;
+  it("uploadProblem per channel and limit", () => {
+    // WhatsApp keeps its list.
+    expect(uploadProblem("whatsapp", { type: "image/jpeg", size: 5 * MB })).toBeNull();
+    expect(uploadProblem("whatsapp", { type: "image/jpeg", size: 5 * MB + 1 })).toBe("This file is too large for WhatsApp (limit 5 MB).");
+    expect(uploadProblem("whatsapp", { type: "image/gif", size: 10 })).toBe("WhatsApp can't send this kind of file.");
+    // Messenger: 25 MB, GIF allowed.
+    expect(uploadProblem("messenger", { type: "image/gif", size: 25 * MB })).toBeNull();
+    expect(uploadProblem("messenger", { type: "video/mp4", size: 25 * MB + 1 })).toBe("This file is too large for Messenger (limit 25 MB).");
+    expect(uploadProblem("messenger", { type: "application/zip", size: 10 })).toBe("Messenger can't send this kind of file.");
+    // Instagram: JPEG or PNG up to 8 MB, PDF only for documents.
+    expect(uploadProblem("instagram", { type: "image/png", size: 8 * MB })).toBeNull();
+    expect(uploadProblem("instagram", { type: "image/jpeg", size: 9 * MB })).toBe("Instagram only takes JPEG or PNG pictures up to 8 MB.");
+    expect(uploadProblem("instagram", { type: "image/gif", size: 10 })).toBe("Instagram only takes JPEG or PNG pictures up to 8 MB.");
+    expect(uploadProblem("instagram", { type: "video/quicktime", size: 25 * MB })).toBeNull();
+    expect(uploadProblem("instagram", { type: "text/plain", size: 10 })).toBe("Instagram can't send this kind of file.");
+    expect(uploadAccept("instagram").split(",")).toEqual(Object.keys(UPLOAD_RULES.instagram));
+  });
+  it("messagePreview new types", () => {
+    expect(messagePreview("share", null)).toBe("Shared a post");
+    expect(messagePreview("story_mention", null)).toBe("Mentioned you in their story");
+    expect(messagePreview("reaction", null)).toBe("Reacted to a message");
+    expect(messagePreview("interactive", null)).toBe("Tapped a button");
+    expect(messagePreview("referral", null)).toBe("Opened the chat");
+    expect(messagePreview("unsupported", null)).toBe("Message");
+    expect(messagePreview("share", "Shared a reel: Mango")).toBe("Shared a reel: Mango");
+  });
+  it("text limits: Messenger 1999 characters, Instagram 1000 bytes", () => {
+    expect(fitsTextLimit("messenger", "a".repeat(1999))).toBe(true);
+    expect(fitsTextLimit("messenger", "a".repeat(2000))).toBe(false);
+    expect(fitsTextLimit("instagram", "é".repeat(500))).toBe(true);
+    expect(fitsTextLimit("instagram", "é".repeat(501))).toBe(false);
+    expect(fitsTextLimit("whatsapp", "a".repeat(4096))).toBe(true);
+  });
+  it("human agent window is 7 days", () => {
+    const now = new Date("2026-11-19T12:00:00Z");
+    expect(humanAgentRemainingMs(null, now)).toBe(0);
+    expect(humanAgentRemainingMs(new Date("2026-11-18T12:00:00Z"), now)).toBe(6 * 86_400_000);
+    expect(humanAgentRemainingMs(new Date("2026-11-11T12:00:00Z"), now)).toBe(0);
   });
 });

@@ -15,7 +15,7 @@ import {
   inboxUserNumberAccess,
   type DbClient,
 } from "@ms/db";
-import { getNumberInfo, metaConfigFromEnv, registerNumber, unparkEventsForNumber, MetaApiError } from "@ms/domain";
+import { getNumberInfo, numberMessagingLimit, metaConfigFromEnv, registerNumber, unparkEventsForNumber, MetaApiError } from "@ms/domain";
 import { toE164 } from "@ms/shared";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
@@ -91,8 +91,18 @@ export function inboxSettingsRoutes(db: DbClient) {
   r.use("*", requireAuth());
 
   // ── Numbers ──
+  /**
+   * Phone lines only. `?kind=all` also returns the other channel accounts
+   * (Facebook Page, Instagram), for the Staff access tab. Pages and Instagram
+   * accounts are set up under /v1/channels.
+   */
   r.get("/numbers", requireCapability("inbox.settings"), async (c) => {
-    const rows = await db.select().from(inboxPhoneNumber).orderBy(asc(inboxPhoneNumber.label));
+    const all = c.req.query("kind") === "all";
+    const rows = await db
+      .select()
+      .from(inboxPhoneNumber)
+      .where(all ? undefined : eq(inboxPhoneNumber.kind, "phone"))
+      .orderBy(asc(inboxPhoneNumber.label));
     const live = await db
       .select({ numberId: inboxCall.phoneNumberId, n: sql<number>`count(*)::int` })
       .from(inboxCall)
@@ -105,7 +115,7 @@ export function inboxSettingsRoutes(db: DbClient) {
 
   r.post("/numbers", requireCapability("inbox.settings"), async (c) => {
     const body = NumberBody.parse(await c.req.json());
-    const values = numberValues(body) as typeof inboxPhoneNumber.$inferInsert;
+    const values = { ...(numberValues(body) as typeof inboxPhoneNumber.$inferInsert), kind: "phone" };
     try {
       const [row] = await db.insert(inboxPhoneNumber).values(values).returning();
       if (row!.waPhoneNumberId) await unparkEventsForNumber(db, row!.waPhoneNumberId);
@@ -124,7 +134,8 @@ export function inboxSettingsRoutes(db: DbClient) {
     const body = NumberBody.partial().parse(await c.req.json());
     if (body.wa_fallback_number_id === id) throw new BusinessError("validation_failed", "A number can't be its own fallback", 400);
     const [before] = await db.select().from(inboxPhoneNumber).where(eq(inboxPhoneNumber.id, id));
-    if (!before) throw new BusinessError("not_found", "not found", 404);
+    // A Page or Instagram account is changed under Channels, never here (rule R19).
+    if (!before || before.kind !== "phone") throw new BusinessError("not_found", "not found", 404);
     const [row] = await db
       .update(inboxPhoneNumber)
       .set({ ...numberValues(body), updatedAt: new Date() })
@@ -144,7 +155,8 @@ export function inboxSettingsRoutes(db: DbClient) {
     const cfg = metaConfigFromEnv();
     if (!cfg) throw new BusinessError("service_unavailable", "WhatsApp is not configured on this server", 503);
     const [num] = await db.select().from(inboxPhoneNumber).where(eq(inboxPhoneNumber.id, id));
-    if (!num?.waPhoneNumberId) throw new BusinessError("validation_failed", "Add the WhatsApp phone number ID first", 400);
+    if (!num || num.kind !== "phone") throw new BusinessError("not_found", "not found", 404);
+    if (!num.waPhoneNumberId) throw new BusinessError("validation_failed", "Add the WhatsApp phone number ID first", 400);
     try {
       await registerNumber(cfg, num.waPhoneNumberId, pin);
     } catch (err) {
@@ -162,7 +174,8 @@ export function inboxSettingsRoutes(db: DbClient) {
     const cfg = metaConfigFromEnv();
     if (!cfg) throw new BusinessError("service_unavailable", "WhatsApp is not configured on this server", 503);
     const [num] = await db.select().from(inboxPhoneNumber).where(eq(inboxPhoneNumber.id, id));
-    if (!num?.waPhoneNumberId) throw new BusinessError("validation_failed", "This number has no WhatsApp phone number ID", 400);
+    if (!num || num.kind !== "phone") throw new BusinessError("not_found", "not found", 404);
+    if (!num.waPhoneNumberId) throw new BusinessError("validation_failed", "This number has no WhatsApp phone number ID", 400);
     const info = await getNumberInfo(cfg, num.waPhoneNumberId).catch((err: unknown) => {
       throw new BusinessError("conflict", err instanceof Error ? err.message : "Meta lookup failed", 409);
     });
@@ -171,7 +184,7 @@ export function inboxSettingsRoutes(db: DbClient) {
       .set({
         waStatus: info.status ?? num.waStatus,
         qualityRating: info.quality_rating ?? num.qualityRating,
-        messagingLimit: info.messaging_limit_tier ?? num.messagingLimit,
+        messagingLimit: numberMessagingLimit(info) ?? num.messagingLimit,
         updatedAt: new Date(),
       })
       .where(eq(inboxPhoneNumber.id, id))

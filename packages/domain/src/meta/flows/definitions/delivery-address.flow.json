@@ -1,0 +1,139 @@
+{
+  "version": "7.3",
+  "screens": [
+    {
+      "id": "ADDRESS",
+      "title": "Delivery address",
+      "terminal": true,
+      "success": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextSubheading",
+            "text": "Where should we deliver?"
+          },
+          {
+            "type": "TextBody",
+            "text": "Fill this in once and we will use it for your order."
+          },
+          {
+            "type": "TextInput",
+            "name": "receiver_name",
+            "label": "Receiver's name",
+            "input-type": "text",
+            "required": true,
+            "helper-text": "The person who will collect the order"
+          },
+          {
+            "type": "TextInput",
+            "name": "receiver_phone",
+            "label": "Receiver's phone",
+            "input-type": "phone",
+            "required": true,
+            "helper-text": "A number our rider can call"
+          },
+          {
+            "type": "TextInput",
+            "name": "street",
+            "label": "House and street",
+            "input-type": "text",
+            "required": true,
+            "helper-text": "For example 12 Admiralty Way"
+          },
+          {
+            "type": "Dropdown",
+            "name": "area",
+            "label": "Area",
+            "required": true,
+            "data-source": [
+              {
+                "id": "lekki",
+                "title": "Lekki"
+              },
+              {
+                "id": "ajah",
+                "title": "Ajah"
+              },
+              {
+                "id": "victoria_island",
+                "title": "Victoria Island"
+              },
+              {
+                "id": "ikoyi",
+                "title": "Ikoyi"
+              },
+              {
+                "id": "lagos_island",
+                "title": "Lagos Island"
+              },
+              {
+                "id": "surulere",
+                "title": "Surulere"
+              },
+              {
+                "id": "yaba",
+                "title": "Yaba"
+              },
+              {
+                "id": "ikeja",
+                "title": "Ikeja"
+              },
+              {
+                "id": "maryland",
+                "title": "Maryland"
+              },
+              {
+                "id": "gbagada",
+                "title": "Gbagada"
+              },
+              {
+                "id": "magodo",
+                "title": "Magodo"
+              },
+              {
+                "id": "festac",
+                "title": "Festac"
+              },
+              {
+                "id": "other",
+                "title": "Somewhere else in Lagos"
+              }
+            ]
+          },
+          {
+            "type": "TextInput",
+            "name": "landmark",
+            "label": "Nearest landmark",
+            "input-type": "text",
+            "required": false,
+            "helper-text": "A bus stop, junction or well-known building"
+          },
+          {
+            "type": "TextArea",
+            "name": "note",
+            "label": "Note for the rider",
+            "required": false,
+            "helper-text": "Gate colour, floor, or the best time to come"
+          },
+          {
+            "type": "Footer",
+            "label": "Send address",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "flow_key": "delivery_address",
+                "receiver_name": "${form.receiver_name}",
+                "receiver_phone": "${form.receiver_phone}",
+                "street": "${form.street}",
+                "area": "${form.area}",
+                "landmark": "${form.landmark}",
+                "note": "${form.note}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

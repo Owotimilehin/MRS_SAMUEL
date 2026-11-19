@@ -1,0 +1,27 @@
+/* WhatsApp business profile screen (suite spec 05). Every class starts with wp-. */
+.wp-page { display: grid; gap: 12px; }
+.wp-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; align-items: start; }
+.wp-card { display: grid; gap: 12px; }
+.wp-h { margin: 0; font-size: 16px; font-weight: 700; }
+.wp-fine { font-size: 12px; color: var(--ink-soft); margin: 4px 0 0; }
+.wp-count { font-size: 12px; color: var(--ink-soft); }
+.wp-count--over { color: var(--danger); font-weight: 700; }
+.wp-strip { padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.14); color: #92400e; font-size: 14px; }
+.wp-photo { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.wp-avatar { border-radius: 50%; object-fit: cover; flex: none; display: block; }
+.wp-avatar--blank { display: flex; align-items: center; justify-content: center; background: rgba(20, 24, 31, 0.1); color: var(--ink-soft); font-weight: 700; }
+.wp-buttons, .wp-dialog-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.wp-dialog-buttons { justify-content: flex-end; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.wp-rows { margin: 0; display: grid; gap: 10px; }
+.wp-row { display: grid; gap: 2px; }
+.wp-row dt { font-size: 12px; color: var(--ink-soft); }
+.wp-row dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.wp-preview { display: flex; gap: 20px; flex-wrap: wrap; margin: 8px 0; }
+.wp-preview figure { margin: 0; display: grid; gap: 4px; justify-items: center; }
+.wp-preview figcaption { font-size: 12px; color: var(--ink-soft); }
+.wp-diff-wrap { overflow-x: auto; max-width: 100%; }
+.wp-diff th[scope="row"] { text-align: left; white-space: nowrap; }
+.wp-diff td { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 140px; }
+@media (max-width: 860px) {
+  .wp-grid { grid-template-columns: minmax(0, 1fr); }
+}

@@ -1,8 +1,35 @@
 import { describe, expect, it } from "vitest";
+import { templateNeeds } from "@ms/shared";
 import {
+  flowAddressPreview,
+  flowCardActions,
+  flowHandledText,
+  formatFlowValue,
+  cartLineNote,
+  chatOrderAwaitingPayment,
+  chatOrderHeading,
+  chatOrderStatusChip,
+  deliveryAddressProblem,
+  parseDeliveryFee,
+  replyState,
+  textUsage,
+  WHATSAPP_ACCEPT,
+  contactName,
+  eraseConfirmMatches,
+  eraseConfirmTarget,
+  firstIdentityHandle,
+  identityLine,
   conversationIdFromPath,
   shouldAlertForEvent,
   titleWithCount,
+  addHeaderFileLabel,
+  afterHoursHelp,
+  autoMessageLabel,
+  fillButtonUrl,
+  headerFileProblem,
+  headerFileRule,
+  templateBlankCount,
+  templateDraftProblem,
   applyEarlierPage,
   applyNewestPage,
   greetingContentType,
@@ -169,6 +196,68 @@ describe("templates", () => {
     expect(templateParamsComplete(["Ada"], 2)).toBe(false);
     expect(templateParamsComplete(["Ada", "  "], 2)).toBe(false);
     expect(templateParamsComplete(["Ada", "MS-12"], 2)).toBe(true);
+  });
+});
+
+describe("template extras", () => {
+  const imageCta = templateNeeds([
+    { type: "HEADER", format: "IMAGE" },
+    { type: "BODY", text: "Free delivery for all online orders" },
+    { type: "BUTTONS", buttons: [{ type: "URL", text: "Shop now", url: "https://www.jaspersmarket.com/" }] },
+  ]);
+  const full = templateNeeds([
+    { type: "HEADER", format: "TEXT", text: "Order {{1}}" },
+    { type: "BODY", text: "Hi {{1}}" },
+    { type: "BUTTONS", buttons: [{ type: "URL", text: "Track", url: "https://shop.example/t/{{1}}" }] },
+  ]);
+  const empty = { params: [], headerParam: "", buttonParams: {}, hasFile: false };
+
+  it("keeps Send off until the picture is added", () => {
+    expect(templateDraftProblem(imageCta, empty)).toBe("Add a picture to send this template.");
+    expect(templateDraftProblem(imageCta, { ...empty, hasFile: true })).toBeNull();
+  });
+  it("asks for each blank in turn: heading, message, link", () => {
+    expect(templateDraftProblem(full, empty)).toBe("Fill in the blank in the heading.");
+    expect(templateDraftProblem(full, { ...empty, headerParam: "A1" })).toBe("Fill in every blank in the message.");
+    expect(templateDraftProblem(full, { ...empty, headerParam: "A1", params: ["Ada"] })).toBe(
+      'Fill in the end of the link for the "Track" button.',
+    );
+    expect(templateDraftProblem(full, { headerParam: "A1", params: ["Ada"], buttonParams: { 0: "abc" }, hasFile: false })).toBeNull();
+    expect(templateBlankCount(full)).toBe(3);
+  });
+  it("never lets a template the inbox can't send through", () => {
+    const carousel = templateNeeds([{ type: "BODY", text: "x" }, { type: "CAROUSEL", cards: [] }]);
+    expect(templateDraftProblem(carousel, { ...empty, hasFile: true })).toBe("This template has a carousel, which the inbox can't send yet");
+  });
+  it("checks the file is the right kind and size", () => {
+    expect(headerFileProblem("image", { type: "image/jpeg", size: 200_000 })).toBeNull();
+    expect(headerFileProblem("image", { type: "application/pdf", size: 200_000 })).toBe("This template needs a picture (JPG or PNG, up to 5 MB).");
+    expect(headerFileProblem("image", { type: "image/png", size: 6 * 1024 * 1024 })).toBe("That file is too large. Use a picture of 5 MB or less.");
+    expect(headerFileProblem("video", { type: "video/mp4", size: 1000 })).toBeNull();
+    expect(headerFileProblem("document", { type: "image/png", size: 1000 })).toContain("needs a document");
+    expect(headerFileRule("image").accept).toBe("image/jpeg,image/png");
+    expect(addHeaderFileLabel("image")).toBe("Add picture");
+    expect(addHeaderFileLabel("video")).toBe("Add video");
+  });
+  it("shows where a link button will go", () => {
+    expect(fillButtonUrl("https://shop.example/t/{{1}}", "abc")).toBe("https://shop.example/t/abc");
+    expect(fillButtonUrl("https://shop.example/t/{{1}}", "")).toBe("https://shop.example/t/…");
+  });
+});
+
+describe("automatic messages and the after-hours help text", () => {
+  it("labels messages no person sent", () => {
+    expect(autoMessageLabel("after_hours")).toBe("Automatic reply");
+    expect(autoMessageLabel("system")).toBe("Automatic message");
+    expect(autoMessageLabel(null)).toBeNull();
+    expect(autoMessageLabel(undefined)).toBeNull();
+  });
+  it("says exactly what the after-hours message does for the number's channels", () => {
+    expect(afterHoursHelp("both")).toBe(
+      "Sent automatically on WhatsApp to a customer who writes when you're closed (once per closed period), and read out to callers who ring when you're closed.",
+    );
+    expect(afterHoursHelp("whatsapp")).toBe("Sent automatically on WhatsApp to a customer who writes when you're closed (once per closed period).");
+    expect(afterHoursHelp("voice")).toBe("Read out to callers who ring when you're closed.");
   });
 });
 
@@ -490,5 +579,234 @@ describe("new-message alerts", () => {
     expect(conversationIdFromPath("/inbox/reports")).toBeNull();
     expect(conversationIdFromPath("/inbox/settings")).toBeNull();
     expect(conversationIdFromPath("/owner/orders/abc")).toBeNull();
+  });
+});
+
+describe("customer identities (suite spec 01)", () => {
+  it("contactName falls back to the identity name before \"Unknown customer\"", () => {
+    expect(contactName("Ada", "+2348031234567", "@ada")).toBe("Ada");
+    expect(contactName(null, "+2348031234567", "@ada")).toBe("+234 803 123 4567");
+    expect(contactName("  ", null, "@ada")).toBe("@ada");
+    expect(contactName(null, null, "Funmi on Facebook")).toBe("Funmi on Facebook");
+    expect(contactName(null, null, " ")).toBe("Unknown customer");
+    expect(contactName(null, null)).toBe("Unknown customer");
+  });
+
+  it("eraseConfirmTarget picks phone, then username, then name, then the word DELETE", () => {
+    expect(eraseConfirmTarget({ name: "Ada", phone: "+2348031234567" }, [{ username: "ada" }])).toEqual({
+      kind: "phone",
+      show: "+234 803 123 4567",
+    });
+    expect(eraseConfirmTarget({ name: "Ada", phone: null }, [{ username: null }, { username: "@ada_ig" }])).toEqual({
+      kind: "username",
+      show: "@ada_ig",
+    });
+    expect(eraseConfirmTarget({ name: " Ada ", phone: "" }, [{ username: null }])).toEqual({ kind: "name", show: "Ada" });
+    expect(eraseConfirmTarget({ name: null, phone: null }, [])).toEqual({ kind: "word", show: "DELETE" });
+  });
+
+  it("eraseConfirmMatches follows the target", () => {
+    expect(eraseConfirmMatches("+234 803 123 4567", { kind: "phone", show: "+234 803 123 4567" }, "+2348031234567")).toBe(true);
+    expect(eraseConfirmMatches("DELETE", { kind: "phone", show: "+234 803 123 4567" }, "+2348031234567")).toBe(false);
+    expect(eraseConfirmMatches(" ADA_IG ", { kind: "username", show: "@ada_ig" })).toBe(true);
+    expect(eraseConfirmMatches("@ada_ig", { kind: "username", show: "@ada_ig" })).toBe(true);
+    expect(eraseConfirmMatches("ada", { kind: "username", show: "@ada_ig" })).toBe(false);
+    expect(eraseConfirmMatches("ada", { kind: "name", show: "Ada" })).toBe(true);
+    expect(eraseConfirmMatches("delete", { kind: "word", show: "DELETE" })).toBe(false);
+    expect(eraseConfirmMatches("DELETE", { kind: "word", show: "DELETE" })).toBe(true);
+  });
+
+  it("describes each way a customer reaches us", () => {
+    const base = { display_name: null, username: null, phone: null, account_label: "WhatsApp" };
+    expect(identityLine({ ...base, channel: "whatsapp", phone: "+2348031234567" })).toBe("+234 803 123 4567");
+    expect(identityLine({ ...base, channel: "whatsapp" })).toBe("WhatsApp (number hidden)");
+    expect(identityLine({ ...base, channel: "whatsapp", username: "ada" })).toBe("WhatsApp (number hidden) · @ada");
+    expect(identityLine({ ...base, channel: "messenger", account_label: "Facebook Page" })).toBe("Facebook user · Facebook Page");
+    expect(identityLine({ ...base, channel: "messenger", display_name: "Ada O", account_label: "Facebook Page" })).toBe(
+      "Ada O · Facebook Page",
+    );
+    expect(identityLine({ ...base, channel: "instagram", username: "ada", account_label: "Instagram" })).toBe("@ada · Instagram");
+    expect(identityLine({ ...base, channel: "instagram", account_label: "Instagram" })).toBe("Instagram user · Instagram");
+    expect(firstIdentityHandle([{ ...base, channel: "whatsapp" }, { ...base, channel: "instagram", username: "ada" }])).toBe("@ada");
+    expect(firstIdentityHandle([])).toBeNull();
+  });
+});
+
+describe("replyState (suite spec 02, table 7.3)", () => {
+  const H = 3_600_000;
+  const fb = { label: "Facebook Page", channels: "whatsapp" as const, kind: "messenger" as const, is_active: true, problem_text: null };
+  const ig = { ...fb, label: "Instagram", kind: "instagram" as const };
+  const phone = { label: "Main line", channels: "both" as const, kind: "phone" as const };
+
+  it("any channel, window open: the existing window line", () => {
+    for (const [channel, number] of [["whatsapp", phone], ["messenger", fb], ["instagram", ig]] as const) {
+      const s = replyState({ channel, number, window_remaining_ms: 5 * H + 30 * 60_000 });
+      expect(s.mode).toBe("open");
+      expect(s.statusText).toBe("Reply window open — 5h 30m left");
+    }
+  });
+  it("Messenger / Instagram: no template button, no caption, channel's own files", () => {
+    const s = replyState({ channel: "instagram", number: ig, window_remaining_ms: H });
+    expect(s).toMatchObject({ canTemplate: false, canCaption: false, tabLabel: "Instagram reply" });
+    expect(s.accept).toBe("image/jpeg,image/png,audio/aac,audio/mp4,audio/wav,audio/x-wav,video/mp4,video/quicktime,video/webm,application/pdf");
+    expect(replyState({ channel: "messenger", number: fb, window_remaining_ms: H }).accept).toContain("image/gif");
+  });
+  it("text limit: Instagram counts bytes, Messenger 1999 characters", () => {
+    expect(replyState({ channel: "instagram", number: ig, window_remaining_ms: H }).textLimit).toEqual({ max: 1000, unit: "bytes" });
+    expect(replyState({ channel: "messenger", number: fb, window_remaining_ms: H }).textLimit).toEqual({ max: 1999, unit: "characters" });
+    expect(textUsage("é".repeat(500), { max: 1000, unit: "bytes" })).toEqual({ used: 1000, over: false });
+    expect(textUsage("é".repeat(501), { max: 1000, unit: "bytes" })).toEqual({ used: 1002, over: true });
+  });
+  it("Messenger / Instagram, window closed, Human Agent off", () => {
+    const s = replyState({ channel: "messenger", number: fb, window_remaining_ms: 0, human_agent_remaining_ms: 0, human_agent_enabled: false });
+    expect(s).toMatchObject({ mode: "closed", statusText: "Reply window closed", closedWindow: "24 hours" });
+  });
+  it("Messenger / Instagram, 24 h to 7 days, Human Agent on", () => {
+    const s = replyState({ channel: "instagram", number: ig, window_remaining_ms: 0, human_agent_remaining_ms: 2.5 * 24 * H, human_agent_enabled: true });
+    expect(s.mode).toBe("human_agent");
+    expect(s.statusText).toBe("More than 24 hours since they wrote. You can still reply for 3 more days, by hand only.");
+    const last = replyState({ channel: "instagram", number: ig, window_remaining_ms: 0, human_agent_remaining_ms: H, human_agent_enabled: true });
+    expect(last.statusText).toContain("for 1 more day,");
+  });
+  it("Human Agent on, over 7 days: closed, saying 7 days", () => {
+    const s = replyState({ channel: "messenger", number: fb, window_remaining_ms: 0, human_agent_remaining_ms: 0, human_agent_enabled: true });
+    expect(s).toMatchObject({ mode: "closed", closedWindow: "7 days" });
+  });
+  it("line switched off", () => {
+    const s = replyState({ channel: "messenger", number: { ...fb, is_active: false }, window_remaining_ms: H });
+    expect(s).toMatchObject({ mode: "off", statusText: "Facebook Page is switched off, so replies can't be sent. Switch it on under Channels." });
+  });
+  it("line has a problem: a banner, the box stays usable", () => {
+    const s = replyState({ channel: "instagram", number: { ...ig, problem_text: "Message access is switched off in the Instagram app." }, window_remaining_ms: H });
+    expect(s.mode).toBe("open");
+    expect(s.banner).toBe("Messages on Instagram are not going out: Message access is switched off in the Instagram app.");
+  });
+  it("WhatsApp: exactly as today", () => {
+    expect(replyState({ number: phone, window_remaining_ms: H })).toMatchObject({
+      channel: "whatsapp",
+      mode: "open",
+      canTemplate: true,
+      canCaption: true,
+      accept: WHATSAPP_ACCEPT,
+      tabLabel: "WhatsApp reply",
+      banner: null,
+    });
+    expect(replyState({ channel: "whatsapp", number: phone, window_remaining_ms: 0 })).toMatchObject({
+      mode: "closed",
+      statusText: "The 24-hour reply window is closed. Send a template to restart the chat.",
+    });
+    expect(replyState({ channel: "whatsapp", number: { ...phone, channels: "voice" }, window_remaining_ms: H }).mode).toBe("calls_only");
+  });
+  it("Instagram ticks have no delivered state", () => {
+    expect(messageTicks("delivered", "instagram")).toEqual({ marks: "✓", read: false, label: "Sent" });
+    expect(messageTicks("read", "instagram")).toEqual({ marks: "✓✓", read: true, label: "Read" });
+    expect(messageTicks("delivered", "messenger").marks).toBe("✓✓");
+    expect(messageTicks("delivered").label).toBe("Delivered");
+  });
+});
+
+describe("WhatsApp forms (spec 07)", () => {
+  const fresh = { status: "new", flow_key: "complaint" };
+  it("flowCardActions: nothing without inbox.reply", () => {
+    expect(flowCardActions(fresh, false)).toEqual([]);
+    expect(flowCardActions({ status: "new", flow_key: "delivery_address" }, false, true)).toEqual([]);
+  });
+  it("flowCardActions: handled or reopen by status, then notes", () => {
+    expect(flowCardActions(fresh, true)).toEqual(["handled", "add_note"]);
+    expect(flowCardActions({ status: "handled", flow_key: "complaint" }, true)).toEqual(["reopen", "add_note"]);
+    expect(flowCardActions({ status: "archived", flow_key: "unknown" }, true)).toEqual(["add_note"]);
+  });
+  it("flowCardActions: notes need inbox.notes", () => {
+    expect(flowCardActions(fresh, true, false)).toEqual(["handled"]);
+  });
+  it("flowCardActions: save_address only for a delivery address, last", () => {
+    expect(flowCardActions({ status: "new", flow_key: "delivery_address" }, true)).toEqual(["handled", "add_note", "save_address"]);
+    expect(flowCardActions({ status: "handled", flow_key: "delivery_address" }, true, false)).toEqual(["reopen", "save_address"]);
+    expect(flowCardActions({ status: "new", flow_key: "bulk_order" }, true)).not.toContain("save_address");
+  });
+  it("formatFlowValue: plain text by kind", () => {
+    expect(formatFlowValue("text", "  12 Bode Thomas  ")).toBe("12 Bode Thomas");
+    expect(formatFlowValue("date", "2026-11-20")).toBe("Fri 20 Nov 2026");
+    expect(formatFlowValue("date", "Fri 20 Nov 2026")).toBe("Fri 20 Nov 2026");
+    expect(formatFlowValue("multi", ["a", "", "b"])).toBe("a, b");
+    expect(formatFlowValue("longtext", "line one\nline two")).toBe("line one\nline two");
+    expect(formatFlowValue("choice", "Lekki")).toBe("Lekki");
+    expect(formatFlowValue("text", null)).toBe("");
+    expect(formatFlowValue("text", 3)).toBe("3");
+  });
+  it("formatFlowValue: an unknown kind is shown as it came, and markup stays text", () => {
+    expect(formatFlowValue("mystery", " <b>hi</b> ")).toBe("<b>hi</b>");
+    expect(formatFlowValue("other", { a: 1 })).toBe('{"a":1}');
+  });
+  it("flowHandledText: name and Lagos time", () => {
+    const now = new Date("2026-11-17T10:00:00Z");
+    expect(flowHandledText({ handled_by_name: "Ada", handled_at: "2026-11-17T08:05:00Z" }, now)).toBe("Handled by Ada, 09:05");
+    expect(flowHandledText({ handled_by_name: "ada@example.com", handled_at: "2026-11-16T12:00:00Z" }, now)).toBe("Handled by ada, Yesterday");
+    expect(flowHandledText({ handled_by_name: null, handled_at: "2026-10-01T12:00:00Z" }, now)).toBe("Handled, 1 Oct");
+    expect(flowHandledText({ handled_by_name: "Ada", handled_at: null }, now)).toBe("Handled by Ada");
+  });
+  it("flowAddressPreview: street, area and the landmark only when given", () => {
+    const rows = [
+      { label: "Receiver", value: "Ada" },
+      { label: "House and street", value: "12 Bode Thomas" },
+      { label: "Area", value: "Surulere" },
+    ];
+    expect(flowAddressPreview(rows)).toBe("12 Bode Thomas, Surulere.");
+    expect(flowAddressPreview([...rows, { label: "Landmark", value: "Opposite the bank" }])).toBe(
+      "12 Bode Thomas, Surulere. Landmark: Opposite the bank",
+    );
+    expect(flowAddressPreview([{ label: "Landmark", value: "By the gate" }])).toBe("Landmark: By the gate");
+    expect(flowAddressPreview([])).toBe("");
+  });
+});
+
+// ── Selling in chat (suite spec 08) ──────────────────────────────────────────
+describe("cart card wording", () => {
+  it("chatOrderHeading(state): one heading per state", () => {
+    expect(chatOrderHeading("new")).toBe("Cart received");
+    expect(chatOrderHeading("asked")).toBe("Waiting for: delivery or pickup");
+    expect(chatOrderHeading("awaiting_address")).toBe("Waiting for the delivery address");
+    expect(chatOrderHeading("ready")).toBe("Ready to create the order");
+    expect(chatOrderHeading("placed", "SO-2026-00042")).toBe("Order SO-2026-00042");
+    expect(chatOrderHeading("placed")).toBe("Order created");
+    expect(chatOrderHeading("cancelled")).toBe("Cart dismissed");
+  });
+
+  it("cartLineNote(line): price differences, lines no longer sold, and preorders", () => {
+    const line = { sellable: true, in_stock: true, price_differs: false, meta_price: 1500 };
+    expect(cartLineNote(line)).toBeNull();
+    expect(cartLineNote({ ...line, price_differs: true, meta_price: 1400 })).toBe("Price in WhatsApp was ₦1,400. The shop price is used.");
+    expect(cartLineNote({ ...line, sellable: false, price_differs: true })).toBe("No longer sold. Remove it to continue.");
+    expect(cartLineNote({ ...line, in_stock: false })).toBe("Out of stock: this will become a made-to-order (preorder) order.");
+    expect(cartLineNote({ ...line, in_stock: false, price_differs: true, meta_price: 7.99 })).toBe(
+      "Price in WhatsApp was ₦8. The shop price is used. Out of stock: this will become a made-to-order (preorder) order.",
+    );
+  });
+
+  it("the status chip follows the shop order, and the link can only be re-sent while payment is awaited", () => {
+    expect(chatOrderStatusChip("confirmed").text).toBe("Waiting for payment");
+    expect(chatOrderStatusChip("paid").text).toBe("Paid");
+    expect(chatOrderStatusChip("out_for_delivery").text).toBe("Out for delivery");
+    expect(chatOrderStatusChip("handed_over").text).toBe("Ready / handed over");
+    expect(chatOrderStatusChip("delivered").text).toBe("Delivered");
+    expect(chatOrderStatusChip("cancelled")).toEqual({ text: "Cancelled", tone: "danger" });
+    expect(chatOrderStatusChip("reconcile_needed").text).toBe("Payment needs checking");
+    expect(chatOrderAwaitingPayment("confirmed")).toBe(true);
+    expect(chatOrderAwaitingPayment("reconcile_needed")).toBe(true);
+    expect(chatOrderAwaitingPayment("paid")).toBe(false);
+    expect(chatOrderAwaitingPayment("cancelled")).toBe(false);
+  });
+
+  it("checks the address and the typed delivery fee the way the server does", () => {
+    expect(deliveryAddressProblem("Lekki")).toBe("Enter the full address: house number, street, area and city.");
+    expect(deliveryAddressProblem("12 Test Close, Lekki Phase 1, Lagos")).toBeNull();
+    expect(parseDeliveryFee("")).toBe(0);
+    expect(parseDeliveryFee("500")).toBe(500);
+    expect(parseDeliveryFee("₦1,500")).toBe(1500);
+    expect(parseDeliveryFee("100000")).toBe(100000);
+    expect(parseDeliveryFee("100001")).toBeNull();
+    expect(parseDeliveryFee("12.50")).toBeNull();
+    expect(parseDeliveryFee("-5")).toBeNull();
+    expect(parseDeliveryFee("free")).toBeNull();
   });
 });

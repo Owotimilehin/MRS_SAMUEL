@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, UserRound } from "lucide-react";
 import type { Capability } from "@ms/shared";
-import { Shell } from "../../components/Shell.js";
+import { Frame as Shell } from "../../lib/app-frame.js";
 import { DataState } from "../../components/DataState.js";
 import { Modal } from "../../components/Modal.js";
 import { ConversationList } from "../../components/inbox/ConversationList.js";
@@ -296,6 +296,8 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
                         items={timeline.data?.items ?? []}
                         canDownload={can("recordings.download")}
                         canDeleteRecordings={can("recordings.delete")}
+                        canReply={can("inbox.reply")}
+                        canNote={can("inbox.notes")}
                         hasMore={!!timeline.data?.hasMore && !!timeline.data.nextBefore}
                         loadingEarlier={loadingEarlier}
                         onLoadEarlier={() => void loadEarlier()}

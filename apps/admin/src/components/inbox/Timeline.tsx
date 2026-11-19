@@ -1,11 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Download, FileText, Trash2, Voicemail } from "lucide-react";
+import { ClipboardList, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Download, FileText, Trash2, Voicemail, ShoppingBag } from "lucide-react";
 import { ConfirmModal } from "../ConfirmModal.js";
+import { FlowResponseCardView, FlowSentRow } from "./FlowCards.js";
 import { inboxApi } from "../../lib/inbox-api.js";
+import { useCommentHref } from "../../lib/app-frame.js";
 import { humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
 import {
+  autoMessageLabel,
   callOutcomeLabel,
   formatDuration,
   groupTimelineByDay,
@@ -44,6 +47,10 @@ interface TimelineProps {
   onLoadEarlier: () => void;
   /** Something in the timeline changed on the server (e.g. a recording was deleted). */
   onChanged: () => void;
+  /** May act on a form answer (inbox.reply). Without it the card shows no buttons. */
+  canReply?: boolean;
+  /** May copy a form answer to the notes (inbox.notes). */
+  canNote?: boolean;
 }
 
 export function Timeline({
@@ -54,6 +61,8 @@ export function Timeline({
   loadingEarlier,
   onLoadEarlier,
   onChanged,
+  canReply = false,
+  canNote = false,
 }: TimelineProps): JSX.Element {
   const days = useMemo(() => groupTimelineByDay(items), [items]);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -115,7 +124,16 @@ export function Timeline({
         <div key={d.key} style={{ display: "contents" }}>
           <div className="ibx-day">{d.label}</div>
           {d.items.map((it) =>
-            it.kind === "message" ? (
+            it.kind === "message" && it.data.direction === "in" && it.data.flow_response ? (
+              <FlowResponseCardView
+                key={`m${it.data.id}`}
+                response={it.data.flow_response}
+                at={it.data.created_at}
+                canReply={canReply}
+                canNote={canNote}
+                onChanged={onChanged}
+              />
+            ) : it.kind === "message" ? (
               <MessageBubble key={`m${it.data.id}`} m={it.data} />
             ) : it.kind === "call" ? (
               <CallCard
@@ -136,28 +154,131 @@ export function Timeline({
 }
 
 function MessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
+  // Messenger and Instagram rows have their own rendering (spec 02, 7.4); WhatsApp is unchanged.
+  if (m.channel === "messenger" || m.channel === "instagram") return <MetaMessageBubble m={m} />;
   const problem = sendProblem(m);
   const ticks =
     problem === "unconfirmed" ? { marks: "?", read: false, label: "Not confirmed" } : messageTicks(m.status);
+  // A form we sent (spec 07): the button and the form's name go under the text.
+  const flowSent = m.direction === "out" && m.flow_sent ? m.flow_sent : null;
   return (
     <div className={`ibx-msg ibx-msg--${m.direction}${problem ? ` ibx-msg--${problem}` : ""}`}>
       {m.direction === "out" && m.sender_name && (
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{staffLabel(m.sender_name)}</div>
       )}
+      {m.direction === "out" && !m.sender_name && autoMessageLabel(m.auto) && (
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-soft)", marginBottom: 2 }}>{autoMessageLabel(m.auto)}</div>
+      )}
       {m.template_name && (
         <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 2 }}>Template: {humanTemplateName(m.template_name)}</div>
       )}
       {(m.has_media || m.media_pending) && <MessageMedia m={m} />}
-      {m.body && <div>{m.body}</div>}
-      {!m.body && !m.has_media && !m.media_pending && (
+      {/* A filled-in lead form (suite spec 13): a normal incoming bubble, marked so it is not taken for a WhatsApp message. */}
+      {m.type === "lead" && (
+        <div className="ibx-msg__sub" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <ClipboardList size={12} aria-hidden /> Lead form
+        </div>
+      )}
+      {m.body && (
+        <div>
+          {/* A cart sent from the catalogue (suite spec 08). */}
+          {m.type === "order" && <ShoppingBag size={13} aria-hidden style={{ verticalAlign: "-2px", marginRight: 4 }} />}
+          {m.body}
+        </div>
+      )}
+      {!m.body && !m.has_media && !m.media_pending && !flowSent && (
         <div style={{ color: "var(--ink-soft)", fontStyle: "italic" }}>
           {m.type === "reaction" ? "Reacted to a message" : m.type === "location" ? "📍 Shared a location" : `Unsupported message (${m.type})`}
         </div>
       )}
+      {flowSent && <FlowSentRow flow={flowSent} />}
       {problem === "failed" && <div className="ibx-msg__error">Not sent{m.error_message ? `: ${m.error_message}` : ""}</div>}
       {problem === "unconfirmed" && <div className="ibx-msg__warn">{UNCONFIRMED_TEXT}</div>}
       <div className="ibx-msg__meta">
         <span>{timeOfDay(m.created_at)}</span>
+        {m.direction === "out" && ticks.marks && (
+          <span className={ticks.read ? "ibx-msg__ticks--read" : undefined} title={ticks.label} aria-label={ticks.label}>
+            {ticks.marks}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Above a message that was sent as the private reply to a comment (suite spec 03): which comment. */
+function CommentRefLine({ commentRef }: { commentRef: NonNullable<TimelineMessage["comment_ref"]> }): JSX.Element {
+  const href = useCommentHref();
+  const excerpt = commentRef.excerpt?.trim();
+  const text = `Private reply to a comment${excerpt ? `: “${excerpt}”` : ""}`;
+  return (
+    <div className="ibx-msg__caption" style={{ marginTop: 0, marginBottom: 2 }}>
+      {href && commentRef.thread_id ? <a href={href(commentRef.thread_id)}>{text}</a> : text}
+    </div>
+  );
+}
+
+/** A Messenger or Instagram message (spec 02, table 7.4). */
+function MetaMessageBubble({ m }: { m: TimelineMessage }): JSX.Element {
+  // Where the customer came from: a quiet centred line, not a bubble.
+  if (m.type === "referral") return <div className="ibx-system-line">{m.body}</div>;
+  const channel = m.channel === "instagram" ? "instagram" : "messenger";
+  const problem = sendProblem(m);
+  const ticks =
+    problem === "unconfirmed" ? { marks: "?", read: false, label: "Not confirmed" } : messageTicks(m.status, channel);
+  const showMedia = !m.deleted && (m.has_media || m.media_pending);
+  return (
+    <div className={`ibx-msg ibx-msg--${m.direction}${problem ? ` ibx-msg--${problem}` : ""}`}>
+      {m.comment_ref && <CommentRefLine commentRef={m.comment_ref} />}
+      {m.direction === "out" && m.external_sender && <div className="ibx-msg__sub">Sent from the Facebook or Instagram app</div>}
+      {m.direction === "out" && !m.external_sender && m.sender_name && (
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{staffLabel(m.sender_name)}</div>
+      )}
+      {m.story_reply && !m.deleted && <div className="ibx-msg__sub">Replied to your story</div>}
+      {m.deleted ? (
+        <div className="ibx-msg__deleted">The customer deleted this message.</div>
+      ) : m.type === "story_mention" ? (
+        <div>
+          Mentioned you in their story.{" "}
+          {m.link ? (
+            <a href={m.link} target="_blank" rel="noreferrer">
+              View story
+            </a>
+          ) : (
+            <span className="ibx-msg__deleted" style={{ fontStyle: "normal" }}>
+              The story is no longer available.
+            </span>
+          )}
+          <div className="ibx-msg__caption">Stories disappear after 24 hours.</div>
+        </div>
+      ) : (
+        <>
+          {showMedia && <MessageMedia m={m} />}
+          {m.type === "interactive" && m.body && !m.tap_caption ? (
+            <div>
+              <span className="ibx-msg__deleted" style={{ fontStyle: "normal" }}>Tapped: </span>
+              {m.body}
+            </div>
+          ) : (
+            m.body && <div>{m.body}</div>
+          )}
+          {m.type === "share" && m.link && (
+            <a href={m.link} target="_blank" rel="noreferrer">
+              Open
+            </a>
+          )}
+          {m.tap_caption && <div className="ibx-msg__caption">{m.tap_caption}</div>}
+          {!m.body && !m.has_media && !m.media_pending && m.type !== "share" && (
+            <div style={{ color: "var(--ink-soft)", fontStyle: "italic" }}>{m.type === "reaction" ? "Reacted to a message" : "Message"}</div>
+          )}
+        </>
+      )}
+      {m.advert && <span className="ibx-msg__advert">From an advert: {m.advert}</span>}
+      {problem === "failed" && <div className="ibx-msg__error">Not sent{m.error_message ? `: ${m.error_message}` : ""}</div>}
+      {problem === "unconfirmed" && <div className="ibx-msg__warn">{UNCONFIRMED_TEXT}</div>}
+      <div className="ibx-msg__meta">
+        <span>{timeOfDay(m.created_at)}</span>
+        {m.edited && !m.deleted && <span>Edited</span>}
         {m.direction === "out" && ticks.marks && (
           <span className={ticks.read ? "ibx-msg__ticks--read" : undefined} title={ticks.label} aria-label={ticks.label}>
             {ticks.marks}

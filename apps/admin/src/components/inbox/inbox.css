@@ -58,6 +58,11 @@
 .ibx-tabs--fit { gap: 4px; }
 .ibx-tabs--fit .ibx-tab { flex: 1 0 auto; padding: 0 8px; }
 .ibx-filters { display: flex; gap: 6px; }
+/* Spec 02: All / WhatsApp / Messenger / Instagram. Icons only on a phone. */
+.ibx-channel-filter { display: flex; gap: 4px; flex-wrap: wrap; }
+.ibx-channel-filter .btn { display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 480px) { .ibx-channel-filter__name { display: none; } }
+.ibx-channel-icon { vertical-align: -1px; }
 .ibx-filters .select { flex: 1; min-width: 0; font-size: 12px; height: 36px; }
 .ibx-list__body { overflow-y: auto; flex: 1; }
 .ibx-list__body > .empty { margin: 12px; padding: 32px 18px; }
@@ -131,6 +136,24 @@
 .ibx-msg__error { color: var(--danger-ink, #b91c1c); font-size: 12px; margin-top: 4px; white-space: normal; }
 .ibx-msg img.ibx-media { max-width: 100%; max-height: 320px; border-radius: 10px; display: block; cursor: zoom-in; }
 .ibx-msg audio, .ibx-msg video { max-width: 100%; display: block; }
+/* WhatsApp forms (suite spec 07): the button row under a sent form, and the answer card. */
+.ibx-flow-cta { margin-top: 6px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.7); text-align: center; font-weight: 600; font-size: 13px; color: var(--accent); white-space: normal; cursor: default; user-select: none; }
+.ibx-flow-preview { max-width: 100%; display: inline-block; min-width: min(220px, 100%); box-shadow: none; }
+.ibx-flow { align-self: flex-start; width: min(92%, 560px); background: #fff; border: 1px solid var(--line); border-radius: 12px; border-top-left-radius: 4px; padding: 10px 12px 6px; font-size: 13px; box-shadow: 0 1px 1px rgba(0,0,0,0.06); }
+.ibx-flow__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.ibx-flow__title { font-size: 14px; margin-right: auto; overflow-wrap: anywhere; }
+.ibx-flow__rows { margin: 0; display: grid; gap: 6px; }
+.ibx-flow__row { display: grid; grid-template-columns: minmax(96px, 34%) 1fr; gap: 2px 12px; }
+.ibx-flow__row dt { color: var(--ink-soft); }
+.ibx-flow__row dd { margin: 0; min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
+.ibx-flow__row dd.ibx-flow__long { white-space: pre-wrap; }
+.ibx-flow__warning { margin-top: 8px; padding: 6px 10px; border-radius: 8px; background: rgba(245,158,11,0.16); color: var(--warning-ink, #92400E); font-size: 12px; font-weight: 600; }
+.ibx-flow__actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+@media (max-width: 480px) {
+  .ibx-flow { width: 100%; }
+  .ibx-flow__row { grid-template-columns: 1fr; gap: 0; }
+  .ibx-flow__row dt { font-size: 12px; }
+}
 .ibx-note { align-self: center; width: min(92%, 560px); background: #fff8d6; border: 1px dashed #e8c547; border-radius: 12px; padding: 8px 12px; font-size: 13px; white-space: pre-wrap; }
 .ibx-note__tag { font-size: 11px; font-weight: 600; color: #8a6d00; margin-bottom: 2px; }
 .ibx-call { align-self: center; width: min(92%, 560px); background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; }
@@ -319,3 +342,36 @@
   .table.ibx-stack tbody td.ibx-stack__actions { padding-top: 8px; }
   .table.ibx-stack tbody td.ibx-stack__actions[style] { text-align: left !important; }
 }
+
+/* ── Messenger and Instagram (suite spec 02) ── */
+.ibx-msg__sub { font-size: 11px; color: var(--text-muted, #6B7280); margin-bottom: 2px; }
+.ibx-msg__deleted { font-style: italic; color: var(--text-muted, #6B7280); }
+.ibx-msg__caption { font-size: 11px; color: var(--text-muted, #6B7280); margin-top: 2px; }
+.ibx-msg__advert { display: inline-block; margin-top: 4px; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(59,130,246,0.12); color: #1D4ED8; }
+.ibx-system-line { text-align: center; font-size: 12px; color: var(--text-muted, #6B7280); margin: 8px auto; max-width: 80%; }
+.ibx-composer__banner { background: rgba(220,38,38,0.08); color: #991B1B; border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-bottom: 6px; }
+.ibx-composer__closed { padding: 10px 12px; font-size: 13px; line-height: 1.45; }
+.ibx-composer__closed-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.ibx-composer__count { font-size: 11px; color: var(--text-muted, #6B7280); text-align: right; }
+.ibx-composer__count.is-over { color: #B91C1C; }
+.ibx-composer__problem { color: #B91C1C; font-size: 12px; margin-top: 4px; }
+
+/* ── Selling in chat (suite spec 08): product picker, cart card, place-order dialog ── */
+.ibx-pick { display: grid; max-height: min(46vh, 380px); overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; }
+.ibx-pick__row { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-top: 1px solid var(--line); cursor: pointer; min-width: 0; }
+.ibx-pick__row:first-child { border-top: 0; }
+.ibx-pick__row input { width: 18px; height: 18px; flex: none; }
+.ibx-pick__img { width: 36px; height: 36px; border-radius: 8px; object-fit: contain; background: rgba(20, 24, 31, 0.05); flex: none; display: inline-block; }
+.ibx-cart { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 8px; background: rgba(27, 87, 51, 0.04); font-size: 14px; }
+.ibx-cart--off { background: none; opacity: 0.7; }
+.ibx-cart__head { display: flex; gap: 6px; align-items: center; font-weight: 800; }
+.ibx-cart__lines { display: grid; gap: 6px; }
+.ibx-cart__note { font-size: 12px; color: #92400e; }
+.ibx-cart__note--bad { color: var(--danger-ink, #b91c1c); }
+.ibx-cart__actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ibx-cart__edit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.ibx-cart__qty { display: flex; gap: 4px; align-items: center; }
+.ibx-cart__sum { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0; }
+.ibx-cart__sum dd { margin: 0; text-align: right; }
+.ibx-cart__preview { background: #e7f6ea; border-radius: 12px; padding: 10px 12px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
+.ibx-cart__paybtn { margin-top: 8px; padding: 8px; text-align: center; font-weight: 700; color: #0b6bcb; border-top: 1px solid rgba(20, 24, 31, 0.12); }

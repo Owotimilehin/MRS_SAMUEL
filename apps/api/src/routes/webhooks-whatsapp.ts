@@ -2,7 +2,14 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { inboxWebhookEvent, outboxEvent, type DbClient } from "@ms/db";
-import { finishWebhookEvent, ingestWhatsAppPayload, verifyMetaSignature, type WaWebhookPayload } from "@ms/domain";
+import {
+  finishWebhookEvent,
+  ingestWhatsAppPayload,
+  metaConfigFromEnv,
+  syncTemplatesForWaba,
+  verifyMetaSignature,
+  type WaWebhookPayload,
+} from "@ms/domain";
 import { env } from "../env.js";
 import { logger } from "../logger.js";
 
@@ -61,6 +68,31 @@ export function whatsappWebhookRoutes(db: DbClient) {
   return r;
 }
 
+/** Template re-syncs started after a webhook committed (not awaited by the route; tests wait on them). */
+const pendingResyncs = new Set<Promise<void>>();
+
+/** Resolves when every re-sync started by a template webhook has finished. For tests. */
+export async function settleTemplateResyncs(): Promise<void> {
+  while (pendingResyncs.size > 0) await Promise.allSettled([...pendingResyncs]);
+}
+
+/**
+ * A template event for a template we do not hold (made in WhatsApp Manager): sync that account once,
+ * after the webhook's transaction has committed and without making Meta wait for its 200. A failure
+ * is logged; the hourly sync catches up.
+ */
+function resyncTemplates(db: DbClient, wabas: string[]): void {
+  const cfg = metaConfigFromEnv();
+  if (!cfg) return;
+  for (const waba of wabas) {
+    const run = syncTemplatesForWaba(db, cfg, waba)
+      .then(() => undefined)
+      .catch((err: unknown) => logger.warn({ err, waba }, "template re-sync after a webhook failed; the hourly sync will catch up"))
+      .finally(() => pendingResyncs.delete(run));
+    pendingResyncs.add(run);
+  }
+}
+
 /**
  * Process one stored webhook event. Shared shape with the worker's retry, which
  * calls ingestWhatsAppPayload the same way.
@@ -76,6 +108,9 @@ export async function processStoredWhatsAppEvent(
       await finishWebhookEvent(tx, eventId, res);
       return res;
     });
+    if (result.templateResyncWabas.length > 0) resyncTemplates(db, result.templateResyncWabas);
+    if (result.flowNotices.length > 0) logger.warn({ events: result.flowNotices }, "whatsapp form: client error rate reported by Meta");
+    if (result.noSender > 0) logger.warn({ eventId, count: result.noSender }, "whatsapp message with no usable sender; event left unprocessed");
     if (result.unknownNumbers.length > 0) {
       logger.warn({ unknown: result.unknownNumbers }, "whatsapp webhook for unknown business number (parked)");
       await alertUnknownNumbers(db, result.unknownNumbers, eventId);

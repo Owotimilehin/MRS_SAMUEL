@@ -150,32 +150,66 @@ export const inboxIvrOption = pgTable(
   (t) => ({ uqDigit: uniqueIndex("uq_inbox_ivr_option_digit").on(t.menuId, t.digit) }),
 );
 
-// ── Business phone numbers ───────────────────────────────────────────────────
+// ── Business phone numbers and other channel accounts (a Facebook Page, an Instagram account) ──
 
-export const inboxPhoneNumber = pgTable("inbox_phone_number", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  e164: text("e164").notNull().unique(),
-  label: text("label").notNull(),
-  channels: inboxChannels("channels").notNull().default("both"),
-  wabaId: text("waba_id"),
-  waPhoneNumberId: text("wa_phone_number_id").unique(),
-  waStatus: text("wa_status"),
-  qualityRating: text("quality_rating"),
-  messagingLimit: text("messaging_limit"),
-  waFallbackNumberId: uuid("wa_fallback_number_id"),
-  voiceProvider: text("voice_provider"),
-  /** The value that identifies this number on an incoming call (Twilio "To"). */
-  inboundMatch: text("inbound_match"),
-  maxConcurrentCalls: integer("max_concurrent_calls"),
-  defaultTeamId: uuid("default_team_id").references(() => inboxTeam.id),
-  hoursProfileId: uuid("hours_profile_id").references(() => inboxHoursProfile.id),
-  ivrMenuId: uuid("ivr_menu_id").references(() => inboxIvrMenu.id),
-  afterHoursText: text("after_hours_text"),
-  afterHoursAudioKey: text("after_hours_audio_key"),
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+/**
+ * One row per "channel account" (foundation D1). `kind` is 'phone' (a phone
+ * line: WhatsApp and/or calls), 'messenger' (a Facebook Page) or 'instagram'
+ * (an Instagram account). A phone row always has `e164`; any other kind always
+ * has `external_id` and `page_external_id` (database CHECK
+ * inbox_phone_number_shape_chk). `channels` is meaningful only for phones and
+ * is 'whatsapp' on every other row.
+ */
+export const inboxPhoneNumber = pgTable(
+  "inbox_phone_number",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** 'phone' | 'messenger' | 'instagram' (CHANNEL_KINDS in @ms/shared). */
+    kind: text("kind").notNull().default("phone"),
+    /** Null for any kind other than 'phone'. */
+    e164: text("e164").unique(),
+    /** messenger: the Page ID. instagram: the Instagram account ID. phone: null. */
+    externalId: text("external_id"),
+    /** The Page that owns this account (same as external_id for messenger). phone: null. */
+    pageExternalId: text("page_external_id"),
+    /** What Meta calls it: the Page name, or the Instagram username without "@". */
+    externalName: text("external_name"),
+    label: text("label").notNull(),
+    channels: inboxChannels("channels").notNull().default("both"),
+    wabaId: text("waba_id"),
+    waPhoneNumberId: text("wa_phone_number_id").unique(),
+    waStatus: text("wa_status"),
+    qualityRating: text("quality_rating"),
+    messagingLimit: text("messaging_limit"),
+    waFallbackNumberId: uuid("wa_fallback_number_id"),
+    voiceProvider: text("voice_provider"),
+    /** The value that identifies this number on an incoming call (Twilio "To"). */
+    inboundMatch: text("inbound_match"),
+    maxConcurrentCalls: integer("max_concurrent_calls"),
+    defaultTeamId: uuid("default_team_id").references(() => inboxTeam.id),
+    hoursProfileId: uuid("hours_profile_id").references(() => inboxHoursProfile.id),
+    ivrMenuId: uuid("ivr_menu_id").references(() => inboxIvrMenu.id),
+    afterHoursText: text("after_hours_text"),
+    afterHoursAudioKey: text("after_hours_audio_key"),
+    isActive: boolean("is_active").notNull().default(true),
+    /** Messenger/Instagram: when the Page was last subscribed to our app's webhooks (spec 02). */
+    webhookSubscribedAt: timestamp("webhook_subscribed_at", { withTimezone: true }),
+    /** When the subscription was last checked at Meta. */
+    webhookCheckedAt: timestamp("webhook_checked_at", { withTimezone: true }),
+    /** The last configuration problem Meta reported for this account ("<code>/<subcode>"); cleared by the next success. */
+    problemCode: text("problem_code"),
+    /** That problem in plain English, shown as a banner. */
+    problemText: text("problem_text"),
+    problemAt: timestamp("problem_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uqKindExternal: uniqueIndex("uq_inbox_number_kind_external")
+      .on(t.kind, t.externalId)
+      .where(sql`external_id is not null`),
+  }),
+);
 
 export const inboxUserNumberAccess = pgTable(
   "inbox_user_number_access",
@@ -188,6 +222,40 @@ export const inboxUserNumberAccess = pgTable(
       .references(() => inboxPhoneNumber.id, { onDelete: "cascade" }),
   },
   (t) => ({ pk: primaryKey({ columns: [t.userId, t.phoneNumberId] }) }),
+);
+
+// ── Customer identities ──────────────────────────────────────────────────────
+
+/**
+ * "This customer is this ID on this channel" (foundation D2). One customer can
+ * have many. Unique on (channel, account_external_id, external_id).
+ * whatsapp: account_external_id = 'global', external_id = wa_id (digits) or a
+ * BSUID. messenger: Page ID + Page-scoped ID. instagram: Instagram account ID +
+ * Instagram-scoped ID.
+ */
+export const inboxIdentity = pgTable(
+  "inbox_identity",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customer.id, { onDelete: "cascade" }),
+    /** 'whatsapp' | 'messenger' | 'instagram' (IDENTITY_CHANNELS in @ms/shared). */
+    channel: text("channel").notNull(),
+    accountExternalId: text("account_external_id").notNull(),
+    externalId: text("external_id").notNull(),
+    displayName: text("display_name"),
+    username: text("username"),
+    profilePicUrl: text("profile_pic_url"),
+    profileFetchedAt: timestamp("profile_fetched_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uq: uniqueIndex("uq_inbox_identity").on(t.channel, t.accountExternalId, t.externalId),
+    idxCustomer: index("idx_inbox_identity_customer").on(t.customerId),
+  }),
 );
 
 // ── Conversations and timeline ───────────────────────────────────────────────
@@ -206,7 +274,11 @@ export const inboxConversation = pgTable(
     status: inboxConversationStatus("status").notNull().default("open"),
     assigneeId: uuid("assignee_id").references(() => adminUser.id),
     labels: text("labels").array().notNull().default([]),
-    /** Drives WhatsApp's 24-hour customer-service window. */
+    /** 'whatsapp' | 'messenger' | 'instagram'; copied from the line when the thread is created, never changes. */
+    channel: text("channel").notNull().default("whatsapp"),
+    /** The identity that most recently wrote in this conversation; replies go to it. */
+    identityId: uuid("identity_id").references(() => inboxIdentity.id, { onDelete: "set null" }),
+    /** When the customer last wrote on this conversation's channel. Drives the 24-hour reply window on WhatsApp, Messenger and Instagram (foundation D4). */
     lastInboundWaAt: timestamp("last_inbound_wa_at", { withTimezone: true }),
     lastActivityAt: timestamp("last_activity_at", { withTimezone: true }).notNull().defaultNow(),
     lastPreview: text("last_preview"),
@@ -221,6 +293,7 @@ export const inboxConversation = pgTable(
     // At most one live thread per customer per business number.
     uqLive: uniqueIndex("uq_inbox_conv_live").on(t.customerId, t.phoneNumberId).where(sql`status <> 'closed'`),
     idxAssignee: index("idx_inbox_conv_assignee").on(t.assigneeId),
+    idxChannel: index("idx_inbox_conv_channel").on(t.channel, t.status, t.lastActivityAt),
   }),
 );
 
@@ -232,10 +305,12 @@ export const inboxMessage = pgTable(
       .notNull()
       .references(() => inboxConversation.id),
     direction: inboxDirection("direction").notNull(),
-    /** text | image | audio | video | document | sticker | location | template | interactive | reaction | unsupported */
+    /** text | image | audio | video | document | sticker | location | template | interactive | reaction | unsupported | share | story_mention | referral | system */
     type: text("type").notNull(),
     body: text("body"),
     mediaId: text("media_id"),
+    /** Meta's link to a received file. Short-lived: the worker downloads it to storage and sets this back to null. Never the durable copy (foundation D11). */
+    mediaUrl: text("media_url"),
     mediaKey: text("media_key"),
     mediaMime: text("media_mime"),
     mediaFilename: text("media_filename"),
@@ -243,6 +318,9 @@ export const inboxMessage = pgTable(
     /** When push notifications for this inbound message were handled. */
     notifiedAt: timestamp("notified_at", { withTimezone: true }),
     templateName: text("template_name"),
+    /** 'whatsapp' | 'messenger' | 'instagram'; copied from the conversation. */
+    channel: text("channel").notNull().default("whatsapp"),
+    /** Provider message id for every channel: WhatsApp `wamid…`, Messenger and Instagram `mid…` (foundation D3). Do not rename. */
     waMessageId: text("wa_message_id").unique(),
     status: inboxMessageStatus("status").notNull(),
     errorCode: text("error_code"),
@@ -252,8 +330,17 @@ export const inboxMessage = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     readAt: timestamp("read_at", { withTimezone: true }),
+    /** When the customer last edited this message (Messenger/Instagram). */
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    /** When the customer unsent this message; body and media are cleared. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (t) => ({ idxConv: index("idx_inbox_msg_conv").on(t.conversationId, t.createdAt) }),
+  (t) => ({
+    idxConv: index("idx_inbox_msg_conv").on(t.conversationId, t.createdAt),
+    idxMediaUrl: index("idx_inbox_msg_media_url")
+      .on(t.createdAt)
+      .where(sql`media_url is not null and media_key is null`),
+  }),
 );
 
 export const inboxNote = pgTable(
@@ -348,9 +435,44 @@ export const inboxTemplate = pgTable(
     status: text("status").notNull(),
     components: jsonb("components").$type<unknown[]>().notNull().default([]),
     syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
+    // ── Template authoring (suite spec 06, migration 0075). Status gains one local value, 'DRAFT'.
+    metaTemplateId: text("meta_template_id"),
+    parameterFormat: text("parameter_format"),
+    qualityScore: text("quality_score"),
+    rejectedReason: text("rejected_reason"),
+    reviewInfo: jsonb("review_info").$type<TemplateReviewInfo>(),
+    correctCategory: text("correct_category"),
+    previousCategory: text("previous_category"),
+    categoryChangeAt: timestamp("category_change_at", { withTimezone: true }),
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
+    /** The editable copy (TemplateDraft in @ms/shared). On a Meta-known row: changes not yet sent. */
+    draft: jsonb("draft").$type<Record<string, unknown>>(),
+    draftUpdatedAt: timestamp("draft_updated_at", { withTimezone: true }),
+    draftUpdatedBy: uuid("draft_updated_by").references(() => adminUser.id),
+    createdBy: uuid("created_by").references(() => adminUser.id),
+    submittedBy: uuid("submitted_by").references(() => adminUser.id),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    /** ISO times of our successful edits of an approved template, newest last (30 days kept). */
+    metaEditTimes: jsonb("meta_edit_times").$type<string[]>(),
+    lastError: text("last_error"),
+    starterKey: text("starter_key"),
   },
-  (t) => ({ uq: uniqueIndex("uq_inbox_template").on(t.wabaId, t.name, t.language) }),
+  (t) => ({
+    uq: uniqueIndex("uq_inbox_template").on(t.wabaId, t.name, t.language),
+    uqMetaId: uniqueIndex("uq_inbox_template_meta_id")
+      .on(t.metaTemplateId)
+      .where(sql`meta_template_id is not null`),
+    idxStatus: index("idx_inbox_template_status").on(t.status),
+  }),
 );
+
+export interface TemplateReviewInfo {
+  rejection?: { reason?: string; recommendation?: string };
+  pause?: { title?: string; description?: string };
+  disableDate?: string;
+  flagged?: boolean;
+  locked?: boolean;
+}
 
 export const inboxQuickReply = pgTable("inbox_quick_reply", {
   id: uuid("id").primaryKey().defaultRandom(),

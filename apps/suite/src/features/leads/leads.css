@@ -1,0 +1,43 @@
+/* Leads screens (suite spec 13). Every class starts with ld-. */
+.ld-sub { color: var(--ink-soft); margin: 0 0 12px; }
+.ld-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; align-items: end; }
+.ld-filters .field { margin: 0; min-width: 0; }
+.ld-check { display: flex; align-items: center; gap: 8px; font-size: 14px; min-height: 40px; }
+.ld-strip { padding: 10px 14px; border-radius: 12px; font-size: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.ld-strip--red { border: 1px solid rgba(220, 38, 38, 0.35); background: rgba(220, 38, 38, 0.08); color: #991b1b; }
+.ld-strip--amber { border: 1px solid rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.14); color: #92400e; }
+.ld-strip > span { flex: 1 1 240px; }
+.ld-list { display: grid; gap: 8px; }
+.ld-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 12px 14px; text-decoration: none; color: inherit; }
+.ld-row__name { font-weight: 700; overflow-wrap: anywhere; }
+.ld-row__sub { font-size: 13px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.ld-row__side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+.ld-row__tags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.ld-owner { width: 24px; height: 24px; border-radius: 50%; background: rgba(20, 24, 31, 0.1); color: var(--ink); font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.ld-scrim { position: fixed; inset: 0; background: rgba(20, 24, 31, 0.45); z-index: 40; }
+.ld-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100vw); background: var(--shell, #fff); z-index: 41; overflow-y: auto; padding: 16px; display: grid; gap: 16px; align-content: start; box-shadow: var(--shadow-float); }
+.ld-drawer__head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.ld-drawer h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.ld-section { display: grid; gap: 8px; }
+.ld-answers { margin: 0; display: grid; gap: 8px; }
+.ld-answers dt { font-size: 12px; color: var(--ink-soft); }
+.ld-answers dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.ld-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.ld-fine { font-size: 12px; color: var(--ink-soft); margin: 0; }
+.ld-quote { background: var(--surface-sunken, #f3f4f6); border-radius: 12px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+.ld-form { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; }
+.ld-form__head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.ld-inline-confirm { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 8px; background: var(--surface-sunken, #f9fafb); }
+.ld-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.ld-tile { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+.ld-tile__label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+.ld-tile__value { font-size: 22px; font-weight: 800; }
+.ld-bars { display: flex; gap: 3px; align-items: flex-end; height: 120px; overflow-x: auto; padding-bottom: 2px; }
+.ld-bar { flex: 1 0 10px; min-width: 10px; background: var(--accent, #1b5733); border-radius: 4px 4px 0 0; }
+.ld-bars__axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-soft); }
+.ld-dates { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+@media (max-width: 480px) {
+  .ld-row { grid-template-columns: minmax(0, 1fr); }
+  .ld-row__side { flex-direction: row; align-items: center; justify-content: space-between; }
+  .ld-drawer { padding: 12px; }
+}

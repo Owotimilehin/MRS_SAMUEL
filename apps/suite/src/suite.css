@@ -1,0 +1,48 @@
+/*
+ * Styles that belong to the suite only. Colours, type, buttons, cards and the
+ * page frame come from the admin app's stylesheet (imported in main.tsx), so
+ * the two apps look like one family. Put suite-only rules here.
+ */
+
+/* The suite's menu sits on the brand's deep green, so it is plainly not the shop's admin app. */
+.suite-shell .app-side {
+  background: linear-gradient(180deg, #0e3f1f 0%, #14502b 100%);
+  border-right-color: transparent;
+}
+.suite-shell .app-brand__name,
+.suite-shell .app-foot__email { color: #fff; }
+.suite-shell .app-brand__role { color: rgba(255, 255, 255, 0.7); text-transform: none; letter-spacing: 0.02em; }
+.suite-shell .app-nav__section { color: rgba(255, 255, 255, 0.55); }
+.suite-shell .app-nav__link { color: rgba(255, 255, 255, 0.86); }
+.suite-shell .app-nav__link:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.suite-shell .app-nav__link.is-active { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.suite-shell .app-nav__link.is-active::before { background: #fcbf49; }
+.suite-shell .app-foot { border-top-color: rgba(255, 255, 255, 0.14); }
+.suite-shell .app-foot__signout { color: rgba(255, 255, 255, 0.75); }
+.suite-shell .app-foot__signout:hover { color: #fff; }
+.suite-shell .app-rail-toggle { color: #0e3f1f; }
+
+/* Unread count on the Inbox line. */
+.suite-nav__badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e85d1c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 20px;
+  text-align: center;
+}
+
+/* "No access" and similar single-message pages. */
+.suite-note {
+  max-width: 520px;
+  margin: 12vh auto 0;
+  padding: 28px;
+  text-align: center;
+}
+.suite-note h1 { font-size: 22px; margin: 0 0 8px; }
+.suite-note p { margin: 0 0 16px; color: var(--ink-soft); line-height: 1.5; }

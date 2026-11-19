@@ -6,15 +6,22 @@
 import { api, ApiError, humanizeError } from "./api.js";
 import { toast } from "./toast.js";
 import type {
+  CatalogueSendable,
+  ChatOrderList,
   ContactInfo,
   ContactSearchHit,
   ConversationDetail,
   ConversationPage,
   EraseResult,
+  FlowActionResult,
+  FlowResponseAction,
+  InboxFlow,
   InboxMe,
   InboxTeamLite,
   InboxTemplate,
   NotifyLevel,
+  PlaceChatOrderInput,
+  PlacedChatOrder,
   QuickReply,
   StaffMember,
   TimelinePage,
@@ -34,6 +41,12 @@ export const inboxKeys = {
   quickReplies: ["inbox", "quick-replies"] as const,
   unread: ["inbox", "unread"] as const,
   notifyLevel: ["inbox", "notify-level"] as const,
+  /** Forms that can be sent (spec 07). With a conversation, "live" is for that chat's WhatsApp account. */
+  flows: ["inbox", "flows"] as const,
+  flowsFor: (conversationId: string) => ["inbox", "flows", conversationId] as const,
+  // Selling in chat (suite spec 08).
+  catalogueSendable: ["inbox", "catalogue-sendable"] as const,
+  chatOrders: (conversationId: string) => ["inbox", "chat-orders", conversationId] as const,
 };
 
 export interface ConversationFilters {
@@ -42,6 +55,8 @@ export interface ConversationFilters {
   number?: string;
   label?: string;
   q?: string;
+  /** Only chats from this channel (spec 02). */
+  channel?: "whatsapp" | "messenger" | "instagram";
 }
 
 /**
@@ -84,7 +99,7 @@ export const inboxApi = {
 
   conversations: (f: ConversationFilters, before?: string) =>
     api<ConversationPage>(
-      `/inbox/conversations${qs({ status: f.status, view: f.view, number: f.number, label: f.label, q: f.q, before })}`,
+      `/inbox/conversations${qs({ status: f.status, view: f.view, number: f.number, label: f.label, q: f.q, channel: f.channel, before })}`,
     ),
   conversation: async (id: string) => (await api<{ data: ConversationDetail }>(`/inbox/conversations/${id}`)).data,
   /**
@@ -115,8 +130,47 @@ export const inboxApi = {
       caption?: string;
     },
   ) => postMessage(id, m),
-  sendTemplate: (id: string, t: { name: string; language: string; params: string[] }) =>
-    postMessage(id, { type: "template", ...t }),
+  sendTemplate: (
+    id: string,
+    t: {
+      name: string;
+      language: string;
+      params: string[];
+      /** The blank in a text heading. */
+      header_param?: string;
+      /** The uploaded picture, video or document for the heading. */
+      header_media?: { media_key: string; media_token: string; mime: string; filename?: string };
+      /** The end of the link for each link button with a blank. */
+      button_params?: { index: number; text: string }[];
+    },
+  ) => postMessage(id, { type: "template", ...t }),
+
+  /** Forms the composer can offer (spec 07). */
+  flows: async (conversationId?: string) =>
+    (await api<{ data: InboxFlow[] }>(`/inbox/flows${qs({ conversation_id: conversationId })}`)).data,
+  /**
+   * Send a form into the chat. No toast for a refusal (409 window closed or form
+   * not live, 403, 400): the picker shows the server's message itself. A 502 is a
+   * send that reached the timeline as failed or unconfirmed, worded as for any message.
+   */
+  sendFlow: async (id: string, f: { flow_key: string; message?: string; test?: boolean }): Promise<unknown> => {
+    try {
+      return await api(`/inbox/conversations/${id}/flows`, { method: "POST", body: JSON.stringify(f) }, { silentError: true });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 502) {
+        toast.error("That message didn't go through normally. Check how it's marked in the chat before sending again.");
+      }
+      throw err;
+    }
+  },
+  /** Mark a form answer handled or not, copy it to the notes, or save its address to the contact. */
+  flowResponseAction: async (responseId: string, action: FlowResponseAction) =>
+    (
+      await api<{ data: FlowActionResult }>(`/inbox/flow-responses/${responseId}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      })
+    ).data,
 
   addNote: (id: string, body: string) =>
     api(`/inbox/conversations/${id}/notes`, { method: "POST", body: JSON.stringify({ body }) }),
@@ -132,13 +186,23 @@ export const inboxApi = {
    */
   upload: async (
     file: File,
+    /** When given, the server checks the file against that conversation's channel (spec 02). */
+    conversationId?: string,
   ): Promise<{ object_key: string; media_token: string; kind: "image" | "document" | "audio" | "video" }> => {
     const contentType = file.type || "application/octet-stream";
     const res = await api<{
       data: { upload_url: string; object_key: string; media_token: string; kind: "image" | "document" | "audio" | "video" };
     }>(
       "/inbox/uploads",
-      { method: "POST", body: JSON.stringify({ filename: file.name, content_type: contentType, size_bytes: file.size }) },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: contentType,
+          size_bytes: file.size,
+          ...(conversationId ? { conversation_id: conversationId } : {}),
+        }),
+      },
     );
     const put = await fetch(res.data.upload_url, { method: "PUT", body: file, headers: { "content-type": contentType } });
     if (!put.ok) throw new Error("The file didn't upload. Check your connection and try again.");
@@ -167,22 +231,45 @@ export const inboxApi = {
     api(`/inbox/contacts/${customerId}`, { method: "PATCH", body: JSON.stringify(b) }),
   searchContacts: async (q: string) =>
     (await api<{ data: ContactSearchHit[] }>(`/inbox/contacts/search${qs({ q })}`)).data,
-  /** Permanently removes this customer's chats, calls, recordings and notes (inbox.erase). Orders stay. */
-  eraseContact: async (customerId: string, confirmPhone: string) =>
+  /**
+   * Permanently removes this customer's chats, calls, recordings, notes and
+   * channel identities (inbox.erase). Orders stay. `confirm` is the phone,
+   * username, name or the word DELETE (see eraseConfirmTarget).
+   */
+  eraseContact: async (customerId: string, confirm: string) =>
     (
       await api<{ data: EraseResult }>(`/inbox/contacts/${customerId}/erase`, {
         method: "POST",
-        body: JSON.stringify({ confirm_phone: confirmPhone }),
+        body: JSON.stringify({ confirm }),
       })
     ).data,
   /** Moves this contact's chats and calls onto another contact (inbox.erase). */
   mergeContact: async (customerId: string, intoCustomerId: string) =>
     (
-      await api<{ data: { moved_conversations: number } }>(`/inbox/contacts/${customerId}/merge`, {
+      await api<{ data: { moved_conversations: number; moved_identities?: number } }>(`/inbox/contacts/${customerId}/merge`, {
         method: "POST",
         body: JSON.stringify({ into_customer_id: intoCustomerId }),
       })
     ).data,
+
+  // ── Selling in chat (suite spec 08) ──
+  /** What can be sent from the catalogue. `catalog_id` is null when nothing is connected (not an error). */
+  catalogueSendable: async () => (await api<{ data: CatalogueSendable }>("/catalogue/sendable")).data,
+  /** One product, or a product list for two to thirty. */
+  sendProducts: (id: string, retailerIds: string[], text?: string) =>
+    postMessage(id, { type: "product", retailer_ids: retailerIds, ...(text ? { text } : {}) }),
+  /** The whole menu. */
+  sendCatalogue: (id: string, text?: string) => postMessage(id, { type: "catalogue", ...(text ? { text } : {}) }),
+  /** Carts this customer sent in this chat, newest first, at the shop's own prices. */
+  chatOrders: (conversationId: string) => api<ChatOrderList>(`/inbox/chat-orders${qs({ conversation_id: conversationId })}`),
+  /** Ask "delivery or pickup?" with two buttons. The caller shows what happened. */
+  askChatOrder: (id: string) => api(`/inbox/chat-orders/${id}/ask`, { method: "POST" }, { silentError: true }),
+  /** One click: create the shop order from the cart and send the OPay link. Safe to repeat: one cart is one order. */
+  placeChatOrder: async (id: string, b: PlaceChatOrderInput) =>
+    (await api<{ data: PlacedChatOrder }>(`/inbox/chat-orders/${id}/place`, { method: "POST", body: JSON.stringify(b) }, { silentError: true })).data,
+  sendPaymentLink: async (id: string) =>
+    (await api<{ data: { order_number: string; payment_link: string | null; warning?: string } }>(`/inbox/chat-orders/${id}/payment-link`, { method: "POST" })).data,
+  cancelChatOrder: (id: string) => api(`/inbox/chat-orders/${id}/cancel`, { method: "POST" }),
 };
 
 /** Plain link (cookies ride along) — the browser downloads the CSV. */

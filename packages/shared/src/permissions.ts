@@ -90,6 +90,35 @@ export const CAPABILITIES = [
   // Numbers, teams, hours, phone menu, quick replies, template sync.
   "inbox.settings",
   "inbox.reports",
+  // ── Suite: comments on Facebook and Instagram posts ──
+  // See and answer comments (suite spec 03). Which accounts a person sees follows
+  // the same per-line access as the inbox (inbox_user_number_access).
+  "social.comments",
+  // Catalogue: connect, sync and repair the Meta catalogue (spec 08).
+  "catalogue.manage",
+  // Connect and configure channel accounts (Facebook Page, Instagram); later:
+  // chat set-up, WhatsApp profile, Page details. Admins, not managers.
+  "channels.manage",
+  // Write, submit and delete WhatsApp message templates (and later Flows). Admins, not managers
+  // (managers keep inbox.templates: send only).
+  "templates.manage",
+  // Create, schedule and publish posts to Facebook and Instagram (suite spec 09).
+  "social.publish",
+  // See statistics from Facebook, Instagram and WhatsApp (suite spec 11).
+  "insights.view",
+  // Leads from Meta lead forms: see, work and report on them (spec 13).
+  "leads.view",
+  // See ad spend and results (suite spec 12).
+  "ads.view",
+  // Owner-only by default: create, switch on, pause and change adverts — this spends money.
+  // Deliberately NOT in ADMIN_CAPS/MANAGER_CAPS. Grantable per-user via overrides.
+  "ads.manage",
+  // Contacts (suite spec 14): see the Contacts page, a contact's details and lists.
+  // Owner, admin and manager. Downloads also need inbox.export.
+  "contacts.view",
+  // Edit a contact, add by hand, import, labels, lists, record consent. Owner and admin
+  // (grantable to a named manager).
+  "contacts.manage",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -136,6 +165,16 @@ const ADMIN_CAPS: Capability[] = [
   "transcripts.view",
   "inbox.settings",
   "inbox.reports",
+  "social.comments",
+  "channels.manage",
+  "templates.manage",
+  "catalogue.manage",
+  "social.publish",
+  "insights.view",
+  "leads.view",
+  "ads.view",
+  "contacts.view",
+  "contacts.manage",
 ];
 
 const MANAGER_CAPS: Capability[] = [
@@ -170,6 +209,10 @@ const MANAGER_CAPS: Capability[] = [
   "recordings.listen",
   "transcripts.view",
   "inbox.reports",
+  "social.comments",
+  "insights.view",
+  "leads.view",
+  "contacts.view",
 ];
 
 const BRANCH_STAFF_CAPS: Capability[] = [

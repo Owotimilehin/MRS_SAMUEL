@@ -48,9 +48,25 @@ import { paymentsAdminRoutes } from "./routes/payments-admin.js";
 import { onlineOrdersQueueRoutes } from "./routes/online-orders-queue.js";
 import { settingsRoutes, publicSettingsRoutes } from "./routes/settings.js";
 import { inboxRoutes } from "./routes/inbox.js";
+import { socialCommentRoutes } from "./routes/social-comments.js";
 import { inboxSettingsRoutes } from "./routes/inbox-settings.js";
 import { inboxReportRoutes } from "./routes/inbox-reports.js";
+import { channelRoutes } from "./routes/channels.js";
+import { channelChatSetupRoutes } from "./routes/channel-chat-setup.js";
+import { channelPageRoutes } from "./routes/channel-page-details.js";
+import { whatsappProfileRoutes } from "./routes/whatsapp-profile.js";
+import { templateRoutes } from "./routes/templates.js";
+import { waFlowRoutes } from "./routes/wa-flows.js";
+import { whatsappFlowsEndpointRoutes } from "./routes/webhooks-whatsapp-flows.js";
+import { catalogueRoutes } from "./routes/catalogue.js";
+import { adRoutes } from "./routes/ads.js";
+import { chatOrderRoutes } from "./routes/inbox-chat-orders.js";
+import { socialPostRoutes } from "./routes/social-posts.js";
+import { insightRoutes } from "./routes/insights.js";
+import { leadRoutes } from "./routes/leads.js";
+import { contactRoutes } from "./routes/contacts.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
+import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
 
 let cachedDb: DbClient | null = null;
@@ -129,7 +145,33 @@ export function buildApp(): Hono {
   app.route("/v1/inbox/settings", inboxSettingsRoutes(db));
   app.route("/v1/inbox/reports", inboxReportRoutes(db));
   app.route("/v1/inbox/voice", voiceAppRoutes(db));
+  // Carts sent from WhatsApp (suite spec 08). Mounted above /v1/inbox so its longer path wins.
+  app.route("/v1/inbox/chat-orders", chatOrderRoutes(db));
   app.route("/v1/inbox", inboxRoutes(db));
+  // Comments on Facebook and Instagram posts (suite spec 03).
+  app.route("/v1/social/comments", socialCommentRoutes(db));
+  // Business suite: channel accounts (Facebook Page, Instagram).
+  // Chat set-up is mounted first so its longer path wins over /v1/channels/:id.
+  app.route("/v1/channels/:accountId/chat-setup", channelChatSetupRoutes(db));
+  app.route("/v1/channels/:accountId/page", channelPageRoutes(db));
+  app.route("/v1/channels", channelRoutes(db));
+  app.route("/v1/whatsapp-profile", whatsappProfileRoutes(db));
+  // WhatsApp template authoring (suite spec 06).
+  app.route("/v1/templates", templateRoutes(db));
+  // WhatsApp forms (Flows): manage the built-in forms (suite spec 07).
+  app.route("/v1/wa-flows", waFlowRoutes(db));
+  // Business suite: catalogue sync and selling in chat (suite spec 08).
+  app.route("/v1/catalogue", catalogueRoutes(db));
+  // Business suite: posts to Facebook and Instagram (suite spec 09).
+  app.route("/v1/social", socialPostRoutes(db));
+  // Business suite: statistics from Facebook, Instagram and WhatsApp (suite spec 11).
+  app.route("/v1/insights", insightRoutes(db));
+  // Business suite: leads from Meta lead forms (suite spec 13).
+  app.route("/v1/leads", leadRoutes(db));
+  // Business suite: ad results, spend and click-to-chat adverts (suite spec 12).
+  app.route("/v1/ads", adRoutes(db));
+  // Contacts (suite spec 14, Phase A).
+  app.route("/v1/contacts", contactRoutes(db));
 
   // Public (unauthenticated) routes — customer site + webhooks
   app.route("/v1/public/catalog", publicCatalogRoutes(db));
@@ -144,6 +186,9 @@ export function buildApp(): Hono {
   app.route("/v1/webhooks/opay", opayWebhookRoutes(db));
   app.route("/v1/webhooks/shipbubble", shipbubbleWebhookRoutes(db));
   app.route("/v1/webhooks/whatsapp", whatsappWebhookRoutes(db));
+  // WhatsApp forms, Phase B: the encrypted data endpoint. Answers 503 unless the private key is set (suite spec 07).
+  app.route("/v1/webhooks/whatsapp-flows", whatsappFlowsEndpointRoutes(db));
+  app.route("/v1/webhooks/meta", metaWebhookRoutes(db));
   app.route("/v1/voice", voiceWebhookRoutes(db));
   app.route("/v1/webhooks/delivery-reconcile", deliveryReconcileRoutes(db));
 

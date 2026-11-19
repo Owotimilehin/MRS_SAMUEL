@@ -1,0 +1,105 @@
+{
+  "version": "7.3",
+  "screens": [
+    {
+      "id": "PROBLEM",
+      "title": "Report a problem",
+      "terminal": true,
+      "success": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextSubheading",
+            "text": "We are sorry. What went wrong?"
+          },
+          {
+            "type": "RadioButtonsGroup",
+            "name": "problem_type",
+            "label": "What is the problem?",
+            "required": true,
+            "data-source": [
+              {
+                "id": "late",
+                "title": "Order arrived late"
+              },
+              {
+                "id": "wrong",
+                "title": "Wrong or missing item"
+              },
+              {
+                "id": "quality",
+                "title": "Taste or quality"
+              },
+              {
+                "id": "damaged",
+                "title": "Damaged or leaking"
+              },
+              {
+                "id": "payment",
+                "title": "Payment problem"
+              },
+              {
+                "id": "other",
+                "title": "Something else"
+              }
+            ]
+          },
+          {
+            "type": "TextInput",
+            "name": "order_number",
+            "label": "Order number",
+            "input-type": "text",
+            "required": false,
+            "helper-text": "If you have it. It starts with MS"
+          },
+          {
+            "type": "TextArea",
+            "name": "what_happened",
+            "label": "What happened?",
+            "required": true,
+            "helper-text": "Tell us in your own words"
+          },
+          {
+            "type": "RadioButtonsGroup",
+            "name": "wanted",
+            "label": "What would you like?",
+            "required": true,
+            "data-source": [
+              {
+                "id": "replace",
+                "title": "A replacement"
+              },
+              {
+                "id": "refund",
+                "title": "A refund"
+              },
+              {
+                "id": "call",
+                "title": "A call from us"
+              },
+              {
+                "id": "just_saying",
+                "title": "Just letting you know"
+              }
+            ]
+          },
+          {
+            "type": "Footer",
+            "label": "Send report",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "flow_key": "complaint",
+                "problem_type": "${form.problem_type}",
+                "order_number": "${form.order_number}",
+                "what_happened": "${form.what_happened}",
+                "wanted": "${form.wanted}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

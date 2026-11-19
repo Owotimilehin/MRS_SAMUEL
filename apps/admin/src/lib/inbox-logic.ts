@@ -3,7 +3,25 @@
  * unit-tested: list tabs per capability, timeline day grouping, reconnect
  * backoff, template variables, and the small label/format helpers.
  */
-import type { CallOutcome, MessageStatus, TimelineItem, TimelinePage } from "./inbox-types.js";
+import {
+  TEXT_LIMIT,
+  formatFlowValue as sharedFormatFlowValue,
+  headerMediaLabel,
+  uploadAccept,
+  type FlowFieldKind,
+  type TemplateHeaderMedia,
+  type TemplateNeeds,
+} from "@ms/shared";
+import type {
+  CallOutcome,
+  Channels,
+  ChannelKind,
+  IdentityChannel,
+  IdentityRow,
+  MessageStatus,
+  TimelineItem,
+  TimelinePage,
+} from "./inbox-types.js";
 
 /** Business time zone; staff are in Nigeria. */
 export const INBOX_TZ = "Africa/Lagos";
@@ -215,8 +233,12 @@ export function windowText(remainingMs: number): { open: boolean; text: string }
 
 // ── Messages and calls ───────────────────────────────────────────────────────
 
-/** Tick marks for an outgoing message. */
-export function messageTicks(status: MessageStatus): { marks: string; read: boolean; label: string } {
+/**
+ * Tick marks for an outgoing message. Instagram has no "delivered" state
+ * (spec 02, 3.6): one tick when sent, blue double ticks when read.
+ */
+export function messageTicks(status: MessageStatus, channel?: IdentityChannel): { marks: string; read: boolean; label: string } {
+  if (channel === "instagram" && status === "delivered") return { marks: "✓", read: false, label: "Sent" };
   switch (status) {
     case "queued":
       return { marks: "🕓", read: false, label: "Sending" };
@@ -367,6 +389,88 @@ export function templateParamsComplete(params: readonly string[], count: number)
   return params.slice(0, count).every((p) => p.trim().length > 0);
 }
 
+/** What staff have filled in so far for a template. */
+export interface TemplateDraft {
+  /** Body blanks, in order. */
+  params: readonly string[];
+  /** The blank in a text heading. */
+  headerParam: string;
+  /** The end of each link button's link, keyed by the button's position. */
+  buttonParams: Readonly<Record<number, string>>;
+  /** Is a file chosen for the heading? */
+  hasFile: boolean;
+}
+
+/**
+ * The first thing still missing before a template can be sent, in plain
+ * words, or null when everything is there. Send stays disabled until null.
+ */
+export function templateDraftProblem(needs: TemplateNeeds, draft: TemplateDraft): string | null {
+  if (!needs.sendable) return needs.reason ?? "This template can't be sent from the inbox yet";
+  if (needs.headerMedia && !draft.hasFile) return `Add a ${headerMediaLabel(needs.headerMedia)} to send this template.`;
+  if (needs.headerParams > 0 && !draft.headerParam.trim()) return "Fill in the blank in the heading.";
+  if (!templateParamsComplete(draft.params, needs.bodyParams)) return "Fill in every blank in the message.";
+  const button = needs.urlButtons.find((b) => !(draft.buttonParams[b.index] ?? "").trim());
+  if (button) return `Fill in the end of the link for the "${button.text}" button.`;
+  return null;
+}
+
+/** What may be attached for each kind of template heading (mirrors the server's upload rules). */
+const HEADER_FILE_RULES: Record<TemplateHeaderMedia, { types: readonly string[]; maxMb: number; accept: string; hint: string }> = {
+  image: { types: ["image/jpeg", "image/png"], maxMb: 5, accept: "image/jpeg,image/png", hint: "JPG or PNG, up to 5 MB" },
+  video: { types: ["video/mp4"], maxMb: 16, accept: "video/mp4", hint: "MP4, up to 16 MB" },
+  document: { types: ["application/pdf"], maxMb: 16, accept: "application/pdf", hint: "PDF, up to 16 MB" },
+};
+
+export function headerFileRule(kind: TemplateHeaderMedia): { accept: string; hint: string } {
+  const { accept, hint } = HEADER_FILE_RULES[kind];
+  return { accept, hint };
+}
+
+/** Why this file can't be the template's picture/video/document, or null when it can. */
+export function headerFileProblem(kind: TemplateHeaderMedia, f: { type: string; size: number }): string | null {
+  const rule = HEADER_FILE_RULES[kind];
+  if (!rule.types.includes(f.type)) return `This template needs a ${headerMediaLabel(kind)} (${rule.hint}).`;
+  if (f.size > rule.maxMb * 1024 * 1024) return `That file is too large. Use a ${headerMediaLabel(kind)} of ${rule.maxMb} MB or less.`;
+  if (f.size <= 0) return "That file is empty.";
+  return null;
+}
+
+/** "Add picture" / "Add video" / "Add document". */
+export function addHeaderFileLabel(kind: TemplateHeaderMedia): string {
+  return `Add ${headerMediaLabel(kind)}`;
+}
+
+/** How many things staff type in for this template (message, heading and link blanks). */
+export function templateBlankCount(needs: TemplateNeeds): number {
+  return needs.bodyParams + needs.headerParams + needs.urlButtons.length;
+}
+
+/** A link button's address with its blank filled, for the preview. */
+export function fillButtonUrl(url: string, value: string): string {
+  return url.replace(/\{\{\s*1\s*\}\}/g, value.trim() || "…");
+}
+
+// ── Automatic messages ───────────────────────────────────────────────────────
+
+/**
+ * Label for a message no member of staff sent. "after_hours" is the reply to
+ * customers who write when closed; anything else (e.g. the missed-call
+ * follow-up) is an automatic message. Null for messages a person sent.
+ */
+export function autoMessageLabel(auto: string | null | undefined): string | null {
+  if (!auto) return null;
+  return auto === "after_hours" ? "Automatic reply" : "Automatic message";
+}
+
+/** Help text under the number form's after-hours message, for the channels the number uses. */
+export function afterHoursHelp(channels: "voice" | "whatsapp" | "both"): string {
+  const wa = "Sent automatically on WhatsApp to a customer who writes when you're closed (once per closed period)";
+  if (channels === "whatsapp") return `${wa}.`;
+  if (channels === "voice") return "Read out to callers who ring when you're closed.";
+  return `${wa}, and read out to callers who ring when you're closed.`;
+}
+
 // ── Typing indicator ─────────────────────────────────────────────────────────
 
 /** Throttle for POST /typing: at most once per `intervalMs` while the user types. */
@@ -374,11 +478,92 @@ export function shouldSendTyping(lastSentAt: number | null, now: number, interva
   return lastSentAt === null || now - lastSentAt >= intervalMs;
 }
 
-/** Display name for a customer row. */
-export function contactName(name: string | null | undefined, phone: string | null | undefined): string {
+/**
+ * Display name for a customer row: their name, else their phone, else what
+ * Meta calls them on the channel (`fallback`: a Facebook name or "@username"),
+ * else "Unknown customer".
+ */
+export function contactName(
+  name: string | null | undefined,
+  phone: string | null | undefined,
+  fallback?: string | null,
+): string {
   const n = name?.trim();
   if (n) return n;
-  return prettyPhone(phone) || "Unknown customer";
+  return prettyPhone(phone) || fallback?.trim() || "Unknown customer";
+}
+
+type IdentityLike = Pick<IdentityRow, "channel" | "display_name" | "username" | "phone">;
+
+/** What Meta calls the customer on a thread: their display name, else "@username". */
+export function identityName(i: { display_name: string | null; username: string | null } | null | undefined): string | null {
+  if (!i) return null;
+  return i.display_name?.trim() || (i.username?.trim() ? `@${i.username.trim()}` : null);
+}
+
+/** A short handle for an identity: "@username", else its display name, else its phone. */
+export function identityHandle(i: IdentityLike): string | null {
+  if (i.username?.trim()) return `@${i.username.trim()}`;
+  if (i.display_name?.trim()) return i.display_name.trim();
+  return i.phone ? prettyPhone(i.phone) : null;
+}
+
+/** The first handle among a contact's identities, for the heading when the contact has no name or phone. */
+export function firstIdentityHandle(identities: readonly IdentityLike[] | null | undefined): string | null {
+  for (const i of identities ?? []) {
+    const h = identityHandle(i);
+    if (h) return h;
+  }
+  return null;
+}
+
+/** The main text of a "Reaches you on" line (spec 01, 7.4). */
+export function identityLine(i: IdentityLike & Pick<IdentityRow, "account_label">): string {
+  switch (i.channel) {
+    case "whatsapp":
+      if (i.phone) return prettyPhone(i.phone);
+      return `WhatsApp (number hidden)${i.username ? ` · @${i.username}` : ""}`;
+    case "messenger":
+      return `${i.display_name ?? "Facebook user"} · ${i.account_label}`;
+    case "instagram":
+      return `${i.username ? `@${i.username}` : (i.display_name ?? "Instagram user")} · ${i.account_label}`;
+  }
+}
+
+export interface EraseTarget {
+  kind: "phone" | "username" | "name" | "word";
+  /** What the person must type (a username is shown with "@"). */
+  show: string;
+}
+
+/**
+ * What a person must type to erase a contact (rule R10, checked again on the
+ * server): the phone if there is one; else the first username; else the name;
+ * else the word DELETE.
+ */
+export function eraseConfirmTarget(
+  customer: { name: string | null; phone: string | null },
+  identities: readonly Pick<IdentityRow, "username">[] | null | undefined,
+): EraseTarget {
+  if (phoneDigits(customer.phone)) return { kind: "phone", show: prettyPhone(customer.phone) };
+  const username = (identities ?? []).map((i) => i.username?.trim().replace(/^@/, "")).find((u) => !!u);
+  if (username) return { kind: "username", show: `@${username}` };
+  if (customer.name?.trim()) return { kind: "name", show: customer.name.trim() };
+  return { kind: "word", show: "DELETE" };
+}
+
+/** Does what was typed match the erase target? */
+export function eraseConfirmMatches(typed: string, target: EraseTarget, phone?: string | null): boolean {
+  switch (target.kind) {
+    case "phone":
+      return phoneConfirmMatches(typed, phone ?? target.show);
+    case "username":
+      return typed.trim().replace(/^@/, "").toLowerCase() === target.show.replace(/^@/, "").toLowerCase();
+    case "name":
+      return typed.trim().toLowerCase() === target.show.toLowerCase();
+    case "word":
+      return typed === "DELETE";
+  }
 }
 
 // ── Business hours editor ────────────────────────────────────────────────────
@@ -650,4 +835,231 @@ export function conversationIdFromPath(pathname: string): string | null {
   const m = /^\/inbox\/([^/]+)\/?$/.exec(pathname);
   if (!m) return null;
   return m[1] === "reports" || m[1] === "settings" ? null : m[1]!;
+}
+
+// ── Reply box per channel (suite spec 02, 7.3) ──────────────────────────────
+
+/** The plain name of a channel, as staff see it in sentences. */
+export function channelName(channel: IdentityChannel): "WhatsApp" | "Messenger" | "Instagram" {
+  return channel === "whatsapp" ? "WhatsApp" : channel === "messenger" ? "Messenger" : "Instagram";
+}
+
+/** What the composer needs to know about a conversation. */
+export interface ReplyStateInput {
+  channel?: IdentityChannel;
+  number: { label: string; channels: Channels; kind?: ChannelKind; is_active?: boolean; problem_text?: string | null } | null;
+  window_remaining_ms: number;
+  human_agent_remaining_ms?: number;
+  human_agent_enabled?: boolean;
+}
+
+export interface ReplyState {
+  channel: IdentityChannel;
+  mode: "open" | "human_agent" | "closed" | "calls_only" | "off";
+  /** "WhatsApp reply" | "Messenger reply" | "Instagram reply". */
+  tabLabel: string;
+  statusText: string;
+  canTemplate: boolean;
+  canCaption: boolean;
+  textLimit: { max: number; unit: "characters" | "bytes" };
+  /** The file picker's accept list. */
+  accept: string;
+  /** Red banner above the box: messages on this line are not going out. */
+  banner: string | null;
+  /** In the closed notice: "24 hours", or "7 days" with Human Agent on. */
+  closedWindow: "24 hours" | "7 days";
+}
+
+/** The attach button's list on WhatsApp, unchanged from before spec 02. */
+export const WHATSAPP_ACCEPT = "image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Everything the composer shows for a conversation's channel and reply
+ * window, so the rules are tested without React. WhatsApp behaves exactly as
+ * before; Messenger and Instagram follow spec 02 table 7.3.
+ */
+export function replyState(conv: ReplyStateInput): ReplyState {
+  const channel: IdentityChannel = conv.channel ?? "whatsapp";
+  const name = channelName(channel);
+  const label = conv.number?.label ?? name;
+  const win = windowText(conv.window_remaining_ms);
+  const base = {
+    channel,
+    tabLabel: `${name} reply`,
+    textLimit: TEXT_LIMIT[channel],
+    banner: null as string | null,
+    closedWindow: "24 hours" as const,
+  };
+
+  if (channel === "whatsapp") {
+    const callsOnly = !conv.number || conv.number.channels === "voice" || (conv.number.kind ?? "phone") !== "phone";
+    return {
+      ...base,
+      mode: callsOnly ? "calls_only" : win.open ? "open" : "closed",
+      statusText: win.text,
+      canTemplate: true,
+      canCaption: true,
+      accept: WHATSAPP_ACCEPT,
+    };
+  }
+
+  const meta = {
+    ...base,
+    canTemplate: false,
+    canCaption: false,
+    accept: uploadAccept(channel),
+    banner: conv.number?.problem_text ? `Messages on ${label} are not going out: ${conv.number.problem_text}` : null,
+    closedWindow: (conv.human_agent_enabled ? "7 days" : "24 hours") as "24 hours" | "7 days",
+  };
+  if (conv.number?.is_active === false) {
+    return { ...meta, mode: "off", statusText: `${label} is switched off, so replies can't be sent. Switch it on under Channels.` };
+  }
+  if (win.open) return { ...meta, mode: "open", statusText: win.text };
+  const agentMs = conv.human_agent_remaining_ms ?? 0;
+  if (conv.human_agent_enabled && agentMs > 0) {
+    const days = Math.max(1, Math.ceil(agentMs / DAY_MS));
+    return {
+      ...meta,
+      mode: "human_agent",
+      statusText: `More than 24 hours since they wrote. You can still reply for ${days} more ${days === 1 ? "day" : "days"}, by hand only.`,
+    };
+  }
+  return { ...meta, mode: "closed", statusText: "Reply window closed" };
+}
+
+/** The live byte or character count for the Instagram counter, and whether it is over the limit. */
+export function textUsage(text: string, limit: { max: number; unit: "characters" | "bytes" }): { used: number; over: boolean } {
+  const used = limit.unit === "bytes" ? new TextEncoder().encode(text).length : [...text].length;
+  return { used, over: used > limit.max };
+}
+
+// ── WhatsApp forms (suite spec 07) ───────────────────────────────────────────
+
+/**
+ * The buttons under a form answer, in display order. Nothing without
+ * `inbox.reply` (the server refuses every action without it); "Add to notes"
+ * also needs `inbox.notes`; "Save as their address" is for the delivery-address form only.
+ */
+export function flowCardActions(
+  response: { status: string; flow_key: string },
+  canReply: boolean,
+  canNote: boolean = canReply,
+): string[] {
+  if (!canReply) return [];
+  const out: string[] = [];
+  if (response.status === "new") out.push("handled");
+  else if (response.status === "handled") out.push("reopen");
+  if (canNote) out.push("add_note");
+  if (response.flow_key === "delivery_address") out.push("save_address");
+  return out;
+}
+
+const FLOW_KINDS: readonly string[] = ["text", "phone", "choice", "multi", "date", "longtext"];
+
+/** An answer as plain text for the card. An unknown kind is treated as "other". */
+export function formatFlowValue(kind: string, value: unknown): string {
+  return sharedFormatFlowValue(FLOW_KINDS.includes(kind) ? (kind as FlowFieldKind) : "other", value);
+}
+
+/** The grey pill on a handled form answer: "Handled by Ada, 09:05" (Lagos time, as in the chat list). */
+export function flowHandledText(
+  response: { handled_by_name: string | null; handled_at: string | null },
+  now: Date = new Date(),
+): string {
+  const who = response.handled_by_name?.trim() ? `Handled by ${staffLabel(response.handled_by_name)}` : "Handled";
+  return response.handled_at ? `${who}, ${listTime(response.handled_at, now)}` : who;
+}
+
+/**
+ * The address "Save as their address" will write, built from the card's rows the
+ * way the server builds it: "{House and street}, {Area}. Landmark: {Landmark}".
+ */
+export function flowAddressPreview(rows: ReadonlyArray<{ label: string; value: string }>): string {
+  const get = (label: string): string => rows.find((r) => r.label === label)?.value.trim() ?? "";
+  const head = [get("House and street"), get("Area")].filter(Boolean).join(", ");
+  const landmark = get("Landmark");
+  return `${head}${head ? "." : ""}${landmark ? `${head ? " " : ""}Landmark: ${landmark}` : ""}`.slice(0, 500);
+}
+
+// ── Selling in chat (suite spec 08) ──────────────────────────────────────────
+
+/** The heading on a cart card, by where the cart has got to. */
+export function chatOrderHeading(state: string, orderNumber?: string | null): string {
+  switch (state) {
+    case "new":
+      return "Cart received";
+    case "asked":
+      return "Waiting for: delivery or pickup";
+    case "awaiting_address":
+      return "Waiting for the delivery address";
+    case "ready":
+      return "Ready to create the order";
+    case "placed":
+      return orderNumber ? `Order ${orderNumber}` : "Order created";
+    case "cancelled":
+      return "Cart dismissed";
+    default:
+      return "Cart";
+  }
+}
+
+/** The note under a cart line, or null. The shop's price always wins; a line no longer sold must be removed. */
+export function cartLineNote(line: {
+  sellable: boolean;
+  in_stock: boolean;
+  price_differs: boolean;
+  meta_price: number | null;
+}): string | null {
+  if (!line.sellable) return "No longer sold. Remove it to continue.";
+  const notes: string[] = [];
+  if (line.price_differs && line.meta_price != null) {
+    notes.push(`Price in WhatsApp was ₦${Math.round(line.meta_price).toLocaleString("en-NG")}. The shop price is used.`);
+  }
+  if (!line.in_stock) notes.push("Out of stock: this will become a made-to-order (preorder) order.");
+  return notes.length ? notes.join(" ") : null;
+}
+
+/** The chip on a cart that has become an order. */
+export function chatOrderStatusChip(status: string): { text: string; tone: "warning" | "success" | "danger" | "ink" } {
+  switch (status) {
+    case "confirmed":
+      return { text: "Waiting for payment", tone: "warning" };
+    case "paid":
+      return { text: "Paid", tone: "success" };
+    case "out_for_delivery":
+      return { text: "Out for delivery", tone: "success" };
+    case "handed_over":
+      return { text: "Ready / handed over", tone: "success" };
+    case "delivered":
+      return { text: "Delivered", tone: "success" };
+    case "cancelled":
+    case "failed":
+      return { text: "Cancelled", tone: "danger" };
+    case "reconcile_needed":
+      return { text: "Payment needs checking", tone: "warning" };
+    default:
+      return { text: status, tone: "ink" };
+  }
+}
+
+/** Can a payment link still be sent for an order in this status? */
+export function chatOrderAwaitingPayment(status: string): boolean {
+  return status === "confirmed" || status === "reconcile_needed";
+}
+
+/** A delivery address the server will accept: 10 to 500 characters. */
+export function deliveryAddressProblem(address: string): string | null {
+  const a = address.trim();
+  if (a.length < 10 || a.length > 500) return "Enter the full address: house number, street, area and city.";
+  return null;
+}
+
+/** A typed delivery fee as whole naira between 0 and 100,000, or null when it is not one. */
+export function parseDeliveryFee(text: string): number | null {
+  const t = text.trim().replace(/[,\s₦]/g, "");
+  if (t === "") return 0;
+  if (!/^\d{1,6}$/.test(t)) return null;
+  const n = Number(t);
+  return n <= 100_000 ? n : null;
 }
