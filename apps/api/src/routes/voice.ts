@@ -166,7 +166,7 @@ async function findBusinessNumber(db: DbExecutor, to: string | undefined): Promi
   const byMatch = await db
     .select()
     .from(inboxPhoneNumber)
-    .where(and(eq(inboxPhoneNumber.inboundMatch, to), eq(inboxPhoneNumber.isActive, true)))
+    .where(and(eq(inboxPhoneNumber.inboundMatch, to), eq(inboxPhoneNumber.isActive, true), eq(inboxPhoneNumber.kind, "phone")))
     .limit(1);
   if (byMatch[0]) return byMatch[0];
   const e164 = toE164(to);
@@ -174,7 +174,7 @@ async function findBusinessNumber(db: DbExecutor, to: string | undefined): Promi
   const [byE164] = await db
     .select()
     .from(inboxPhoneNumber)
-    .where(and(eq(inboxPhoneNumber.e164, e164), eq(inboxPhoneNumber.isActive, true)))
+    .where(and(eq(inboxPhoneNumber.e164, e164), eq(inboxPhoneNumber.isActive, true), eq(inboxPhoneNumber.kind, "phone")))
     .limit(1);
   return byE164 ?? null;
 }
@@ -408,7 +408,11 @@ export function voiceWebhookRoutes(db: DbClient) {
     twilioWebhook(db, "/incoming", async ({ params }) => {
       const now = new Date();
       const num = await findBusinessNumber(db, params.To);
-      if (!num || num.channels === "whatsapp") return twiml().say(UNKNOWN_NUMBER).hangup();
+      // Only a phone line can take a call: a Page or an Instagram account never matches (rule R21).
+      if (!num || num.channels === "whatsapp" || num.kind !== "phone" || !num.e164) {
+        return twiml().say(UNKNOWN_NUMBER).hangup();
+      }
+      const businessE164 = num.e164;
       const fromE164 = toE164(params.From);
       if (!fromE164) return twiml().say(WITHHELD_CALLER).hangup();
       const callSid = params.CallSid;
@@ -427,7 +431,7 @@ export function voiceWebhookRoutes(db: DbClient) {
             twilioCallSid: callSid,
             direction: "in",
             fromE164,
-            toE164: num.e164,
+            toE164: businessE164,
             startedAt: now,
           })
           .onConflictDoNothing({ target: inboxCall.twilioCallSid });
@@ -641,7 +645,10 @@ export function voiceWebhookRoutes(db: DbClient) {
               .from(inboxPhoneNumber)
               .where(and(eq(inboxPhoneNumber.id, numberId), eq(inboxPhoneNumber.isActive, true)))
           : [];
-      if (!num || num.channels === "whatsapp") return twiml().say("Sorry, that business number cannot make calls.").hangup();
+      if (!num || num.channels === "whatsapp" || num.kind !== "phone" || !num.e164) {
+        return twiml().say("Sorry, that business number cannot make calls.").hangup();
+      }
+      const callerE164 = num.e164;
       if (!(await hasNumberAccess(db, user.id, caps, num.id))) {
         return twiml().say("Sorry, you cannot call from that business number.").hangup();
       }
@@ -677,7 +684,7 @@ export function voiceWebhookRoutes(db: DbClient) {
             teamId: conversation.teamId,
             twilioCallSid: callSid,
             direction: "out",
-            fromE164: num.e164,
+            fromE164: callerE164,
             toE164: dialTo,
             startedByUserId: user.id,
           })
@@ -687,7 +694,7 @@ export function voiceWebhookRoutes(db: DbClient) {
         await publishCall(tx, conv, call!.id);
         await publishInboxEvent(tx, signalFor("conversation.updated", conv));
         return twiml().dialNumber(dialTo, {
-          callerId: num.e164,
+          callerId: callerE164,
           answerOnBridge: true,
           timeout: 30,
           record: "record-from-answer-dual",
