@@ -18,3 +18,4 @@ export * from "./wa-flows.js";
 export * from "./social.js";
 export * from "./catalogue.js";
 export * from "./social-post.js";
+export * from "./insights.js";

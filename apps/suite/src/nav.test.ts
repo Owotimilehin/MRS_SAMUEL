@@ -71,3 +71,18 @@ describe("posts in the menu (suite spec 09)", () => {
     expect(firstAllowedPage(["social.publish", "inbox.reports"])).toBe("/posts");
   });
 });
+
+describe("Insights in the menu (suite spec 11)", () => {
+  const WITH_INSIGHTS = ["/inbox", "/insights", "/inbox/reports", "/channels", "/inbox/settings"] as const;
+  it("lights Insights on its page and leaves the others alone", () => {
+    expect(activeNavTo("/insights", WITH_INSIGHTS)).toBe("/insights");
+    expect(activeNavTo("/inbox/reports", WITH_INSIGHTS)).toBe("/inbox/reports");
+    expect(activeNavTo("/inbox", WITH_INSIGHTS)).toBe("/inbox");
+  });
+  it("is where someone with only insights.view lands, and sits above Reports", () => {
+    expect(firstAllowedPage(["insights.view"])).toBe("/insights");
+    expect(firstAllowedPage(["inbox.reports", "insights.view"])).toBe("/insights");
+    expect(firstAllowedPage(["inbox.view", "insights.view"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.reports"])).toBe("/inbox/reports");
+  });
+});

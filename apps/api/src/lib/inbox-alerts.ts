@@ -35,7 +35,9 @@ export async function alertOnce(
     | "social.comments_config"
     // Raised by the catalogue sync in the worker (raiseCatalogueAlert in @ms/domain) with the same once-a-day rule.
     | "catalogue.sync_blocked"
-    | "social.publish_config_error",
+    | "social.publish_config_error"
+    // Raised by the statistics collector in the worker (suite spec 11), with the same once-a-day rule.
+    | "insights.config_error",
   payload: Record<string, unknown> & { account: string },
 ): Promise<boolean> {
   const [recent] = await db

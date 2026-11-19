@@ -16,6 +16,7 @@ import {
   ChevronsRight,
   ExternalLink,
   LayoutTemplate,
+  LineChart,
   Menu,
   MessageCircle,
   MessagesSquare,
@@ -38,7 +39,7 @@ import { useCommentNotifier } from "./features/comments/useCommentNotifier.js";
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/comments" | "/catalogue" | "/posts" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
+  to: "/inbox" | "/comments" | "/catalogue" | "/posts" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -63,7 +64,10 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   },
   {
     heading: "Insight",
-    items: [{ to: "/inbox/reports", label: "Reports", Icon: BarChart3, cap: "inbox.reports" }],
+    items: [
+      { to: "/insights", label: "Insights", Icon: LineChart, cap: "insights.view" },
+      { to: "/inbox/reports", label: "Reports", Icon: BarChart3, cap: "inbox.reports" },
+    ],
   },
   {
     heading: "Set-up",

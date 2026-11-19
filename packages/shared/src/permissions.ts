@@ -104,6 +104,8 @@ export const CAPABILITIES = [
   "templates.manage",
   // Create, schedule and publish posts to Facebook and Instagram (suite spec 09).
   "social.publish",
+  // See statistics from Facebook, Instagram and WhatsApp (suite spec 11).
+  "insights.view",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -155,6 +157,7 @@ const ADMIN_CAPS: Capability[] = [
   "templates.manage",
   "catalogue.manage",
   "social.publish",
+  "insights.view",
 ];
 
 const MANAGER_CAPS: Capability[] = [
@@ -190,6 +193,7 @@ const MANAGER_CAPS: Capability[] = [
   "transcripts.view",
   "inbox.reports",
   "social.comments",
+  "insights.view",
 ];
 
 const BRANCH_STAFF_CAPS: Capability[] = [

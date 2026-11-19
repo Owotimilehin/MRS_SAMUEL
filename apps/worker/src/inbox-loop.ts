@@ -24,6 +24,7 @@ import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-m
 import { backfillComments, fillCommentDetails, pollComments } from "./jobs/social-comments.js";
 import { runCatalogueBatchCheck, runCatalogueReconcile, runCatalogueSync, runChatOrderJobs } from "./jobs/catalogue.js";
 import { publishDuePosts, reconcileUnknownTargets } from "./jobs/social-publish.js";
+import { collectInsightsIfDue } from "./jobs/insights-collect.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -52,6 +53,11 @@ interface Job {
   everyMs: number;
   run: () => Promise<unknown>;
   last: number;
+  /**
+   * The job guards itself against a second worker and must not run inside withJobLock's
+   * open transaction (a run that talks to Meta for minutes: suite spec 11).
+   */
+  ownLock?: true;
 }
 
 export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () => boolean): Promise<void> {
@@ -82,6 +88,7 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     // Posts to Facebook and Instagram (suite spec 09). Only posts a person approved are ever sent.
     { name: "social_publish", everyMs: 30_000, last: 0, run: () => publishDuePosts(db, logger) },
     { name: "social_publish_reconcile", everyMs: 60_000, last: 0, run: () => reconcileUnknownTargets(db, logger) },
+    { name: "insights_collect", everyMs: 10 * 60_000, last: 0, ownLock: true, run: () => collectInsightsIfDue(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {
@@ -90,7 +97,7 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
       const now = Date.now();
       if (now - job.last < job.everyMs) continue;
       job.last = now;
-      await runJob(logger, job.name, () => withJobLock(db, job.name, job.run));
+      await runJob(logger, job.name, job.ownLock ? job.run : () => withJobLock(db, job.name, job.run));
     }
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }

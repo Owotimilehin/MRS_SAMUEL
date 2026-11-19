@@ -33,3 +33,31 @@ export interface SocialPublishingValue {
 }
 
 export const SOCIAL_PUBLISHING_KEY = "social_publishing";
+
+/**
+ * JSON shape stored under the `insights_state` key (suite spec 11, section 4.4):
+ * when the statistics were last collected and what each source last said. No token.
+ */
+export interface InsightsStateValue {
+  /** Lagos day YYYY-MM-DD of the last completed daily run. */
+  last_daily_run_day: string | null;
+  /** ISO time of the last completed full run. */
+  last_run_at: string | null;
+  /** ISO time the Refresh button was last pressed. */
+  refresh_requested_at: string | null;
+  /** Key: `${source}:${account_key}`. */
+  sources: Record<
+    string,
+    {
+      last_ok_at: string | null;
+      backfilled: boolean;
+      problem_code: string | null;
+      problem_message: string | null;
+      invalid_metrics: string[];
+    }
+  >;
+  /** Key: WABA id. Present only after the owner turned template figures on. */
+  template_analytics: Record<string, { enabled_at: string; enabled_by: string }>;
+}
+
+export const INSIGHTS_STATE_KEY = "insights_state";

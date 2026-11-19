@@ -53,6 +53,7 @@ const CataloguePage = lazyNamed(() => import("./features/catalogue/CataloguePage
 const PostsPage = lazyNamed(() => import("./features/posts/PostsPage.js"), "PostsPage");
 const PostComposer = lazyNamed<{ postId?: string; initialDay?: string }>(() => import("./features/posts/PostComposer.js"), "PostComposer");
 const PostDetailPage = lazyNamed<{ postId: string }>(() => import("./features/posts/PostDetailPage.js"), "PostDetailPage");
+const InsightsPage = lazyNamed(() => import("./features/insights/InsightsPage.js"), "InsightsPage");
 
 const SUITE_LOGIN_COPY: LoginCopy = {
   portal: "Business\u00a0Suite",
@@ -262,6 +263,12 @@ const postEditRoute = createRoute({
   },
 });
 
+const insightsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/insights",
+  component: () => page(<InsightsPage />, "insights.view"),
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -283,6 +290,7 @@ const routeTree = rootRoute.addChildren([
   postNewRoute,
   postEditRoute,
   postDetailRoute,
+  insightsRoute,
 ]);
 
 export const router = createRouter({
