@@ -101,3 +101,21 @@ export const ADS_SETTINGS_DEFAULT: AdsSettingsValue = {
   refresh_requested_at: null,
   last_sync_day: null,
 };
+
+/**
+ * JSON shape stored under the `call_features` key: the owner's "Use call
+ * queue and supervisor tools (beta)" switch. A missing row means OFF, and OFF
+ * leaves the call flow exactly as it was before the switchboard.
+ */
+export interface CallFeaturesValue {
+  /** Callers wait in a queue when everyone is busy; supervisors can listen in. Default false. */
+  enabled: boolean;
+  /** Uploaded hold music (an inbox/greetings/… key). Null = silence with "please hold" reminders. */
+  hold_audio_key: string | null;
+  /** After this long in the queue the caller is offered voicemail. 60..1800, default 300. */
+  max_wait_s: number;
+}
+
+export const CALL_FEATURES_KEY = "call_features";
+
+export const CALL_FEATURES_DEFAULT: CallFeaturesValue = { enabled: false, hold_audio_key: null, max_wait_s: 300 };

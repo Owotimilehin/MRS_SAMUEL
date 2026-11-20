@@ -102,6 +102,24 @@ export interface RecordOpts {
   recordingStatusCallback?: string;
 }
 
+export interface EnqueueOpts {
+  action: string;
+  waitUrl: string;
+}
+
+export interface ConferenceOpts {
+  muted?: boolean;
+  beep?: boolean;
+  /** CallSid of the participant this one coaches (whisper: only they hear us). */
+  coach?: string;
+  startConferenceOnEnter?: boolean;
+  endConferenceOnExit?: boolean;
+  /** "" = silence while waiting (no Twilio default music). */
+  waitUrl?: string;
+  record?: "do-not-record" | "record-from-start";
+  recordingStatusCallback?: string;
+}
+
 export interface GatherOpts {
   numDigits?: number;
   timeout?: number;
@@ -181,6 +199,60 @@ export class TwiML {
 
   redirect(url: string): this {
     this.parts.push(el("Redirect", { method: "POST" }, xmlEscape(url)));
+    return this;
+  }
+
+  /**
+   * Put the caller in a named queue. Twilio plays `waitUrl`'s TwiML (looping)
+   * while they wait, and calls `action` when they leave the queue.
+   */
+  enqueue(queue: string, opts: EnqueueOpts): this {
+    this.parts.push(
+      el(
+        "Enqueue",
+        { action: opts.action, method: "POST", waitUrl: opts.waitUrl, waitUrlMethod: "POST" },
+        xmlEscape(queue),
+      ),
+    );
+    return this;
+  }
+
+  /** In a queue's wait music: leave the queue (Twilio then calls the Enqueue action). */
+  leave(): this {
+    this.parts.push("<Leave/>");
+    return this;
+  }
+
+  pause(seconds: number): this {
+    this.parts.push(el("Pause", { length: seconds }));
+    return this;
+  }
+
+  /** Join a conference room (supervisor tools). */
+  dialConference(room: string, conf: ConferenceOpts = {}, dial: Pick<DialOpts, "action"> = {}): this {
+    this.parts.push(
+      el(
+        "Dial",
+        { action: dial.action, method: dial.action ? "POST" : undefined },
+        el(
+          "Conference",
+          {
+            muted: conf.muted,
+            beep: conf.beep ?? false,
+            coach: conf.coach,
+            startConferenceOnEnter: conf.startConferenceOnEnter ?? true,
+            endConferenceOnExit: conf.endConferenceOnExit ?? false,
+            waitUrl: conf.waitUrl,
+            waitMethod: conf.waitUrl !== undefined ? "POST" : undefined,
+            record: conf.record,
+            recordingStatusCallback: conf.recordingStatusCallback,
+            recordingStatusCallbackMethod: conf.recordingStatusCallback ? "POST" : undefined,
+            recordingStatusCallbackEvent: conf.recordingStatusCallback ? "completed" : undefined,
+          },
+          xmlEscape(room),
+        ),
+      ),
+    );
     return this;
   }
 
@@ -370,5 +442,67 @@ export async function redirectCall(cfg: TwilioRestConfig, callSid: string, url: 
   });
   if (!res.ok) {
     throw new TwilioApiError(`call redirect failed: ${res.status}`, res.status, res.status === 429 || res.status >= 500);
+  }
+}
+
+// ── REST (supervisor tools: conferences) ─────────────────────────────────────
+
+function accountUrl(cfg: TwilioRestConfig, path: string): string {
+  const base = cfg.baseUrl ?? "https://api.twilio.com";
+  return `${base}/2010-04-01/Accounts/${encodeURIComponent(cfg.accountSid)}${path}`;
+}
+
+async function twilioGetJson(cfg: TwilioRestConfig, url: string, what: string): Promise<unknown> {
+  const res = await fetch(url, { headers: { authorization: basicAuth(cfg) }, signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new TwilioApiError(`${what} failed: ${res.status}`, res.status, res.status === 429 || res.status >= 500);
+  return res.json();
+}
+
+/**
+ * The staff leg of a bridged call: the in-progress child call that <Dial>
+ * created for this parent call. Null when there is none (not answered, ended).
+ */
+export async function findChildCall(cfg: TwilioRestConfig, parentCallSid: string): Promise<string | null> {
+  const qs = new URLSearchParams({ ParentCallSid: parentCallSid, Status: "in-progress", PageSize: "5" }).toString();
+  const body = (await twilioGetJson(cfg, accountUrl(cfg, `/Calls.json?${qs}`), "child call lookup")) as { calls?: { sid?: string }[] };
+  return body.calls?.find((c) => typeof c.sid === "string")?.sid ?? null;
+}
+
+/** The live conference with this name, or null. */
+export async function findConference(cfg: TwilioRestConfig, friendlyName: string): Promise<string | null> {
+  const qs = new URLSearchParams({ FriendlyName: friendlyName, Status: "in-progress", PageSize: "5" }).toString();
+  const body = (await twilioGetJson(cfg, accountUrl(cfg, `/Conferences.json?${qs}`), "conference lookup")) as {
+    conferences?: { sid?: string }[];
+  };
+  return body.conferences?.find((c) => typeof c.sid === "string")?.sid ?? null;
+}
+
+export interface ParticipantUpdate {
+  muted: boolean;
+  coaching: boolean;
+  /** Required when coaching: the participant (staff leg) being coached. */
+  callSidToCoach?: string;
+}
+
+/** Change a conference participant: mute (listen), coach (whisper) or neither (join). */
+export async function updateParticipant(
+  cfg: TwilioRestConfig,
+  conferenceSid: string,
+  callSid: string,
+  update: ParticipantUpdate,
+): Promise<void> {
+  const form = new URLSearchParams({ Muted: String(update.muted), Coaching: String(update.coaching) });
+  if (update.coaching && update.callSidToCoach) form.set("CallSidToCoach", update.callSidToCoach);
+  const res = await fetch(
+    accountUrl(cfg, `/Conferences/${encodeURIComponent(conferenceSid)}/Participants/${encodeURIComponent(callSid)}.json`),
+    {
+      method: "POST",
+      headers: { authorization: basicAuth(cfg), "content-type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  if (!res.ok) {
+    throw new TwilioApiError(`participant update failed: ${res.status}`, res.status, res.status === 429 || res.status >= 500);
   }
 }

@@ -22,10 +22,13 @@
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
-import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
+  CALL_FEATURES_KEY,
   adminUser,
+  appSetting,
+  type CallFeaturesValue,
   customer,
   inboxCall,
   inboxConversation,
@@ -39,6 +42,12 @@ import {
 } from "@ms/db";
 import {
   LIVE_CALL_MAX_AGE_MS,
+  MONITOR_MODES,
+  conferenceRoomFor,
+  findChildCall,
+  findConference,
+  monitorParticipant,
+  updateParticipant,
   canSeeConversation,
   conversationScope,
   lineSince,
@@ -50,12 +59,12 @@ import {
   twilioRestConfigFromEnv,
 } from "@ms/domain";
 import { resolveCapabilities, type PermissionOverrides } from "@ms/shared";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAnyCapability, requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
 import { logger } from "../logger.js";
 import { need, withViewer } from "./inbox.js";
-import { transferLiveCall, voiceUrl } from "./voice.js";
+import { clearMonitor, loadCallFeatures, transferLiveCall, voiceUrl } from "./voice.js";
 
 type CallRow = typeof inboxCall.$inferSelect;
 
@@ -147,6 +156,8 @@ export function switchboardRoutes(db: DbClient) {
     const answerer = alias(adminUser, "answerer");
     const starter = alias(adminUser, "starter");
     const ringUser = alias(adminUser, "ring_user");
+    const monitor = alias(adminUser, "monitor");
+    const features = await loadCallFeatures(db);
 
     const rows = await db
       .select({
@@ -158,6 +169,7 @@ export function switchboardRoutes(db: DbClient) {
         answered_by: sql<string | null>`coalesce(${answerer.name}, ${answerer.email})`,
         started_by: sql<string | null>`coalesce(${starter.name}, ${starter.email})`,
         ringing_for: sql<string | null>`coalesce(${ringUser.name}, ${ringUser.email})`,
+        monitor_name: sql<string | null>`coalesce(${monitor.name}, ${monitor.email})`,
       })
       .from(inboxCall)
       .innerJoin(inboxConversation, eq(inboxConversation.id, inboxCall.conversationId))
@@ -167,6 +179,7 @@ export function switchboardRoutes(db: DbClient) {
       .leftJoin(answerer, eq(answerer.id, inboxCall.answeredByUserId))
       .leftJoin(starter, eq(starter.id, inboxCall.startedByUserId))
       .leftJoin(ringUser, eq(ringUser.id, inboxCall.ringUserId))
+      .leftJoin(monitor, eq(monitor.id, inboxCall.monitorUserId))
       .where(and(conversationScope(v), liveWhere(now)))
       .orderBy(asc(inboxCall.startedAt));
 
@@ -188,6 +201,11 @@ export function switchboardRoutes(db: DbClient) {
       staff_name: call.direction === "in" ? x.answered_by : x.started_by,
       ringing_for_id: call.ringUserId,
       ringing_for: x.ringing_for,
+      // Supervisor tools (beta): who is listening in, and how; connected = their app has joined.
+      monitor_user_id: call.monitorUserId,
+      monitor_name: x.monitor_name,
+      monitor_mode: call.monitorMode,
+      monitor_connected: !!call.monitorCallSid,
     }));
 
     // Who is on a call: every live call, seen or not (no details given for unseen ones).
@@ -263,21 +281,25 @@ export function switchboardRoutes(db: DbClient) {
         staff: staffOut,
         teams,
         can_pick_up: v.capabilities.includes("calls.answer"),
+        // The owner's beta switch: the call queue and listening in.
+        queue_and_supervisor_tools: features.enabled,
       },
     });
   });
 
-  // Ring a call that is ringing for someone else on my app instead.
-  r.post("/calls/:id/pickup", async (c) => {
+  /**
+   * Ring this ringing (or queued) call on my app only. The caller's leg is
+   * redirected to /v1/voice/connect, which leaves the queue / stops the
+   * others' phones ringing.
+   */
+  async function pickUp(c: Context, call: CallRow, conv: typeof inboxConversation.$inferSelect) {
     need(c, "calls.answer");
     const auth = c.get("auth");
     const cfg = twilioRestConfigFromEnv() ?? notConfigured();
-    const now = new Date();
-    const { call, conv } = await visibleLiveCall(db, c, c.req.param("id"));
     if (call.direction !== "in" || call.endedAt || call.outcome !== "in_progress" || call.answeredByUserId) {
       throw new BusinessError("conflict", "This call has already been answered or has ended.", 409);
     }
-    const mine = await ringableState(db, auth.userId, now);
+    const mine = await ringableState(db, auth.userId, new Date());
     if (mine === "on_call") throw new BusinessError("conflict", "You are already on a call.", 409);
     if (mine !== "available") {
       throw new BusinessError("conflict", "Switch on “Taking calls” on this device first, so the call can ring here.", 409);
@@ -285,14 +307,14 @@ export function switchboardRoutes(db: DbClient) {
 
     const [claimed] = await db
       .update(inboxCall)
-      .set({ ringUserId: auth.userId })
+      .set({ ringUserId: auth.userId, queuedAt: null })
       .where(and(eq(inboxCall.id, call.id), eq(inboxCall.outcome, "in_progress"), isNull(inboxCall.answeredByUserId), isNull(inboxCall.endedAt)))
       .returning({ id: inboxCall.id });
     if (!claimed) throw new BusinessError("conflict", "This call has already been answered or has ended.", 409);
     try {
       await redirectCall(cfg, call.twilioCallSid, voiceUrl("/connect", { callId: call.id, userId: auth.userId }));
     } catch (err) {
-      await db.update(inboxCall).set({ ringUserId: call.ringUserId }).where(eq(inboxCall.id, call.id));
+      await db.update(inboxCall).set({ ringUserId: call.ringUserId, queuedAt: call.queuedAt }).where(eq(inboxCall.id, call.id));
       logger.warn({ err, callId: call.id }, "switchboard pick-up failed");
       throw new BusinessError("conflict", "Couldn't pick up the call — the caller may have just hung up.", 409);
     }
@@ -300,10 +322,128 @@ export function switchboardRoutes(db: DbClient) {
       action: "inbox.call_pickup",
       entityType: "inbox_call",
       entityId: call.id,
-      after: { ring_user_id: auth.userId },
+      after: { ring_user_id: auth.userId, from_queue: !!call.queuedAt },
       notify: false,
     });
     await publishInboxEvent(db, signalFor("call.updated", conv, call.id));
+  }
+
+  // Ring a call that is ringing for someone else on my app instead.
+  r.post("/calls/:id/pickup", async (c) => {
+    const { call, conv } = await visibleLiveCall(db, c, c.req.param("id"));
+    await pickUp(c, call, conv);
+    return c.json({ ok: true });
+  });
+
+  // Call queue (beta): take the caller who has waited longest (of those I may see).
+  r.post("/queue/take-next", async (c) => {
+    const v = c.get("inboxViewer");
+    const now = new Date();
+    const [next] = await db
+      .select({ call: inboxCall, conv: inboxConversation })
+      .from(inboxCall)
+      .innerJoin(inboxConversation, eq(inboxConversation.id, inboxCall.conversationId))
+      .where(and(conversationScope(v), liveWhere(now), eq(inboxCall.outcome, "in_progress"), isNotNull(inboxCall.queuedAt)))
+      .orderBy(asc(inboxCall.queuedAt))
+      .limit(1);
+    if (!next) throw new BusinessError("conflict", "Nobody is waiting right now.", 409);
+    await pickUp(c, next.call, next.conv);
+    return c.json({ ok: true, call_id: next.call.id });
+  });
+
+  // ── Supervisor tools (beta) ──
+
+  async function needSupervisorTools(): Promise<void> {
+    if (!(await loadCallFeatures(db)).enabled) {
+      throw new BusinessError("conflict", "Listening in is switched off. The owner can switch it on in Call settings.", 409);
+    }
+  }
+
+  const ModeBody = z.object({ mode: z.enum(MONITOR_MODES) });
+
+  /**
+   * Start listening in. The first time, the call is moved into a conference
+   * room: the staff member's leg is redirected into it, and the caller follows
+   * when their <Dial> ends (/dial-result). The app then connects with
+   * listenCallId (see /v1/voice/outbound).
+   */
+  r.post("/calls/:id/listen", async (c) => {
+    const auth = c.get("auth");
+    const { mode } = ModeBody.parse(await c.req.json());
+    await needSupervisorTools();
+    const cfg = twilioRestConfigFromEnv() ?? notConfigured();
+    const { call, conv } = await visibleLiveCall(db, c, c.req.param("id"));
+    if (call.direction !== "in" || call.endedAt || call.outcome !== "answered" || !call.answeredByUserId) {
+      throw new BusinessError("conflict", "You can only listen in to a call someone is talking on.", 409);
+    }
+    if (call.answeredByUserId === auth.userId) throw new BusinessError("conflict", "This is your own call.", 409);
+    if (call.monitorUserId && call.monitorUserId !== auth.userId) {
+      throw new BusinessError("conflict", "Someone else is already listening to this call.", 409);
+    }
+
+    if (!call.conferenceName) {
+      let agentSid: string | null;
+      try {
+        agentSid = call.agentCallSid ?? (await findChildCall(cfg, call.twilioCallSid));
+      } catch (err) {
+        logger.warn({ err, callId: call.id }, "listen-in: staff leg lookup failed");
+        agentSid = null;
+      }
+      if (!agentSid) throw new BusinessError("conflict", "Couldn't find the staff member's side of this call. Try again.", 409);
+      await db
+        .update(inboxCall)
+        .set({ conferenceName: conferenceRoomFor(call.id), agentCallSid: agentSid, monitorUserId: auth.userId, monitorMode: mode, monitorCallSid: null })
+        .where(eq(inboxCall.id, call.id));
+      try {
+        await redirectCall(cfg, agentSid, voiceUrl("/conference", { callId: call.id, role: "agent" }));
+      } catch (err) {
+        await db
+          .update(inboxCall)
+          .set({ conferenceName: null, agentCallSid: null, monitorUserId: null, monitorMode: null, monitorCallSid: null })
+          .where(eq(inboxCall.id, call.id));
+        logger.warn({ err, callId: call.id }, "listen-in: moving the call into a conference failed");
+        throw new BusinessError("conflict", "Couldn't start listening — the call may have just ended.", 409);
+      }
+    } else {
+      await db
+        .update(inboxCall)
+        .set({ monitorUserId: auth.userId, monitorMode: mode, monitorCallSid: null })
+        .where(eq(inboxCall.id, call.id));
+    }
+    await writeAudit(db, c, { action: "inbox.call_listen", entityType: "inbox_call", entityId: call.id, after: { mode }, notify: false });
+    await publishInboxEvent(db, signalFor("call.updated", conv, call.id));
+    return c.json({ data: { call_id: call.id, mode } });
+  });
+
+  // Switch between listen, whisper and join while connected.
+  r.post("/calls/:id/monitor", async (c) => {
+    const auth = c.get("auth");
+    const { mode } = ModeBody.parse(await c.req.json());
+    await needSupervisorTools();
+    const cfg = twilioRestConfigFromEnv() ?? notConfigured();
+    const { call, conv } = await visibleLiveCall(db, c, c.req.param("id"));
+    if (call.monitorUserId !== auth.userId || !call.monitorCallSid || !call.conferenceName || !call.agentCallSid || call.endedAt) {
+      throw new BusinessError("conflict", "You are not listening to this call.", 409);
+    }
+    try {
+      const conference = await findConference(cfg, call.conferenceName);
+      if (!conference) throw new Error("conference not live");
+      await updateParticipant(cfg, conference, call.monitorCallSid, monitorParticipant(mode, call.agentCallSid));
+    } catch (err) {
+      logger.warn({ err, callId: call.id }, "listen-in: mode change failed");
+      throw new BusinessError("conflict", "Couldn't change that — the call may have just ended.", 409);
+    }
+    await db.update(inboxCall).set({ monitorMode: mode }).where(eq(inboxCall.id, call.id));
+    await writeAudit(db, c, { action: "inbox.call_listen", entityType: "inbox_call", entityId: call.id, after: { mode }, notify: false });
+    await publishInboxEvent(db, signalFor("call.updated", conv, call.id));
+    return c.json({ data: { call_id: call.id, mode } });
+  });
+
+  // Stop listening (the app also hangs up its own leg).
+  r.post("/calls/:id/listen/stop", async (c) => {
+    const auth = c.get("auth");
+    const { call } = await visibleLiveCall(db, c, c.req.param("id"));
+    if (call.monitorUserId === auth.userId) await clearMonitor(db, call.id);
     return c.json({ ok: true });
   });
 
@@ -367,6 +507,46 @@ export function switchboardRoutes(db: DbClient) {
     });
     await publishInboxEvent(db, { event: "presence.updated", id: userId });
     return c.json({ ok: true });
+  });
+
+  return r;
+}
+
+/** An uploaded greeting-style recording (POST /v1/inbox/settings/greetings/upload). */
+const HoldAudioKey = z.string().regex(/^inbox\/greetings\/[0-9a-f-]{36}\.(mp3|wav)$/).nullable();
+
+/**
+ * The owner's "Use call queue and supervisor tools (beta)" switch, stored in
+ * app_settings under call_features. Mounted at /v1/inbox/call-features.
+ *   GET  — anyone with inbox.settings or calls.switchboard
+ *   PUT  — inbox.settings; audited
+ */
+export function callFeatureRoutes(db: DbClient) {
+  const r = new Hono();
+  r.use("*", requireAuth());
+
+  r.get("/", requireAnyCapability("inbox.settings", "calls.switchboard"), async (c) => {
+    return c.json({ data: await loadCallFeatures(db) });
+  });
+
+  const Body = z.object({
+    enabled: z.boolean(),
+    hold_audio_key: HoldAudioKey,
+    max_wait_s: z.number().int().min(60).max(1800),
+  });
+  r.put("/", requireCapability("inbox.settings"), async (c) => {
+    const auth = c.get("auth");
+    const parsed = Body.safeParse(await c.req.json());
+    if (!parsed.success) throw new BusinessError("validation_failed", "Check the settings and try again.", 400);
+    const before = await loadCallFeatures(db);
+    const value: CallFeaturesValue = parsed.data;
+    const now = new Date();
+    await db
+      .insert(appSetting)
+      .values({ key: CALL_FEATURES_KEY, value, updatedBy: auth.userId, updatedAt: now })
+      .onConflictDoUpdate({ target: appSetting.key, set: { value, updatedBy: auth.userId, updatedAt: now } });
+    await writeAudit(db, c, { action: "inbox.call_features", entityType: "app_setting", entityId: CALL_FEATURES_KEY, before, after: value });
+    return c.json({ data: value });
   });
 
   return r;

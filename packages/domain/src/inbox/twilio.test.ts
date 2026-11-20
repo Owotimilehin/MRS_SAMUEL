@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import crypto from "node:crypto";
 import {
+  findChildCall,
+  findConference,
+  updateParticipant,
   twiml,
   twilioSignature,
   userIdFromVoiceIdentity,
@@ -161,5 +164,74 @@ describe("voice identities", () => {
     expect(userIdFromVoiceIdentity("u_123")).toBeNull();
     expect(userIdFromVoiceIdentity("+2348000000000")).toBeNull();
     expect(userIdFromVoiceIdentity("client:bob")).toBeNull();
+  });
+});
+
+describe("TwiML for the call queue and conferences", () => {
+  it("enqueues with a wait URL and an action", () => {
+    const xml = twiml().enqueue("line-1", { action: "https://x/queue-result?callId=1", waitUrl: "https://x/queue-wait?callId=1" }).toString();
+    expect(xml).toContain(
+      '<Enqueue action="https://x/queue-result?callId=1" method="POST" waitUrl="https://x/queue-wait?callId=1" waitUrlMethod="POST">line-1</Enqueue>',
+    );
+  });
+  it("leaves the queue and pauses", () => {
+    expect(twiml().pause(15).leave().toString()).toContain('<Pause length="15"/><Leave/>');
+  });
+  it("dials a conference, with coach and silent waiting", () => {
+    const xml = twiml()
+      .dialConference("call-1", { muted: false, coach: "CAagent", startConferenceOnEnter: false, waitUrl: "" }, { action: "https://x/done" })
+      .toString();
+    expect(xml).toContain('<Dial action="https://x/done" method="POST"><Conference muted="false" beep="false" coach="CAagent"');
+    expect(xml).toContain('startConferenceOnEnter="false" endConferenceOnExit="false" waitUrl="" waitMethod="POST">call-1</Conference></Dial>');
+  });
+});
+
+describe("conference REST helpers (fetch mocked)", () => {
+  const cfg = { accountSid: "AC1", apiKeySid: "SK1", apiKeySecret: "s", baseUrl: "https://tw.test" };
+  function mockFetch(respond: (url: string, init?: RequestInit) => Response): { calls: { url: string; init?: RequestInit }[]; restore: () => void } {
+    const real = globalThis.fetch;
+    const calls: { url: string; init?: RequestInit }[] = [];
+    globalThis.fetch = ((url: string, init?: RequestInit) => {
+      calls.push({ url, ...(init ? { init } : {}) });
+      return Promise.resolve(respond(url, init));
+    }) as typeof fetch;
+    return { calls, restore: () => (globalThis.fetch = real) };
+  }
+
+  it("finds the staff leg of a call", async () => {
+    const m = mockFetch(() => new Response(JSON.stringify({ calls: [{ sid: "CAchild" }] })));
+    try {
+      expect(await findChildCall(cfg, "CAparent")).toBe("CAchild");
+      expect(m.calls[0]!.url).toBe("https://tw.test/2010-04-01/Accounts/AC1/Calls.json?ParentCallSid=CAparent&Status=in-progress&PageSize=5");
+    } finally {
+      m.restore();
+    }
+  });
+  it("finds a live conference by name, or null", async () => {
+    const m = mockFetch(() => new Response(JSON.stringify({ conferences: [] })));
+    try {
+      expect(await findConference(cfg, "call-1")).toBeNull();
+      expect(m.calls[0]!.url).toContain("/Conferences.json?FriendlyName=call-1&Status=in-progress");
+    } finally {
+      m.restore();
+    }
+  });
+  it("updates a participant: whisper sends Coaching and CallSidToCoach", async () => {
+    const m = mockFetch(() => new Response("{}"));
+    try {
+      await updateParticipant(cfg, "CF1", "CAsup", { muted: false, coaching: true, callSidToCoach: "CAagent" });
+      expect(m.calls[0]!.url).toBe("https://tw.test/2010-04-01/Accounts/AC1/Conferences/CF1/Participants/CAsup.json");
+      expect(String(m.calls[0]!.init?.body)).toBe("Muted=false&Coaching=true&CallSidToCoach=CAagent");
+    } finally {
+      m.restore();
+    }
+  });
+  it("throws a TwilioApiError when Twilio refuses", async () => {
+    const m = mockFetch(() => new Response("{}", { status: 404 }));
+    try {
+      await expect(updateParticipant(cfg, "CF1", "CAsup", { muted: true, coaching: false })).rejects.toThrow("participant update failed: 404");
+    } finally {
+      m.restore();
+    }
   });
 });

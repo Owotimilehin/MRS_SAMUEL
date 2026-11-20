@@ -390,6 +390,17 @@ export const inboxCall = pgTable(
     heldAt: timestamp("held_at", { withTimezone: true }),
     /** Ringing just this person: picked up or transferred to them from the switchboard. Migration 0087. */
     ringUserId: uuid("ring_user_id").references(() => adminUser.id, { onDelete: "set null" }),
+    // Call queue and supervisor tools (owner's beta switch, app_settings "call_features"). Migration 0087.
+    /** Waiting in the call queue since; null when not queued. */
+    queuedAt: timestamp("queued_at", { withTimezone: true }),
+    /** Moved into this Twilio conference room so a supervisor could listen in. */
+    conferenceName: text("conference_name"),
+    /** The staff member's leg in that conference (whisper target). */
+    agentCallSid: text("agent_call_sid"),
+    /** The supervisor listening in, their own leg, and how ('listen' | 'whisper' | 'join'). */
+    monitorUserId: uuid("monitor_user_id").references(() => adminUser.id, { onDelete: "set null" }),
+    monitorCallSid: text("monitor_call_sid"),
+    monitorMode: text("monitor_mode"),
   },
   (t) => ({
     idxConv: index("idx_inbox_call_conv").on(t.conversationId, t.startedAt),

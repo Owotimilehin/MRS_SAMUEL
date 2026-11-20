@@ -23,6 +23,9 @@ import { Hono, type Context } from "hono";
 import { and, asc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
+  CALL_FEATURES_KEY,
+  appSetting,
+  type CallFeaturesValue,
   adminUser,
   customer,
   inboxCall,
@@ -59,6 +62,15 @@ import {
   voiceAccessToken,
   voiceIdentityFor,
   nextPresence,
+  LIVE_CALL_MAX_AGE_MS,
+  MONITOR_MODES,
+  conferenceRoomFor,
+  queueNameFor,
+  queuePositionMessage,
+  queueWaitPlan,
+  readCallFeatures,
+  ringPlan,
+  type MonitorMode,
   type ConversationRow,
   type TwiML,
 } from "@ms/domain";
@@ -354,12 +366,135 @@ async function ringTeam(
   if (teamId && teamId !== call.teamId) {
     await db.update(inboxCall).set({ teamId }).where(eq(inboxCall.id, call.id));
   }
-  const userIds = teamId ? (await onlineStaffFor(db, teamId, num.id)).slice(0, MAX_DIAL_CLIENTS) : [];
+  const online = teamId ? await onlineStaffFor(db, teamId, num.id) : [];
+  // Call queue (owner's beta switch): skip people already on a call; queue if all are busy.
+  // Switched off (the default) nothing below changes: everyone online is rung, as before.
+  if (online.length > 0 && (await loadCallFeatures(db)).enabled) {
+    const plan = ringPlan(online, await busyStaff(db, online), true);
+    if (plan.kind === "queue") return enqueueCall(db, ctx, t);
+    if (plan.kind === "dial") return dialStaff(db, ctx, plan.userIds.slice(0, MAX_DIAL_CLIENTS), t);
+  }
+  const userIds = online.slice(0, MAX_DIAL_CLIENTS);
   if (userIds.length === 0) {
     await markMissed(db, call);
     return appendVoicemail(t, call.id, VOICEMAIL_PROMPT);
   }
   return dialStaff(db, ctx, userIds, t);
+}
+
+// ── Call queue and supervisor tools (owner's beta switch, OFF by default) ────
+
+/** The owner's "call queue and supervisor tools" setting. No row = OFF. */
+export async function loadCallFeatures(db: DbExecutor): Promise<CallFeaturesValue> {
+  const [row] = await db.select({ value: appSetting.value }).from(appSetting).where(eq(appSetting.key, CALL_FEATURES_KEY));
+  return readCallFeatures(row?.value);
+}
+
+/** Which of these people are talking on a live call right now. */
+export async function busyStaff(db: DbExecutor, userIds: readonly string[], now: Date = new Date()): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const rows = await db
+    .select({ answeredBy: inboxCall.answeredByUserId, startedBy: inboxCall.startedByUserId, direction: inboxCall.direction })
+    .from(inboxCall)
+    .where(
+      and(
+        isNull(inboxCall.endedAt),
+        eq(inboxCall.outcome, "answered"),
+        gte(inboxCall.startedAt, new Date(now.getTime() - LIVE_CALL_MAX_AGE_MS)),
+        or(
+          inArray(inboxCall.answeredByUserId, [...userIds]),
+          and(eq(inboxCall.direction, "out"), inArray(inboxCall.startedByUserId, [...userIds])),
+        ),
+      ),
+    );
+  const busy = new Set<string>();
+  for (const r of rows) {
+    const who = r.direction === "out" ? r.startedBy : r.answeredBy;
+    if (who) busy.add(who);
+  }
+  return busy;
+}
+
+/** Staff who could take this call right now and are not on another call. */
+async function freeStaffFor(db: DbExecutor, ctx: { call: CallRow; num: NumberRow }): Promise<string[]> {
+  const teamId = ctx.call.teamId ?? ctx.num.defaultTeamId;
+  if (!teamId) return [];
+  const online = await onlineStaffFor(db, teamId, ctx.num.id);
+  const busy = await busyStaff(db, online);
+  return online.filter((id) => !busy.has(id));
+}
+
+/** Everyone is busy: the caller waits in this line's queue with hold music. */
+async function enqueueCall(db: DbExecutor, ctx: { call: CallRow; num: NumberRow; conv: ConversationRow }, t: TwiML): Promise<TwiML> {
+  await db.update(inboxCall).set({ queuedAt: new Date() }).where(eq(inboxCall.id, ctx.call.id));
+  await publishCall(db, ctx.conv, ctx.call.id);
+  return t.enqueue(queueNameFor(ctx.num.id), {
+    action: voiceUrl("/queue-result", { callId: ctx.call.id }),
+    waitUrl: voiceUrl("/queue-wait", { callId: ctx.call.id }),
+  });
+}
+
+/** The supervisor is no longer listening in. */
+export async function clearMonitor(db: DbExecutor, callId: string | undefined): Promise<void> {
+  if (!callId || !UUID_RE.test(callId)) return;
+  const [row] = await db
+    .update(inboxCall)
+    .set({ monitorUserId: null, monitorCallSid: null, monitorMode: null })
+    .where(eq(inboxCall.id, callId))
+    .returning({ conversationId: inboxCall.conversationId });
+  if (!row) return;
+  const [conv] = await db.select().from(inboxConversation).where(eq(inboxConversation.id, row.conversationId));
+  if (conv) await publishCall(db, conv, callId);
+}
+
+/**
+ * The supervisor's own app connected (Voice SDK outbound, listenCallId set).
+ * Allowed only for the person the switchboard registered as listening, while
+ * the beta is on and the call is in its conference. Joins muted (listen),
+ * as a coach (whisper) or plainly (join).
+ */
+async function monitorLeg(db: DbClient, userId: string, callSid: string, callId: string): Promise<TwiML> {
+  const refuse = (): TwiML => twiml().say("Sorry, you can't listen to this call.").hangup();
+  const [user] = await db
+    .select({ role: adminUser.role, permissionOverrides: adminUser.permissionOverrides })
+    .from(adminUser)
+    .where(and(eq(adminUser.id, userId), eq(adminUser.isActive, true), isNull(adminUser.deletedAt)));
+  if (!user || !capsOf(user).includes("calls.switchboard")) return refuse();
+  if (!(await loadCallFeatures(db)).enabled) return refuse();
+  const ctx = await loadCallContext(db, callId);
+  if (!ctx) return refuse();
+  const { call } = ctx;
+  if (!call.conferenceName || call.endedAt || call.monitorUserId !== userId) return refuse();
+  const mode: MonitorMode = (MONITOR_MODES as readonly string[]).includes(call.monitorMode ?? "") ? (call.monitorMode as MonitorMode) : "listen";
+  await db.update(inboxCall).set({ monitorCallSid: callSid }).where(eq(inboxCall.id, call.id));
+  await publishCall(db, ctx.conv, call.id);
+  return twiml().dialConference(
+    conferenceRoomFor(call.id),
+    {
+      muted: mode === "listen",
+      ...(mode === "whisper" && call.agentCallSid ? { coach: call.agentCallSid } : {}),
+      startConferenceOnEnter: false,
+      endConferenceOnExit: false,
+      waitUrl: "",
+    },
+    { action: voiceUrl("/conference-done", { callId: call.id, role: "monitor" }) },
+  );
+}
+
+/** The conference a call moves into when a supervisor listens in. Ends when the caller or the staff member leaves. */
+function conferenceTwiml(callId: string, opts: { record: boolean }): TwiML {
+  return twiml().dialConference(
+    conferenceRoomFor(callId),
+    {
+      startConferenceOnEnter: true,
+      endConferenceOnExit: true,
+      waitUrl: "",
+      ...(opts.record
+        ? { record: "record-from-start" as const, recordingStatusCallback: voiceUrl("/recording", { kind: "call", callId }) }
+        : {}),
+    },
+    { action: voiceUrl("/conference-done", { callId }) },
+  );
 }
 
 /** Ring these staff members' apps; the first to answer gets the call. */
@@ -531,6 +666,68 @@ export function voiceWebhookRoutes(db: DbClient) {
     }),
   );
 
+  // ── Call queue (beta). Only reached by calls that were enqueued while it was on. ──
+
+  // Twilio asks this each time the hold music ends: keep waiting, or leave the queue.
+  r.post(
+    "/queue-wait",
+    twilioWebhook(db, "/queue-wait", async ({ params, query }) => {
+      const ctx = await loadCallContext(db, query.callId);
+      if (!ctx || ctx.call.endedAt || ctx.call.outcome !== "in_progress") return twiml().leave();
+      const features = await loadCallFeatures(db);
+      // Switched off while someone waits: let them out (rung as usual, or voicemail).
+      if (!features.enabled) return twiml().leave();
+      const free = await freeStaffFor(db, ctx);
+      const plan = queueWaitPlan({ queueTimeS: Number(params.QueueTime ?? "0") || 0, maxWaitS: features.max_wait_s, freeNow: free.length > 0 });
+      if (plan === "leave") return twiml().leave();
+      const t = twiml().say(queuePositionMessage(Number(params.QueuePosition ?? "") || null));
+      const music = await greetingUrl(features.hold_audio_key);
+      return music ? t.play(music) : t.pause(20);
+    }),
+  );
+
+  // The caller left the queue (Enqueue action): ring whoever is free now, else voicemail.
+  r.post(
+    "/queue-result",
+    twilioWebhook(db, "/queue-result", async ({ params, query }) => {
+      const result = params.QueueResult ?? "";
+      return db.transaction(async (tx) => {
+        const ctx = await loadCallContext(tx, query.callId);
+        if (!ctx) return twiml().hangup();
+        await tx.update(inboxCall).set({ queuedAt: null }).where(eq(inboxCall.id, ctx.call.id));
+        await publishCall(tx, ctx.conv, ctx.call.id);
+        // Taken out of the queue from the switchboard: Twilio is already running the new instructions.
+        if (result === "redirected" || result === "bridged" || result === "bridging-in-process") return twiml();
+        if (result === "hangup" || ctx.call.endedAt || ctx.call.outcome !== "in_progress") return twiml().hangup();
+        const free = (await freeStaffFor(tx, ctx)).slice(0, MAX_DIAL_CLIENTS);
+        if (free.length > 0) return dialStaff(tx, ctx, free, twiml());
+        await markMissed(tx, ctx.call);
+        return appendVoicemail(twiml(), ctx.call.id, VOICEMAIL_PROMPT);
+      });
+    }),
+  );
+
+  // ── Supervisor tools (beta): a call moved into a conference room. ──
+
+  // The staff member's leg, redirected here when a supervisor starts listening.
+  r.post(
+    "/conference",
+    twilioWebhook(db, "/conference", async ({ query }) => {
+      const ctx = await loadCallContext(db, query.callId);
+      if (!ctx || !ctx.call.conferenceName || ctx.call.endedAt) return twiml().hangup();
+      return conferenceTwiml(ctx.call.id, { record: false });
+    }),
+  );
+
+  // A conference <Dial> ended (the room closed, or this leg was moved). role=monitor: the supervisor left.
+  r.post(
+    "/conference-done",
+    twilioWebhook(db, "/conference-done", async ({ query }) => {
+      if (query.role === "monitor") await clearMonitor(db, query.callId);
+      return twiml().hangup();
+    }),
+  );
+
   r.post(
     "/dial-result",
     twilioWebhook(db, "/dial-result", async ({ params, query }) => {
@@ -558,6 +755,9 @@ export function voiceWebhookRoutes(db: DbClient) {
             // "missed" included: a late /status may have marked it before this ran.
             .where(and(eq(inboxCall.id, call.id), inArray(inboxCall.outcome, ["in_progress", "answered", "missed"])));
           await publishCall(tx, ctx.conv, call.id);
+          // Supervisor tools (beta): the staff leg was moved into a conference, so the caller joins it too.
+          // conference_name is only ever set by the switchboard's "Listen in", so normally this is skipped.
+          if (call.conferenceName && call.direction === "in" && !call.endedAt) return conferenceTwiml(call.id, { record: true });
           return twiml().hangup();
         }
 
@@ -628,7 +828,12 @@ export function voiceWebhookRoutes(db: DbClient) {
       if (!FINAL_CALL_STATUSES.has(status) || !params.CallSid) return emptyResponse();
       await db.transaction(async (tx) => {
         const [call] = await tx.select().from(inboxCall).where(eq(inboxCall.twilioCallSid, params.CallSid!));
-        if (!call) return;
+        if (!call) {
+          // A supervisor's listen-in leg ended (beta): they are no longer listening.
+          const [watched] = await tx.select({ id: inboxCall.id }).from(inboxCall).where(eq(inboxCall.monitorCallSid, params.CallSid!));
+          if (watched) await clearMonitor(tx, watched.id);
+          return;
+        }
         const duration = Number(params.CallDuration ?? "");
         const neverAnswered = call.outcome === "in_progress" && !call.answeredAt;
         await tx
@@ -656,6 +861,8 @@ export function voiceWebhookRoutes(db: DbClient) {
       const userId = userIdFromVoiceIdentity(params.From ?? params.Caller);
       const callSid = params.CallSid;
       if (!userId || !callSid) return twiml().say("Sorry, this call is not allowed.").hangup();
+      // Supervisor tools (beta): the switchboard's "Listen in" connects here with listenCallId.
+      if (params.listenCallId !== undefined) return monitorLeg(db, userId, callSid, params.listenCallId);
 
       const [user] = await db
         .select({ id: adminUser.id, role: adminUser.role, permissionOverrides: adminUser.permissionOverrides })
@@ -944,6 +1151,8 @@ export async function transferLiveCall(
 ): Promise<void> {
   let after: Record<string, unknown>;
   let url: string;
+  // The caller leaves any conference (beta) when redirected, which closes it; start clean.
+  const leaveRoom = { conferenceName: null, agentCallSid: null, monitorUserId: null, monitorCallSid: null, monitorMode: null };
   if ("teamId" in target) {
     const [team] = await db.select().from(inboxTeam).where(and(eq(inboxTeam.id, target.teamId), eq(inboxTeam.isActive, true)));
     if (!team) throw new BusinessError("validation_failed", "Pick a team to transfer to", 400);
@@ -952,14 +1161,14 @@ export async function transferLiveCall(
     // Back to "ringing" for the new team, so their accept works; remember who had it.
     await db
       .update(inboxCall)
-      .set({ outcome: "in_progress", answeredByUserId: null, teamId: team.id, ringUserId: null, heldAt: null })
+      .set({ outcome: "in_progress", answeredByUserId: null, teamId: team.id, ringUserId: null, heldAt: null, ...leaveRoom })
       .where(eq(inboxCall.id, call.id));
   } else {
     after = { user_id: target.userId };
     url = voiceUrl("/connect", { callId: call.id, userId: target.userId, transfer: 1 });
     await db
       .update(inboxCall)
-      .set({ outcome: "in_progress", answeredByUserId: null, ringUserId: target.userId, heldAt: null })
+      .set({ outcome: "in_progress", answeredByUserId: null, ringUserId: target.userId, heldAt: null, ...leaveRoom })
       .where(eq(inboxCall.id, call.id));
   }
   try {
@@ -974,6 +1183,11 @@ export async function transferLiveCall(
         teamId: call.teamId,
         ringUserId: call.ringUserId,
         heldAt: call.heldAt,
+        conferenceName: call.conferenceName,
+        agentCallSid: call.agentCallSid,
+        monitorUserId: call.monitorUserId,
+        monitorCallSid: call.monitorCallSid,
+        monitorMode: call.monitorMode,
       })
       .where(eq(inboxCall.id, call.id));
     logger.warn({ err, callId: call.id }, "call transfer failed");

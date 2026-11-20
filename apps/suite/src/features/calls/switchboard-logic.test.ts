@@ -6,6 +6,9 @@ import {
   lineStaff,
   lineWhere,
   lineWho,
+  listenView,
+  minutesLabel,
+  waitingCount,
   pillClass,
   presenceAction,
   sortLines,
@@ -34,6 +37,10 @@ const line = (over: Partial<BoardLine> = {}): BoardLine => ({
   staff_name: null,
   ringing_for_id: null,
   ringing_for: null,
+  monitor_user_id: null,
+  monitor_name: null,
+  monitor_mode: null,
+  monitor_connected: false,
   ...over,
 });
 
@@ -136,6 +143,25 @@ describe("which buttons show", () => {
     expect(presenceAction(person({ state: "offline" }))).toEqual({ available: false, label: "Mark away" });
     expect(presenceAction(person({ state: "away" }))).toEqual({ available: true, label: "Mark available" });
     expect(presenceAction(person({ state: "on_call" }))).toBeNull();
+  });
+  it("listen in: only with the beta on, only on a call someone else is talking on", () => {
+    const talking = line({ state: "on_call", staff_id: "agent" });
+    expect(listenView(talking, "me", false)).toEqual({ kind: "none" });
+    expect(listenView(line(), "me", true)).toEqual({ kind: "none" });
+    expect(listenView(talking, "agent", true)).toEqual({ kind: "none" });
+    expect(listenView(talking, "me", true)).toEqual({ kind: "start" });
+    expect(listenView(line({ state: "on_hold", staff_id: "agent" }), "me", true)).toEqual({ kind: "start" });
+    expect(listenView({ ...talking, monitor_user_id: "boss", monitor_name: "Tes" }, "me", true)).toEqual({ kind: "other", name: "Tes" });
+    expect(listenView({ ...talking, monitor_user_id: "me", monitor_mode: "whisper", monitor_connected: true }, "me", true)).toEqual({
+      kind: "mine",
+      mode: "whisper",
+      connected: true,
+    });
+  });
+  it("counts waiting callers and words the longest wait", () => {
+    expect(waitingCount([line({ state: "waiting" }), line(), line({ state: "waiting" })])).toBe(2);
+    expect(minutesLabel(60)).toBe("1 minute");
+    expect(minutesLabel(300)).toBe("5 minutes");
   });
   it("says who marked someone away", () => {
     expect(staffSub(person({ state: "away", away_set_by: "Tes" }))).toBe("Orders · marked away by Tes");

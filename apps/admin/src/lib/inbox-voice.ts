@@ -311,6 +311,32 @@ export async function startCall(opts: { to: string; numberId: string; who: strin
   }
 }
 
+/**
+ * Supervisor tools (switchboard, beta): join a colleague's call to listen in.
+ * The server has already moved the call into a conference room and decided
+ * how we join (listen / whisper / join); this connects our own leg. It shows
+ * in the call bar like any call, and hanging up there stops listening.
+ */
+export async function startMonitor(opts: { callId: string; who: string }): Promise<boolean> {
+  if (activeCall) {
+    toast.error("You're already on a call. Hang up first.");
+    return false;
+  }
+  if (!device) await initVoice({ canAnswer: get().canAnswer, canCall: true });
+  if (!device) {
+    toast.error(get().message ?? "The phone isn't ready yet. Try again in a moment.");
+    return false;
+  }
+  try {
+    const call = await device.connect({ params: { listenCallId: opts.callId } });
+    trackActive(call, { direction: "out", who: opts.who, state: "connecting", startedAt: null, muted: false, held: false });
+    return true;
+  } catch (err) {
+    toast.error(`Couldn't listen in: ${humanizeError(err)}`);
+    return false;
+  }
+}
+
 // ── In-call ─────────────────────────────────────────────────────────────────
 
 function patchActive(call: Call, patch: Partial<ActiveInfo>): void {

@@ -4,7 +4,10 @@
  *
  *   lineState  – what a live call is doing right now
  *   staffState – whether a staff member can be rung right now
+ *   ringPlan   – ring, queue or voicemail (the queue only when switched on)
  */
+import { CALL_FEATURES_DEFAULT, type CallFeaturesValue } from "@ms/db";
+import type { ParticipantUpdate } from "./twilio.js";
 
 /** "Online" = heartbeat within this window. The web app beats every 30s. */
 export const PRESENCE_FRESH_MS = 90_000;
@@ -76,6 +79,75 @@ export function staffState(s: StaffFacts, now: Date = new Date()): StaffState {
   const fresh = !!s.lastSeenAt && now.getTime() - s.lastSeenAt.getTime() < PRESENCE_FRESH_MS;
   const phone = !!s.mobileSeenAt && now.getTime() - s.mobileSeenAt.getTime() < MOBILE_REACHABLE_MS;
   return fresh || phone ? "available" : "offline";
+}
+
+// ── Call queue and supervisor tools (behind the owner's beta switch) ─────────
+
+/** Read the stored setting, filling gaps with the defaults (OFF). Never throws. */
+export function readCallFeatures(value: unknown): CallFeaturesValue {
+  const v = (value && typeof value === "object" ? value : {}) as Partial<Record<keyof CallFeaturesValue, unknown>>;
+  const wait = typeof v.max_wait_s === "number" && Number.isFinite(v.max_wait_s) ? Math.round(v.max_wait_s) : CALL_FEATURES_DEFAULT.max_wait_s;
+  return {
+    enabled: v.enabled === true,
+    hold_audio_key: typeof v.hold_audio_key === "string" && v.hold_audio_key ? v.hold_audio_key : null,
+    max_wait_s: Math.min(1800, Math.max(60, wait)),
+  };
+}
+
+export type RingPlan = { kind: "dial"; userIds: string[] } | { kind: "queue" } | { kind: "voicemail" };
+
+/**
+ * Who to ring for a team. `online` = staff who could be rung (today's rule).
+ * With the queue OFF this is exactly today: ring everyone online, voicemail if
+ * nobody. With it ON, people already on a call are skipped, and if everyone
+ * online is busy the caller waits in the queue instead.
+ */
+export function ringPlan(online: readonly string[], busy: ReadonlySet<string>, queueOn: boolean): RingPlan {
+  if (online.length === 0) return { kind: "voicemail" };
+  if (!queueOn) return { kind: "dial", userIds: [...online] };
+  const free = online.filter((id) => !busy.has(id));
+  return free.length > 0 ? { kind: "dial", userIds: free } : { kind: "queue" };
+}
+
+/**
+ * Each time the hold music ends Twilio asks again. Leave the queue (and ring
+ * whoever is free, or go to voicemail) once someone is free or the caller has
+ * waited too long; otherwise keep waiting.
+ */
+export function queueWaitPlan(input: { queueTimeS: number; maxWaitS: number; freeNow: boolean }): "leave" | "wait" {
+  if (input.freeNow) return "leave";
+  return input.queueTimeS >= input.maxWaitS ? "leave" : "wait";
+}
+
+/** What a waiting caller hears between the music. */
+export function queuePositionMessage(position: number | null): string {
+  if (!position || position < 1) return "Thank you for waiting. All our team are busy, please stay on the line.";
+  if (position === 1) return "Thank you for waiting. You are next in line.";
+  return `Thank you for waiting. You are number ${position} in line.`;
+}
+
+/** Twilio queue for a business line (one queue per number). */
+export function queueNameFor(numberId: string): string {
+  return `line-${numberId}`;
+}
+
+/** Conference room a call moves into when a supervisor listens in. */
+export function conferenceRoomFor(callId: string): string {
+  return `call-${callId}`;
+}
+
+export const MONITOR_MODES = ["listen", "whisper", "join"] as const;
+export type MonitorMode = (typeof MONITOR_MODES)[number];
+
+/**
+ * listen  – the supervisor is muted: hears both sides, nobody hears them
+ * whisper – only the staff member hears the supervisor (Twilio "coaching")
+ * join    – everyone hears everyone (barge)
+ */
+export function monitorParticipant(mode: MonitorMode, agentCallSid: string): ParticipantUpdate {
+  if (mode === "listen") return { muted: true, coaching: false };
+  if (mode === "whisper") return { muted: false, coaching: true, callSidToCoach: agentCallSid };
+  return { muted: false, coaching: false };
 }
 
 /**

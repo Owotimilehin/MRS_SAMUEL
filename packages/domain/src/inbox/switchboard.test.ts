@@ -1,5 +1,74 @@
 import { describe, expect, it } from "vitest";
-import { isLiveCall, lineSince, lineState, nextPresence, staffState } from "./switchboard.js";
+import {
+  conferenceRoomFor,
+  isLiveCall,
+  lineSince,
+  lineState,
+  monitorParticipant,
+  nextPresence,
+  queueNameFor,
+  queuePositionMessage,
+  queueWaitPlan,
+  readCallFeatures,
+  ringPlan,
+  staffState,
+} from "./switchboard.js";
+
+describe("readCallFeatures", () => {
+  it("is OFF when nothing is stored or the value is junk", () => {
+    expect(readCallFeatures(undefined)).toEqual({ enabled: false, hold_audio_key: null, max_wait_s: 300 });
+    expect(readCallFeatures("yes")).toEqual({ enabled: false, hold_audio_key: null, max_wait_s: 300 });
+    expect(readCallFeatures({ enabled: "true" }).enabled).toBe(false);
+  });
+  it("keeps the wait between one and thirty minutes", () => {
+    expect(readCallFeatures({ enabled: true, max_wait_s: 5 }).max_wait_s).toBe(60);
+    expect(readCallFeatures({ enabled: true, max_wait_s: 99_999 }).max_wait_s).toBe(1800);
+    expect(readCallFeatures({ enabled: true, hold_audio_key: "inbox/greetings/x.mp3", max_wait_s: 120 })).toEqual({
+      enabled: true,
+      hold_audio_key: "inbox/greetings/x.mp3",
+      max_wait_s: 120,
+    });
+  });
+});
+
+describe("ringPlan", () => {
+  const busy = new Set(["b"]);
+  it("OFF: exactly today — ring everyone online, busy or not; voicemail when nobody", () => {
+    expect(ringPlan(["a", "b"], busy, false)).toEqual({ kind: "dial", userIds: ["a", "b"] });
+    expect(ringPlan(["b"], busy, false)).toEqual({ kind: "dial", userIds: ["b"] });
+    expect(ringPlan([], busy, false)).toEqual({ kind: "voicemail" });
+  });
+  it("ON: skip busy people; queue when everyone online is busy; voicemail when nobody is online", () => {
+    expect(ringPlan(["a", "b"], busy, true)).toEqual({ kind: "dial", userIds: ["a"] });
+    expect(ringPlan(["b"], busy, true)).toEqual({ kind: "queue" });
+    expect(ringPlan([], busy, true)).toEqual({ kind: "voicemail" });
+  });
+});
+
+describe("the queue", () => {
+  it("leaves when someone is free or the wait is too long", () => {
+    expect(queueWaitPlan({ queueTimeS: 10, maxWaitS: 300, freeNow: true })).toBe("leave");
+    expect(queueWaitPlan({ queueTimeS: 300, maxWaitS: 300, freeNow: false })).toBe("leave");
+    expect(queueWaitPlan({ queueTimeS: 299, maxWaitS: 300, freeNow: false })).toBe("wait");
+  });
+  it("tells the caller their place in line", () => {
+    expect(queuePositionMessage(1)).toContain("next in line");
+    expect(queuePositionMessage(3)).toContain("number 3 in line");
+    expect(queuePositionMessage(null)).toContain("stay on the line");
+  });
+  it("names queues and rooms after the line and the call", () => {
+    expect(queueNameFor("n1")).toBe("line-n1");
+    expect(conferenceRoomFor("c1")).toBe("call-c1");
+  });
+});
+
+describe("monitorParticipant", () => {
+  it("listen is muted, whisper coaches the staff leg, join is plain", () => {
+    expect(monitorParticipant("listen", "CAagent")).toEqual({ muted: true, coaching: false });
+    expect(monitorParticipant("whisper", "CAagent")).toEqual({ muted: false, coaching: true, callSidToCoach: "CAagent" });
+    expect(monitorParticipant("join", "CAagent")).toEqual({ muted: false, coaching: false });
+  });
+});
 
 const NOW = new Date("2026-11-20T10:00:00Z");
 const ago = (ms: number): Date => new Date(NOW.getTime() - ms);

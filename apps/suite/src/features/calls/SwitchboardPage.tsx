@@ -5,6 +5,10 @@
  * for someone else (it then rings on their own app only), hand a live call to
  * a team or a person, and mark a colleague away or available.
  *
+ * With the owner's beta switch on (Call settings), callers wait in a queue
+ * when everyone is busy ("Take the next caller"), and a supervisor can listen
+ * in, whisper to the staff member, or join the call.
+ *
  * Updates arrive on the inbox's live stream (call.updated, call.ringing,
  * presence.updated); the board also refreshes every 15 seconds in case an
  * update was missed, and timers tick every second using the server's clock.
@@ -12,20 +16,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessagesSquare, PhoneForwarded, PhoneIncoming, PhoneOutgoing } from "lucide-react";
+import { Headphones, MessagesSquare, PhoneForwarded, PhoneIncoming, PhoneOutgoing } from "lucide-react";
 import { DataState } from "@admin/components/DataState.js";
 import { humanizeError } from "@admin/lib/api.js";
 import { Frame } from "@admin/lib/app-frame.js";
 import { useAuthUser, useCan } from "@admin/lib/auth.js";
 import { useInboxEvents } from "@admin/lib/inbox-stream.js";
-import { useVoice } from "@admin/lib/inbox-voice.js";
+import { hangUp, startMonitor, useVoice } from "@admin/lib/inbox-voice.js";
 import { toast } from "@admin/lib/toast.js";
 import "@admin/components/inbox/inbox.css";
 import "./calls.css";
-import { boardApi, boardKeys, type Board, type BoardLine, type BoardStaff } from "./switchboard-api.js";
+import { boardApi, boardKeys, type Board, type BoardLine, type BoardStaff, type MonitorMode } from "./switchboard-api.js";
 import {
   LINE_LABEL,
   LINE_TONE,
+  MODE_HINT,
+  MODE_LABEL,
+  listenView,
+  waitingCount,
   STAFF_LABEL,
   STAFF_TONE,
   canPickUp,
@@ -95,6 +103,7 @@ function BoardBody({ board, now, onChanged }: { board: Board; now: number; onCha
       <div className="cl-count" role="status">
         {summaryLine(board.lines, board.staff)}
       </div>
+      {board.queue_and_supervisor_tools && board.can_pick_up && waitingCount(board.lines) > 0 && <TakeNext count={waitingCount(board.lines)} onChanged={onChanged} />}
 
       <section aria-labelledby="sb-lines">
         <h2 className="t-h2" id="sb-lines" style={{ marginBottom: 8 }}>
@@ -186,6 +195,7 @@ function LineCard({ line, board, now, onChanged }: { line: BoardLine; board: Boa
             <MessagesSquare size={14} aria-hidden /> Open the chat
           </Link>
         </div>
+        <ListenControls line={line} toolsOn={board.queue_and_supervisor_tools} onChanged={onChanged} />
         {transferring && (
           <TransferForm
             line={line}
@@ -201,6 +211,120 @@ function LineCard({ line, board, now, onChanged }: { line: BoardLine; board: Boa
     </div>
   );
 }
+
+/** Call queue (beta): ring the caller who has waited longest on my app. */
+function TakeNext({ count, onChanged }: { count: number; onChanged: () => void }): JSX.Element {
+  const voice = useVoice();
+  const [busy, setBusy] = useState(false);
+  async function take(): Promise<void> {
+    if (!voice.available) {
+      toast.error("Switch on “Taking calls” in the call bar first, so the call can ring here.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await boardApi.takeNext();
+      toast.success("The longest-waiting caller is ringing on your device now.");
+      onChanged();
+    } catch (err) {
+      toast.error(humanizeError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="card cl-link-card">
+      <div>
+        <h2 className="t-h2">
+          {count} {count === 1 ? "caller is" : "callers are"} waiting
+        </h2>
+        <p>They hear hold music and their place in line. Take the one who has waited longest.</p>
+      </div>
+      <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void take()}>
+        {busy ? "Taking…" : "Take the next caller"}
+      </button>
+    </section>
+  );
+}
+
+/** Supervisor tools (beta): listen in, whisper to the staff member, or join the call. */
+function ListenControls({ line, toolsOn, onChanged }: { line: BoardLine; toolsOn: boolean; onChanged: () => void }): JSX.Element | null {
+  const me = useAuthUser();
+  const [busy, setBusy] = useState(false);
+  const view = listenView(line, me.id, toolsOn);
+  if (view.kind === "none") return null;
+  if (view.kind === "other") return <p className="cl-fine">{view.name} is listening in.</p>;
+
+  async function run(work: () => Promise<unknown>, ok?: string): Promise<void> {
+    setBusy(true);
+    try {
+      await work();
+      if (ok) toast.success(ok);
+      onChanged();
+    } catch (err) {
+      toast.error(humanizeError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (view.kind === "start") {
+    return (
+      <div className="cl-sb-actions">
+        <button
+          type="button"
+          className="btn btn--subtle btn--sm"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              await boardApi.listen(line.id, "listen");
+              const joined = await startMonitor({ callId: line.id, who: `Listening: ${lineWho(line)}` });
+              if (!joined) await boardApi.stopListening(line.id);
+            })
+          }
+        >
+          <Headphones size={14} aria-hidden /> Listen in
+        </button>
+        <span className="cl-fine">{MODE_HINT.listen}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cl-sb-transfer">
+      <div className="cl-sb-actions" role="group" aria-label="How you are on this call">
+        {MONITOR_MODES.map((m) => (
+          <button
+            key={m}
+            type="button"
+            className={`btn btn--sm ${view.mode === m ? "btn--primary" : "btn--subtle"}`}
+            aria-pressed={view.mode === m}
+            disabled={busy || !view.connected || view.mode === m}
+            onClick={() => void run(() => boardApi.setMode(line.id, m))}
+          >
+            {MODE_LABEL[m]}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              hangUp();
+              await boardApi.stopListening(line.id);
+            })
+          }
+        >
+          Stop listening
+        </button>
+      </div>
+      <p className="cl-fine">{view.connected ? MODE_HINT[view.mode] : "Connecting you to the call…"}</p>
+    </div>
+  );
+}
+
+const MONITOR_MODES: MonitorMode[] = ["listen", "whisper", "join"];
 
 function TransferForm({
   line,

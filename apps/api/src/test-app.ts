@@ -52,7 +52,7 @@ import { socialCommentRoutes } from "./routes/social-comments.js";
 import { inboxSettingsRoutes } from "./routes/inbox-settings.js";
 import { inboxReportRoutes } from "./routes/inbox-reports.js";
 import { inboxCallRoutes } from "./routes/inbox-calls.js";
-import { switchboardRoutes } from "./routes/switchboard.js";
+import { callFeatureRoutes, switchboardRoutes } from "./routes/switchboard.js";
 import { channelRoutes } from "./routes/channels.js";
 import { channelChatSetupRoutes } from "./routes/channel-chat-setup.js";
 import { channelPageRoutes } from "./routes/channel-page-details.js";
@@ -151,6 +151,8 @@ export function buildApp(): Hono {
   app.route("/v1/inbox/voice", voiceAppRoutes(db));
   // The live switchboard (suite /calls/switchboard). Above /v1/inbox so its longer path wins.
   app.route("/v1/inbox/switchboard", switchboardRoutes(db));
+  // The owner's "call queue and supervisor tools (beta)" switch.
+  app.route("/v1/inbox/call-features", callFeatureRoutes(db));
   // Carts sent from WhatsApp (suite spec 08). Mounted above /v1/inbox so its longer path wins.
   app.route("/v1/inbox/chat-orders", chatOrderRoutes(db));
   app.route("/v1/inbox", inboxRoutes(db));

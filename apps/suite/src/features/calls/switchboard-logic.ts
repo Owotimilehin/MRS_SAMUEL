@@ -3,7 +3,7 @@
  * show. No React here, so it is all unit-tested (switchboard-logic.test.ts).
  */
 import { prettyPhone, staffLabel } from "@admin/lib/inbox-logic.js";
-import type { BoardLine, BoardStaff, LineState, StaffState } from "./switchboard-api.js";
+import type { BoardLine, BoardStaff, LineState, MonitorMode, StaffState } from "./switchboard-api.js";
 
 export const LINE_LABEL: Record<LineState, string> = {
   ringing: "Ringing",
@@ -112,6 +112,50 @@ export function transferPeople(l: BoardLine, staff: readonly BoardStaff[]): Boar
 export function presenceAction(s: BoardStaff): { available: boolean; label: string } | null {
   if (s.state === "on_call") return null;
   return s.state === "away" ? { available: true, label: "Mark available" } : { available: false, label: "Mark away" };
+}
+
+// ── Call queue and supervisor tools (beta) ──
+
+/** How many callers are waiting in the queue. */
+export function waitingCount(lines: readonly BoardLine[]): number {
+  return lines.filter((l) => l.state === "waiting").length;
+}
+
+export const MODE_LABEL: Record<MonitorMode, string> = {
+  listen: "Listen",
+  whisper: "Whisper",
+  join: "Join",
+};
+
+export const MODE_HINT: Record<MonitorMode, string> = {
+  listen: "You hear both sides. Nobody hears you.",
+  whisper: "Only your colleague hears you. The customer doesn't.",
+  join: "Everyone hears you, like a three-way call.",
+};
+
+export type ListenView =
+  /** The tools are off, or this isn't a call someone is talking on. */
+  | { kind: "none" }
+  /** Nobody listening: offer to start. */
+  | { kind: "start" }
+  /** Someone else is listening. */
+  | { kind: "other"; name: string }
+  /** I am listening (or my app is still joining). */
+  | { kind: "mine"; mode: MonitorMode; connected: boolean };
+
+/** What the listen-in area of a line shows for me. */
+export function listenView(l: BoardLine, meId: string, toolsOn: boolean): ListenView {
+  if (!toolsOn || l.direction !== "in" || (l.state !== "on_call" && l.state !== "on_hold")) return { kind: "none" };
+  if (l.staff_id === meId) return { kind: "none" };
+  if (!l.monitor_user_id) return { kind: "start" };
+  if (l.monitor_user_id !== meId) return { kind: "other", name: staffLabel(l.monitor_name, "Someone") };
+  return { kind: "mine", mode: l.monitor_mode ?? "listen", connected: l.monitor_connected };
+}
+
+/** "1 minute", "5 minutes" — the queue's longest wait setting. */
+export function minutesLabel(seconds: number): string {
+  const m = Math.round(seconds / 60);
+  return `${m} minute${m === 1 ? "" : "s"}`;
 }
 
 /** The small line under a staff member's name. */
