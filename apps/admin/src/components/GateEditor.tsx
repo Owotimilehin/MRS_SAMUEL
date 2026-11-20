@@ -13,7 +13,7 @@ const GROUPS: { heading: string; caps: Capability[] }[] = [
     heading: "Inbox & calls",
     caps: [
       "inbox.view", "inbox.view_team", "inbox.view_all", "inbox.reply", "inbox.assign", "inbox.close", "inbox.notes",
-      "inbox.templates", "inbox.export", "calls.answer", "calls.outbound", "recordings.listen", "recordings.download",
+      "inbox.templates", "inbox.export", "calls.answer", "calls.outbound", "calls.switchboard", "recordings.listen", "recordings.download",
       "recordings.delete", "transcripts.view", "inbox.settings", "inbox.reports", "inbox.erase",
       "social.comments", "channels.manage", "templates.manage", "catalogue.manage",
       "social.publish", "insights.view", "leads.view",
@@ -74,6 +74,7 @@ const LABEL: Record<Capability, string> = {
   "inbox.export": "Download contact list",
   "calls.answer": "Answer phone calls",
   "calls.outbound": "Make phone calls",
+  "calls.switchboard": "Use the call switchboard (live calls, pick up, transfer, set staff away)",
   "recordings.listen": "Listen to call recordings",
   "recordings.download": "Download call recordings",
   "transcripts.view": "Read call transcripts & summaries",

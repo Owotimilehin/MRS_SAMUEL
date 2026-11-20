@@ -386,6 +386,21 @@ export const inboxCall = pgTable(
     endedAt: timestamp("ended_at", { withTimezone: true }),
     durationS: integer("duration_s"),
     followupSentAt: timestamp("followup_sent_at", { withTimezone: true }),
+    /** On hold since (the browser's Hold button), null when not on hold. Migration 0087. */
+    heldAt: timestamp("held_at", { withTimezone: true }),
+    /** Ringing just this person: picked up or transferred to them from the switchboard. Migration 0087. */
+    ringUserId: uuid("ring_user_id").references(() => adminUser.id, { onDelete: "set null" }),
+    // Call queue and supervisor tools (owner's beta switch, app_settings "call_features"). Migration 0087.
+    /** Waiting in the call queue since; null when not queued. */
+    queuedAt: timestamp("queued_at", { withTimezone: true }),
+    /** Moved into this Twilio conference room so a supervisor could listen in. */
+    conferenceName: text("conference_name"),
+    /** The staff member's leg in that conference (whisper target). */
+    agentCallSid: text("agent_call_sid"),
+    /** The supervisor listening in, their own leg, and how ('listen' | 'whisper' | 'join'). */
+    monitorUserId: uuid("monitor_user_id").references(() => adminUser.id, { onDelete: "set null" }),
+    monitorCallSid: text("monitor_call_sid"),
+    monitorMode: text("monitor_mode"),
   },
   (t) => ({
     idxConv: index("idx_inbox_call_conv").on(t.conversationId, t.startedAt),
@@ -505,6 +520,13 @@ export const inboxPresence = pgTable("inbox_presence", {
     .references(() => adminUser.id, { onDelete: "cascade" }),
   available: boolean("available").notNull().default(true),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * A manager marked this person away from the switchboard (migration 0087).
+   * While set, the person's own heartbeat does not switch them back on; their
+   * own "take calls" switch does, and clears it.
+   */
+  awaySetBy: uuid("away_set_by").references(() => adminUser.id, { onDelete: "set null" }),
+  awaySetAt: timestamp("away_set_at", { withTimezone: true }),
 });
 
 export const inboxPushToken = pgTable(

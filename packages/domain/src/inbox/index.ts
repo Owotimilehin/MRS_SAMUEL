@@ -6,3 +6,4 @@ export * from "./auto-reply.js";
 export * from "./scope.js";
 export * from "./twilio.js";
 export * from "./messenger-ingest.js";
+export * from "./switchboard.js";
