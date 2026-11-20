@@ -15,6 +15,7 @@ import { RouteErrorComponent } from "./components/RouteErrorComponent.js";
 import { InlineLoader, PageLoader } from "./components/Spinner.js";
 import { RequireAuth, useAuthUser } from "./lib/auth.js";
 import { refreshAccessToken } from "./lib/api.js";
+import { suiteUrl } from "./lib/suite-url.js";
 import {
   lazy,
   Suspense,
@@ -106,12 +107,18 @@ const CloseDetailPage = lazyNamed<{ branchId: string; closeId: string }>(
   "CloseDetailPage",
 );
 
-const InboxPage = lazyNamed<{ conversationId?: string }>(
-  () => import("./routes/inbox/index.js"),
-  "InboxPage",
-);
-const InboxSettingsPage = lazyNamed(() => import("./routes/inbox/settings.js"), "InboxSettingsPage");
-const InboxReportsPage = lazyNamed(() => import("./routes/inbox/reports.js"), "InboxReportsPage");
+/**
+ * Customer messages and calls moved to the Business Suite. The old addresses
+ * stay so bookmarks and older alert links still work: they forward to the same
+ * page in the suite. (The inbox screens themselves still live in this app's
+ * folder, because the suite reuses them.)
+ */
+function ToSuite({ path }: { path: string }): JSX.Element {
+  useEffect(() => {
+    window.location.replace(`${suiteUrl()}${path}`);
+  }, [path]);
+  return <div style={{ padding: 24 }}>Customer messages have moved to the Business Suite. Opening it now…</div>;
+}
 
 const ProductionRunsPage = lazyNamed(
   () => import("./routes/factory/production-runs.js"),
@@ -507,29 +514,29 @@ const closeDetailRoute = createRoute({
   },
 });
 
-// ───── Unified inbox (WhatsApp + calls) ─────
+// ───── Unified inbox: moved to the Business Suite (these forward there) ─────
 const inboxRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox",
-  component: () => guarded(<L><InboxPage /></L>),
+  component: () => <ToSuite path="/inbox" />,
 });
 const inboxConversationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox/$conversationId",
   component: () => {
     const params = useParams({ from: "/inbox/$conversationId" });
-    return guarded(<L><InboxPage conversationId={params.conversationId} /></L>);
+    return <ToSuite path={`/inbox/${encodeURIComponent(params.conversationId)}`} />;
   },
 });
 const inboxSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox/settings",
-  component: () => guarded(<L><InboxSettingsPage /></L>),
+  component: () => <ToSuite path="/inbox/settings" />,
 });
 const inboxReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox/reports",
-  component: () => guarded(<L><InboxReportsPage /></L>),
+  component: () => <ToSuite path="/inbox/reports" />,
 });
 
 // ───── Factory routes ─────
