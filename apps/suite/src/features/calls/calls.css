@@ -31,3 +31,8 @@
   .cl-row__side { grid-column: 2; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; white-space: normal; }
   .cl-row__details { padding-left: 14px; }
 }
+/* Switchboard. */
+.cl-sb-timer { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 14px; color: var(--ink); }
+.cl-sb-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cl-sb-transfer { display: grid; gap: 8px; max-width: 420px; }
+.cl-sb-staff { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; }

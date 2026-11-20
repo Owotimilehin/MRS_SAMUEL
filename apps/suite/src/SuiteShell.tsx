@@ -23,6 +23,7 @@ import {
   Menu,
   Phone,
   PhoneCall,
+  RadioTower,
   MessageCircle,
   MessagesSquare,
   Share2,
@@ -52,6 +53,7 @@ interface NavItem {
     | "/calls"
     | "/calls/reports"
     | "/calls/settings"
+    | "/calls/switchboard"
     | "/catalogue"
     | "/posts"
     | "/leads"
@@ -82,6 +84,7 @@ const NAV: { heading: string; items: NavItem[] }[] = [
     heading: "Calls",
     items: [
       { to: "/calls", label: "Calls", Icon: Phone, cap: "inbox.view" },
+      { to: "/calls/switchboard", label: "Switchboard", Icon: RadioTower, cap: "calls.switchboard" },
       { to: "/calls/reports", label: "Call reports", Icon: PhoneCall, cap: "inbox.reports" },
       { to: "/calls/settings", label: "Call settings", Icon: Headphones, cap: "inbox.settings" },
     ],

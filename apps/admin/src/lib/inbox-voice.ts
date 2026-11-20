@@ -8,7 +8,9 @@
  *
  * Contract (apps/api/src/routes/voice.ts, mounted at /v1/inbox/voice):
  *   GET  /token                 → { data: { token, identity, ttl } }
- *   POST /presence {available}  → heartbeat every 30s while available
+ *   POST /presence {available, heartbeat?} → heartbeat every 30s while available;
+ *                                  set_away_by_manager = a manager marked me away
+ *   POST /calls/:ref/hold {held} → tells the switchboard (best effort)
  *   POST /calls/:ref/accepted   → ref = customParameters.callId (fallback CallSid);
  *                                  409 = someone else answered first
  *   POST /calls/:ref/transfer {team_id} → our leg ends, the customer rings that
@@ -108,16 +110,39 @@ async function fetchToken(): Promise<string> {
   return res.data.token;
 }
 
-function beat(available: boolean): void {
-  void api("/inbox/voice/presence", { method: "POST", body: JSON.stringify({ available }) }, { silentError: true }).catch(
-    () => undefined,
-  );
+/**
+ * Tell the server whether this person takes calls. `heartbeat` = sent by the
+ * 30-second timer rather than the person's own switch: then a manager's "away"
+ * (switchboard) stays, and this device switches itself off to match.
+ */
+function beat(available: boolean, heartbeat = false): void {
+  void api<{ data: { available: boolean; set_away_by_manager?: boolean } }>(
+    "/inbox/voice/presence",
+    { method: "POST", body: JSON.stringify(heartbeat ? { available, heartbeat: true } : { available }) },
+    { silentError: true },
+  )
+    .then((res) => {
+      if (heartbeat && res?.data?.set_away_by_manager && get().available) {
+        writeAvailable(false);
+        set({ available: false });
+        stopHeartbeat();
+        if (device && device.state === "registered") void device.unregister().catch(() => undefined);
+        toast.info("A manager marked you as away, so calls no longer ring here. Switch calls back on when you're ready.");
+      }
+    })
+    .catch(() => undefined);
 }
 
-function startHeartbeat(): void {
+/** Set when the person switches calls on; the next first beat then counts as their switch. */
+let switchedOnByPerson = false;
+
+/** `explicit`: the person just switched calls on themselves (clears a manager's "away"). */
+function startHeartbeat(explicit = false): void {
   if (heartbeat) return;
-  beat(true);
-  heartbeat = setInterval(() => beat(true), HEARTBEAT_MS);
+  const own = explicit || switchedOnByPerson;
+  switchedOnByPerson = false;
+  beat(true, !own);
+  heartbeat = setInterval(() => beat(true, true), HEARTBEAT_MS);
 }
 function stopHeartbeat(): void {
   if (heartbeat) clearInterval(heartbeat);
@@ -173,11 +198,11 @@ export function initVoice(opts: { canAnswer: boolean; canCall: boolean }): Promi
   return initPromise;
 }
 
-async function goAvailable(): Promise<void> {
+async function goAvailable(explicit = false): Promise<void> {
   if (!device) return;
   try {
     if (device.state !== "registered") await device.register();
-    startHeartbeat();
+    startHeartbeat(explicit);
   } catch (err) {
     set({ message: `Couldn't switch on incoming calls: ${humanizeError(err)}` });
   }
@@ -188,8 +213,9 @@ export async function setAvailable(available: boolean): Promise<void> {
   set({ available });
   if (!get().canAnswer) return;
   if (available) {
+    switchedOnByPerson = true;
     if (!device) await initVoice({ canAnswer: get().canAnswer, canCall: get().canCall });
-    await goAvailable();
+    await goAvailable(true);
   } else {
     stopHeartbeat();
     beat(false);
@@ -354,11 +380,24 @@ export function toggleHold(): void {
     mutedBeforeHold = call.isMuted();
     call.mute(true);
     patchActive(call, { held: true });
+    reportHold(call, true);
   } else {
     setRemoteAudio(call, true);
     call.mute(mutedBeforeHold);
     patchActive(call, { held: false });
+    reportHold(call, false);
   }
+}
+
+/** Let the switchboard show "on hold". Best effort: the hold works without it. */
+function reportHold(call: Call, held: boolean): void {
+  const ref = get().active?.ref || call.customParameters.get("callId") || call.parameters.CallSid || "";
+  if (!ref) return;
+  void api(
+    `/inbox/voice/calls/${encodeURIComponent(ref)}/hold`,
+    { method: "POST", body: JSON.stringify({ held }) },
+    { silentError: true },
+  ).catch(() => undefined);
 }
 
 /**

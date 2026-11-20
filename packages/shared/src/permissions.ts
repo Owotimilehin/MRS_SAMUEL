@@ -79,6 +79,10 @@ export const CAPABILITIES = [
   "inbox.export",
   "calls.answer",
   "calls.outbound",
+  // The live switchboard (suite /calls/switchboard): see every live call and
+  // who is free, pick up a call ringing for someone else, transfer someone
+  // else's call, mark a colleague away or available. Owner, admin and manager.
+  "calls.switchboard",
   "recordings.listen",
   "recordings.download",
   // Permanently delete a call recording (audio, transcript, summary).
@@ -159,6 +163,7 @@ const ADMIN_CAPS: Capability[] = [
   "inbox.export",
   "calls.answer",
   "calls.outbound",
+  "calls.switchboard",
   "recordings.listen",
   "recordings.download",
   "recordings.delete",
@@ -206,6 +211,7 @@ const MANAGER_CAPS: Capability[] = [
   "inbox.templates",
   "calls.answer",
   "calls.outbound",
+  "calls.switchboard",
   "recordings.listen",
   "transcripts.view",
   "inbox.reports",

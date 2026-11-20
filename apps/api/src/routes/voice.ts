@@ -58,6 +58,7 @@ import {
   verifyTwilioSignature,
   voiceAccessToken,
   voiceIdentityFor,
+  nextPresence,
   type ConversationRow,
   type TwiML,
 } from "@ms/domain";
@@ -97,7 +98,7 @@ function publicBase(): string {
 }
 
 /** Absolute webhook URL Twilio should call next (and that we verify against). */
-function voiceUrl(path: string, query: Record<string, string | number> = {}): string {
+export function voiceUrl(path: string, query: Record<string, string | number> = {}): string {
   const qs = new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])).toString();
   return `${publicBase()}${VOICE_WEBHOOK_PREFIX}${path}${qs ? `?${qs}` : ""}`;
 }
@@ -358,6 +359,17 @@ async function ringTeam(
     await markMissed(db, call);
     return appendVoicemail(t, call.id, VOICEMAIL_PROMPT);
   }
+  return dialStaff(db, ctx, userIds, t);
+}
+
+/** Ring these staff members' apps; the first to answer gets the call. */
+async function dialStaff(
+  db: DbExecutor,
+  ctx: { call: CallRow; conv: ConversationRow },
+  userIds: string[],
+  t: TwiML,
+): Promise<TwiML> {
+  const { call } = ctx;
   await publishInboxEvent(db, { ...signalFor("call.ringing", ctx.conv, call.id), userIds });
   return t.dialClients(
     userIds.map((id) => ({ identity: voiceIdentityFor(id), params: { callId: call.id, callSid: call.twilioCallSid } })),
@@ -499,6 +511,22 @@ export function voiceWebhookRoutes(db: DbClient) {
         const ctx = await loadCallContext(tx, query.callId);
         if (!ctx || !query.teamId) return twiml().hangup();
         return ringTeam(tx, ctx, query.teamId, twiml().say("Please hold while we transfer your call."));
+      });
+    }),
+  );
+
+  // Switchboard: ring one person only — they picked the call up, or it was
+  // transferred to them. The call's ring_user_id must name them.
+  r.post(
+    "/connect",
+    twilioWebhook(db, "/connect", async ({ query }) => {
+      return db.transaction(async (tx) => {
+        const ctx = await loadCallContext(tx, query.callId);
+        if (!ctx || !query.userId || ctx.call.ringUserId !== query.userId || ctx.call.endedAt || ctx.call.outcome !== "in_progress") {
+          return twiml().hangup();
+        }
+        const t = query.transfer === "1" ? twiml().say("Please hold while we transfer your call.") : twiml();
+        return dialStaff(tx, ctx, [query.userId], t);
       });
     }),
   );
@@ -716,7 +744,8 @@ export function voiceWebhookRoutes(db: DbClient) {
 
 // ── Staff routes ─────────────────────────────────────────────────────────────
 
-const PresenceBody = z.object({ available: z.boolean() });
+// heartbeat: sent by the app's 30-second timer (not the person's own switch). Missing = the switch.
+const PresenceBody = z.object({ available: z.boolean(), heartbeat: z.boolean().optional() });
 
 const TOKEN_TTL_S = 3600;
 
@@ -779,11 +808,26 @@ export function voiceAppRoutes(db: DbClient) {
     const auth = c.get("auth");
     const body = PresenceBody.parse(await c.req.json());
     const now = new Date();
+    const [current] = await db
+      .select({ available: inboxPresence.available, awaySetBy: inboxPresence.awaySetBy })
+      .from(inboxPresence)
+      .where(eq(inboxPresence.userId, auth.userId));
+    // A manager's "away" (switchboard) survives the app's own heartbeat; the person's switch clears it.
+    const next = nextPresence(current ?? null, { available: body.available, heartbeat: body.heartbeat === true });
+    if (next.keepManagerAway) {
+      await db.update(inboxPresence).set({ lastSeenAt: now }).where(eq(inboxPresence.userId, auth.userId));
+      return c.json({ data: { available: false, last_seen_at: now.toISOString(), set_away_by_manager: true } });
+    }
+    const changed = !current || current.available !== next.available || current.awaySetBy !== null;
     await db
       .insert(inboxPresence)
-      .values({ userId: auth.userId, available: body.available, lastSeenAt: now })
-      .onConflictDoUpdate({ target: inboxPresence.userId, set: { available: body.available, lastSeenAt: now } });
-    return c.json({ data: { available: body.available, last_seen_at: now.toISOString() } });
+      .values({ userId: auth.userId, available: next.available, lastSeenAt: now })
+      .onConflictDoUpdate({
+        target: inboxPresence.userId,
+        set: { available: next.available, lastSeenAt: now, awaySetBy: null, awaySetAt: null },
+      });
+    if (changed) await publishInboxEvent(db, { event: "presence.updated", id: auth.userId });
+    return c.json({ data: { available: next.available, last_seen_at: now.toISOString() } });
   });
 
   /**
@@ -810,7 +854,9 @@ export function voiceAppRoutes(db: DbClient) {
       }
       const routing = { phoneNumberId: call.phoneNumberId, teamId: call.teamId, assigneeId: null };
       const inRungTeam = viewer.capabilities.includes("inbox.view_all") || (call.teamId !== null && viewer.teamIds.includes(call.teamId));
-      if (!canSeeConversation(viewer, routing) || !inRungTeam) {
+      // Or the one person it was put through to from the switchboard (checked there).
+      const putThrough = call.ringUserId === auth.userId;
+      if (!putThrough && (!canSeeConversation(viewer, routing) || !inRungTeam)) {
         throw new BusinessError("not_found", "call not found", 404);
       }
       const [updated] = await tx
@@ -849,34 +895,98 @@ export function voiceAppRoutes(db: DbClient) {
     if (call.endedAt || call.outcome !== "answered") {
       throw new BusinessError("conflict", "This call can't be transferred", 409);
     }
-    const [team] = await db.select().from(inboxTeam).where(and(eq(inboxTeam.id, team_id), eq(inboxTeam.isActive, true)));
-    if (!team) throw new BusinessError("validation_failed", "Pick a team to transfer to", 400);
+    await transferLiveCall(db, c, cfg, call, { teamId: team_id });
+    return c.json({ ok: true });
+  });
 
-    // Back to "ringing" for the new team, so their accept works; remember who had it.
+  /**
+   * Hold / resume, reported by the app so the switchboard can show it. The
+   * hold itself happens in the app (the phone provider is not told). Only the
+   * staff member on the call may report it.
+   */
+  r.post("/calls/:ref/hold", requireAnyCapability("calls.answer", "calls.outbound"), async (c) => {
+    const auth = c.get("auth");
+    const ref = c.req.param("ref");
+    const { held } = z.object({ held: z.boolean() }).parse(await c.req.json());
+    const [call] = await db
+      .select()
+      .from(inboxCall)
+      .where(UUID_RE.test(ref) ? eq(inboxCall.id, ref) : eq(inboxCall.twilioCallSid, ref));
+    const mine = call && (call.direction === "in" ? call.answeredByUserId === auth.userId : call.startedByUserId === auth.userId);
+    if (!call || !mine) throw new BusinessError("not_found", "call not found", 404);
+    if (call.endedAt) return c.json({ ok: true });
     await db
       .update(inboxCall)
-      .set({ outcome: "in_progress", answeredByUserId: null, teamId: team_id })
+      .set({ heldAt: held ? (call.heldAt ?? new Date()) : null })
       .where(eq(inboxCall.id, call.id));
-    try {
-      await redirectCall(cfg, call.twilioCallSid, voiceUrl("/transfer", { callId: call.id, teamId: team_id }));
-    } catch (err) {
-      // Put it back: the caller is still talking to this staff member.
-      await db
-        .update(inboxCall)
-        .set({ outcome: "answered", answeredByUserId: auth.userId, teamId: call.teamId })
-        .where(eq(inboxCall.id, call.id));
-      logger.warn({ err, callId: call.id }, "call transfer failed");
-      throw new BusinessError("conflict", "Couldn't transfer the call — it may have just ended", 409);
-    }
-    await writeAudit(db, c, {
-      action: "inbox.call_transfer",
-      entityType: "inbox_call",
-      entityId: call.id,
-      after: { team_id, team: team.name },
-      notify: false,
-    });
+    const [conv] = await db.select().from(inboxConversation).where(eq(inboxConversation.id, call.conversationId));
+    if (conv) await publishCall(db, conv, call.id);
     return c.json({ ok: true });
   });
 
   return r;
+}
+
+export type TransferTarget = { teamId: string } | { userId: string };
+
+/**
+ * Hand a live, answered inbound call to a team (rings its free staff) or to
+ * one person (the switchboard). The customer's leg is redirected; the staff
+ * leg ends. Puts the call back as it was if Twilio refuses. Audited.
+ */
+export async function transferLiveCall(
+  db: DbClient,
+  c: Context,
+  cfg: NonNullable<ReturnType<typeof twilioRestConfigFromEnv>>,
+  call: CallRow,
+  target: TransferTarget,
+  opts: { fromSwitchboard?: boolean } = {},
+): Promise<void> {
+  let after: Record<string, unknown>;
+  let url: string;
+  if ("teamId" in target) {
+    const [team] = await db.select().from(inboxTeam).where(and(eq(inboxTeam.id, target.teamId), eq(inboxTeam.isActive, true)));
+    if (!team) throw new BusinessError("validation_failed", "Pick a team to transfer to", 400);
+    after = { team_id: team.id, team: team.name };
+    url = voiceUrl("/transfer", { callId: call.id, teamId: team.id });
+    // Back to "ringing" for the new team, so their accept works; remember who had it.
+    await db
+      .update(inboxCall)
+      .set({ outcome: "in_progress", answeredByUserId: null, teamId: team.id, ringUserId: null, heldAt: null })
+      .where(eq(inboxCall.id, call.id));
+  } else {
+    after = { user_id: target.userId };
+    url = voiceUrl("/connect", { callId: call.id, userId: target.userId, transfer: 1 });
+    await db
+      .update(inboxCall)
+      .set({ outcome: "in_progress", answeredByUserId: null, ringUserId: target.userId, heldAt: null })
+      .where(eq(inboxCall.id, call.id));
+  }
+  try {
+    await redirectCall(cfg, call.twilioCallSid, url);
+  } catch (err) {
+    // Put it back: the caller is still talking to the same staff member.
+    await db
+      .update(inboxCall)
+      .set({
+        outcome: "answered",
+        answeredByUserId: call.answeredByUserId,
+        teamId: call.teamId,
+        ringUserId: call.ringUserId,
+        heldAt: call.heldAt,
+      })
+      .where(eq(inboxCall.id, call.id));
+    logger.warn({ err, callId: call.id }, "call transfer failed");
+    throw new BusinessError("conflict", "Couldn't transfer the call — it may have just ended", 409);
+  }
+  await writeAudit(db, c, {
+    action: "inbox.call_transfer",
+    entityType: "inbox_call",
+    entityId: call.id,
+    ...(opts.fromSwitchboard ? { before: { answered_by: call.answeredByUserId } } : {}),
+    after: opts.fromSwitchboard ? { ...after, from_switchboard: true } : after,
+    notify: false,
+  });
+  const [conv] = await db.select().from(inboxConversation).where(eq(inboxConversation.id, call.conversationId));
+  if (conv) await publishCall(db, conv, call.id);
 }

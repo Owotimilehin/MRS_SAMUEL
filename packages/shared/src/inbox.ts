@@ -349,5 +349,7 @@ export const INBOX_EVENTS = [
   // Comments on Facebook and Instagram posts (suite spec 03): `id` is the thread's root comment.
   "comment.created",
   "comment.updated",
+  // A staff member's call availability changed (switchboard). `id` is the user. Sent only to calls.switchboard holders.
+  "presence.updated",
 ] as const;
 export type InboxEventName = (typeof INBOX_EVENTS)[number];

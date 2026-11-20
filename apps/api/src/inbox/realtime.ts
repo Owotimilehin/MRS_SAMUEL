@@ -32,6 +32,8 @@ let listening: Promise<void> | null = null;
 /** Exported for tests: should this subscriber receive this signal? */
 export function shouldDeliver(viewer: InboxViewer, s: InboxSignal): boolean {
   if (s.event === "call.ringing") return !!s.userIds?.includes(viewer.userId);
+  // Who is free or away (the switchboard). Carries a user id only.
+  if (s.event === "presence.updated") return viewer.capabilities.includes("calls.switchboard");
   // Comments (suite spec 03): social.comments plus the existing per-line access, never the conversation rule.
   if (s.event.startsWith("comment.")) {
     return viewer.capabilities.includes("social.comments") && !!s.phoneNumberId && canUseNumber(viewer, s.phoneNumberId);

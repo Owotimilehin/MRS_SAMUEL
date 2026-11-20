@@ -27,6 +27,7 @@ export const SUITE_PAGES = [
   { to: "/comments", cap: "social.comments" },
   { to: "/contacts", cap: "contacts.view" },
   { to: "/calls", cap: "inbox.view" },
+  { to: "/calls/switchboard", cap: "calls.switchboard" },
   { to: "/catalogue", cap: "catalogue.manage" },
   { to: "/posts", cap: "social.publish" },
   { to: "/leads", cap: "leads.view" },

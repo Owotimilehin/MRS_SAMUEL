@@ -185,3 +185,12 @@ describe("contacts.view and contacts.manage", () => {
     expect(resolveCapabilities("branch_staff")).not.toContain("contacts.manage");
   });
 });
+
+describe("calls.switchboard", () => {
+  it("is held by owner, admin and manager, not branch staff", () => {
+    expect(resolveCapabilities("owner")).toContain("calls.switchboard");
+    expect(resolveCapabilities("admin")).toContain("calls.switchboard");
+    expect(resolveCapabilities("manager")).toContain("calls.switchboard");
+    expect(resolveCapabilities("branch_staff")).not.toContain("calls.switchboard");
+  });
+});

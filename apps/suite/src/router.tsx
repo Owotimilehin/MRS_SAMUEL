@@ -49,6 +49,7 @@ const InboxReportsPage = lazyNamed<{ sections?: "all" | "messages" | "calls" }>(
 // Calls: the list, its settings and its reports.
 const CallsPage = lazyNamed(() => import("./features/calls/CallsPage.js"), "CallsPage");
 const CallsSettingsPage = lazyNamed(() => import("./features/calls/CallsSettingsPage.js"), "CallsSettingsPage");
+const SwitchboardPage = lazyNamed(() => import("./features/calls/SwitchboardPage.js"), "SwitchboardPage");
 const ChannelsPage = lazyNamed(() => import("./features/channels/ChannelsPage.js"), "ChannelsPage");
 const ChatSetupPage = lazyNamed<{ accountId: string }>(() => import("./features/chat-setup/ChatSetupPage.js"), "ChatSetupPage");
 const PageDetailsPage = lazyNamed<{ accountId: string }>(() => import("./features/page-details/PageDetailsPage.js"), "PageDetailsPage");
@@ -193,6 +194,12 @@ const callsSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/calls/settings",
   component: () => page(<CallsSettingsPage />, "inbox.settings"),
+});
+// The live switchboard: owners and managers.
+const callsSwitchboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/calls/switchboard",
+  component: () => page(<SwitchboardPage />, "calls.switchboard"),
 });
 const callsReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -402,6 +409,7 @@ const routeTree = rootRoute.addChildren([
   callsRoute,
   callsSettingsRoute,
   callsReportsRoute,
+  callsSwitchboardRoute,
   channelsRoute,
   chatSetupRoute,
   pageDetailsRoute,
