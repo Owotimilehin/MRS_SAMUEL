@@ -29,8 +29,27 @@ const PRESETS = [
   { label: "90 days", days: 89 },
 ] as const;
 
-export function InboxReportsPage(): JSX.Element {
+export interface InboxReportsPageProps {
+  /**
+   * "all" (the default, the shop admin): messages and calls together, as always.
+   * "messages" / "calls" (the Business Suite): only that half, under its own title.
+   */
+  sections?: "all" | "messages" | "calls";
+}
+
+const PAGE_TITLE = { all: "Inbox reports", messages: "Message reports", calls: "Call reports" } as const;
+const PAGE_EYEBROW = { all: "Inbox", messages: "Messages", calls: "Calls" } as const;
+const PAGE_SUB = {
+  all: "How quickly customers get answers on WhatsApp and the phone.",
+  messages: "How quickly customers get answers to their messages.",
+  calls: "How many customers call, and how many calls are answered.",
+} as const;
+
+export function InboxReportsPage({ sections = "all" }: InboxReportsPageProps = {}): JSX.Element {
   const can = useCan();
+  const showMessages = sections !== "calls";
+  const showCalls = sections !== "messages";
+  const title = PAGE_TITLE[sections];
   const [from, setFrom] = useState(() => lagosDaysAgo(29));
   const [to, setTo] = useState(() => lagosDaysAgo(0));
   const [number, setNumber] = useState("");
@@ -68,15 +87,17 @@ export function InboxReportsPage(): JSX.Element {
       if (!c.user_id || rows.has(c.user_id)) continue;
       rows.set(c.user_id, { id: c.user_id, name: nameOf(c.user_id), replies: 0, calls: c.calls, talk_s: c.talk_s });
     }
-    return [...rows.values()].sort((a, b) => b.replies + b.calls - (a.replies + a.calls));
-  }, [r, staff.data]);
+    return [...rows.values()]
+      .filter((s) => sections === "all" || (sections === "messages" ? s.replies > 0 : s.calls > 0))
+      .sort((a, b) => b.replies + b.calls - (a.replies + a.calls));
+  }, [r, staff.data, sections]);
 
   if (!allowed) {
     return (
-      <Shell title="Inbox reports">
+      <Shell title={title}>
         <div className="empty">
           <div className="empty__title">No access</div>
-          Ask an owner if you need inbox reports.
+          Ask an owner if you need {sections === "all" ? "inbox" : sections === "messages" ? "message" : "call"} reports.
         </div>
       </Shell>
     );
@@ -91,13 +112,32 @@ export function InboxReportsPage(): JSX.Element {
   const today = lagosDaysAgo(0);
   const noReplies = resp?.median_first_response_s == null;
   const noneClosed = resp?.median_resolution_s == null;
+  const answeredCalls = calls.reduce((s, d) => s + d.answered, 0);
+  const talkTime = (r?.staff_calls ?? []).reduce((s, x) => s + (x.talk_s ?? 0), 0);
+  // The number picker lists only the numbers that carry what this page reports on.
+  const pickNumbers = (me.data?.numbers ?? []).filter(
+    (n) => sections === "all" || (sections === "messages" ? n.channels !== "voice" : n.channels !== "whatsapp"),
+  );
+  const heroChips =
+    sections === "messages"
+      ? [{ label: "Messages in", value: totalIn }]
+      : sections === "calls"
+        ? [
+            { label: "Calls in", value: totalCalls },
+            { label: "Missed calls", value: missedCalls, tone: missedCalls > 0 ? ("warn" as const) : ("good" as const) },
+          ]
+        : [
+            { label: "Messages in", value: totalIn },
+            { label: "Calls in", value: totalCalls },
+            { label: "Missed calls", value: missedCalls, tone: missedCalls > 0 ? ("warn" as const) : ("good" as const) },
+          ];
 
   return (
     <Shell
-      title="Inbox reports"
-      crumb="Inbox"
+      title={title}
+      crumb={PAGE_EYEBROW[sections]}
       actions={
-        can("inbox.export") ? (
+        can("inbox.export") && showMessages ? (
           <a className="btn btn--subtle btn--sm" href={CONTACTS_CSV_URL} download title="Download every contact as a spreadsheet (CSV)">
             <Download size={14} /> Export contacts
           </a>
@@ -105,15 +145,11 @@ export function InboxReportsPage(): JSX.Element {
       }
     >
       <StatHero
-        eyebrow="Inbox"
-        title="Inbox reports"
-        sub="How quickly customers get answers on WhatsApp and the phone."
+        eyebrow={PAGE_EYEBROW[sections]}
+        title={title}
+        sub={PAGE_SUB[sections]}
         loading={report.isLoading}
-        chips={[
-          { label: "Messages in", value: totalIn },
-          { label: "Calls in", value: totalCalls },
-          { label: "Missed calls", value: missedCalls, tone: missedCalls > 0 ? "warn" : "good" },
-        ]}
+        chips={heroChips}
       />
 
       <div className="ibx-report">
@@ -126,12 +162,12 @@ export function InboxReportsPage(): JSX.Element {
           <span className="field__label">To</span>
           <input className="input" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
         </label>
-        {(me.data?.numbers.length ?? 0) > 1 && (
+        {pickNumbers.length > 1 && (
           <label className="field">
             <span className="field__label">Number</span>
             <select className="select" value={number} onChange={(e) => setNumber(e.target.value)}>
-              <option value="">All channels</option>
-              {me.data!.numbers.map((n) => (
+              <option value="">{sections === "calls" ? "All numbers" : "All channels"}</option>
+              {pickNumbers.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.label}
                 </option>
@@ -163,6 +199,25 @@ export function InboxReportsPage(): JSX.Element {
       <DataState loading={report.isLoading} error={report.error} onRetry={() => void report.refetch()}>
         {r && (
           <>
+            {sections === "calls" && (
+              <div className="ibx-stats">
+                <Stat label="Calls in" value={String(totalCalls)} />
+                <Stat
+                  label="Answered"
+                  value={totalCalls > 0 ? `${Math.round((answeredCalls / totalCalls) * 100)}%` : "None yet"}
+                  hint={totalCalls > 0 ? `${answeredCalls} of ${totalCalls} incoming calls were answered` : "No incoming calls in these dates"}
+                  tone="good"
+                />
+                <Stat
+                  label="Missed, voicemail or after hours"
+                  value={String(missedCalls)}
+                  hint="Incoming calls nobody answered"
+                  tone={missedCalls > 0 ? "warn" : "default"}
+                />
+                <Stat label="Talk time" value={talkTime ? formatDuration(talkTime) : "None"} hint="All answered calls, in and out" />
+              </div>
+            )}
+            {showMessages && (
             <div className="ibx-stats">
               <Stat label="New conversations" value={String(resp?.conversations ?? 0)} />
               {resp && resp.conversations > 0 ? (
@@ -193,8 +248,10 @@ export function InboxReportsPage(): JSX.Element {
                 />
               </div>
             </div>
+            )}
 
-            <div className="l-split l-split--dash" style={{ marginBottom: 16 }}>
+            <div className={sections === "all" ? "l-split l-split--dash" : undefined} style={{ marginBottom: 16 }}>
+              {showMessages && (
               <section className="card">
                 <h2 className="t-h2" style={{ marginBottom: 2 }}>WhatsApp messages per day</h2>
                 <p style={{ color: "var(--ink-soft)", fontSize: 12, margin: "0 0 8px" }}>"From us" counts staff replies and automatic messages.</p>
@@ -210,6 +267,8 @@ export function InboxReportsPage(): JSX.Element {
                   </BarChart>
                 </ResponsiveContainer>
               </section>
+              )}
+              {showCalls && (
               <section className="card">
                 <h2 className="t-h2" style={{ marginBottom: 8 }}>Incoming calls per day</h2>
                 <ResponsiveContainer width="100%" height={260}>
@@ -226,31 +285,38 @@ export function InboxReportsPage(): JSX.Element {
                   </BarChart>
                 </ResponsiveContainer>
               </section>
+              )}
             </div>
 
-            <div className="l-split l-split--dash">
+            <div className={showMessages ? "l-split l-split--dash" : undefined}>
               <section className="card">
                 <h2 className="t-h2" style={{ marginBottom: 8 }}>By staff member</h2>
                 {staffRows.length === 0 ? (
-                  <div className="empty">No replies or answered calls in this period.</div>
+                  <div className="empty">
+                    {sections === "all"
+                      ? "No replies or answered calls in this period."
+                      : sections === "messages"
+                        ? "No replies in this period."
+                        : "No answered calls in this period."}
+                  </div>
                 ) : (
                   <div className="table-wrap">
                     <table className="table">
                       <thead>
                         <tr>
                           <th>Name</th>
-                          <th className="table__num">WhatsApp replies</th>
-                          <th className="table__num">Calls answered</th>
-                          <th className="table__num">Talk time</th>
+                          {showMessages && <th className="table__num">WhatsApp replies</th>}
+                          {showCalls && <th className="table__num">Calls answered</th>}
+                          {showCalls && <th className="table__num">Talk time</th>}
                         </tr>
                       </thead>
                       <tbody>
                         {staffRows.map((s) => (
                           <tr key={s.id}>
                             <td style={{ fontWeight: 600 }}>{s.name}</td>
-                            <td className="table__num">{s.replies}</td>
-                            <td className="table__num">{s.calls}</td>
-                            <td className="table__num">{s.talk_s ? formatDuration(s.talk_s) : "None"}</td>
+                            {showMessages && <td className="table__num">{s.replies}</td>}
+                            {showCalls && <td className="table__num">{s.calls}</td>}
+                            {showCalls && <td className="table__num">{s.talk_s ? formatDuration(s.talk_s) : "None"}</td>}
                           </tr>
                         ))}
                       </tbody>
@@ -258,6 +324,7 @@ export function InboxReportsPage(): JSX.Element {
                   </div>
                 )}
               </section>
+              {showMessages && (
               <section className="card">
                 <h2 className="t-h2" style={{ marginBottom: 8 }}>By number</h2>
                 {r.per_number.length === 0 ? (
@@ -285,6 +352,7 @@ export function InboxReportsPage(): JSX.Element {
                   </div>
                 )}
               </section>
+              )}
             </div>
           </>
         )}

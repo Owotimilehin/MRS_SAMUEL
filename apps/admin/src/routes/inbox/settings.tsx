@@ -19,14 +19,34 @@ const TABS: Array<{ key: Tab; label: string }> = [
   { key: "templates", label: "Templates" },
 ];
 
-export function InboxSettingsPage(): JSX.Element {
+/** Tabs about phone calls only. The Business Suite shows them on its own Calls settings page. */
+const CALL_ONLY_TABS: readonly Tab[] = ["ivr"];
+
+export interface InboxSettingsPageProps {
+  /**
+   * "all" (the default, the shop admin): every tab, as always.
+   * "messages" (the Business Suite): leaves out the phone-call-only tabs and
+   * calls the page "Message settings"; calls have their own settings page there.
+   */
+  sections?: "all" | "messages";
+  /** The tab to open first. Ignored if this person may not see it. */
+  initialTab?: Tab;
+}
+
+export type InboxSettingsTab = Tab;
+
+export function InboxSettingsPage({ sections = "all", initialTab }: InboxSettingsPageProps = {}): JSX.Element {
   const can = useCan();
-  const [tab, setTab] = useState<Tab>("numbers");
-  const tabs = TABS.filter((t) => t.key !== "access" || can("users.manage"));
+  const tabs = TABS.filter(
+    (t) => (t.key !== "access" || can("users.manage")) && (sections === "all" || !CALL_ONLY_TABS.includes(t.key)),
+  );
+  const [tab, setTab] = useState<Tab>(() => (initialTab && tabs.some((t) => t.key === initialTab) ? initialTab : "numbers"));
+  const messagesOnly = sections === "messages";
+  const title = messagesOnly ? "Message settings" : "Inbox settings";
 
   if (!can("inbox.settings")) {
     return (
-      <Shell title="Inbox settings">
+      <Shell title={title}>
         <div className="empty">
           <div className="empty__title">No access</div>
           Ask an owner if you need to change inbox settings.
@@ -36,8 +56,16 @@ export function InboxSettingsPage(): JSX.Element {
   }
 
   return (
-    <Shell title="Inbox settings" crumb="Inbox">
-      <StatHero eyebrow="Inbox" title="Inbox settings" sub="Business numbers, teams, opening hours, phone menu and ready-made replies." />
+    <Shell title={title} crumb={messagesOnly ? "Messages" : "Inbox"}>
+      <StatHero
+        eyebrow={messagesOnly ? "Messages" : "Inbox"}
+        title={title}
+        sub={
+          messagesOnly
+            ? "Business numbers, teams, opening hours and ready-made replies. Phone menu and call options are under Calls."
+            : "Business numbers, teams, opening hours, phone menu and ready-made replies."
+        }
+      />
       <div className="ibx-tabs" role="tablist" aria-label="Settings sections" style={{ marginBottom: 16, flexWrap: "wrap" }}>
         {tabs.map((t) => (
           <button

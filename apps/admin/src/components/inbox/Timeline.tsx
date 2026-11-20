@@ -371,7 +371,8 @@ function CallCard({
   );
 }
 
-function RecordingBlock({
+/** One recording or voicemail: play, download, delete, AI summary and transcript. Also used by the suite's Calls list. */
+export function RecordingBlock({
   rec,
   canDownload,
   canDelete,
