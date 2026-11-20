@@ -121,3 +121,22 @@ describe("the Ads page (suite spec 12)", () => {
     expect(firstAllowedPage(["ads.manage"])).toBeNull();
   });
 });
+
+describe("Calls in the menu", () => {
+  const WITH_CALLS = ["/inbox", "/calls", "/calls/reports", "/calls/settings", "/inbox/reports", "/inbox/settings"] as const;
+  it("lights Calls, Call reports and Call settings on their own pages", () => {
+    expect(activeNavTo("/calls", WITH_CALLS)).toBe("/calls");
+    expect(activeNavTo("/calls/reports", WITH_CALLS)).toBe("/calls/reports");
+    expect(activeNavTo("/calls/settings", WITH_CALLS)).toBe("/calls/settings");
+  });
+  it("keeps Messages lit for a conversation, and its reports and settings apart", () => {
+    expect(activeNavTo("/inbox/7f3c-conversation", WITH_CALLS)).toBe("/inbox");
+    expect(activeNavTo("/inbox/reports", WITH_CALLS)).toBe("/inbox/reports");
+    expect(activeNavTo("/inbox/settings", WITH_CALLS)).toBe("/inbox/settings");
+  });
+  it("does not change where people land", () => {
+    expect(firstAllowedPage(["inbox.view"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.reports"])).toBe("/inbox/reports");
+    expect(firstAllowedPage(["inbox.settings"])).toBe("/inbox/settings");
+  });
+});
