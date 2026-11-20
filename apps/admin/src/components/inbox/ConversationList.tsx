@@ -138,7 +138,7 @@ export function ConversationList(p: Props): JSX.Element {
             type="button"
             className="btn btn--ghost btn--sm ibx-bell"
             aria-label="Notifications"
-            title="Notifications: sound and pop-ups for new messages"
+            title="Notifications and sounds"
             onClick={() => setNotifyOpen(true)}
           >
             <Bell size={16} aria-hidden />
