@@ -15,6 +15,7 @@ import {
 import type { NotifyLevel } from "../../lib/inbox-types.js";
 import { humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
+import { SoundSettings } from "./SoundSettings.js";
 
 const LEVELS: { value: NotifyLevel; label: string; hint: string }[] = [
   { value: "assigned", label: "My chats and new ones", hint: "Chats assigned to you, and chats nobody has picked up yet." },
@@ -46,7 +47,7 @@ export function NotifySettings({ onClose }: { onClose: () => void }): JSX.Elemen
   const current = save.variables ?? level.data ?? "assigned";
 
   return (
-    <Modal title="Notifications" onClose={onClose} maxWidth={460}>
+    <Modal title="Notifications and sounds" onClose={onClose} maxWidth={480}>
       <div className="ibx-notify">
         <p className="ibx-notify__note">Sound and pop-ups for new customer messages on WhatsApp, Messenger and Instagram.</p>
         <fieldset className="ibx-notify__group">
@@ -83,12 +84,9 @@ export function NotifySettings({ onClose }: { onClose: () => void }): JSX.Elemen
             />
             <span>
               <strong>Play a sound</strong>
-              <small>Two short notes when a customer writes.</small>
+              <small>Plays your new message sound (below) when a customer writes.</small>
             </span>
           </label>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={() => playMessageSound()}>
-            Play the sound
-          </button>
 
           <label className="ibx-notify__choice">
             <input
@@ -125,6 +123,8 @@ export function NotifySettings({ onClose }: { onClose: () => void }): JSX.Elemen
             </button>
           )}
         </fieldset>
+
+        <SoundSettings />
 
         <p className="ibx-notify__note">
           Keep this site open in a tab to be alerted. While you are reading a chat, new messages in it appear without a sound.
