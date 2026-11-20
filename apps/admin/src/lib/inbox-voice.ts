@@ -24,6 +24,9 @@ import { create } from "zustand";
 import type { Call, Device } from "@twilio/voice-sdk";
 import { api, ApiError, humanizeError } from "./api.js";
 import { toast } from "./toast.js";
+import { unlockSoundOnFirstGesture } from "./inbox-notify.js";
+import { onPrefsChange } from "./sounds/prefs.js";
+import { startRinging, stopRinging, usesStandardRing } from "./sounds/player.js";
 
 const HEARTBEAT_MS = 30_000;
 const AVAILABLE_KEY = "ms_inbox_available";
@@ -124,6 +127,20 @@ function stopHeartbeat(): void {
   heartbeat = null;
 }
 
+/**
+ * Ringtone: if the person kept the standard ring, the SDK plays its own;
+ * otherwise its incoming sound is switched off and we play the chosen one
+ * (lib/sounds/player.ts). The SDK checks this switch the moment a call
+ * arrives, so it is kept in step with the choice ahead of time.
+ */
+function syncRingtone(d: Device): void {
+  try {
+    d.audio?.incoming(usesStandardRing());
+  } catch {
+    /* the SDK's own ring stays as it was */
+  }
+}
+
 /** Load the SDK and create the Device once per tab. Safe to call repeatedly. */
 export function initVoice(opts: { canAnswer: boolean; canCall: boolean }): Promise<void> {
   set({ canAnswer: opts.canAnswer, canCall: opts.canCall });
@@ -150,6 +167,10 @@ export function initVoice(opts: { canAnswer: boolean; canCall: boolean }): Promi
         set({ message: err?.message ? `Phone problem: ${err.message}` : "Phone problem — try refreshing the page." });
       });
       d.on("incoming", onIncoming);
+      syncRingtone(d);
+      onPrefsChange(() => syncRingtone(d));
+      // Browsers stay silent until the first click; wake sound then, so a ring can be heard.
+      if (opts.canAnswer) unlockSoundOnFirstGesture();
       device = d;
       set({ status: "ready" });
       // A browser that never chose: start from what this person last chose elsewhere.
@@ -208,8 +229,10 @@ function onIncoming(call: Call): void {
   incomingCall = call;
   const ref = call.customParameters.get("callId") || call.parameters.CallSid || "";
   set({ incoming: { from: call.parameters.From ?? "Unknown caller", ref } });
+  startRinging();
   const clear = (): void => {
     if (incomingCall === call) {
+      stopRinging();
       incomingCall = null;
       set({ incoming: null });
     }
@@ -225,6 +248,7 @@ export async function acceptIncoming(): Promise<void> {
   const info = get().incoming;
   if (!call || !info) return;
   incomingCall = null;
+  stopRinging();
   set({ incoming: null });
   call.accept();
   trackActive(call, {
@@ -252,6 +276,7 @@ export async function acceptIncoming(): Promise<void> {
 export function declineIncoming(): void {
   const call = incomingCall;
   incomingCall = null;
+  stopRinging();
   set({ incoming: null });
   call?.reject();
 }
