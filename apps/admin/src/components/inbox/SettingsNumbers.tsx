@@ -31,8 +31,15 @@ function qualityPill(q: string | null): JSX.Element {
   return <span className="pill pill--danger">Low</span>;
 }
 
-export function SettingsNumbers(): JSX.Element {
+/**
+ * The business numbers table. `only="calls"` (the Business Suite's Calls
+ * settings) lists just the numbers that take phone calls and leaves out the
+ * WhatsApp columns; the edit form is the same either way. Without it the table
+ * is exactly as the shop admin has always shown it.
+ */
+export function SettingsNumbers({ only }: { only?: "calls" } = {}): JSX.Element {
   const qc = useQueryClient();
+  const callsOnly = only === "calls";
   const q = useQuery({ queryKey: settingsKeys.numbers, queryFn: () => settingsApi.numbers() });
   const [edit, setEdit] = useState<PhoneNumberRow | "new" | null>(null);
   const [register, setRegister] = useState<PhoneNumberRow | null>(null);
@@ -56,12 +63,18 @@ export function SettingsNumbers(): JSX.Element {
     }
   }
 
+  const rows = (q.data ?? []).filter((n) => !callsOnly || n.channels !== "whatsapp");
+
   return (
     <section className="card">
       <div className="ibx-cardhead">
         <div>
-          <h2 className="t-h2">Business numbers</h2>
-          <p style={{ color: "var(--ink-soft)", fontSize: 13 }}>The phone numbers customers WhatsApp and call.</p>
+          <h2 className="t-h2">{callsOnly ? "Phone numbers for calls" : "Business numbers"}</h2>
+          <p style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+            {callsOnly
+              ? "The numbers customers call. Edit a number to pick its phone menu, the most calls at once and the after-hours recording."
+              : "The phone numbers customers WhatsApp and call."}
+          </p>
         </div>
         <button type="button" className="btn btn--primary btn--sm" onClick={() => setEdit("new")}>
           + Add number
@@ -71,9 +84,9 @@ export function SettingsNumbers(): JSX.Element {
         loading={q.isLoading}
         error={q.error}
         onRetry={() => void q.refetch()}
-        isEmpty={(q.data ?? []).length === 0}
-        emptyTitle="No numbers yet"
-        emptyHint="Add your first business number."
+        isEmpty={rows.length === 0}
+        emptyTitle={callsOnly ? "No numbers take calls yet" : "No numbers yet"}
+        emptyHint={callsOnly ? "Add a number, or edit one and set it to take phone calls." : "Add your first business number."}
       >
         <div className="table-wrap">
           <table className="table ibx-stack">
@@ -81,8 +94,8 @@ export function SettingsNumbers(): JSX.Element {
               <tr>
                 <th>Number</th>
                 <th>Used for</th>
-                <th>WhatsApp status</th>
-                <th>Quality</th>
+                {!callsOnly && <th>WhatsApp status</th>}
+                {!callsOnly && <th>Quality</th>}
                 <th className="table__num" title="Phone calls happening on this number right now">Live calls</th>
                 <th>
                   <span className="sr-only">Actions</span>
@@ -90,7 +103,7 @@ export function SettingsNumbers(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {(q.data ?? []).map((n) => (
+              {rows.map((n) => (
                 <tr key={n.id}>
                   <td>
                     <div style={{ fontWeight: 700 }}>{n.label}</div>
@@ -98,6 +111,7 @@ export function SettingsNumbers(): JSX.Element {
                     {!n.isActive && <span className="pill pill--ink">Switched off</span>}
                   </td>
                   <td data-label="Used for">{CHANNEL_LABEL[n.channels]}</td>
+                  {!callsOnly && (
                   <td data-label="WhatsApp status">
                     <div>
                     {n.channels === "voice" ? (
@@ -114,16 +128,19 @@ export function SettingsNumbers(): JSX.Element {
                     )}
                     </div>
                   </td>
+                  )}
+                  {!callsOnly && (
                   <td data-label="Quality">
                     {n.channels === "voice" ? <span style={{ color: "var(--ink-soft)" }}>Not used</span> : qualityPill(n.qualityRating)}
                   </td>
+                  )}
                   <td className="table__num" data-label="Live calls">{n.calls_in_progress}</td>
                   <td className="ibx-stack__actions">
                     <div className="ibx-actions">
                     <button type="button" className="btn btn--subtle btn--sm" onClick={() => setEdit(n)}>
                       Edit
                     </button>
-                    {n.channels !== "voice" && n.waPhoneNumberId && (
+                    {!callsOnly && n.channels !== "voice" && n.waPhoneNumberId && (
                       <>
                         <button
                           type="button"

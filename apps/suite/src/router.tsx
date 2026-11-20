@@ -7,7 +7,8 @@
  *
  * The inbox addresses are the same as in the admin app (/inbox, /inbox/<id>,
  * /inbox/reports, /inbox/settings) because the inbox screens link to each other
- * by those addresses.
+ * by those addresses. The menu calls them "Messages"; calls have their own
+ * pages under /calls.
  */
 import { lazy, Suspense, useEffect, type ComponentType, type ReactNode } from "react";
 import { createRootRoute, createRoute, createRouter, Outlet, useNavigate, useParams, useSearch } from "@tanstack/react-router";
@@ -17,8 +18,13 @@ import { PageLoader } from "@admin/components/Spinner.js";
 import { RequireAuth, useAuthUser } from "@admin/lib/auth.js";
 import { LoginPage, type LoginCopy } from "@admin/routes/login.js";
 import type { Capability } from "@ms/shared";
+import type { InboxSettingsTab } from "@admin/routes/inbox/settings.js";
 import { ADMIN_URL } from "./suite-host.js";
 import { firstAllowedPage } from "./nav.js";
+
+/** Message settings tabs a link may open (?tab=hours from Call settings). */
+type MessageSettingsTab = Extract<InboxSettingsTab, "numbers" | "teams" | "access" | "hours" | "quick" | "templates">;
+const MESSAGE_SETTINGS_TABS: readonly MessageSettingsTab[] = ["numbers", "teams", "access", "hours", "quick", "templates"];
 
 function lazyNamed<P = Record<string, never>>(
   // A screen file may also export plain helpers (the WhatsApp profile's wording functions), so any module will do.
@@ -34,8 +40,15 @@ function lazyNamed<P = Record<string, never>>(
 }
 
 const InboxPage = lazyNamed<{ conversationId?: string }>(() => import("@admin/routes/inbox/index.js"), "InboxPage");
-const InboxSettingsPage = lazyNamed(() => import("@admin/routes/inbox/settings.js"), "InboxSettingsPage");
-const InboxReportsPage = lazyNamed(() => import("@admin/routes/inbox/reports.js"), "InboxReportsPage");
+// The suite shows these two with the message parts only; calls have their own pages under /calls.
+const InboxSettingsPage = lazyNamed<{ sections?: "all" | "messages"; initialTab?: MessageSettingsTab }>(
+  () => import("@admin/routes/inbox/settings.js"),
+  "InboxSettingsPage",
+);
+const InboxReportsPage = lazyNamed<{ sections?: "all" | "messages" | "calls" }>(() => import("@admin/routes/inbox/reports.js"), "InboxReportsPage");
+// Calls: the list, its settings and its reports.
+const CallsPage = lazyNamed(() => import("./features/calls/CallsPage.js"), "CallsPage");
+const CallsSettingsPage = lazyNamed(() => import("./features/calls/CallsSettingsPage.js"), "CallsSettingsPage");
 const ChannelsPage = lazyNamed(() => import("./features/channels/ChannelsPage.js"), "ChannelsPage");
 const ChatSetupPage = lazyNamed<{ accountId: string }>(() => import("./features/chat-setup/ChatSetupPage.js"), "ChatSetupPage");
 const PageDetailsPage = lazyNamed<{ accountId: string }>(() => import("./features/page-details/PageDetailsPage.js"), "PageDetailsPage");
@@ -157,12 +170,34 @@ const inboxConversationRoute = createRoute({
 const inboxSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox/settings",
-  component: () => page(<InboxSettingsPage />, "inbox.settings"),
+  validateSearch: (search: Record<string, unknown>): { tab?: MessageSettingsTab } =>
+    (MESSAGE_SETTINGS_TABS as readonly unknown[]).includes(search.tab) ? { tab: search.tab as MessageSettingsTab } : {},
+  component: () => {
+    const { tab } = useSearch({ from: "/inbox/settings" });
+    // key: a link to another tab while the page is open starts on that tab.
+    return page(<InboxSettingsPage key={tab ?? ""} sections="messages" {...(tab ? { initialTab: tab } : {})} />, "inbox.settings");
+  },
 });
 const inboxReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox/reports",
-  component: () => page(<InboxReportsPage />, "inbox.reports"),
+  component: () => page(<InboxReportsPage sections="messages" />, "inbox.reports"),
+});
+// Calls. Seeing a call needs the inbox (the same rule as seeing its chat).
+const callsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/calls",
+  component: () => page(<CallsPage />, "inbox.view"),
+});
+const callsSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/calls/settings",
+  component: () => page(<CallsSettingsPage />, "inbox.settings"),
+});
+const callsReportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/calls/reports",
+  component: () => page(<InboxReportsPage sections="calls" />, "inbox.reports"),
 });
 const channelsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -364,6 +399,9 @@ const routeTree = rootRoute.addChildren([
   inboxSettingsRoute,
   inboxReportsRoute,
   inboxConversationRoute,
+  callsRoute,
+  callsSettingsRoute,
+  callsReportsRoute,
   channelsRoute,
   chatSetupRoute,
   pageDetailsRoute,

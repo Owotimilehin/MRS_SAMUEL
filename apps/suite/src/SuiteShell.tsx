@@ -16,10 +16,13 @@ import {
   ChevronsRight,
   ClipboardList,
   ExternalLink,
+  Headphones,
   LayoutTemplate,
   LineChart,
   Megaphone,
   Menu,
+  Phone,
+  PhoneCall,
   MessageCircle,
   MessagesSquare,
   Share2,
@@ -42,7 +45,22 @@ import { useCommentNotifier } from "./features/comments/useCommentNotifier.js";
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/inbox" | "/comments" | "/contacts" | "/catalogue" | "/posts" | "/leads" | "/ads" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
+  to:
+    | "/inbox"
+    | "/comments"
+    | "/contacts"
+    | "/calls"
+    | "/calls/reports"
+    | "/calls/settings"
+    | "/catalogue"
+    | "/posts"
+    | "/leads"
+    | "/ads"
+    | "/insights"
+    | "/inbox/reports"
+    | "/inbox/settings"
+    | "/channels"
+    | "/templates";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -53,10 +71,19 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   {
     heading: "Conversations",
     items: [
-      { to: "/inbox", label: "Inbox", Icon: MessagesSquare, cap: "inbox.view" },
+      { to: "/inbox", label: "Messages", Icon: MessagesSquare, cap: "inbox.view" },
       { to: "/comments", label: "Comments", Icon: MessageCircle, cap: "social.comments" },
       // Suite spec 14. Phase B adds "Broadcasts".
       { to: "/contacts", label: "Contacts", Icon: Users, cap: "contacts.view" },
+    ],
+  },
+  {
+    // Phone calls, apart from messages. Calls still show in each chat's timeline too.
+    heading: "Calls",
+    items: [
+      { to: "/calls", label: "Calls", Icon: Phone, cap: "inbox.view" },
+      { to: "/calls/reports", label: "Call reports", Icon: PhoneCall, cap: "inbox.reports" },
+      { to: "/calls/settings", label: "Call settings", Icon: Headphones, cap: "inbox.settings" },
     ],
   },
   {
@@ -75,7 +102,7 @@ const NAV: { heading: string; items: NavItem[] }[] = [
     heading: "Insight",
     items: [
       { to: "/insights", label: "Insights", Icon: LineChart, cap: "insights.view" },
-      { to: "/inbox/reports", label: "Reports", Icon: BarChart3, cap: "inbox.reports" },
+      { to: "/inbox/reports", label: "Message reports", Icon: BarChart3, cap: "inbox.reports" },
     ],
   },
   {
@@ -83,7 +110,7 @@ const NAV: { heading: string; items: NavItem[] }[] = [
     items: [
       { to: "/channels", label: "Channels", Icon: Share2, cap: "channels.manage" },
       { to: "/templates", label: "Templates and forms", Icon: LayoutTemplate, cap: "templates.manage" },
-      { to: "/inbox/settings", label: "Settings", Icon: SlidersHorizontal, cap: "inbox.settings" },
+      { to: "/inbox/settings", label: "Message settings", Icon: SlidersHorizontal, cap: "inbox.settings" },
     ],
   },
 ];
@@ -99,7 +126,7 @@ export function SuiteShell({ children, title, crumb, actions }: FrameProps): JSX
   );
   const initial = (user.email?.[0] ?? "?").toUpperCase();
 
-  // Unread chats for the Inbox badge; the notifier refreshes it the moment a message lands.
+  // Unread chats for the Messages badge; the notifier refreshes it the moment a message lands.
   const unread = useQuery({
     queryKey: inboxKeys.unread,
     enabled: can("inbox.view"),
