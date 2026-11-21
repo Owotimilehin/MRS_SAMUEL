@@ -1,26 +1,242 @@
 /*
- * Styles that belong to the suite only. Colours, type, buttons, cards and the
- * page frame come from the admin app's stylesheet (imported in main.tsx), so
- * the two apps look like one family. Put suite-only rules here.
+ * The suite's own look (21 Nov 2026): docs/mockups/dashboard-v2-mrs-samuel.html.
+ * Base styles come from the admin app's stylesheet (imported first in main.tsx);
+ * everything below overrides them for the suite only. This file is not loaded by
+ * the shop admin or the till, so their look is unchanged.
+ *
+ * Cream page, white panels, orange as the main colour, green for "good".
+ * --accent is a deeper orange than the mockup's #e85d1c so small orange text and
+ * white-on-orange buttons pass WCAG AA (4.7:1); --accent-fill keeps the bright
+ * mockup orange for badges, bars and dots (no text on it).
  */
+:root {
+  --cream: #fbf7f1;
+  --brand: #1d1712;        /* headings and big numbers: warm near-black */
+  --brand-orange: #e85d1c;
 
-/* The suite's menu sits on the brand's deep green, so it is plainly not the shop's admin app. */
-.suite-shell .app-side {
-  background: linear-gradient(180deg, #0e3f1f 0%, #14502b 100%);
-  border-right-color: transparent;
+  --ink: #1d1712;
+  --ink-soft: #6b5f53;     /* 5.8:1 on the cream page */
+  --ink-faint: #9a8d7f;    /* decorative only, never body text */
+  --line: #efe6da;
+  --line-strong: #e2d6c6;
+  --shell: #ffffff;        /* panels */
+  --surface-soft: #fdf9f3; /* table heads, soft fills */
+  --surface-sunken: #fbf7f1; /* page background */
+
+  --accent: #c84b14;       /* orange: buttons, links, active states */
+  --accent-hover: #b8460f;
+  --accent-fill: #e85d1c;  /* badges, bars, dots */
+  --accent-soft: #fdecd2;
+  --accent-ink: #b8460f;   /* orange text on --accent-soft (4.6:1) */
+  --accent-2: #1f7a44;     /* green: second series, "good" */
+  --accent-3: #c98a12;     /* amber */
+  --success: #1f7a44;
+  --warning: #c98a12;
+  --danger: #d03a3a;
+  --success-soft: #e4f3e9;
+  --warning-soft: #fdf2d9;
+  --danger-soft: #fbe5e5;
+  --success-ink: #1f7a44;
+  --warning-ink: #9a6406;
+  --danger-ink: #b42f2f;
+
+  /* Orange tint for soft fills/rings (rgb of --accent) */
+  --accent-rgb: 200, 75, 20;
+
+  --grad: linear-gradient(135deg, #d2531a 0%, #c84b14 100%);
+  --radius-card: 14px;
+  --radius-input: 10px;
+  --shadow-card: 0 1px 2px rgba(60,40,20,.04), 0 2px 6px rgba(60,40,20,.03);
+  --shadow-float: 0 10px 30px -12px rgba(60,40,20,.22);
+  --shadow-cta: none;
+  --bg-cream: #fbf7f1;
+  --focus-ring-accent: 0 0 0 3px rgba(200, 75, 20, 0.22);
 }
-.suite-shell .app-brand__name,
-.suite-shell .app-foot__email { color: #fff; }
-.suite-shell .app-brand__role { color: rgba(255, 255, 255, 0.7); text-transform: none; letter-spacing: 0.02em; }
-.suite-shell .app-nav__section { color: rgba(255, 255, 255, 0.55); }
-.suite-shell .app-nav__link { color: rgba(255, 255, 255, 0.86); }
-.suite-shell .app-nav__link:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
-.suite-shell .app-nav__link.is-active { background: rgba(255, 255, 255, 0.16); color: #fff; }
-.suite-shell .app-nav__link.is-active::before { background: #fcbf49; }
-.suite-shell .app-foot { border-top-color: rgba(255, 255, 255, 0.14); }
-.suite-shell .app-foot__signout { color: rgba(255, 255, 255, 0.75); }
-.suite-shell .app-foot__signout:hover { color: #fff; }
-.suite-shell .app-rail-toggle { color: #0e3f1f; }
+
+/* Page: plain warm cream. The drifting drops and glows are switched off. */
+body { background: var(--surface-sunken); color: var(--ink); font-size: 14px; }
+.water-field { display: none; }
+
+/* Sidebar: white panel, hairline border, orange-soft active item. */
+.app-side {
+  background: var(--shell);
+  border-right: 1px solid var(--line);
+  color: var(--ink);
+  padding: 16px 12px;
+  gap: 18px;
+}
+.app-side::before, .app-side::after { display: none; }
+.app-brand { gap: 10px; padding: 4px 8px 6px; }
+.app-brand__mark { width: 36px; height: 36px; border-radius: 11px; background: var(--accent-fill); padding: 5px; }
+.app-brand__mark img { filter: none; }
+.app-brand__name { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 16px; color: var(--ink); }
+.app-brand__role { font-size: 11.5px; color: var(--ink-soft); }
+.app-nav__section { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; color: var(--ink-soft); padding: 14px 10px 6px; }
+.app-nav__link { gap: 10px; padding: 7px 10px; border-radius: 9px; font-size: 13.5px; font-weight: 500; color: var(--ink-soft); }
+.app-nav__link:hover { background: var(--surface-soft); color: var(--ink); }
+.app-nav__link.is-active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.app-nav__link.is-active::before { display: none; }
+.app-nav__icon, .app-nav__icon svg { width: 17px; height: 17px; }
+.app-nav__back { color: var(--accent-ink); background: var(--accent-soft); }
+.app-nav__back:hover { background: var(--accent-soft); color: var(--accent-hover); }
+.app-foot { border-top-color: var(--line); }
+.app-foot__email { color: var(--ink-soft); }
+.app-foot__signout { color: var(--ink); }
+.app-foot__signout:hover { color: var(--accent); }
+.app-nav { scrollbar-color: var(--line-strong) transparent; }
+.app-nav::-webkit-scrollbar-thumb { background: var(--line-strong); }
+.app-rail-toggle { border-color: var(--line); background: var(--shell); color: var(--ink-soft); }
+.app-rail-toggle:hover { background: var(--surface-soft); color: var(--ink); }
+
+/* Header: translucent cream bar with a hairline. */
+.app-head {
+  background: color-mix(in srgb, var(--surface-sunken) 85%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 28px;
+}
+.app-head__crumb { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-soft); }
+.app-head__title { color: var(--ink); }
+.app-head__search .input { height: 36px; border-radius: 10px; }
+.app-head__user { background: var(--shell); border: 1px solid var(--line); }
+.app-head__avatar { background: var(--accent-fill); }
+.app-body { padding: 26px 28px 48px; }
+
+/* Page titles */
+.page-head__title, .t-h1 { color: var(--ink); }
+.page-head__eyebrow, .t-eyebrow { color: var(--accent-ink); letter-spacing: 0.08em; }
+.page-head__eyebrow { padding-left: 0; }
+.page-head__eyebrow::before { display: none; }
+.text-grad { background: none; -webkit-text-fill-color: currentColor; color: var(--accent); }
+
+/* Buttons: 10px corners, solid fills, no sheen or lift. */
+.btn { height: 38px; padding: 0 14px; border-radius: 10px; font-size: 13px; font-weight: 600; letter-spacing: 0; gap: 7px; }
+.btn--primary { background: var(--accent); color: #fff; box-shadow: none; }
+.btn--primary::after { display: none; }
+.btn--primary:hover:not(:disabled) { background: var(--accent-hover); filter: none; transform: none; }
+.btn--primary:focus-visible { box-shadow: var(--focus-ring-accent); }
+.btn--ghost { background: var(--shell); color: var(--ink); border: 1px solid var(--line-strong); }
+.btn--ghost:hover:not(:disabled) { background: var(--surface-soft); }
+.btn--subtle { background: var(--shell); color: var(--ink); border: 1px solid var(--line); }
+.btn--subtle:hover:not(:disabled) { background: var(--surface-soft); }
+.btn--danger { background: var(--danger); }
+.btn--sm { height: 32px; padding: 0 11px; font-size: 12.5px; }
+.btn--lg { height: 46px; padding: 0 20px; font-size: 14px; }
+.btn--icon { width: 36px; border-radius: 10px; background: var(--shell); border: 1px solid var(--line); color: var(--ink-soft); }
+.btn--icon:hover:not(:disabled) { background: var(--surface-soft); color: var(--ink); }
+.btn--cta { height: 52px; border-radius: 12px; font-size: 15px; }
+.btn__plus { background: rgba(255,255,255,0.2); box-shadow: none; }
+/* A pressed period/filter button reads as the mockup's segmented "on" state. */
+.btn--sm.btn--primary[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* Cards, panels and stat tiles: white, 14px corners, flat. */
+.card { background: var(--shell); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-card); padding: 18px; }
+.card--soft { background: var(--surface-soft); border: 1px solid var(--line); box-shadow: none; }
+.card--hoverable:hover { transform: none; box-shadow: var(--shadow-float); border-color: var(--line-strong); }
+.glass-card { background: var(--shell); backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+.stat-card {
+  background: var(--shell); backdrop-filter: none; -webkit-backdrop-filter: none;
+  border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+  padding: 16px 18px; gap: 6px;
+}
+.stat-card:hover { transform: none; box-shadow: var(--shadow-card); border-color: var(--line-strong); }
+.stat-card::before, .stat-card::after { display: none; }
+.stat-card__label { font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-soft); }
+.stat-card__value { font-family: "Plus Jakarta Sans", system-ui, sans-serif; font-size: 27px; font-weight: 700; color: var(--ink); }
+.stat-card__hint { font-size: 12.5px; color: var(--ink-soft); }
+.stat-card__delta { font-size: 12px; font-weight: 600; border-radius: 7px; padding: 2px 7px; }
+.stat-card__delta--up { color: var(--success-ink); background: var(--success-soft); }
+.stat-card__delta--down { color: var(--danger-ink); background: var(--danger-soft); }
+
+/* Page hero: the dark green band becomes the mockup's light "at a glance" panel. */
+.juice-hero {
+  background: linear-gradient(100deg, var(--accent-soft), var(--shell) 65%);
+  color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-card);
+  box-shadow: none; padding: 20px 22px; margin-bottom: 18px;
+}
+.juice-hero::after { display: none; }
+.juice-hero__eyebrow { color: var(--accent-ink); letter-spacing: 0.08em; }
+.juice-hero__title { color: var(--ink); font-size: clamp(24px, 2.4vw, 30px); margin: 4px 0 4px; }
+.juice-hero__sub { color: var(--ink-soft); font-size: 14px; }
+.juice-hero__bottle { filter: drop-shadow(0 10px 14px rgba(60,40,20,0.18)); animation: none; max-height: 130px; width: auto; }
+.hero-chip { background: var(--shell); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; text-align: left; }
+.hero-chip b { font-family: "Plus Jakarta Sans", system-ui, sans-serif; font-weight: 700; font-size: 22px; color: var(--ink); }
+.hero-chip span { color: var(--ink-soft); opacity: 1; font-size: 12px; letter-spacing: 0; }
+.hero-chip--danger { background: var(--danger-soft); border-color: transparent; }
+.hero-chip--warn   { background: var(--warning-soft); border-color: transparent; }
+.hero-chip--good   { background: var(--success-soft); border-color: transparent; }
+.hero-chip--danger b { color: var(--danger-ink); }
+.hero-chip--warn b   { color: var(--warning-ink); }
+.hero-chip--good b   { color: var(--success-ink); }
+
+/* Flavour cards and hero follow the flat panel look. */
+.flav-card { background: var(--shell); backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+.flav-card:hover { transform: none; box-shadow: var(--shadow-float); }
+.flav-card__name, .flav-hero__name { color: var(--ink); }
+.flav-hero { border-radius: var(--radius-card); box-shadow: none; }
+
+/* Form fields */
+.input, .select, .textarea { border: 1px solid var(--line-strong); border-radius: var(--radius-input); background: var(--shell); }
+.input:focus, .select:focus, .textarea:focus { border-color: var(--accent); box-shadow: var(--focus-ring-accent); }
+.input::placeholder, .textarea::placeholder { color: var(--ink-faint); }
+.field__label { font-weight: 600; }
+
+/* Status pills: sentence case with a dot, as in the mockup. */
+.pill { gap: 6px; padding: 3px 10px; font-size: 12.5px; font-weight: 600; letter-spacing: 0; text-transform: none; background: var(--surface-soft); color: var(--ink-soft); }
+.pill--accent::before, .pill--success::before, .pill--warning::before, .pill--danger::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none;
+}
+.pill--accent  { background: var(--accent-soft);  color: var(--accent-ink); }
+.pill--success { background: var(--success-soft); color: var(--success-ink); }
+.pill--warning { background: var(--warning-soft); color: var(--warning-ink); }
+.pill--danger  { background: var(--danger-soft);  color: var(--danger-ink); }
+.pill--ink { background: var(--surface-soft); color: var(--ink); border: 1px solid var(--line); }
+.pill--grad { background: var(--accent); color: #fff; }
+
+/* Tables: quiet sentence-case heads on a soft band. */
+.table-wrap { background: var(--shell); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+.table { font-size: 13.5px; }
+.table thead th { font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink-soft); padding: 9px 18px; background: var(--surface-soft); }
+.table tbody td { padding: 11px 18px; }
+.table tbody tr:hover { background: var(--surface-soft); }
+.card:not(.card--soft):has(> .table) > .table thead th { background: var(--surface-soft); }
+
+/* Filter toolbar */
+.toolbar { border-radius: 12px; box-shadow: var(--shadow-card); }
+
+/* Empty states */
+.empty__icon { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* Sign-in page: same palette. Warm dark brand panel (the mockup's dark tones) with
+   the orange sunrise; orange accents on the cream sign-in card. */
+.login {
+  --login-green-900: #120e0b;
+  --login-green-800: #1d1712;
+  --login-green-700: #b8460f;
+  --login-green-600: #c84b14;
+  --login-green-500: #e85d1c;
+  --login-cream: #fbf7f1;
+  --login-paper: #ffffff;
+}
+.login__brand {
+  background:
+    radial-gradient(120% 90% at 12% 8%, rgba(232, 93, 28, 0.22), transparent 60%),
+    linear-gradient(158deg, #2a1d14 0%, #1d1712 40%, #120e0b 100%);
+}
+.login__chip { background: var(--accent-soft); color: var(--accent-ink); }
+.login__chipdot { box-shadow: 0 0 0 3px rgba(200, 75, 20, 0.18); }
+.login__input:focus { box-shadow: var(--focus-ring-accent); }
+.login__reveal { background: var(--accent-soft); color: var(--accent-ink); }
+.login__reveal:hover { background: #fbdcb6; }
+.login__submit { background: var(--accent); box-shadow: none; border-radius: 12px; }
+.login__submit:hover:not(:disabled) { background: var(--accent-hover); transform: none; box-shadow: none; filter: none; }
+
+/* Phone: the closed menu drawer sits off-screen, so only cast its shadow when open
+   (otherwise it shows as a grey strip down the left edge). */
+@media (max-width: 1023px) {
+  .app-side { box-shadow: none; }
+  .app-shell.nav-open .app-side { box-shadow: 0 0 48px rgba(29, 23, 18, 0.22); }
+}
 
 /* Unread count on the Inbox line. */
 .suite-nav__badge {
@@ -29,13 +245,14 @@
   height: 20px;
   padding: 0 6px;
   border-radius: 999px;
-  background: #e85d1c;
+  background: var(--accent-fill);
   color: #fff;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 20px;
   text-align: center;
 }
+.app-nav__link.is-active .suite-nav__badge { background: var(--accent); }
 
 /* "No access" and similar single-message pages. */
 .suite-note {
