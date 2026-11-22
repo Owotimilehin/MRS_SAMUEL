@@ -19,6 +19,8 @@ import {
 } from "./jobs/inbox-whatsapp.js";
 import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-voice.js";
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
+import { collectFirefliesResults, firefliesClientFromEnv, sendRecordingsToFireflies } from "./jobs/inbox-fireflies.js";
+import { recordingStoreFromEnv } from "./jobs/inbox-recording-store.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
 import { checkMetaHealth } from "./jobs/inbox-meta-health.js";
@@ -73,12 +75,19 @@ interface Job {
 }
 
 export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () => boolean): Promise<void> {
-  const summariser = claudeSummariserFromEnv();
+  const fireflies = firefliesClientFromEnv();
+  const recordingStore = recordingStoreFromEnv();
+  // With Fireflies on, it writes the summaries; Claude would otherwise race it for
+  // recordings sitting at "transcribed" while Fireflies finishes its summary.
+  const summariser = fireflies ? null : claudeSummariserFromEnv();
   const jobs: Job[] = [
     { name: "inbox_push", everyMs: 5_000, last: 0, run: () => sendMessagePushes(db, logger) },
     { name: "inbox_auto_reply", everyMs: 10_000, last: 0, run: () => sendAutoReplies(db, logger) },
     { name: "inbox_media", everyMs: 10_000, last: 0, run: () => downloadPendingMedia(db, logger) },
     { name: "inbox_recordings", everyMs: 15_000, last: 0, run: () => processPendingRecordings(db, logger, { summariser }) },
+    // Fireflies transcripts (off without FIREFLIES_API_KEY): send recent recordings, then collect what its webhook marked ready.
+    { name: "fireflies_send", everyMs: 30_000, last: 0, run: () => sendRecordingsToFireflies(db, logger, { client: fireflies, store: recordingStore }) },
+    { name: "fireflies_collect", everyMs: 15_000, last: 0, run: () => collectFirefliesResults(db, logger, { client: fireflies }) },
     { name: "inbox_webhook_retry", everyMs: 30_000, last: 0, run: () => retryWebhookEvents(db, logger) },
     { name: "inbox_followups", everyMs: 60_000, last: 0, run: () => sendMissedCallFollowups(db, logger) },
     { name: "inbox_template_sync", everyMs: 60 * 60_000, last: 0, run: () => syncAllTemplates(db, logger) },

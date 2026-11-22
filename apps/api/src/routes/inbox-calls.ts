@@ -282,7 +282,10 @@ async function callRows(db: DbClient, viewer: InboxViewer, where: SQL[], limit: 
         duration_s: rec.durationS,
         playable: canListen && !!rec.storageKey,
         transcript: canTranscript ? rec.transcript : null,
+        transcript_lines: canTranscript ? rec.transcriptLines : null,
         summary: canTranscript ? rec.summaryJson : null,
+        // Sent to Fireflies and its result not in yet.
+        transcribing: !!rec.firefliesSentAt && rec.status !== "summarised" && rec.status !== "deleted",
       })),
   }));
   const last = data[data.length - 1];

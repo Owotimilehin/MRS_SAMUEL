@@ -44,6 +44,8 @@ const Env = z.object({
   TWILIO_API_KEY_SECRET: z.preprocess(emptyToUndef, z.string().optional()),
   TWILIO_AUTH_TOKEN: z.preprocess(emptyToUndef, z.string().optional()),
   TWILIO_TWIML_APP_SID: z.preprocess(emptyToUndef, z.string().optional()),
+  // Fireflies.ai webhook signing secret (call transcripts). Unset → the webhook answers 401.
+  FIREFLIES_WEBHOOK_SECRET: z.preprocess(emptyToUndef, z.string().optional()),
 });
 
 export type Env = z.infer<typeof Env>;

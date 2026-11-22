@@ -474,8 +474,11 @@ export function RecordingBlock({
           </p>
         </ConfirmModal>
       )}
+      {rec.transcribing && !rec.summary && (
+        <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Transcript and summary on the way (usually a few minutes)…</span>
+      )}
       {rec.summary && (
-        <details>
+        <details open>
           <summary>Call summary (AI)</summary>
           <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
             <div>{rec.summary.summary}</div>
@@ -502,14 +505,38 @@ export function RecordingBlock({
           </div>
         </details>
       )}
-      {rec.transcript && (
+      {rec.transcript_lines && rec.transcript_lines.length > 0 ? (
         <details>
-          <summary>Transcript</summary>
-          <div style={{ whiteSpace: "pre-wrap", marginTop: 6, maxHeight: 240, overflowY: "auto" }}>{rec.transcript}</div>
+          <summary>Full transcript</summary>
+          <div style={{ display: "grid", gap: 4, marginTop: 6, maxHeight: 320, overflowY: "auto" }}>
+            {rec.transcript_lines.map((l, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "44px 1fr", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "var(--ink-soft)", fontVariantNumeric: "tabular-nums", paddingTop: 2 }}>
+                  {l.start_s !== null ? clockTime(l.start_s) : ""}
+                </span>
+                <span>
+                  <strong>{l.speaker}:</strong> {l.text}
+                </span>
+              </div>
+            ))}
+          </div>
         </details>
+      ) : (
+        rec.transcript && (
+          <details>
+            <summary>Full transcript</summary>
+            <div style={{ whiteSpace: "pre-wrap", marginTop: 6, maxHeight: 240, overflowY: "auto" }}>{rec.transcript}</div>
+          </details>
+        )
       )}
     </div>
   );
+}
+
+/** 75 → "1:15": a point in the call, for transcript lines. */
+function clockTime(s: number): string {
+  const total = Math.max(0, Math.floor(s));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
 function NoteCard({ note }: { note: TimelineNote }): JSX.Element {

@@ -448,12 +448,20 @@ export const inboxRecording = pgTable(
     durationS: integer("duration_s"),
     channels: integer("channels"),
     transcript: text("transcript"),
+    /** The transcript line by line, with who spoke (Fireflies). Null for older recordings. */
+    transcriptLines: jsonb("transcript_lines").$type<{ speaker: string; text: string; start_s: number | null; end_s: number | null }[]>(),
     summaryJson: jsonb("summary_json").$type<{
       summary: string;
       call_reason: string;
       action_items: string[];
       sentiment: string;
     }>(),
+    /** When the worker sent this recording to Fireflies (null = not sent). */
+    firefliesSentAt: timestamp("fireflies_sent_at", { withTimezone: true }),
+    /** Fireflies' transcript id, from its webhook. */
+    firefliesMeetingId: text("fireflies_meeting_id"),
+    /** Set by the Fireflies webhook when a result is ready; cleared once the worker has fetched it. */
+    firefliesReadyAt: timestamp("fireflies_ready_at", { withTimezone: true }),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

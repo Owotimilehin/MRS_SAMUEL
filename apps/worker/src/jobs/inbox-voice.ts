@@ -80,7 +80,7 @@ export function recordingStorageKey(id: string, createdAt: Date): string {
 
 type RecordingRow = typeof inboxRecording.$inferSelect;
 
-async function publishProcessed(db: DbClient, rec: RecordingRow): Promise<void> {
+export async function publishProcessed(db: DbClient, rec: RecordingRow): Promise<void> {
   const [row] = await db
     .select({ conv: inboxConversation })
     .from(inboxCall)
