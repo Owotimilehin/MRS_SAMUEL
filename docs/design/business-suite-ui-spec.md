@@ -104,7 +104,7 @@ Lucide, 17px in navigation, 16px in buttons, 1.9 stroke. Channel marks (WhatsApp
 4. **Card near the foot**: radius 14, `--panel-2`, border, padding 14; a bold 13px title, a 12.5px muted line, optional progress bar (7px, orange on `--border`). It must show real figures.
 5. **You**: 32px round avatar with initials (green), name 13px bold, role 12px faint, sign-out icon button.
 
-Suite menu groups: **Conversations** (Inbox, Calls, Comments, Contacts) · **Selling** (Catalogue) · **Marketing** (Posts, Leads, Ads) · **Insight** (Insights, Reports) · **Set-up** (Channels, Templates and forms, Settings).
+Suite menu groups: **Conversations** (Overview, Inbox, Calls, Comments, Contacts, Broadcasts) · **Selling** (Catalogue) · **Marketing** (Posts, Leads, Ads) · **Insight** (Insights, Reports) · **Set-up** (Channels, Templates and forms, Settings).
 
 ### Top bar (sticky, padding 12px 28px, cream at 85% with an 8px blur, bottom hairline)
 
