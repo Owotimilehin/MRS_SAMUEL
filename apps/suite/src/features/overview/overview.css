@@ -36,6 +36,15 @@
 .ov-chip--up i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .ov-chip--warn { color: var(--warning-ink); background: var(--warning-soft); }
 .ov-chip--or { color: var(--accent-ink); background: var(--accent-soft); }
+.ov-chip--down { color: var(--danger-ink); background: var(--danger-soft); }
+.ov-chip--same { color: var(--ink-soft); background: var(--surface-soft); }
+
+/* Sales: footnotes saying what a figure counts, and the "from chats / adverts" block */
+.ov-note { margin: 0; padding: 0 18px 14px; color: var(--ink-faint); font-size: 12px; line-height: 1.45; }
+.ov-note--tight { padding: 0 0 8px 25px; }
+.ov-link { color: var(--accent); font-weight: 600; }
+.ov-src { border-top: 1px solid var(--line); padding: 4px 18px 8px; }
+.ov-src .ov-srow { border-bottom: none; padding-bottom: 4px; }
 
 /* rows */
 .ov-row { display: grid; gap: 16px; }
