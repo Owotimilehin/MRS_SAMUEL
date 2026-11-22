@@ -426,8 +426,110 @@ export async function fulfilmentQuestionFor(
 type Log = { info: (o: object, m?: string) => void; warn: (o: object, m?: string) => void; error: (o: object, m?: string) => void };
 
 /** True when a failed send may still have reached the customer (no answer from Meta). */
-function unconfirmed(msg: SentMessage): boolean {
+function unconfirmed(msg: Pick<SentMessage, "payload">): boolean {
   return (msg.payload as { unconfirmed?: boolean } | null)?.unconfirmed === true;
+}
+
+// ── "Delivery or pickup?" is asked once (review fix, migration 0085) ─────────
+
+/**
+ * How a try at sending "delivery or pickup?" ended:
+ *   sent       WhatsApp took it.
+ *   refused    WhatsApp answered and certainly did not send it.
+ *   no_answer  no answer from WhatsApp: it may have reached the customer.
+ *   not_sent   refused here before anything went out (an InboxSendError: window closed and the rest).
+ *   error      anything else; we cannot tell whether it went.
+ */
+export type AskOutcome = "sent" | "refused" | "no_answer" | "not_sent" | "error";
+
+/** The outcome of a send that returned a message (rather than throwing). */
+export function askOutcomeOf(msg: Pick<SentMessage, "status" | "payload">): AskOutcome {
+  if (msg.status !== "failed") return "sent";
+  return unconfirmed(msg) ? "no_answer" : "refused";
+}
+
+/**
+ * Whether the ask claim (catalogue_chat_order.ask_claimed_at) is kept after a
+ * try. It is given back only when the question certainly did not reach the
+ * customer, so a later "Ask" or the worker's retry may send it; in every other
+ * case it is kept, so the customer gets the question at most once.
+ */
+export function askClaimAfter(outcome: AskOutcome): "keep" | "release" {
+  return outcome === "refused" || outcome === "not_sent" ? "release" : "keep";
+}
+
+/**
+ * Take the one ask claim for a cart, atomically: only one of "Ask" and the
+ * worker gets it, even at the same moment. Returns the claim's time (needed to
+ * give it back), or null when the question was already claimed or the cart is
+ * past the question.
+ */
+export async function claimAsk(db: DbExecutor, chatOrderId: string, now: Date = new Date()): Promise<Date | null> {
+  const [row] = await db
+    .update(catalogueChatOrder)
+    .set({ askClaimedAt: now })
+    .where(
+      and(
+        eq(catalogueChatOrder.id, chatOrderId),
+        isNull(catalogueChatOrder.askClaimedAt),
+        inArray(catalogueChatOrder.state, ["new", "asked"]),
+      ),
+    )
+    .returning({ at: catalogueChatOrder.askClaimedAt });
+  return row?.at ?? null;
+}
+
+/** Give back a claim taken by claimAsk (only that same claim). */
+export async function releaseAsk(db: DbExecutor, chatOrderId: string, claimedAt: Date): Promise<void> {
+  await db
+    .update(catalogueChatOrder)
+    .set({ askClaimedAt: null })
+    .where(and(eq(catalogueChatOrder.id, chatOrderId), eq(catalogueChatOrder.askClaimedAt, claimedAt)));
+}
+
+// ── Order updates never announce a status from before the switch-on ──────────
+
+/**
+ * The baseline taken in the same transaction as switching order updates on:
+ * every placed cart is marked as already told about its order's current
+ * status, so runOrderUpdates only announces a status reached after the
+ * switch-on moment (order_updates_enabled_at). No message is sent. Returns how
+ * many carts were marked.
+ */
+export async function baselineOrderUpdates(db: DbExecutor): Promise<number> {
+  const rows = await db
+    .update(catalogueChatOrder)
+    .set({ lastNotifiedStatus: sql`${saleOrder.status}::text`, notifyAttempts: 0 })
+    .from(saleOrder)
+    .where(
+      and(
+        eq(saleOrder.id, catalogueChatOrder.saleOrderId),
+        eq(catalogueChatOrder.state, "placed"),
+        sql`${saleOrder.status}::text is distinct from ${catalogueChatOrder.lastNotifiedStatus}`,
+      ),
+    )
+    .returning({ id: catalogueChatOrder.id });
+  return rows.length;
+}
+
+/**
+ * Switch order updates on, atomically: the switch, its moment
+ * (order_updates_enabled_at, the database's clock) and the baseline above, in
+ * one transaction. Only off → on does this; when they are already on nothing
+ * changes (a second baseline would swallow updates still due), and switching
+ * off keeps the stamp. Returns true when it switched them on.
+ */
+export async function switchOrderUpdatesOn(db: DbClient, linkId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [turned] = await tx
+      .update(catalogueLink)
+      .set({ orderUpdatesEnabled: true, orderUpdatesEnabledAt: sql`clock_timestamp()`, updatedAt: new Date() })
+      .where(and(eq(catalogueLink.id, linkId), eq(catalogueLink.orderUpdatesEnabled, false)))
+      .returning({ id: catalogueLink.id });
+    if (!turned) return false;
+    await baselineOrderUpdates(tx);
+    return true;
+  });
 }
 
 /**
@@ -468,10 +570,18 @@ export async function runChatOrderPrompts(
       .where(and(eq(catalogueChatOrder.id, row.id), eq(catalogueChatOrder.nextPrompt, prompt)))
       .returning({ id: catalogueChatOrder.id });
     if (!claimed) continue;
+    // "Delivery or pickup?" also takes the one ask claim, shared with the inbox's "Ask" button.
+    let askClaim: Date | null = null;
+    const giveBackAsk = async (outcome: AskOutcome) => {
+      if (askClaim && askClaimAfter(outcome) === "release") await releaseAsk(db, row.id, askClaim);
+    };
     try {
       let content: OutboundContent;
       if (prompt === "fulfilment") {
         content = await fulfilmentQuestionFor(db, row);
+        askClaim = await claimAsk(db, row.id, now);
+        // A person (or another worker) already asked, or the customer moved on: nothing to send.
+        if (!askClaim) continue;
       } else if (prompt === "address") {
         content = { type: "text", body: ADDRESS_QUESTION_TEXT };
       } else {
@@ -488,6 +598,7 @@ export async function runChatOrderPrompts(
             .where(eq(catalogueChatOrder.id, row.id));
         } else {
           // Certainly not sent: try again next time, up to three times.
+          await giveBackAsk(askOutcomeOf(msg));
           await db
             .update(catalogueChatOrder)
             .set({
@@ -512,6 +623,8 @@ export async function runChatOrderPrompts(
       sent++;
     } catch (err) {
       const text = err instanceof InboxSendError ? err.message : "The message could not be sent.";
+      // An InboxSendError is raised before anything is sent, so a person may still press "Ask".
+      await giveBackAsk(err instanceof InboxSendError ? "not_sent" : "error");
       await db.update(catalogueChatOrder).set({ problem: text.slice(0, 500) }).where(eq(catalogueChatOrder.id, row.id));
       if (!(err instanceof InboxSendError)) log.error({ err, chatOrderId: row.id }, "catalogue: chat order prompt failed");
     }
