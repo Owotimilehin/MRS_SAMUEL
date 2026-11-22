@@ -66,7 +66,7 @@ function returnedAt(): SQL<string | null> {
 
 async function viewerWith(db: DbClient, userId: string, cap: string): Promise<InboxViewer> {
   const viewer = await reloadViewer(db, userId);
-  if (!viewer || !viewer.capabilities.includes(cap)) {
+  if (!viewer || !(viewer.capabilities as readonly string[]).includes(cap)) {
     throw new BusinessError("forbidden", `missing capability: ${cap}`, 403);
   }
   return viewer;
