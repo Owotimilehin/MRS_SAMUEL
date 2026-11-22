@@ -17,6 +17,7 @@ import {
   inboxPushToken,
   inboxQuickReply,
   inboxRecording,
+  inboxReminder,
   inboxTeam,
   inboxTeamMember,
   inboxTemplate,
@@ -42,6 +43,8 @@ import {
   syncTemplatesForWaba,
   markRead,
   metaConfigFromEnv,
+  notSnoozedSql,
+  waitingSinceSql,
   publishInboxEvent,
   sendFromConversation,
   sendSenderAction,
@@ -82,6 +85,7 @@ import { eraseContactTables, mergeContactTables } from "../lib/contacts-merge-er
 import { alias } from "drizzle-orm/pg-core";
 import crypto from "node:crypto";
 import { env } from "../env.js";
+import { loadLineHours, loadReplyTarget, waitingMinutes } from "../lib/reply-target.js";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -412,7 +416,7 @@ export function inboxRoutes(db: DbClient) {
         conversations: sql<number>`count(*) filter (where ${inboxConversation.unreadCount} > 0)::int`,
       })
       .from(inboxConversation)
-      .where(and(conversationScope(c.get("inboxViewer")), inArray(inboxConversation.status, ["open", "pending"])));
+      .where(and(conversationScope(c.get("inboxViewer")), inArray(inboxConversation.status, ["open", "pending"]), notSnoozedSql));
     return c.json({ data: row ?? { messages: 0, conversations: 0 } });
   });
 
@@ -482,8 +486,11 @@ export function inboxRoutes(db: DbClient) {
     const conds: SQL[] = [conversationScope(v)];
 
     const status = q.status ?? "open";
-    if (status === "open") conds.push(inArray(inboxConversation.status, ["open", "pending"]));
-    else if (status === "closed" || status === "pending") conds.push(eq(inboxConversation.status, status));
+    // Suite spec 15: snoozed chats leave the open lists and have their own.
+    if (status === "open") conds.push(inArray(inboxConversation.status, ["open", "pending"]), notSnoozedSql);
+    else if (status === "snoozed") {
+      conds.push(inArray(inboxConversation.status, ["open", "pending"]), sql`${inboxConversation.snoozedUntil} > now()`);
+    } else if (status === "closed" || status === "pending") conds.push(eq(inboxConversation.status, status));
 
     if (q.view === "mine") conds.push(eq(inboxConversation.assigneeId, v.userId));
     else if (q.view === "unassigned") conds.push(isNull(inboxConversation.assigneeId));
@@ -538,6 +545,9 @@ export function inboxRoutes(db: DbClient) {
         team_name: inboxTeam.name,
         assignee_id: inboxConversation.assigneeId,
         assignee_name: sql<string | null>`coalesce(${assignee.name}, ${assignee.email})`,
+        snoozed_until: inboxConversation.snoozedUntil,
+        woke_at: inboxConversation.wokeAt,
+        waiting_since: waitingSinceSql.mapWith((v: string | Date | null) => (v == null ? null : new Date(v))),
       })
       .from(inboxConversation)
       .innerJoin(customer, eq(customer.id, inboxConversation.customerId))
@@ -550,13 +560,19 @@ export function inboxRoutes(db: DbClient) {
       .limit(limit + 1);
 
     const now = new Date();
+    // Reply-time target (suite spec 15): minutes waited inside each line's opening hours.
+    const target = await loadReplyTarget(db);
+    const hours = target ? await loadLineHours(db) : new Map();
     const page = rows.slice(0, limit).map((row) => ({
       ...row,
       window_remaining_ms: waWindowRemainingMs(row.last_inbound_wa_at, now),
       human_agent_remaining_ms: humanAgentMs(row.channel, row.last_inbound_wa_at, now),
+      waiting_minutes: target
+        ? waitingMinutes({ status: row.status, waitingSince: row.waiting_since, snoozedUntil: row.snoozed_until, lineId: row.number_id }, hours, now)
+        : null,
     }));
     const next = rows.length > limit ? page[page.length - 1]!.last_activity_at.toISOString() : null;
-    return c.json({ data: page, next_before: next });
+    return c.json({ data: page, next_before: next, reply_target_minutes: target });
   });
 
   r.get("/conversations/:id", async (c) => {
@@ -617,10 +633,15 @@ export function inboxRoutes(db: DbClient) {
 
   r.post("/conversations/:id/read", async (c) => {
     const conv = await visibleConversation(db, c, c.req.param("id"));
+    // Suite spec 15: opening a chat that came back from snooze takes away its "Back from snooze" look.
+    if (conv.wokeAt && conv.unreadCount === 0) {
+      const [updated] = await db.update(inboxConversation).set({ wokeAt: null }).where(eq(inboxConversation.id, conv.id)).returning();
+      await publishInboxEvent(db, signalFor("conversation.updated", updated!));
+    }
     if (conv.unreadCount > 0) {
       const [updated] = await db
         .update(inboxConversation)
-        .set({ unreadCount: 0 })
+        .set({ unreadCount: 0, wokeAt: null })
         .where(eq(inboxConversation.id, conv.id))
         .returning();
       await publishInboxEvent(db, signalFor("conversation.updated", updated!));
@@ -981,6 +1002,12 @@ export function inboxRoutes(db: DbClient) {
       need(c, "inbox.close");
       patch.status = body.status;
       patch.closedAt = body.status === "closed" ? new Date() : null;
+      // Suite spec 15: a closed chat is never snoozed.
+      if (body.status === "closed") {
+        patch.snoozedUntil = null;
+        patch.snoozedBy = null;
+        patch.wokeAt = null;
+      }
     }
     if (body.labels !== undefined) {
       need(c, "inbox.reply");
@@ -1236,6 +1263,8 @@ export function inboxRoutes(db: DbClient) {
     const digits = (v: string | null) => (v ?? "").replace(/\D/g, "").replace(/^(234|0)/, "");
 
     const result = await db.transaction(async (tx) => {
+      // Reminders about them (suite spec 15, ruling 9.2.8): their notes name the customer, so they go.
+      const reminders = await tx.delete(inboxReminder).where(eq(inboxReminder.customerId, id)).returning({ id: inboxReminder.id });
       const convs = await tx.select().from(inboxConversation).where(eq(inboxConversation.customerId, id));
       const convIds = convs.map((x) => x.id);
       let calls: { id: string }[] = [];
@@ -1306,6 +1335,7 @@ export function inboxRoutes(db: DbClient) {
         leads: leads.length,
         contact_labels: contacts.labels,
         contact_lists: contacts.lists,
+        reminders: reminders.length,
         consent_kept_as_stopped: true,
         keys: [...recs.map((x) => x.key), ...msgs.map((x) => x.key)],
       };
@@ -1365,6 +1395,8 @@ export function inboxRoutes(db: DbClient) {
           // Form answers follow their messages (ruling 9.2.8); otherwise deleting the folded thread would delete them.
           await tx.update(waFlowResponse).set({ conversationId: clash.id }).where(eq(waFlowResponse.conversationId, conv.id));
           await tx.update(inboxNote).set({ conversationId: clash.id }).where(eq(inboxNote.conversationId, conv.id));
+          // Reminders on the folded chat move to the kept one (suite spec 15).
+          await tx.update(inboxReminder).set({ conversationId: clash.id }).where(eq(inboxReminder.conversationId, conv.id));
           await tx.update(inboxCall).set({ conversationId: clash.id, customerId: intoId }).where(eq(inboxCall.conversationId, conv.id));
           // Carts move with the thread, or deleting it below would take them too (suite spec 08, rule R35).
           await tx
@@ -1408,6 +1440,8 @@ export function inboxRoutes(db: DbClient) {
         .set({ customerId: intoId, updatedAt: new Date() })
         .where(eq(inboxIdentity.customerId, fromId))
         .returning({ id: inboxIdentity.id });
+      // Their reminders follow the kept contact (suite spec 15).
+      await tx.update(inboxReminder).set({ customerId: intoId, updatedAt: new Date() }).where(eq(inboxReminder.customerId, fromId));
       // Their leads move to the kept contact too (suite spec 13).
       await tx.update(lead).set({ customerId: intoId, updatedAt: new Date() }).where(eq(lead.customerId, fromId));
       // Labels, lists, consent, import rows and origin follow; the merged record becomes an
