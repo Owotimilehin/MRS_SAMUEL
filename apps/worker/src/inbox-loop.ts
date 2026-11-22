@@ -21,6 +21,7 @@ import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
+import { checkMetaHealth } from "./jobs/inbox-meta-health.js";
 import { backfillComments, fillCommentDetails, pollComments } from "./jobs/social-comments.js";
 import { runCatalogueBatchCheck, runCatalogueReconcile, runCatalogueSync, runChatOrderJobs } from "./jobs/catalogue.js";
 import { publishDuePosts, reconcileUnknownTargets } from "./jobs/social-publish.js";
@@ -84,6 +85,8 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "wa_flow_sync", everyMs: 60 * 60_000, last: 0, run: () => syncAllFlows(db, logger) },
     { name: "inbox_identity_profiles", everyMs: 30_000, last: 0, run: () => refreshIdentityProfiles(db, logger) },
     { name: "inbox_meta_subscriptions", everyMs: 60 * 60_000, last: 0, run: () => ensureMetaSubscriptions(db, logger) },
+    // Watchdog (blueprint stage 1): reads only. Listed after the subscription check so it reads that run's result.
+    { name: "meta_connection_health", everyMs: 60 * 60_000, last: 0, run: () => checkMetaHealth(db, logger) },
     // Comments on Facebook and Instagram posts (suite spec 03): these only read from Meta.
     { name: "social_comment_fill", everyMs: 15_000, last: 0, run: () => fillCommentDetails(db, logger) },
     { name: "social_comment_backfill", everyMs: 60_000, last: 0, run: () => backfillComments(db, logger) },

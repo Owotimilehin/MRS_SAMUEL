@@ -5,10 +5,29 @@ import {
   connectedToText,
   connectedToast,
   emptySelection,
+  healthDotOf,
   secondLine,
   toggleBox,
   usedForText,
 } from "./channels-logic.js";
+
+describe("healthDotOf (Watchdog)", () => {
+  const base = { since: "", checked_at: "", impact: "x" };
+  const items = [
+    { ...base, key: "token", kind: "token" as const, label: "Meta access key", line_ids: ["a", "b"], status: "ok" as const, reason: "Fine." },
+    { ...base, key: "line:b", kind: "whatsapp_number" as const, label: "WhatsApp B", line_ids: ["b"], status: "broken" as const, reason: "Banned." },
+  ];
+  it("is green for a checked row with no problem", () => {
+    expect(healthDotOf(items, "a")).toEqual({ status: "ok", text: "Meta check: working", why: null });
+  });
+  it("is red with the reason for a broken row", () => {
+    expect(healthDotOf(items, "b")).toEqual({ status: "broken", text: "Meta check: broken", why: "Banned." });
+  });
+  it("shows nothing for a row that was not checked, or before the first check", () => {
+    expect(healthDotOf(items, "zzz")).toBeNull();
+    expect(healthDotOf(undefined, "a")).toBeNull();
+  });
+});
 
 describe("channel rows", () => {
   it("usedForText for each kind", () => {

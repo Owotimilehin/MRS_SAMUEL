@@ -44,6 +44,7 @@ import { callKeys, callsApi } from "./features/calls/calls-api.js";
 import { commentKeys, commentsApi } from "./features/comments/comments-api.js";
 import { useCommentNotifier } from "./features/comments/useCommentNotifier.js";
 import { SuiteSearch } from "./features/search/SuiteSearch.js";
+import { MetaHealthBanner } from "./features/channels/MetaHealthBanner.js";
 
 /** Macs (and iPads) use ⌘ for shortcuts; Windows and others use Ctrl. */
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
@@ -307,6 +308,8 @@ export function SuiteShell({ children, title, crumb, actions, subtitle, pageName
             </Link>
           )}
         </header>
+        {/* Watchdog (blueprint stage 1): red when the Meta connection is broken, amber when it needs attention. */}
+        <MetaHealthBanner enabled={can("inbox.view") || can("channels.manage")} canOpenChannels={can("channels.manage")} />
         <div className="app-body">
           <div className="suite-head">
             <div>

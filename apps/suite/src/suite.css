@@ -578,3 +578,35 @@ body:has(.suite-choc) { background: #120e0b; }
 .suite-shell.suite-choc .ibx-note { border-color: transparent; color: var(--ink); }
 .suite-shell.suite-choc .callbar__dial:hover { background: var(--surface-soft); }
 .suite-shell.suite-choc .ibx-day { box-shadow: none; }
+
+/* ═══ Meta connection health (Watchdog, blueprint stage 1) ═══
+   Notice (ui spec): soft-colour banner, radius 14, 13–14px; red for a problem, amber for "needs attention". */
+.suite-health {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 14px 28px 0; padding: 11px 14px; border-radius: 14px;
+  font-size: 13.5px; line-height: 1.45; max-width: calc(1440px - 56px);
+}
+.suite-health--danger { background: var(--danger-soft); color: var(--danger-ink); }
+.suite-health--warning { background: var(--warning-soft); color: var(--warning-ink); }
+.suite-health__icon { flex: none; margin-top: 1px; }
+.suite-health__text { margin: 0; flex: 1; min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
+.suite-health__link { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.suite-health--danger .suite-health__link { color: var(--danger-ink); }
+.suite-health--warning .suite-health__link { color: var(--warning-ink); }
+.suite-health__close {
+  flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; margin: -4px -6px -4px 0;
+  border: 0; border-radius: 8px; background: transparent; color: var(--warning-ink); cursor: pointer;
+}
+.suite-health__close:hover { background: var(--surface-soft); }
+.suite-health__close:focus-visible { outline: none; box-shadow: var(--focus-ring-accent); }
+@media (max-width: 1023px) { .suite-health { margin: 12px 16px 0; } }
+
+/* A status dot per channel on the Channels page: green ok, amber needs attention, red broken. */
+.health-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.health-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-faint); }
+.health-dot--ok::before { background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
+.health-dot--warning::before { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-soft); }
+.health-dot--broken::before { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.health-dot--warning { color: var(--warning-ink); }
+.health-dot--broken { color: var(--danger-ink); }
+.health-dot__why { margin-top: 3px; font-size: 12px; color: var(--ink-soft); overflow-wrap: anywhere; }
