@@ -349,5 +349,7 @@ export const INBOX_EVENTS = [
   // Comments on Facebook and Instagram posts (suite spec 03): `id` is the thread's root comment.
   "comment.created",
   "comment.updated",
+  // Suite spec 15: a reminder fell due. Delivered only to `userIds` (its assignee); `id` is the reminder.
+  "reminder.due",
 ] as const;
 export type InboxEventName = (typeof INBOX_EVENTS)[number];
