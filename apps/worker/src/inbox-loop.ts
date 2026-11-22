@@ -36,6 +36,7 @@ import {
   sendContactConsentConfirmations,
 } from "./jobs/contacts.js";
 import { alertDueReminders, wakeSnoozed } from "./jobs/inbox-tasks.js";
+import { checkBroadcastHealth, sendBroadcasts, startBroadcasts, sweepBroadcastRecipients } from "./jobs/broadcasts.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -122,6 +123,11 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     // Tasks and reminders (suite spec 15). Nothing is sent to a customer.
     { name: "inbox_snooze_wake", everyMs: 30_000, last: 0, run: () => wakeSnoozed(db, logger) },
     { name: "inbox_reminders_due", everyMs: 30_000, last: 0, run: () => alertDueReminders(db, logger) },
+    // Broadcasts (suite spec 14, Phase B). The system only stops a broadcast; a person resumes it.
+    { name: "broadcast_start", everyMs: 30_000, last: 0, run: () => startBroadcasts(db, logger) },
+    { name: "broadcast_send", everyMs: 5_000, last: 0, run: () => sendBroadcasts(db, logger) },
+    { name: "broadcast_sweep", everyMs: 60_000, last: 0, run: () => sweepBroadcastRecipients(db, logger) },
+    { name: "broadcast_health", everyMs: 5 * 60_000, last: 0, run: () => checkBroadcastHealth(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {

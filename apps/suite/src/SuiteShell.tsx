@@ -27,6 +27,7 @@ import {
   MessagesSquare,
   Phone,
   Plus,
+  Send,
   Share2,
   ShoppingBag,
   SlidersHorizontal,
@@ -53,7 +54,7 @@ const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/overview" | "/inbox" | "/calls" | "/tasks" | "/comments" | "/contacts" | "/catalogue" | "/posts" | "/leads" | "/ads" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
+  to: "/overview" | "/inbox" | "/calls" | "/tasks" | "/comments" | "/contacts" | "/broadcasts" | "/catalogue" | "/posts" | "/leads" | "/ads" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -70,8 +71,9 @@ const NAV: { heading: string; items: NavItem[] }[] = [
       // Suite spec 15: reminders that are due, and snoozed chats.
       { to: "/tasks", label: "Tasks", Icon: ListTodo, cap: "inbox.view" },
       { to: "/comments", label: "Comments", Icon: MessageCircle, cap: "social.comments" },
-      // Suite spec 14. Phase B adds "Broadcasts".
+      // Suite spec 14. Broadcasts (Phase B) uses Send, not the spec's Megaphone: Ads already has the megaphone.
       { to: "/contacts", label: "Contacts", Icon: Users, cap: "contacts.view" },
+      { to: "/broadcasts", label: "Broadcasts", Icon: Send, cap: "contacts.view" },
     ],
   },
   {

@@ -18,7 +18,7 @@ import {
   metaConfigFromEnv,
   numberMessagingLimit,
   parseMetaHealthValue,
-  type AccountBlock,
+  type HealthAccountBlock,
   type HealthLine,
   type MetaConfig,
 } from "@ms/domain";
@@ -40,9 +40,9 @@ async function readSetting(db: DbClient, key: string): Promise<unknown> {
   return row?.value ?? null;
 }
 
-function accountBlocks(raw: unknown): Record<string, AccountBlock> {
+function accountBlocks(raw: unknown): Record<string, HealthAccountBlock> {
   if (!raw || typeof raw !== "object") return {};
-  const out: Record<string, AccountBlock> = {};
+  const out: Record<string, HealthAccountBlock> = {};
   for (const [waba, v] of Object.entries(raw as Record<string, unknown>)) {
     if (!v || typeof v !== "object") continue;
     const b = v as Record<string, unknown>;

@@ -6,7 +6,7 @@
  * Neither touches a `customer` row. A "stopped" record survives both: in a
  * merge a stop on either side wins, and an erase keeps (or makes) one.
  *
- * PHASE B adds its broadcast_recipient steps here (5.6 merge step 7, erase step 4).
+ * Phase B: broadcast_recipient rows follow a merge (step 7) and are emptied by an erase (step 4).
  */
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -95,6 +95,13 @@ export async function mergeContactTables(
     .values({ customerId: fromId, intoCustomerId: intoId, createdBy: userId })
     .onConflictDoUpdate({ target: contactAlias.customerId, set: { intoCustomerId: intoId } });
 
+  // 7. Broadcast rows move to T, except where T already has a row in the same broadcast: that
+  //    row keeps F, so the history stays true and the one-row-per-contact index is never broken.
+  await tx.execute(sql`
+    UPDATE broadcast_recipient r SET customer_id = ${intoId}::uuid
+    WHERE r.customer_id = ${fromId}::uuid
+      AND NOT EXISTS (SELECT 1 FROM broadcast_recipient x WHERE x.broadcast_id = r.broadcast_id AND x.customer_id = ${intoId}::uuid)`);
+
   // 8. F leaves the Contacts page; its orders now count under T.
   await refreshContactSummary(tx, [fromId, intoId]);
   return { movedLabels: labels.length, movedLists: lists.length };
@@ -125,6 +132,16 @@ export async function eraseContactTables(tx: DbExecutor, customerId: string): Pr
     .update(contactConsent)
     .set({ wording: null, note: null, confirmState: "none" })
     .where(eq(contactConsent.customerId, customerId));
+
+  // 4. Broadcasts: anyone still waiting is left out, then every row loses who it was for and
+  //    what it said. The rows stay so a broadcast's counts stay true; message_id clears itself
+  //    when the messages are deleted.
+  await tx.execute(sql`
+    UPDATE broadcast_recipient SET state = 'skipped', skip_reason = 'erased'
+    WHERE customer_id = ${customerId}::uuid AND state = 'pending'`);
+  await tx.execute(sql`
+    UPDATE broadcast_recipient SET customer_id = NULL, to_wa = NULL, "values" = NULL, error_text = NULL
+    WHERE customer_id = ${customerId}::uuid`);
 
   // 5. The customer row stays (the shop's record), so they remain a contact, marked stopped.
   await tx.update(contactSummary).set({ waUnreachableAt: null }).where(eq(contactSummary.customerId, customerId));

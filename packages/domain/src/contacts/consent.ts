@@ -37,6 +37,7 @@ import {
 } from "@ms/shared";
 import type { MetaConfig } from "../inbox/meta.js";
 import { InboxSendError, sendFromConversation } from "../inbox/send.js";
+import { markBroadcastOptOut } from "../meta/broadcast-marks.js";
 
 export type ConsentChange = {
   channel: ConsentChannel;
@@ -192,7 +193,7 @@ export async function applyConsentKeyword(
   const contactId = await resolveContactId(db, a.customerId);
 
   if (kw === "stop") {
-    await recordConsent(db, contactId, {
+    const changed = await recordConsent(db, contactId, {
       channel: "whatsapp",
       purpose: "marketing",
       state: "withdrawn",
@@ -202,6 +203,8 @@ export async function applyConsentKeyword(
       confirm: true,
       recordedAt: a.at,
     });
+    // Phase B (R61): a new withdrawal is counted against the broadcast they last got.
+    if (changed) await markBroadcastOptOut(db, contactId, a.at);
     return "stop";
   }
 
@@ -256,13 +259,19 @@ export async function applyUserPreference(
   const contactId = await resolveContactId(db, customerId);
 
   if (p.value === "stop") {
-    return recordConsent(db, contactId, {
+    const changed = await recordConsent(db, contactId, {
       channel: "whatsapp",
       purpose: "marketing",
       state: "withdrawn",
       method: "whatsapp_setting",
       wording: "Turned promotions off in WhatsApp",
     });
+    // Phase B (R61): counted against the broadcast they last got.
+    if (changed) {
+      const at = typeof p.timestamp === "number" && p.timestamp > 0 ? new Date(p.timestamp * 1000) : new Date();
+      await markBroadcastOptOut(db, contactId, at);
+    }
+    return changed;
   }
   const current = await whatsappMarketingConsent(db, contactId);
   if (current?.state !== "withdrawn") return false;

@@ -17,7 +17,7 @@ const GROUPS: { heading: string; caps: Capability[] }[] = [
       "recordings.delete", "transcripts.view", "inbox.settings", "inbox.reports", "inbox.erase",
       "social.comments", "channels.manage", "templates.manage", "catalogue.manage",
       "social.publish", "insights.view", "leads.view",
-      "contacts.view", "contacts.manage",
+      "contacts.view", "contacts.manage", "broadcasts.send",
     ],
   },
   { heading: "Ads", caps: ["ads.view", "ads.manage"] },
@@ -92,6 +92,7 @@ const LABEL: Record<Capability, string> = {
   "ads.manage": "Create, turn on, pause and change adverts — spends money (owner)",
   "contacts.view": "See contacts and contact lists",
   "contacts.manage": "Edit, add and import contacts; labels, lists and consent",
+  "broadcasts.send": "Send WhatsApp broadcasts to many customers, and change broadcast settings (owner)",
 };
 
 // Silence unused import warning — CAPABILITIES is used at runtime via GROUPS validation.

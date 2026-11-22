@@ -119,6 +119,10 @@ export const CAPABILITIES = [
   // Edit a contact, add by hand, import, labels, lists, record consent. Owner and admin
   // (grantable to a named manager).
   "contacts.manage",
+  // Owner-only by default: create, test, confirm, schedule, resume and cancel a WhatsApp broadcast,
+  // and change broadcast settings (suite spec 14, Phase B). It messages many customers at once.
+  // Deliberately NOT in ADMIN_CAPS/MANAGER_CAPS. Grantable per-user via overrides.
+  "broadcasts.send",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 

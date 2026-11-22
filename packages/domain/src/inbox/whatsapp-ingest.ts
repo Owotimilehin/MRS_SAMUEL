@@ -16,11 +16,13 @@ import {
   inboxWebhookEvent,
   type DbExecutor,
 } from "@ms/db";
-import { isBsuid, messagePreview, toE164, WHATSAPP_ACCOUNT_KEY } from "@ms/shared";
+import { BROADCAST_CALLBACK_PREFIX, isBsuid, messagePreview, toE164, WHATSAPP_ACCOUNT_KEY } from "@ms/shared";
 import { applyTemplateWebhook, TEMPLATE_WEBHOOK_FIELDS, wabaIsOurs } from "../meta/templates.js";
 import { parseFlowReply, recordFlowResponse } from "../meta/flow-responses.js";
 import { applyFlowWebhook } from "../meta/flows.js";
-import { applyConsentKeyword, applyUserPreference } from "../contacts/consent.js";
+import { applyConsentKeyword, applyUserPreference, resolveContactId } from "../contacts/consent.js";
+import { applyAccountEvent, applyBroadcastStatus } from "../meta/broadcasts.js";
+import { markBroadcastReply } from "../meta/broadcast-marks.js";
 import { findOrOpenConversation, publishInboxEvent, resolveWhatsAppCustomer, signalFor, touchConversation, ts } from "./core.js";
 import { noteChatOrderMessage, parseOrderMessage } from "../meta/catalogue-chat.js";
 
@@ -98,6 +100,8 @@ interface WaStatus {
   status: "sent" | "delivered" | "read" | "failed" | string;
   timestamp?: string;
   errors?: { code?: number; title?: string; message?: string; error_data?: { details?: string } }[];
+  /** Our own value from the send request, returned on the message's statuses (suite spec 14, R58). */
+  biz_opaque_callback_data?: string;
 }
 
 interface WaChangeValue {
@@ -270,6 +274,13 @@ export async function ingestWhatsAppPayload(db: DbExecutor, payload: WaWebhookPa
         }
         continue;
       }
+      if (change.field === "account_update" || change.field === "business_capability_update") {
+        // A restriction on the account, or a new daily limit (suite spec 14, R55). Only for an account we hold.
+        if (entry.id && (await wabaIsOurs(db, entry.id))) {
+          await applyAccountEvent(db, entry.id, change.field, value as unknown as Record<string, unknown>);
+        }
+        continue;
+      }
       if (change.field !== "messages") continue;
 
       const waNumberId = value.metadata?.phone_number_id;
@@ -376,6 +387,11 @@ async function ingestMessage(
         .set({ payload: sql`coalesce(${inboxMessage.payload}, '{}'::jsonb) || ${JSON.stringify({ _suite: { consent: kw } })}::jsonb` })
         .where(eq(inboxMessage.id, row.id));
     }
+    // Broadcasts (suite spec 14, R60): a reply counts for the broadcast they last got. A number
+    // that writes to us is on WhatsApp after all, whatever an earlier failure said.
+    await markBroadcastReply(db, who.customerId, at);
+    const contactId = await resolveContactId(db, who.customerId);
+    await db.execute(sql`UPDATE contact_summary SET wa_unreachable_at = NULL WHERE customer_id = ${contactId}::uuid AND wa_unreachable_at IS NOT NULL`);
   }
 
   // A completed form (suite spec 07): keep the answers beside the message, name the form in the
@@ -442,7 +458,22 @@ async function applySystemChange(db: DbExecutor, m: WaInboundMessage): Promise<v
 
 async function applyStatus(db: DbExecutor, s: WaStatus): Promise<boolean> {
   const at = tsToDate(s.timestamp);
-  const [known] = await db.select({ id: inboxMessage.id }).from(inboxMessage).where(eq(inboxMessage.waMessageId, s.id));
+  let [known] = await db.select({ id: inboxMessage.id }).from(inboxMessage).where(eq(inboxMessage.waMessageId, s.id));
+  const err0 = s.errors?.[0];
+  const errorCode = err0?.code != null ? String(err0.code) : null;
+  if (!known && typeof s.biz_opaque_callback_data === "string" && s.biz_opaque_callback_data.startsWith(BROADCAST_CALLBACK_PREFIX)) {
+    // A broadcast message whose send timed out (suite spec 14, R58): our callback value names the
+    // recipient, so the message gets its Meta ID now and the status is applied as for any message.
+    const settled = await applyBroadcastStatus(db, {
+      messageId: null,
+      waMessageId: s.id,
+      callbackData: s.biz_opaque_callback_data,
+      status: s.status,
+      at,
+      errorCode,
+    });
+    if (settled) [known] = await db.select({ id: inboxMessage.id }).from(inboxMessage).where(eq(inboxMessage.waMessageId, s.id));
+  }
   if (!known) {
     if (Date.now() - at.getTime() < ORPHAN_STATUS_RETRY_MS) throw new StatusBeforeSendError(s.id);
     return false; // sent outside the inbox (e.g. WhatsApp Business app) — nothing to update
@@ -458,7 +489,10 @@ async function applyStatus(db: DbExecutor, s: WaStatus): Promise<boolean> {
       })
       .where(eq(inboxMessage.waMessageId, s.id))
       .returning({ id: inboxMessage.id, conversationId: inboxMessage.conversationId });
-    if (row) await signalMessageStatus(db, row.conversationId, row.id);
+    if (row) {
+      await applyBroadcastStatus(db, { messageId: row.id, waMessageId: s.id, status: "failed", at, errorCode, errorTitle: err?.title ?? null });
+      await signalMessageStatus(db, row.conversationId, row.id);
+    }
     return !!row;
   }
 
@@ -478,7 +512,14 @@ async function applyStatus(db: DbExecutor, s: WaStatus): Promise<boolean> {
     })
     .where(and(eq(inboxMessage.waMessageId, s.id), inArray(inboxMessage.status, lower)))
     .returning({ id: inboxMessage.id, conversationId: inboxMessage.conversationId });
-  if (row) await signalMessageStatus(db, row.conversationId, row.id);
+  if (row) {
+    await applyBroadcastStatus(db, { messageId: row.id, waMessageId: s.id, status: s.status, at });
+    await signalMessageStatus(db, row.conversationId, row.id);
+  } else {
+    // The message was already at or past this status (a timed-out broadcast message settled just now,
+    // or a report arriving twice): the broadcast row still moves forward on its own.
+    await applyBroadcastStatus(db, { messageId: known.id, waMessageId: s.id, status: s.status, at });
+  }
   return !!row;
 }
 

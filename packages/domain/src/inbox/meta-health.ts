@@ -46,7 +46,7 @@ export interface HealthLine {
  * WABA id, the shape the broadcasts work stores under app_settings
  * "broadcast_account_block"). Read when present; this file never writes it.
  */
-export interface AccountBlock {
+export interface HealthAccountBlock {
   event?: string | null;
   detail?: string | null;
   at?: string | null;
@@ -207,7 +207,7 @@ function healthDetail(h: WabaHealthResponse["health_status"]): string | null {
   return null;
 }
 
-export function classifyWaba(resp: WabaHealthResponse | null, block: AccountBlock | null | undefined): Verdict {
+export function classifyWaba(resp: WabaHealthResponse | null, block: HealthAccountBlock | null | undefined): Verdict {
   const down = "Customers on WhatsApp are not getting replies";
   const limited = "WhatsApp messages may be limited";
   if (block && (block.event || block.detail)) {
@@ -316,7 +316,7 @@ export async function collectMetaHealth(
   cfg: MetaConfig,
   lines: readonly HealthLine[],
   now: Date,
-  opts: { accountBlocks?: Record<string, AccountBlock | undefined> } = {},
+  opts: { accountBlocks?: Record<string, HealthAccountBlock | undefined> } = {},
 ): Promise<CollectResult> {
   const outcomes: HealthOutcome[] = [];
   const numberInfo = new Map<string, NumberInfo>();
