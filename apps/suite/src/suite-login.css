@@ -1,0 +1,171 @@
+/* The suite's sign-in page, "Executive" (SuiteLogin.tsx; docs/mockups/login-5-executive.html).
+   Colours are the suite's theme: cream page, white fields, orange (#c84b14 for text and buttons). */
+
+.exl {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  background: #fbf7f1;
+  color: #1d1712;
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Left: the deep brand panel */
+.exl-brand {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+  padding: 56px 64px;
+  background: #1d1712;
+  color: #fbf2e6;
+}
+.exl-brand::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  background:
+    radial-gradient(700px 500px at 0% 0%, rgba(232, 93, 28, 0.35), transparent 60%),
+    radial-gradient(500px 400px at 100% 100%, rgba(201, 138, 18, 0.18), transparent 60%);
+}
+.exl-brand::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.06;
+  background-image:
+    linear-gradient(#fff 1px, transparent 1px),
+    linear-gradient(90deg, #fff 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+.exl-brand > * { position: relative; z-index: 1; }
+.exl-logo {
+  display: grid;
+  place-items: center;
+  width: 260px;
+  height: 124px;
+  border-radius: 24px;
+  background: #e85d1c;
+  box-shadow: 0 24px 50px -24px rgba(232, 93, 28, 0.8);
+}
+.exl-logo img { width: 82%; height: auto; }
+.exl-quote { max-width: 520px; }
+.exl-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #f0a36b; }
+.exl-quote h1 {
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 500;
+  font-size: clamp(34px, 3.4vw, 50px);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  margin: 16px 0 18px;
+  color: #fbf2e6;
+}
+.exl-quote h1 em { font-style: italic; color: #f6b57a; }
+.exl-quote p { margin: 0; color: #cdbba8; font-size: 15.5px; line-height: 1.65; }
+.exl-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 560px;
+  padding-top: 26px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.exl-stats div { padding-right: 18px; }
+.exl-stats div + div { padding-left: 18px; border-left: 1px solid rgba(255, 255, 255, 0.12); }
+.exl-stats b { display: block; font-family: "Fraunces", Georgia, serif; font-size: 30px; font-weight: 600; color: #fff; }
+.exl-stats span { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.4; color: #b7a490; }
+
+/* Right: the form, centred */
+.exl-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 56px 40px;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+.exl-form { width: 100%; max-width: 400px; margin: auto 0; text-align: center; }
+.exl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid #efe6da;
+  background: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #6b5f53;
+}
+.exl-badge i { width: 7px; height: 7px; border-radius: 50%; background: #1f7a44; box-shadow: 0 0 0 3px #e4f3e9; }
+.exl-form h2 { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 36px; letter-spacing: -0.015em; margin: 20px 0 6px; color: #1d1712; }
+.exl-sub { margin: 0 0 30px; font-size: 14.5px; color: #6b5f53; }
+
+.exl-field { margin-bottom: 18px; text-align: left; }
+.exl-field label { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; font-size: 13px; font-weight: 600; color: #1d1712; }
+.exl-forgot { font-weight: 600; color: #b8460f; cursor: help; }
+.exl-in {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 50px;
+  padding: 0 6px 0 14px;
+  border: 1px solid #e2d6c6;
+  border-radius: 12px;
+  background: #fff;
+  color: #9a8d7f;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.exl-in:focus-within { border-color: #c84b14; box-shadow: 0 0 0 4px rgba(200, 75, 20, 0.12); color: #c84b14; }
+.exl-in input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; font: inherit; font-size: 15px; color: #1d1712; }
+.exl-in input::placeholder { color: #b3a697; }
+.exl-reveal { width: 38px; height: 38px; border: 0; border-radius: 9px; display: grid; place-items: center; background: transparent; color: #6b5f53; cursor: pointer; }
+.exl-reveal:hover { background: #fdecd2; color: #b8460f; }
+.exl-reveal:focus-visible { outline: 2px solid #c84b14; }
+
+.exl-note { margin: -6px 0 14px; padding: 8px 12px; border-radius: 10px; background: #fdf2d9; color: #9a6406; font-size: 12.5px; font-weight: 600; }
+.exl-error { margin: -6px 0 14px; padding: 10px 12px; border-radius: 10px; background: #fbe5e5; color: #b42f2f; font-size: 13px; font-weight: 600; }
+
+.exl-btn {
+  width: 100%;
+  height: 52px;
+  margin-top: 6px;
+  border: 0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #c84b14;
+  color: #fff;
+  font: inherit;
+  font-size: 15.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.exl-btn:hover:not(:disabled) { background: #b8460f; }
+.exl-btn:focus-visible { outline: 3px solid rgba(200, 75, 20, 0.35); outline-offset: 2px; }
+.exl-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.exl-form.is-done .exl-btn { background: #1f7a44; opacity: 1; }
+
+.exl-divider { display: flex; align-items: center; gap: 12px; margin: 26px 0 18px; font-size: 12.5px; color: #9a8d7f; }
+.exl-divider::before, .exl-divider::after { content: ""; flex: 1; height: 1px; background: #efe6da; }
+.exl-channels { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px 18px; font-size: 12.5px; font-weight: 600; }
+.exl-channels span { display: inline-flex; align-items: center; gap: 6px; }
+.exl-legal { margin: 0; padding-top: 40px; font-size: 12px; color: #9a8d7f; text-align: center; }
+
+/* Phone and tablet: the brand panel on top, then the form */
+@media (max-width: 960px) {
+  .exl { grid-template-columns: 1fr; }
+  .exl-brand { padding: 28px 22px; gap: 24px; }
+  .exl-logo { width: 190px; height: 92px; }
+  .exl-quote h1 { font-size: 30px; }
+  .exl-stats b { font-size: 22px; }
+  .exl-side { min-height: auto; padding: 32px 22px; }
+}

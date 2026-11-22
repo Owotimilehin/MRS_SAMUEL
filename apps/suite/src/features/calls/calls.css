@@ -1,0 +1,86 @@
+/* Calls page. Patterns from docs/design/business-suite-ui-spec.md (KPI card, card header, table, bars). */
+
+.cl-page { display: flex; flex-direction: column; gap: 16px; }
+.cl-card { padding: 0; overflow: hidden; }
+.cl-card__head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; padding: 16px 18px 12px; }
+.cl-card__head h3 { margin: 0; }
+.cl-sub { margin: 3px 0 0; color: var(--ink-faint); font-size: 12.5px; max-width: 70ch; }
+.cl-filters { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cl-select { width: auto; min-width: 150px; height: 34px; font-size: 13px; }
+.cl-link { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); font-weight: 600; cursor: pointer; }
+.cl-pad { padding: 4px 18px 18px; margin: 0; }
+
+/* Tables sit flush inside the card */
+.cl-table-wrap { border: 0; border-radius: 0; box-shadow: none; }
+.cl-table-wrap .table thead th { border-top: 1px solid var(--line); }
+.cl-meta { display: block; color: var(--ink-faint); font-size: 12px; font-weight: 500; margin-top: 2px; }
+td > .cl-meta:only-child { margin: 0; }
+.cl-chev { width: 28px; color: var(--ink-faint); padding-right: 0 !important; }
+.cl-detail td { background: var(--surface-soft); padding-top: 6px !important; padding-bottom: 14px !important; }
+.cl-more { display: flex; justify-content: center; padding: 14px; border-top: 1px solid var(--line); }
+
+.cl-who { display: inline-flex; align-items: center; gap: 10px; }
+.cl-who b { font-size: 13.5px; font-weight: 600; }
+.cl-avatar {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: var(--accent-soft); color: var(--accent-ink); font-size: 10.5px; font-weight: 700;
+}
+.cl-dir { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.cl-dir svg { color: var(--ink-soft); }
+.cl-wait { font-weight: 600; }
+.cl-wait.is-late { color: var(--danger-ink); }
+.cl-reason { max-width: 320px; white-space: normal; }
+.cl-reason b { font-weight: 600; }
+.cl-returned { display: inline-flex; align-items: center; gap: 5px; color: var(--success-ink); font-weight: 600; font-size: 12.5px; }
+.cl-notyet { color: var(--danger-ink); font-weight: 600; font-size: 12.5px; }
+
+/* Metrics */
+.cl-metrics { display: flex; flex-direction: column; gap: 16px; }
+.cl-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.cl-kpi { padding: 16px 18px; }
+.cl-kpi__lbl { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 13px; font-weight: 500; }
+.cl-kpi__ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: none; }
+.cl-kpi__ic--green { background: var(--success-soft); color: var(--success); }
+.cl-kpi__ic--accent { background: var(--accent-soft); color: var(--accent-fill); }
+.cl-kpi__ic--amber { background: var(--warning-soft); color: var(--warning); }
+.cl-kpi__ic--pink { background: #fbe0e3; color: #e8536a; }
+.cl-chip { margin-left: auto; font-size: 12px; font-weight: 600; border-radius: 7px; padding: 2px 7px; color: var(--warning-ink); background: var(--warning-soft); white-space: nowrap; }
+.cl-kpi__val { font-size: 27px; font-weight: 700; letter-spacing: -0.02em; margin: 10px 0 4px; color: var(--ink); }
+.cl-kpi__foot { font-size: 12.5px; color: var(--ink-faint); }
+
+.cl-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+.cl-row--3 { grid-template-columns: 1.4fr 1fr 1fr; }
+.cl-legend { display: flex; gap: 16px; padding: 0 18px; font-size: 12.5px; color: var(--ink-soft); }
+.cl-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.cl-chart { padding: 6px 10px 12px; }
+
+.cl-heat { display: grid; gap: 3px; padding: 4px 18px 18px; align-items: center; }
+.cl-heat__h { font-size: 10.5px; color: var(--ink-faint); text-align: left; white-space: nowrap; }
+.cl-heat__d { font-size: 11.5px; color: var(--ink-soft); font-weight: 600; }
+.cl-heat__c { height: 22px; border-radius: 5px; background: var(--surface-soft); }
+
+.cl-bars { display: flex; flex-direction: column; gap: 14px; padding: 4px 18px 18px; }
+.cl-bars__t { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+.cl-bars__t span { color: var(--ink-soft); }
+.cl-bar { height: 7px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.cl-bar i { display: block; height: 100%; border-radius: 99px; background: var(--accent-fill); }
+
+.cl-defs { margin: 0; font-size: 12.5px; color: var(--ink-faint); }
+.cl-defs b { color: var(--ink-soft); }
+
+@media (max-width: 1240px) {
+  .cl-kpis { grid-template-columns: repeat(2, 1fr); }
+  .cl-row, .cl-row--3 { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .cl-kpis { grid-template-columns: 1fr; }
+  .cl-filters { margin-left: 0; }
+}
+
+/* Keep names, numbers and times on one line; wide tables scroll inside their card. */
+.cl-table-wrap { overflow-x: auto; }
+.cl-table-wrap .table td, .cl-table-wrap .table th { white-space: nowrap; }
+.cl-table-wrap .table td.cl-reason { white-space: normal; min-width: 220px; }
+/* Nine columns: tighter side padding so the last column fits at 1440px. */
+.cl-table-wrap .table td, .cl-table-wrap .table th { padding-left: 12px; padding-right: 12px; }
+.cl-table-wrap .table td:first-child, .cl-table-wrap .table th:first-child { padding-left: 18px; }

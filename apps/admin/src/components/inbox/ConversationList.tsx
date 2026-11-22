@@ -6,6 +6,7 @@ import { ChannelIcon } from "./ChannelIcon.js";
 import { DataState } from "../DataState.js";
 import { useInboxUi } from "../../lib/inbox-ui.js";
 import { inboxApi, inboxKeys, type ConversationFilters } from "../../lib/inbox-api.js";
+import { useCallsHref } from "../../lib/app-frame.js";
 import { channelName, contactName, emptyListText, listTime, staffLabel, type InboxTab, type InboxTabKey } from "../../lib/inbox-logic.js";
 import type { ConversationRow, IdentityChannel, InboxMe } from "../../lib/inbox-types.js";
 import { channelForKind } from "@ms/shared";
@@ -61,6 +62,8 @@ export function ConversationList(p: Props): JSX.Element {
     return () => clearTimeout(t);
   }, [search]);
 
+  // In the suite calls have their own section, so the list shows chats only.
+  const callsHref = useCallsHref();
   const current = p.tabs.find((t) => t.key === p.tab) ?? p.tabs[0]!;
   const filters: ConversationFilters = {
     status: current.status,
@@ -69,6 +72,7 @@ export function ConversationList(p: Props): JSX.Element {
     ...(p.label ? { label: p.label } : {}),
     ...(q ? { q } : {}),
     ...(channel ? { channel } : {}),
+    ...(callsHref ? { chatsOnly: true } : {}),
   };
 
   const list = useInfiniteQuery({

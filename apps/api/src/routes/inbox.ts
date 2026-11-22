@@ -493,6 +493,10 @@ export function inboxRoutes(db: DbClient) {
     if (q.number && z.string().uuid().safeParse(q.number).success) conds.push(eq(inboxConversation.phoneNumberId, q.number));
     if (q.team && z.string().uuid().safeParse(q.team).success) conds.push(eq(inboxConversation.teamId, q.team));
     if (q.label) conds.push(sql`${q.label} = any(${inboxConversation.labels})`);
+    // The suite keeps calls in their own section: there the Inbox lists only conversations with messages.
+    if (q.chats_only === "1") {
+      conds.push(sql`exists (select 1 from inbox_message m where m.conversation_id = ${inboxConversation.id})`);
+    }
     if (q.channel && (IDENTITY_CHANNELS as readonly string[]).includes(q.channel)) {
       conds.push(eq(inboxConversation.channel, q.channel));
     }

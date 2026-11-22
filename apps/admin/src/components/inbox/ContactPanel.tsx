@@ -5,7 +5,7 @@ import { Facebook, Instagram, MessageCircle } from "lucide-react";
 import { ConfirmModal } from "../ConfirmModal.js";
 import { ChatOrders } from "./ChatOrderCard.js";
 import { AdSourceLine } from "./AdSourceLine.js";
-import { CustomerLink } from "../../lib/app-frame.js";
+import { CustomerLink, useCallsHref } from "../../lib/app-frame.js";
 import { inboxApi, inboxKeys } from "../../lib/inbox-api.js";
 import {
   contactName,
@@ -39,6 +39,8 @@ export function ContactPanel({
   onMerged: () => void;
 }): JSX.Element {
   const qc = useQueryClient();
+  // The suite's Calls page for this customer (null in the admin app, where calls stay in the chat).
+  const callsHref = useCallsHref();
   const q = useQuery({ queryKey: inboxKeys.contact(customerId), queryFn: () => inboxApi.contact(customerId) });
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
@@ -102,6 +104,13 @@ export function ContactPanel({
             <CustomerLink customerId={c.id} style={{ fontSize: 13 }}>
               Orders &amp; customer profile →
             </CustomerLink>
+          </div>
+        )}
+        {callsHref && (
+          <div style={{ marginTop: 6 }}>
+            <a href={callsHref(c.id)} style={{ fontSize: 13 }}>
+              Calls with this customer →
+            </a>
           </div>
         )}
       </div>
