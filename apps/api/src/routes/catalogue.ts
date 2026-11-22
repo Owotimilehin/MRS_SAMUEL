@@ -31,6 +31,7 @@ import {
   priceNgnFromMetaPrice,
   requestCatalogueSync,
   setCommerceSettings,
+  switchOrderUpdatesOn,
   type MetaConfig,
 } from "@ms/domain";
 import { ORDER_TEMPLATE_NAMES } from "@ms/shared";
@@ -352,6 +353,11 @@ export function catalogueRoutes(db: DbClient) {
       if (body.is_cart_enabled !== undefined) patch.isCartEnabled = body.is_cart_enabled;
       if (body.is_catalog_visible !== undefined) patch.isCatalogVisible = body.is_catalog_visible;
     }
+
+    // Switching order updates on stamps order_updates_enabled_at and marks every placed order as told
+    // about its current status, in one transaction, so only a status reached after this moment is announced.
+    // Only an off → on change does anything (checked inside, atomically); on → on keeps any update still due.
+    if (body.order_updates_enabled === true) await switchOrderUpdatesOn(db, link.id);
 
     const [updated] = await db
       .update(catalogueLink)

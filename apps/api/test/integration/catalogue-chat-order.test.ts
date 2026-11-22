@@ -430,7 +430,7 @@ describe("selling in WhatsApp chat", () => {
   });
 
   it("POST ask sends the question when a person presses the button", async () => {
-    const { cart, conv } = await sendCart([{ variantId: pine330, quantity: 2 }]);
+    const { cart } = await sendCart([{ variantId: pine330, quantity: 2 }]);
     expect((await call(blind, "POST", `/inbox/chat-orders/${cart.id}/ask`)).status).toBe(404);
     const res = await call(agent, "POST", `/inbox/chat-orders/${cart.id}/ask`);
     expect(res.status).toBe(200);
@@ -438,12 +438,75 @@ describe("selling in WhatsApp chat", () => {
     expect(interactiveOf(sentMessages()[0]!).action.buttons).toHaveLength(2);
     expect((await cartRow(cart.id)).state).toBe("asked");
     expect(await db.select().from(auditLog).where(and(eq(auditLog.action, "chat_order.ask"), eq(auditLog.entityId, cart.id)))).toHaveLength(1);
+    expect((await cartRow(cart.id)).askClaimedAt).not.toBeNull();
 
-    // Outside the 24-hour window the question cannot go.
-    await closeWindow(conv.id);
-    const late = await call(agent, "POST", `/inbox/chat-orders/${cart.id}/ask`);
+    // A second press is refused: the customer gets the question once.
+    const again = await call(agent, "POST", `/inbox/chat-orders/${cart.id}/ask`);
+    expect(again.status).toBe(409);
+    expect(((await again.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe("already_asked");
+    expect(sentMessages()).toHaveLength(1);
+
+    // Outside the 24-hour window the question cannot go, and the claim is given back for later.
+    const other = await sendCart([{ variantId: pine330, quantity: 1 }]);
+    await closeWindow(other.conv.id);
+    const late = await call(agent, "POST", `/inbox/chat-orders/${other.cart.id}/ask`);
     expect(late.status).toBe(409);
     expect(((await late.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe("window_closed");
+    expect((await cartRow(other.cart.id)).askClaimedAt).toBeNull();
+    expect(sentMessages()).toHaveLength(1);
+  });
+
+  it('"Ask" and the worker at the same moment: the customer gets "delivery or pickup?" once', async () => {
+    await setSwitches({ ask: true });
+    for (let round = 0; round < 5; round++) {
+      graphCalls.length = 0;
+      const { cart } = await sendCart([{ variantId: pine330, quantity: 2 }]);
+      expect(cart.nextPrompt).toBe("fulfilment");
+      const [res, sentByWorker] = await Promise.all([call(agent, "POST", `/inbox/chat-orders/${cart.id}/ask`), runChatOrderPrompts(db, cfg, log)]);
+      // Exactly one of them sent it; the other found the claim taken.
+      expect(sentMessages()).toHaveLength(1);
+      if (res.status === 200) expect(sentByWorker).toBe(0);
+      else {
+        expect(res.status).toBe(409);
+        expect(((await res.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe("already_asked");
+        expect(sentByWorker).toBe(1);
+      }
+      expect(await cartRow(cart.id)).toMatchObject({ state: "asked", nextPrompt: null });
+      // Neither sends it again afterwards.
+      expect(await runChatOrderPrompts(db, cfg, log)).toBe(0);
+      expect((await call(agent, "POST", `/inbox/chat-orders/${cart.id}/ask`)).status).toBe(409);
+      expect(sentMessages()).toHaveLength(1);
+    }
+  });
+
+  it('two "Ask" presses at the same moment send the question once', async () => {
+    const { cart } = await sendCart([{ variantId: pine330, quantity: 1 }]);
+    const results = await Promise.all([1, 2, 3].map(() => call(agent, "POST", `/inbox/chat-orders/${cart.id}/ask`)));
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409, 409]);
+    expect(sentMessages()).toHaveLength(1);
+  });
+
+  it('"Ask" after WhatsApp certainly refused the question may send it; after no answer it may not', async () => {
+    const refused = await sendCart([{ variantId: pine330, quantity: 1 }]);
+    messageHandler = () => json({ error: { message: "(#131000) Something went wrong", code: 131000 } }, 400);
+    expect((await call(agent, "POST", `/inbox/chat-orders/${refused.cart.id}/ask`)).status).toBe(502);
+    expect((await cartRow(refused.cart.id)).askClaimedAt).toBeNull();
+    messageHandler = null;
+    expect((await call(agent, "POST", `/inbox/chat-orders/${refused.cart.id}/ask`)).status).toBe(200);
+
+    graphCalls.length = 0;
+    const unknown = await sendCart([{ variantId: pine330, quantity: 1 }]);
+    messageHandler = () => {
+      throw new DOMException("The operation timed out", "TimeoutError");
+    };
+    expect((await call(agent, "POST", `/inbox/chat-orders/${unknown.cart.id}/ask`)).status).toBe(502);
+    messageHandler = null;
+    expect((await cartRow(unknown.cart.id)).askClaimedAt).not.toBeNull();
+    expect((await call(agent, "POST", `/inbox/chat-orders/${unknown.cart.id}/ask`)).status).toBe(409);
+    // And the worker, switched on, does not send it either.
+    await setSwitches({ ask: true });
+    await db.update(catalogueChatOrder).set({ nextPrompt: "fulfilment" }).where(eq(catalogueChatOrder.id, unknown.cart.id));
+    expect(await runChatOrderPrompts(db, cfg, log)).toBe(0);
     expect(sentMessages()).toHaveLength(1);
   });
 
@@ -1019,6 +1082,47 @@ describe("selling in WhatsApp chat", () => {
     expect(await runOrderUpdates(db, cfg, log)).toBe(0);
     expect(sentMessages()).toHaveLength(1);
     expect((await cartRow(unknown.cart.id)).problem).toContain("may have been sent");
+  });
+
+  it("switching order updates on in the shop admin never announces a status from before the switch-on", async () => {
+    // Off (beforeEach). An order goes out for delivery before the owner switches updates on.
+    const early = await placedOrder();
+    await setStatus(early.order.id, "out_for_delivery");
+
+    expect((await call(owner, "PATCH", "/catalogue/settings", { order_updates_enabled: true })).status).toBe(200);
+    const [link] = await db.select().from(catalogueLink);
+    expect(link!.orderUpdatesEnabled).toBe(true);
+    expect(link!.orderUpdatesEnabledAt).not.toBeNull();
+    // The old status is recorded as told; nothing is sent.
+    expect((await cartRow(early.cart.id)).lastNotifiedStatus).toBe("out_for_delivery");
+    expect(await runOrderUpdates(db, cfg, log)).toBe(0);
+    expect(sentMessages()).toHaveLength(0);
+
+    // A change after the switch-on is announced (window open: plain text).
+    await setStatus(early.order.id, "delivered");
+    expect(await runOrderUpdates(db, cfg, log)).toBe(1);
+    expect(sentMessages()).toHaveLength(1);
+
+    // Pressing "on" again while on neither moves the moment nor swallows an update still due.
+    graphCalls.length = 0;
+    const later = await placedOrder();
+    await setStatus(later.order.id, "paid");
+    expect((await call(owner, "PATCH", "/catalogue/settings", { order_updates_enabled: true })).status).toBe(200);
+    const [again] = await db.select().from(catalogueLink);
+    expect(again!.orderUpdatesEnabledAt).toEqual(link!.orderUpdatesEnabledAt);
+    expect(await runOrderUpdates(db, cfg, log)).toBe(1);
+    expect(sentMessages()).toHaveLength(1);
+
+    // Off, a status changes, on again: the new moment is later and the change made while off is not announced.
+    graphCalls.length = 0;
+    expect((await call(owner, "PATCH", "/catalogue/settings", { order_updates_enabled: false })).status).toBe(200);
+    await setStatus(later.order.id, "out_for_delivery");
+    expect((await call(owner, "PATCH", "/catalogue/settings", { order_updates_enabled: true })).status).toBe(200);
+    const [third] = await db.select().from(catalogueLink);
+    expect(third!.orderUpdatesEnabledAt!.getTime()).toBeGreaterThan(link!.orderUpdatesEnabledAt!.getTime());
+    expect(await runOrderUpdates(db, cfg, log)).toBe(0);
+    expect(sentMessages()).toHaveLength(0);
+    expect((await cartRow(later.cart.id)).lastNotifiedStatus).toBe("out_for_delivery");
   });
 
   it("a chat order is an ordinary online order waiting for payment, so the unpaid-order expiry covers it", async () => {
