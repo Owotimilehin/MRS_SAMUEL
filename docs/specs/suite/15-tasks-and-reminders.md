@@ -77,22 +77,22 @@ CREATE TABLE IF NOT EXISTS "inbox_reminder" (
 
 ### 5.3 Routes
 
-All under `/v1/inbox`, behind `withViewer` (needs `inbox.view`).
+All under `/v1/inbox`, behind `withViewer` (needs `inbox.view`). The new routes live in `apps/api/src/routes/inbox-tasks.ts`, mounted at `/v1/inbox/tasks`; the list, detail, unread, read and PATCH changes are in `inbox.ts`.
 
 | Route | Permission | What |
 |---|---|---|
-| `POST /conversations/:id/snooze` `{ until: ISO }` | `inbox.reply`, chat visible | Only open or pending chats. `until` at least 1 minute ahead, at most 90 days. Audit `inbox.conversation_snooze` |
-| `DELETE /conversations/:id/snooze` | `inbox.reply`, chat visible | Wake now. Audit `inbox.conversation_unsnooze` |
+| `POST /tasks/snooze/:conversationId` `{ until: ISO }` | `inbox.reply`, chat visible | Only open or pending chats. `until` at least 1 minute ahead, at most 90 days. Audit `inbox.conversation_snooze` |
+| `DELETE /tasks/snooze/:conversationId` | `inbox.reply`, chat visible | Wake now. Audit `inbox.conversation_unsnooze` |
 | `GET /conversations` | as today | `status=open` leaves out snoozed chats; new `status=snoozed` lists them (soonest wake first). Each row gains `snoozed_until`, `woke_at`, `waiting_since`, `waiting_minutes`; the page gains `reply_target_minutes` |
 | `GET /conversations/:id` | as today | Adds `snoozedUntil`, `snoozedBy`, `wokeAt` (the row's own fields) |
 | `GET /unread` | as today | Leaves out snoozed chats |
 | `PATCH /conversations/:id` with `status: closed` | as today | Also clears the snooze |
-| `GET /reply-target/summary` | `inbox.view` | `{ target_minutes, late, longest_minutes }` over open chats the viewer may see |
-| `GET /reminders?view=due\|upcoming\|done\|everyone&conversation_id=&customer_id=` | `inbox.view` | See 5.4 |
-| `GET /reminders/count` | `inbox.view` | `{ due }`: my open reminders that are due, for the badge |
-| `POST /reminders` `{ note, due_at, assignee_id?, conversation_id? \| customer_id? }` | see 5.4 | Audit `inbox.reminder_add` |
-| `PATCH /reminders/:id` `{ note?, due_at?, assignee_id?, done? }` | see 5.4 | Moving `due_at` clears `notified_at` so it alerts again. `done: false` reopens. Audit `inbox.reminder_update` |
-| `DELETE /reminders/:id` | creator, or `inbox.assign` | Audit `inbox.reminder_delete` |
+| `GET /tasks/reply-target` | `inbox.view` | `{ target_minutes, late, longest_minutes }` over open chats the viewer may see |
+| `GET /tasks/reminders?view=due\|upcoming\|done\|everyone&conversation_id=&customer_id=` | `inbox.view` | See 5.4 |
+| `GET /tasks/reminders/count` | `inbox.view` | `{ due }`: my open reminders that are due, for the badge |
+| `POST /tasks/reminders` `{ note, due_at, assignee_id?, conversation_id? \| customer_id? }` | see 5.4 | Audit `inbox.reminder_add` |
+| `PATCH /tasks/reminders/:id` `{ note?, due_at?, assignee_id?, done? }` | see 5.4 | Moving `due_at` clears `notified_at` so it alerts again. `done: false` reopens. Audit `inbox.reminder_update` |
+| `DELETE /tasks/reminders/:id` | creator, or `inbox.assign` | Audit `inbox.reminder_delete` |
 
 Settings, in `inbox-settings.ts`: `GET /settings/reply-target` and `PUT /settings/reply-target { minutes: number | null }`, both `inbox.settings`. Audit `inbox.reply_target_update`.
 
