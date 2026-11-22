@@ -4,16 +4,18 @@ import { StatHero } from "../../components/StatHero.js";
 import { SettingsNumbers, SettingsTemplates } from "../../components/inbox/SettingsNumbers.js";
 import { SettingsAccess, SettingsQuickReplies, SettingsTeams } from "../../components/inbox/SettingsTeams.js";
 import { SettingsHours, SettingsIvr } from "../../components/inbox/SettingsHours.js";
+import { SettingsReplyTarget } from "../../components/inbox/SettingsReplyTarget.js";
 import "../../components/inbox/inbox.css";
 import { useCan } from "../../lib/auth.js";
 
-type Tab = "numbers" | "teams" | "access" | "hours" | "ivr" | "quick" | "templates";
+type Tab = "numbers" | "teams" | "access" | "hours" | "reply" | "ivr" | "quick" | "templates";
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: "numbers", label: "Numbers" },
   { key: "teams", label: "Teams" },
   { key: "access", label: "Who can use which channel" },
   { key: "hours", label: "Hours" },
+  { key: "reply", label: "Reply time" },
   { key: "ivr", label: "Phone menu" },
   { key: "quick", label: "Quick replies" },
   { key: "templates", label: "Templates" },
@@ -57,6 +59,7 @@ export function InboxSettingsPage(): JSX.Element {
       {tab === "teams" && <SettingsTeams />}
       {tab === "access" && can("users.manage") && <SettingsAccess />}
       {tab === "hours" && <SettingsHours />}
+      {tab === "reply" && <SettingsReplyTarget />}
       {tab === "ivr" && <SettingsIvr />}
       {tab === "quick" && <SettingsQuickReplies />}
       {tab === "templates" && <SettingsTemplates />}

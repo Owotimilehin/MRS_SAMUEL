@@ -19,7 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useAuthUser } from "../lib/auth.js";
 import { inboxApi, inboxKeys } from "../lib/inbox-api.js";
-import { channelName, conversationIdFromPath, identityName, shouldAlertForEvent, titleWithCount } from "../lib/inbox-logic.js";
+import { channelName, conversationIdFromPath, identityName, shouldAlertForEvent, shouldAlertForReminder, titleWithCount } from "../lib/inbox-logic.js";
 import {
   desktopEnabled,
   playMessageSound,
@@ -85,6 +85,31 @@ export function useInboxNotifier(enabled: boolean): void {
   const onEvent = useCallback(
     (e: InboxEvent) => {
       const active = tabActive();
+      // Suite spec 15: a reminder fell due. Only its assignee receives this event.
+      if (e.event === "reminder.due") {
+        void qc.invalidateQueries({ queryKey: inboxKeys.reminders });
+        if (!shouldAlertForReminder(e, levelRef.current ?? "assigned")) return;
+        if (soundEnabled()) playMessageSound();
+        if (!active) {
+          waiting += 1;
+          document.title = titleWithCount(document.title, waiting);
+        }
+        const convId = e.conversationId;
+        void inboxApi
+          .reminders(convId ? { conversationId: convId } : { view: "due" })
+          .then((rows) => rows.find((r) => r.id === e.id)?.note ?? "A reminder is due.")
+          .catch(() => "A reminder is due.")
+          .then((note) => {
+            if (active) toast.info(`Reminder: ${note.slice(0, 100)}`);
+            else if (desktopEnabled())
+              showDesktopAlert({ conversationId: convId ?? `reminder-${e.id}`, title: "Reminder", body: note.slice(0, 140) }, (id) =>
+                id.startsWith("reminder-")
+                  ? void navigate({ to: "/inbox" })
+                  : void navigate({ to: "/inbox/$conversationId", params: { conversationId: id } }),
+              );
+          });
+        return;
+      }
       const ok = shouldAlertForEvent(e, {
         userId: user.id,
         // Until the saved choice has loaded, use the server's default.

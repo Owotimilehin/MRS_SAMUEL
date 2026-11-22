@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ArrowLeft, Phone, Tag, UserRound, CheckCircle2, RotateCcw } from "lucide-react";
+import { AlarmClock, ArrowLeft, BellPlus, Phone, Tag, UserRound, CheckCircle2, RotateCcw, Sun } from "lucide-react";
 import { ChannelIcon } from "./ChannelIcon.js";
 import { toE164 } from "@ms/shared";
 import { Modal } from "../Modal.js";
 import { inboxApi } from "../../lib/inbox-api.js";
-import { contactName, identityName, parseLabels, prettyPhone, staffLabel } from "../../lib/inbox-logic.js";
+import { contactName, identityName, parseLabels, prettyPhone, staffLabel, whenLabel } from "../../lib/inbox-logic.js";
+import { ReminderDialog, ReminderStrip, SnoozeDialog } from "./TaskDialogs.js";
 import { startCall, useVoice } from "../../lib/inbox-voice.js";
 import type { ConversationDetail, InboxTeamLite, StaffMember } from "../../lib/inbox-types.js";
 
@@ -22,9 +23,26 @@ interface Props {
 export function ConversationHeader({ conv, meId, staff, teams, can, onBack, onChanged, onShowContact }: Props): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
+  // Suite spec 15: snooze and reminders.
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [remindOpen, setRemindOpen] = useState(false);
+  const snoozedUntil = conv.snoozedUntil && new Date(conv.snoozedUntil).getTime() > Date.now() ? conv.snoozedUntil : null;
+  const canSnooze = can("inbox.reply") && conv.status !== "closed";
   const onCall = useVoice((s) => s.active !== null);
   const name = contactName(conv.customer?.name, conv.customer?.phone, identityName(conv.identity));
   const canAssign = can("inbox.assign");
+
+  async function wake(): Promise<void> {
+    setBusy(true);
+    try {
+      await inboxApi.unsnooze(conv.id);
+      onChanged();
+    } catch {
+      /* toast shown by api() */
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function patch(p: Parameters<typeof inboxApi.patchConversation>[1]): Promise<void> {
     setBusy(true);
@@ -97,6 +115,11 @@ export function ConversationHeader({ conv, meId, staff, teams, can, onBack, onCh
                 .join(" · ")}
             </div>
           </button>
+          {snoozedUntil && (
+            <div className="ibx-conv__labels">
+              <span className="pill pill--accent">Snoozed until {whenLabel(snoozedUntil)}</span>
+            </div>
+          )}
           {conv.labels.length > 0 && (
             <div className="ibx-conv__labels">
               {conv.labels.map((l) => (
@@ -167,8 +190,32 @@ export function ConversationHeader({ conv, meId, staff, teams, can, onBack, onCh
               <Tag size={14} /> <span className="ibx-hide-phone">Labels</span>
             </button>
           )}
+          {canSnooze &&
+            (snoozedUntil ? (
+              <button type="button" className="btn btn--subtle btn--sm" disabled={busy} onClick={() => void wake()} title="Bring this chat back now" aria-label="Wake now">
+                <Sun size={14} /> <span className="ibx-hide-phone">Wake now</span>
+              </button>
+            ) : (
+              <button type="button" className="btn btn--subtle btn--sm" onClick={() => setSnoozeOpen(true)} title="Put this chat away until later" aria-label="Snooze">
+                <AlarmClock size={14} /> <span className="ibx-hide-phone">Snooze</span>
+              </button>
+            ))}
+          <button type="button" className="btn btn--subtle btn--sm" onClick={() => setRemindOpen(true)} title="Remind me about this chat" aria-label="Remind">
+            <BellPlus size={14} /> <span className="ibx-hide-phone">Remind</span>
+          </button>
         </div>
       </div>
+      <ReminderStrip conversationId={conv.id} meId={meId} canAssign={canAssign} />
+      {snoozeOpen && <SnoozeDialog conversationId={conv.id} onClose={() => setSnoozeOpen(false)} onDone={onChanged} />}
+      {remindOpen && (
+        <ReminderDialog
+          target={{ conversationId: conv.id }}
+          meId={meId}
+          staff={staff}
+          canAssign={canAssign}
+          onClose={() => setRemindOpen(false)}
+        />
+      )}
       {labelsOpen && (
         <LabelsModal
           initial={conv.labels}

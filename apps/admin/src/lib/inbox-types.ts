@@ -78,11 +78,40 @@ export interface ConversationRow {
   window_remaining_ms: number;
   /** Messenger/Instagram with Human Agent on: ms left of the 7-day window (spec 02). */
   human_agent_remaining_ms?: number;
+  /** Suite spec 15: when a snoozed chat comes back (only in the Snoozed list). */
+  snoozed_until?: string | null;
+  /** When a snooze ended by time; the row looks unread until someone opens it. */
+  woke_at?: string | null;
+  /** The customer's oldest message since our last reply. */
+  waiting_since?: string | null;
+  /** Minutes waited inside opening hours; null when off or nothing is waiting. */
+  waiting_minutes?: number | null;
 }
 
 export interface ConversationPage {
   data: ConversationRow[];
   next_before: string | null;
+  /** Suite spec 15: the reply-time target in minutes, or null when off. */
+  reply_target_minutes?: number | null;
+}
+
+/** A reminder (suite spec 15). */
+export interface ReminderRow {
+  id: string;
+  note: string;
+  due_at: string;
+  done_at: string | null;
+  created_at: string;
+  conversation_id: string | null;
+  customer_id: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  identity_name: string | null;
+  channel: IdentityChannel | null;
+  assignee_id: string;
+  assignee_name: string | null;
+  created_by: string | null;
+  created_by_name: string | null;
 }
 
 export interface ConversationDetail {
@@ -107,6 +136,9 @@ export interface ConversationDetail {
   /** True when the server lets staff answer Messenger/Instagram up to 7 days (META_HUMAN_AGENT_ENABLED). */
   human_agent_enabled?: boolean;
   can_use_number: boolean;
+  /** Suite spec 15: when this snoozed chat comes back; null = not snoozed. */
+  snoozedUntil?: string | null;
+  wokeAt?: string | null;
   channel?: IdentityChannel;
   /** The identity that last wrote in this thread; replies go to it. */
   identity?: {

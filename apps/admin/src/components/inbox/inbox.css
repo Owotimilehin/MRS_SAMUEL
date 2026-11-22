@@ -375,3 +375,21 @@
 .ibx-cart__sum dd { margin: 0; text-align: right; }
 .ibx-cart__preview { background: #e7f6ea; border-radius: 12px; padding: 10px 12px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
 .ibx-cart__paybtn { margin-top: 8px; padding: 8px; text-align: center; font-weight: 700; color: #0b6bcb; border-top: 1px solid rgba(20, 24, 31, 0.12); }
+
+/* ── Snooze and reminders (suite spec 15). Colours from the theme variables only. ── */
+.ibx-when { display: grid; gap: 10px; }
+.ibx-when__choices { flex-wrap: wrap; }
+.ibx-when__custom { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ibx-when__help { color: var(--ink-soft); font-size: 13px; margin: 4px 0 10px; }
+.ibx-when__result { font-weight: 600; margin: 12px 0 4px; }
+.ibx-when__problem { color: var(--danger); font-weight: 500; }
+.ibx-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.ibx-reminders { list-style: none; margin: 0; padding: 6px 14px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); background: var(--surface-soft); }
+.ibx-reminders__item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--ink); }
+.ibx-reminders__item > svg { color: var(--accent); flex: none; }
+.ibx-reminders__note { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.ibx-reminders__who { color: var(--ink-soft); font-size: 12px; }
+.ibx-row__flag { font-size: 11.5px; padding: 1px 8px; }
+@media (max-width: 480px) {
+  .ibx-when__custom { grid-template-columns: 1fr; }
+}

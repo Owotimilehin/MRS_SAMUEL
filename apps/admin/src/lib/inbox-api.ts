@@ -23,6 +23,7 @@ import type {
   PlaceChatOrderInput,
   PlacedChatOrder,
   QuickReply,
+  ReminderRow,
   StaffMember,
   TimelinePage,
 } from "./inbox-types.js";
@@ -47,10 +48,29 @@ export const inboxKeys = {
   // Selling in chat (suite spec 08).
   catalogueSendable: ["inbox", "catalogue-sendable"] as const,
   chatOrders: (conversationId: string) => ["inbox", "chat-orders", conversationId] as const,
+  // Tasks and reminders (suite spec 15).
+  reminders: ["inbox", "reminders"] as const,
+  reminderList: (f: ReminderFilter) => ["inbox", "reminders", f] as const,
+  remindersDue: ["inbox", "reminders", "due-count"] as const,
+  replyTarget: ["inbox", "reply-target"] as const,
 };
 
+/** Which reminders to list (suite spec 15). */
+export type ReminderFilter =
+  | { view: "due" | "upcoming" | "everyone" | "done" }
+  | { conversationId: string }
+  | { customerId: string };
+
+export interface ReminderInput {
+  note: string;
+  due_at: string;
+  assignee_id?: string;
+  conversation_id?: string;
+  customer_id?: string;
+}
+
 export interface ConversationFilters {
-  status: "open" | "pending" | "closed" | "all";
+  status: "open" | "pending" | "snoozed" | "closed" | "all";
   view: "mine" | "unassigned" | "team" | "all";
   number?: string;
   label?: string;
@@ -272,6 +292,23 @@ export const inboxApi = {
   sendPaymentLink: async (id: string) =>
     (await api<{ data: { order_number: string; payment_link: string | null; warning?: string } }>(`/inbox/chat-orders/${id}/payment-link`, { method: "POST" })).data,
   cancelChatOrder: (id: string) => api(`/inbox/chat-orders/${id}/cancel`, { method: "POST" }),
+
+  // ── Tasks and reminders (suite spec 15) ──
+  snooze: (conversationId: string, until: Date) =>
+    api(`/inbox/tasks/snooze/${conversationId}`, { method: "POST", body: JSON.stringify({ until: until.toISOString() }) }),
+  unsnooze: (conversationId: string) => api(`/inbox/tasks/snooze/${conversationId}`, { method: "DELETE" }),
+  reminders: async (f: ReminderFilter) => {
+    const q =
+      "view" in f ? qs({ view: f.view }) : "conversationId" in f ? qs({ conversation_id: f.conversationId }) : qs({ customer_id: f.customerId });
+    return (await api<{ data: ReminderRow[] }>(`/inbox/tasks/reminders${q}`)).data;
+  },
+  remindersDue: async () => (await api<{ data: { due: number } }>("/inbox/tasks/reminders/count")).data.due,
+  addReminder: (b: ReminderInput) => api<{ data: unknown }>("/inbox/tasks/reminders", { method: "POST", body: JSON.stringify(b) }),
+  updateReminder: (id: string, b: { note?: string; due_at?: string; assignee_id?: string; done?: boolean }) =>
+    api<{ data: unknown }>(`/inbox/tasks/reminders/${id}`, { method: "PATCH", body: JSON.stringify(b) }),
+  deleteReminder: (id: string) => api(`/inbox/tasks/reminders/${id}`, { method: "DELETE" }),
+  replyTarget: async () =>
+    (await api<{ data: { target_minutes: number | null; late: number; longest_minutes: number | null } }>("/inbox/tasks/reply-target")).data,
 };
 
 /** Plain link (cookies ride along) — the browser downloads the CSV. */
