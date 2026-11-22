@@ -68,6 +68,10 @@ const ContactPage = lazyNamed<{ customerId: string }>(() => import("./features/c
 const ContactListsPage = lazyNamed(() => import("./features/contacts/ListsPage.js"), "ListsPage");
 const ContactListPage = lazyNamed<{ listId: string }>(() => import("./features/contacts/ListPage.js"), "ListPage");
 const ContactImportPage = lazyNamed(() => import("./features/contacts/ImportPage.js"), "ImportPage");
+// Broadcasts (suite spec 14, Phase B).
+const BroadcastsPage = lazyNamed(() => import("./features/broadcasts/BroadcastsPage.js"), "BroadcastsPage");
+const BroadcastEditorPage = lazyNamed<{ broadcastId?: string }>(() => import("./features/broadcasts/BroadcastEditorPage.js"), "BroadcastEditorPage");
+const BroadcastResultsPage = lazyNamed<{ broadcastId: string }>(() => import("./features/broadcasts/BroadcastResultsPage.js"), "BroadcastResultsPage");
 
 /** Shown to someone who is signed in but holds no suite permission at all. */
 function NoSuiteAccess(): JSX.Element {
@@ -365,6 +369,34 @@ const contactRoute = createRoute({
   },
 });
 
+// Broadcasts (suite spec 14, Phase B). /broadcasts/new is declared before /broadcasts/$broadcastId.
+const broadcastsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/broadcasts",
+  component: () => page(<BroadcastsPage />, "contacts.view"),
+});
+const broadcastNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/broadcasts/new",
+  component: () => page(<BroadcastEditorPage />, "broadcasts.send"),
+});
+const broadcastEditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/broadcasts/$broadcastId/edit",
+  component: () => {
+    const params = useParams({ from: "/broadcasts/$broadcastId/edit" });
+    return page(<BroadcastEditorPage broadcastId={params.broadcastId} />, "broadcasts.send");
+  },
+});
+const broadcastResultsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/broadcasts/$broadcastId",
+  component: () => {
+    const params = useParams({ from: "/broadcasts/$broadcastId" });
+    return page(<BroadcastResultsPage broadcastId={params.broadcastId} />, "contacts.view");
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -400,6 +432,10 @@ const routeTree = rootRoute.addChildren([
   contactListRoute,
   contactImportRoute,
   contactRoute,
+  broadcastsRoute,
+  broadcastNewRoute,
+  broadcastEditRoute,
+  broadcastResultsRoute,
 ]);
 
 export const router = createRouter({

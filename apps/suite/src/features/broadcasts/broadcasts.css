@@ -1,0 +1,107 @@
+/* Broadcasts (suite spec 14, Phase B). Every class starts with bc-. Colours come only from the
+   suite's variables (suite.css), so the light and the dark theme both work. */
+.bc-page { display: grid; gap: 16px; }
+.bc-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.bc-row .btn { display: inline-flex; gap: 6px; align-items: center; }
+.bc-spacer { flex: 1; }
+.bc-soft { color: var(--ink-soft); font-size: 13px; }
+.bc-faint { color: var(--ink-faint); font-size: 12px; }
+.bc-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.bc-link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
+
+/* Notices: soft colour, 14px corners, one sentence and a link. */
+.bc-notice { margin: 0; padding: 12px 14px; border-radius: var(--radius-card); font-size: 13.5px; display: grid; gap: 4px; border: 1px solid var(--line); background: var(--surface-soft); color: var(--ink); }
+.bc-notice--amber { background: var(--warning-soft); border-color: var(--warning-soft); color: var(--warning-ink); }
+.bc-notice--red { background: var(--danger-soft); border-color: var(--danger-soft); color: var(--danger-ink); }
+.bc-notice--green { background: var(--success-soft); border-color: var(--success-soft); color: var(--success-ink); }
+.bc-notice strong { font-weight: 700; }
+
+/* The list of broadcasts: a table card, cards on a phone. */
+.bc-table td, .bc-table th { padding-left: 14px !important; padding-right: 14px !important; }
+.bc-table tr.is-clickable { cursor: pointer; }
+.bc-table tr.is-clickable:hover td { background: var(--surface-soft); }
+.bc-name { font-weight: 600; color: var(--ink); }
+
+/* Editor: numbered sections beside the preview. */
+.bc-editor { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.bc-sections { display: grid; gap: 16px; min-width: 0; }
+.bc-section { padding: 16px 18px; display: grid; gap: 12px; }
+.bc-section__head { display: flex; gap: 10px; align-items: center; }
+.bc-section__num { width: 26px; height: 26px; border-radius: 8px; display: inline-grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--surface-soft); color: var(--ink-soft); border: 1px solid var(--line); flex: none; }
+.bc-section__num.is-done { background: var(--success-soft); color: var(--success-ink); border-color: var(--success-soft); }
+.bc-section__title { margin: 0; font-size: 15px; font-weight: 700; color: var(--ink); }
+.bc-field { display: grid; gap: 6px; }
+.bc-field > span { font-size: 13px; font-weight: 600; color: var(--ink); }
+.bc-field small { color: var(--ink-soft); font-size: 12.5px; }
+.bc-field .input, .bc-field .select { max-width: 460px; }
+.bc-preview { position: sticky; top: 76px; display: grid; gap: 8px; }
+.bc-preview__label { font-size: 12px; font-weight: 600; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.07em; }
+
+/* Template and list pickers. */
+.bc-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.bc-pick { text-align: left; display: grid; gap: 6px; padding: 12px 14px; border-radius: var(--radius-card); border: 1px solid var(--line); background: var(--shell); color: var(--ink); font: inherit; cursor: pointer; }
+.bc-pick:hover { border-color: var(--line-strong); background: var(--surface-soft); }
+.bc-pick.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+.bc-pick:disabled { cursor: not-allowed; opacity: 0.6; background: var(--surface-soft); }
+.bc-pick__name { font-weight: 700; font-size: 14px; }
+.bc-pick__body { font-size: 12.5px; color: var(--ink-soft); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.bc-pick__why { font-size: 12.5px; color: var(--warning-ink); }
+
+/* Blank filler. */
+.bc-blank { display: grid; grid-template-columns: 70px minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; }
+.bc-blank__tag { font-weight: 700; font-size: 13px; color: var(--ink-soft); }
+
+/* Audience panel. */
+.bc-headline { font-size: 16px; font-weight: 700; margin: 0; color: var(--ink); }
+.bc-reasons { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.bc-reason { border: 1px solid var(--line); border-radius: 10px; background: var(--shell); }
+.bc-reason > button { width: 100%; text-align: left; background: none; border: 0; padding: 9px 12px; font: inherit; font-size: 13.5px; color: var(--ink); cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+.bc-reason > button:hover { background: var(--surface-soft); }
+.bc-people { margin: 0; padding: 4px 12px 10px; list-style: none; display: grid; gap: 2px; font-size: 13px; color: var(--ink-soft); }
+
+/* Segmented control for Send now / Send later and the results filter. */
+.bc-seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--shell); flex-wrap: wrap; max-width: 100%; }
+.bc-seg button { border: 0; border-radius: 7px; background: transparent; color: var(--ink-soft); font: inherit; font-size: 12.5px; font-weight: 500; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
+.bc-seg button:hover { background: var(--surface-soft); color: var(--ink); }
+.bc-seg button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+
+/* Results. */
+.bc-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.bc-tile { padding: 14px 16px; display: grid; gap: 4px; }
+.bc-tile__label { font-size: 13px; font-weight: 500; color: var(--ink-soft); }
+.bc-tile__value { font-size: 27px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.bc-tile__share { font-size: 12.5px; color: var(--ink-faint); }
+.bc-card { padding: 16px 18px; display: grid; gap: 10px; }
+.bc-card h3 { margin: 0; font-size: 15px; font-weight: 700; color: var(--ink); }
+.bc-events { margin: 0; padding: 0; list-style: none; display: grid; }
+.bc-events li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+.bc-events li:first-child { border-top: 0; }
+
+/* Confirm and settings dialogs. */
+.bc-dialog { display: grid; gap: 12px; font-size: 14px; color: var(--ink); }
+.bc-dialog p { margin: 0; }
+.bc-quote { padding: 10px 12px; border-radius: 10px; background: var(--surface-soft); border: 1px solid var(--line); white-space: pre-wrap; font-size: 13.5px; }
+.bc-switch { display: flex; gap: 10px; align-items: center; font-weight: 600; }
+.bc-switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+.bc-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; }
+.bc-check input { margin-top: 3px; accent-color: var(--accent); }
+.bc-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+
+@media (max-width: 1024px) {
+  .bc-editor { grid-template-columns: minmax(0, 1fr); }
+  .bc-preview { position: static; }
+  .bc-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* 390px: tables become cards, everything one column, inputs at 16px so phones do not zoom. */
+@media (max-width: 640px) {
+  .bc-table thead { display: none; }
+  .bc-table, .bc-table tbody, .bc-table tr, .bc-table td { display: block; width: 100%; }
+  .bc-table tr { border: 1px solid var(--line); border-radius: var(--radius-card); margin-bottom: 10px; background: var(--shell); padding: 8px 0; }
+  .bc-table td { border: 0 !important; padding: 4px 14px !important; }
+  .bc-table td[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; font-weight: 600; color: var(--ink-faint); }
+  .bc-blank { grid-template-columns: minmax(0, 1fr); }
+  .bc-grid2 { grid-template-columns: minmax(0, 1fr); }
+  .bc-page .input, .bc-page .select, .bc-dialog .input, .bc-dialog .select { font-size: 16px; }
+}
+.bc-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeNavTo, firstAllowedPage } from "./nav.js";
+import { activeNavTo, firstAllowedPage, SUITE_PAGES } from "./nav.js";
 
 const LINKS = ["/inbox", "/comments", "/contacts", "/leads", "/inbox/reports", "/channels", "/templates", "/inbox/settings"] as const;
 
@@ -52,6 +52,22 @@ describe("where a person lands", () => {
     expect(activeNavTo("/contacts/lists", LINKS)).toBe("/contacts");
     expect(activeNavTo("/contacts/lists/7f3c-list", LINKS)).toBe("/contacts");
     expect(activeNavTo("/contacts/import", LINKS)).toBe("/contacts");
+  });
+  it("lights Broadcasts on the list, a new broadcast, a draft and the results, and Contacts stays separate", () => {
+    const WITH_BROADCASTS = [...LINKS, "/broadcasts"] as const;
+    expect(activeNavTo("/broadcasts", WITH_BROADCASTS)).toBe("/broadcasts");
+    expect(activeNavTo("/broadcasts/new", WITH_BROADCASTS)).toBe("/broadcasts");
+    expect(activeNavTo("/broadcasts/7f3c-broadcast/edit", WITH_BROADCASTS)).toBe("/broadcasts");
+    expect(activeNavTo("/broadcasts/7f3c-broadcast", WITH_BROADCASTS)).toBe("/broadcasts");
+    expect(activeNavTo("/contacts", WITH_BROADCASTS)).toBe("/contacts");
+  });
+  it("Broadcasts sits right after Contacts in the menu and needs contacts.view, so Contacts stays the landing page", () => {
+    const order = SUITE_PAGES.map((p) => p.to);
+    expect(order.indexOf("/broadcasts")).toBe(order.indexOf("/contacts") + 1);
+    expect(SUITE_PAGES.find((p) => p.to === "/broadcasts")!.cap).toBe("contacts.view");
+    expect(firstAllowedPage(["contacts.view", "broadcasts.send"])).toBe("/contacts");
+    // broadcasts.send alone opens no page: reading broadcasts needs contacts.view.
+    expect(firstAllowedPage(["broadcasts.send"])).toBeNull();
   });
   it("keeps Templates and forms lit on the Forms tab", () => {
     expect(activeNavTo("/templates/forms", LINKS)).toBe("/templates");
