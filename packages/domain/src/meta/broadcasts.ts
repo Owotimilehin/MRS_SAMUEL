@@ -653,7 +653,7 @@ export async function confirmBroadcast(
     );
   }
   if (aud.days > BROADCAST_LIMITS.maxDays) {
-    throw new BroadcastRefusal(409, `This would take ${aud.days} days at your current WhatsApp limit. Choose a smaller list.`);
+    throw new BroadcastRefusal(409, `This would take ${Number.isFinite(aud.days) ? aud.days : "more than 14"} days at your current WhatsApp limit. Choose a smaller list.`);
   }
   // 5.
   await ensureHeaderMedia(db, cfg, b, t!, line!, a.loadHeaderBytes, now);
