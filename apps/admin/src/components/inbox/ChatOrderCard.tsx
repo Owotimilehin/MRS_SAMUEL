@@ -169,11 +169,13 @@ function ChatOrderCard({
           >
             Create order…
           </button>
-          {(order.state === "new" || order.state === "asked") && canReply && (
+          {/* The question goes once per cart (the server refuses a second one), so offer it only before it has gone. */}
+          {order.state === "new" && canReply && (
             <button type="button" className="btn btn--subtle btn--sm" disabled={busy !== null} onClick={() => void ask()}>
               {busy === "ask" ? "Sending…" : "Ask: delivery or pickup?"}
             </button>
           )}
+          {order.state === "asked" && <div className="field__hint">Asked &ldquo;delivery or pickup?&rdquo;. Waiting for their answer.</div>}
           {canReply && (
             <button type="button" className="btn btn--ghost btn--sm" disabled={busy !== null} onClick={() => setDismissing(true)}>
               Dismiss
