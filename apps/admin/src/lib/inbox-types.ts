@@ -32,6 +32,12 @@ export interface InboxNumberLite {
   is_active?: boolean;
   /** Conversation detail only (spec 02): why messages on this line are not going out, in plain words. */
   problem_text?: string | null;
+  /**
+   * Conversation detail only (suite spec 15): when this line closes today, for
+   * "Later today" on snooze. Null when it has already closed or does not open
+   * today; left out when the line has no opening hours set (then 17:00).
+   */
+  closes_today_at?: string | null;
 }
 
 export interface InboxMe {

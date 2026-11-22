@@ -206,7 +206,9 @@ export function ConversationHeader({ conv, meId, staff, teams, can, onBack, onCh
         </div>
       </div>
       <ReminderStrip conversationId={conv.id} meId={meId} canAssign={canAssign} />
-      {snoozeOpen && <SnoozeDialog conversationId={conv.id} onClose={() => setSnoozeOpen(false)} onDone={onChanged} />}
+      {snoozeOpen && (
+        <SnoozeDialog conversationId={conv.id} closesAt={conv.number?.closes_today_at} onClose={() => setSnoozeOpen(false)} onDone={onChanged} />
+      )}
       {remindOpen && (
         <ReminderDialog
           target={{ conversationId: conv.id }}

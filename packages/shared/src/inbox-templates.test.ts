@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { headerMediaLabel, templateNeeds } from "./inbox-templates.js";
-import { closedSince } from "./inbox.js";
+import { closedSince, closingTimeToday } from "./inbox.js";
 
 // The four sample templates Meta gives every new WhatsApp account, in the
 // shape GET /{waba}/message_templates returns them.
@@ -212,5 +212,22 @@ describe("closedSince", () => {
   it("never open in the look-back: falls back to the look-back's start", () => {
     const now = new Date("2026-11-17T10:00:00Z");
     expect(closedSince([], [], now)?.getTime()).toBe(now.getTime() - 14 * 86_400_000);
+  });
+});
+
+describe("closingTimeToday (suite spec 15: Later today on snooze)", () => {
+  // Tuesday 2026-11-17: 08:00-12:00 and 13:00-18:30 Lagos (UTC+1).
+  const rules = [
+    { weekday: 2, openTime: "08:00", closeTime: "12:00" },
+    { weekday: 2, openTime: "13:00", closeTime: "18:30" },
+  ];
+  it("is the end of today's last window, even during a midday break", () => {
+    expect(closingTimeToday(rules, [], new Date("2026-11-17T09:00:00Z"))?.toISOString()).toBe("2026-11-17T17:30:00.000Z");
+    expect(closingTimeToday(rules, [], new Date("2026-11-17T11:15:42Z"))?.toISOString()).toBe("2026-11-17T17:30:00.000Z");
+  });
+  it("is null once closed for the day, on a holiday, or on a day it does not open", () => {
+    expect(closingTimeToday(rules, [], new Date("2026-11-17T18:00:00Z"))).toBeNull();
+    expect(closingTimeToday(rules, ["2026-11-17"], new Date("2026-11-17T09:00:00Z"))).toBeNull();
+    expect(closingTimeToday(rules, [], new Date("2026-11-18T09:00:00Z"))).toBeNull();
   });
 });

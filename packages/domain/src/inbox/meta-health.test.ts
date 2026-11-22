@@ -323,8 +323,12 @@ describe("mergeMetaHealth", () => {
     expect(mergeMetaHealth(ok.value, [out({ status: "broken" })], later(REALERT_AFTER_MS + 1)).newlyBroken).toHaveLength(1);
   });
 
-  it("never alerts for a Page (ensureMetaSubscriptions already alerts for those)", () => {
-    expect(mergeMetaHealth(null, [out({ kind: "page", status: "broken" })], NOW).newlyBroken).toEqual([]);
+  it("alerts once for a Facebook Page or Instagram account that breaks (owner's choice, 22 Nov 2026)", () => {
+    const page = { key: "line:p", kind: "page" as const, label: "Mrs Samuel", line_ids: ["p"] };
+    const broke = mergeMetaHealth(null, [out({ ...page, status: "broken" })], NOW);
+    expect(broke.newlyBroken.map((i) => i.key)).toEqual(["line:p"]);
+    expect(mergeMetaHealth(broke.value, [out({ ...page, status: "broken" })], later(3600_000)).newlyBroken).toEqual([]);
+    expect(mergeMetaHealth(null, [out({ ...page, status: "warning" })], NOW).newlyBroken).toEqual([]);
   });
 
   it("keeps the stored record for an unchecked item, and leaves out an unchecked item never seen", () => {
