@@ -286,8 +286,14 @@ export const inboxConversation = pgTable(
     firstResponseAt: timestamp("first_response_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Suite spec 15: when a snoozed chat comes back. Null = not snoozed; a past value = due to wake. */
+    snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
+    snoozedBy: uuid("snoozed_by").references(() => adminUser.id, { onDelete: "set null" }),
+    /** When a snooze ended by time; the chat looks unread until someone opens it. */
+    wokeAt: timestamp("woke_at", { withTimezone: true }),
   },
   (t) => ({
+    idxSnoozed: index("idx_inbox_conv_snoozed").on(t.snoozedUntil).where(sql`snoozed_until is not null`),
     idxActivity: index("idx_inbox_conv_activity").on(t.status, t.lastActivityAt),
     idxCustomer: index("idx_inbox_conv_customer").on(t.customerId, t.phoneNumberId),
     // At most one live thread per customer per business number.
@@ -357,6 +363,40 @@ export const inboxNote = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ idxConv: index("idx_inbox_note_conv").on(t.conversationId, t.createdAt) }),
+);
+
+/**
+ * "Call back Friday" (suite spec 15). Always about a contact; `conversation_id`
+ * is set when it was added from a chat. Visible only within the chat-visibility
+ * rule (packages/domain/src/inbox/reminders.ts). Alerts its assignee once
+ * (`notified_at`); moving `due_at` clears that so it alerts again.
+ */
+export const inboxReminder = pgTable(
+  "inbox_reminder",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customer.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").references(() => inboxConversation.id, { onDelete: "cascade" }),
+    note: text("note").notNull(),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    assigneeId: uuid("assignee_id")
+      .notNull()
+      .references(() => adminUser.id, { onDelete: "cascade" }),
+    createdBy: uuid("created_by").references(() => adminUser.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+    doneBy: uuid("done_by").references(() => adminUser.id, { onDelete: "set null" }),
+  },
+  (t) => ({
+    idxAssigneeOpen: index("idx_inbox_reminder_assignee_open").on(t.assigneeId, t.dueAt).where(sql`done_at is null`),
+    idxToAlert: index("idx_inbox_reminder_to_alert").on(t.dueAt).where(sql`done_at is null and notified_at is null`),
+    idxConversation: index("idx_inbox_reminder_conversation").on(t.conversationId),
+    idxCustomer: index("idx_inbox_reminder_customer").on(t.customerId),
+  }),
 );
 
 export const inboxCall = pgTable(
