@@ -268,6 +268,17 @@ export interface TimelineRecording {
   playable: boolean;
   transcript: string | null;
   summary: CallSummary | null;
+  /** Who said what, line by line (Fireflies). Call log only; absent on older recordings. */
+  transcript_lines?: TranscriptLine[] | null;
+  /** Sent to Fireflies and the result is not in yet. Call log only. */
+  transcribing?: boolean;
+}
+
+export interface TranscriptLine {
+  speaker: string;
+  text: string;
+  start_s: number | null;
+  end_s: number | null;
 }
 
 export interface TimelineCall {

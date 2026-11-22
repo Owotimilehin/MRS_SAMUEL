@@ -128,6 +128,8 @@ services:
       TWILIO_API_KEY_SECRET: ${TWILIO_API_KEY_SECRET:-}
       TWILIO_TWIML_APP_SID: ${TWILIO_TWIML_APP_SID:-}
       TWILIO_PUSH_CREDENTIAL_SID_IOS: ${TWILIO_PUSH_CREDENTIAL_SID_IOS:-}
+      # Fireflies.ai call transcripts: signs its "transcript ready" webhook.
+      FIREFLIES_WEBHOOK_SECRET: ${FIREFLIES_WEBHOOK_SECRET:-}
       TWILIO_PUSH_CREDENTIAL_SID_ANDROID: ${TWILIO_PUSH_CREDENTIAL_SID_ANDROID:-}
       # Instagram feed (optional).
       IG_ACCESS_TOKEN: ${IG_ACCESS_TOKEN:-}
@@ -201,6 +203,8 @@ services:
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       INBOX_SUMMARY_MODEL: ${INBOX_SUMMARY_MODEL:-}
+      # Fireflies.ai call transcripts and summaries. Empty = off.
+      FIREFLIES_API_KEY: ${FIREFLIES_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-}
       SENTRY_DSN: ${SENTRY_DSN:-}

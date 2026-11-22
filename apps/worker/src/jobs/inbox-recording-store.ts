@@ -13,6 +13,53 @@ export interface RecordingStore {
   get(key: string): Promise<Buffer>;
   /** Remove an object. Removing one that is already gone is not an error. */
   delete(key: string): Promise<void>;
+  /** A short-lived signed GET link, so an outside service (Fireflies) can download one object. */
+  presignGet?(key: string, expiresInS: number): string;
+}
+
+/** RFC 3986 encoding, as AWS Signature V4 requires (encodeURIComponent leaves !'()* alone). */
+function awsEncode(s: string): string {
+  return encodeURIComponent(s).replace(/[!'()*]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+/**
+ * A query-string-signed (presigned) S3 GET URL, AWS Signature V4. Generic over
+ * host/region so it can be checked against AWS's published example; R2 uses
+ * region "auto" and path-style URLs. Exported for tests.
+ */
+export function presignS3GetUrl(opts: {
+  host: string;
+  /** Already-encoded path, starting with "/". */
+  path: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  expiresInS: number;
+  now?: Date;
+}): string {
+  const now = opts.now ?? new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "").slice(0, 15) + "Z";
+  const dateStamp = amzDate.slice(0, 8);
+  const scope = `${dateStamp}/${opts.region}/s3/aws4_request`;
+  const params: Record<string, string> = {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Credential": `${opts.accessKeyId}/${scope}`,
+    "X-Amz-Date": amzDate,
+    "X-Amz-Expires": String(opts.expiresInS),
+    "X-Amz-SignedHeaders": "host",
+  };
+  const query = Object.keys(params)
+    .sort()
+    .map((k) => `${awsEncode(k)}=${awsEncode(params[k]!)}`)
+    .join("&");
+  const canonical = ["GET", opts.path, query, `host:${opts.host}\n`, "host", "UNSIGNED-PAYLOAD"].join("\n");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256Hex(canonical)].join("\n");
+  const kDate = createHmac("sha256", `AWS4${opts.secretAccessKey}`).update(dateStamp).digest();
+  const kRegion = createHmac("sha256", kDate).update(opts.region).digest();
+  const kService = createHmac("sha256", kRegion).update("s3").digest();
+  const kSigning = createHmac("sha256", kService).update("aws4_request").digest();
+  const signature = createHmac("sha256", kSigning).update(stringToSign).digest("hex");
+  return `https://${opts.host}${opts.path}?${query}&X-Amz-Signature=${signature}`;
 }
 
 interface R2Config {
@@ -93,6 +140,17 @@ export class R2RecordingStore implements RecordingStore {
     const { url, headers } = signR2Request(this.cfg, "DELETE", key, null);
     const res = await fetch(url, { method: "DELETE", headers, signal: AbortSignal.timeout(60_000) });
     if (!res.ok && res.status !== 404) throw new Error(`R2 DELETE ${key} failed ${res.status}`);
+  }
+
+  presignGet(key: string, expiresInS: number): string {
+    return presignS3GetUrl({
+      host: `${this.cfg.accountId}.r2.cloudflarestorage.com`,
+      path: `/${encodeURIComponent(this.cfg.bucket)}/${encodeKey(key)}`,
+      region: "auto",
+      accessKeyId: this.cfg.accessKeyId,
+      secretAccessKey: this.cfg.secretAccessKey,
+      expiresInS,
+    });
   }
 }
 

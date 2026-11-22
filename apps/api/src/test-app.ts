@@ -71,6 +71,7 @@ import { contactRoutes } from "./routes/contacts.js";
 import { broadcastRoutes } from "./routes/broadcasts.js";
 import { whatsappWebhookRoutes } from "./routes/webhooks-whatsapp.js";
 import { metaWebhookRoutes } from "./routes/webhooks-meta.js";
+import { firefliesWebhookRoutes } from "./routes/webhooks-fireflies.js";
 import { voiceWebhookRoutes, voiceAppRoutes } from "./routes/voice.js";
 
 let cachedDb: DbClient | null = null;
@@ -200,6 +201,8 @@ export function buildApp(): Hono {
   // WhatsApp forms, Phase B: the encrypted data endpoint. Answers 503 unless the private key is set (suite spec 07).
   app.route("/v1/webhooks/whatsapp-flows", whatsappFlowsEndpointRoutes(db));
   app.route("/v1/webhooks/meta", metaWebhookRoutes(db));
+  // Fireflies.ai: "transcript ready" wake-ups for call recordings.
+  app.route("/v1/webhooks/fireflies", firefliesWebhookRoutes(db));
   app.route("/v1/voice", voiceWebhookRoutes(db));
   app.route("/v1/webhooks/delivery-reconcile", deliveryReconcileRoutes(db));
 
