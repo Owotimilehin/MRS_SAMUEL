@@ -26,7 +26,6 @@ import {
   MessagesSquare,
   Phone,
   Plus,
-  Search,
   Share2,
   ShoppingBag,
   SlidersHorizontal,
@@ -44,6 +43,7 @@ import { activeNavTo } from "./nav.js";
 import { callKeys, callsApi } from "./features/calls/calls-api.js";
 import { commentKeys, commentsApi } from "./features/comments/comments-api.js";
 import { useCommentNotifier } from "./features/comments/useCommentNotifier.js";
+import { SuiteSearch } from "./features/search/SuiteSearch.js";
 
 /** Macs (and iPads) use ⌘ for shortcuts; Windows and others use Ctrl. */
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
@@ -294,19 +294,7 @@ export function SuiteShell({ children, title, crumb, actions, subtitle, pageName
             Mrs. Samuel / {crumb ? <>{crumb} / </> : null}
             <b>{pageName ?? title}</b>
           </div>
-          <label className="suite-search">
-            <Search size={16} aria-hidden="true" />
-            <input
-              ref={searchRef}
-              type="search"
-              placeholder="Search chats, contacts, posts…"
-              aria-label="Search"
-              aria-keyshortcuts={IS_MAC ? "Meta+K" : "Control+K"}
-            />
-            <span className="suite-kbd" aria-hidden="true">
-              {IS_MAC ? "⌘K" : "Ctrl K"}
-            </span>
-          </label>
+          <SuiteSearch inputRef={searchRef} isMac={IS_MAC} />
           {can("inbox.view") && (
             <Link to="/inbox" className="suite-icon-btn" aria-label={waitingChats > 0 ? `${waitingChats} unread messages` : "Inbox"}>
               {waitingChats > 0 && <span className="suite-icon-btn__dot" />}

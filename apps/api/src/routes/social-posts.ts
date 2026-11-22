@@ -422,6 +422,14 @@ export function socialPostRoutes(db: DbClient) {
     // Lagos is UTC+1 all year.
     if (from.success) conds.push(sql`${sortAt} >= ${`${from.data}T00:00:00+01:00`}::timestamptz`);
     if (to.success) conds.push(sql`${sortAt} < ${`${to.data}T00:00:00+01:00`}::timestamptz + interval '1 day'`);
+    // The suite's top-bar search: words in the post's text, or in a per-account text.
+    const words = (c.req.query("q") ?? "").trim().slice(0, 100);
+    if (words) {
+      const term = `%${words.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+      conds.push(
+        sql`(${socialPost.caption} ilike ${term} or exists (select 1 from ${socialPostTarget} t where t.post_id = ${socialPost.id} and t.caption_override ilike ${term}))`,
+      );
+    }
     if (cursorAt && cursorId && !Number.isNaN(Date.parse(cursorAt)) && Uuid.safeParse(cursorId).success) {
       conds.push(sql`(${sortAt}, ${socialPost.id}) < (${cursorAt}::timestamptz, ${cursorId}::uuid)`);
     }
