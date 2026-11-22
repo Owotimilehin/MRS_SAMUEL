@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Facebook, Instagram, MessageCircle } from "lucide-react";
+import { BrandMark } from "./ChannelIcon.js";
 import { ConfirmModal } from "../ConfirmModal.js";
 import { ChatOrders } from "./ChatOrderCard.js";
 import { AdSourceLine } from "./AdSourceLine.js";
@@ -208,8 +208,6 @@ export function ContactPanel({
 
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 
-const CHANNEL_ICON = { whatsapp: MessageCircle, messenger: Facebook, instagram: Instagram } as const;
-
 /** Every way this customer has reached us: WhatsApp number, Facebook name, Instagram username. */
 function ReachesYouOn({ identities }: { identities: IdentityRow[] }): JSX.Element {
   return (
@@ -217,11 +215,10 @@ function ReachesYouOn({ identities }: { identities: IdentityRow[] }): JSX.Elemen
       <div className="t-eyebrow" style={{ marginBottom: 6 }}>Reaches you on</div>
       <div style={{ display: "grid", gap: 6 }}>
         {identities.map((i) => {
-          const Icon = CHANNEL_ICON[i.channel] ?? MessageCircle;
           return (
             <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, minWidth: 0 }}>
               {i.profile_pic_url && <IdentityPicture src={i.profile_pic_url} />}
-              <Icon size={16} aria-hidden="true" style={{ flex: "none" }} />
+              <BrandMark channel={i.channel} size={16} />
               <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                 {identityLine(i)}
                 {i.last_seen_at && <span style={{ color: "var(--ink-soft)" }}> · last wrote {listTime(i.last_seen_at)}</span>}
