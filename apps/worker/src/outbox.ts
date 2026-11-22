@@ -525,6 +525,27 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Meta code ${String(p["code"] ?? "?")}. Open Channels and press Check connection.\n` +
           `👉 ${SUITE_URL}/channels`,
       };
+    case "meta.connection_broken": {
+      // The hourly Meta watchdog (blueprint stage 1): raised once when something becomes broken.
+      const items = Array.isArray(event.payload["items"])
+        ? (event.payload["items"] as Array<{ label?: unknown; reason?: unknown; impact?: unknown }>)
+        : [];
+      const first = items[0];
+      const lines = items
+        .slice(0, 5)
+        .map((i) => `• ${String(i.label ?? "A connection")}: ${String(i.reason ?? "it stopped working.")}`)
+        .join("\n");
+      return {
+        chatIds: [owner],
+        text:
+          `🚨 *Meta connection broken*\n` +
+          `${String(first?.impact ?? "Customers may not be getting replies")}.\n` +
+          (lines ? `${lines}\n` : "") +
+          (items.length > 5 ? `…and ${items.length - 5} more\n` : "") +
+          `You will not be told again while it stays broken; the suite shows a red banner until it is fixed.\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
+    }
     case "inbox.flow_health": {
       // WhatsApp reports a problem with a form or with our data endpoint (suite spec 07).
       const lines: Record<string, string> = {

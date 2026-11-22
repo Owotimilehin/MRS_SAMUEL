@@ -3,6 +3,7 @@
  * React so they can be tested.
  */
 import { prettyPhone } from "@admin/lib/inbox-logic.js";
+import { lineHealth, type MetaHealthItem, type MetaHealthStatus } from "@ms/shared";
 import type { ChannelRow } from "./channels-api.js";
 
 type RowFacts = Pick<ChannelRow, "kind" | "channels" | "e164" | "external_name">;
@@ -44,6 +45,22 @@ export function statusOf(
   if (row.problem_text) return { tone: "danger", text: "Problem", detail: row.problem_text };
   if (!row.webhook_subscribed_at) return { tone: "warning", text: "On · not receiving messages yet", detail: null };
   return { tone: "success", text: "On · receiving messages", detail: null };
+}
+
+/**
+ * The dot from the hourly Meta check (Watchdog, blueprint stage 1): the worst of
+ * the row's own check, its WhatsApp account and the access key. Null when the
+ * row was not checked (a switched-off row, a calls-only line, or no check yet).
+ */
+export function healthDotOf(
+  items: readonly Omit<MetaHealthItem, "alerted_at">[] | undefined,
+  rowId: string,
+): { status: MetaHealthStatus; text: string; why: string | null } | null {
+  if (!items) return null;
+  const h = lineHealth(items.map((i) => ({ ...i, alerted_at: null })), rowId);
+  if (!h) return null;
+  const text = h.status === "ok" ? "Meta check: working" : h.status === "warning" ? "Meta check: needs attention" : "Meta check: broken";
+  return { status: h.status, text, why: h.reasons[0] ?? null };
 }
 
 /** The read-only line in the edit dialog. */

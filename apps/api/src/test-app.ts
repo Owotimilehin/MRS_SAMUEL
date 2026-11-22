@@ -53,6 +53,7 @@ import { inboxSettingsRoutes } from "./routes/inbox-settings.js";
 import { inboxReportRoutes } from "./routes/inbox-reports.js";
 import { inboxCallRoutes } from "./routes/inbox-calls.js";
 import { channelRoutes } from "./routes/channels.js";
+import { metaHealthRoutes } from "./routes/meta-health.js";
 import { channelChatSetupRoutes } from "./routes/channel-chat-setup.js";
 import { channelPageRoutes } from "./routes/channel-page-details.js";
 import { whatsappProfileRoutes } from "./routes/whatsapp-profile.js";
@@ -158,6 +159,8 @@ export function buildApp(): Hono {
   app.route("/v1/channels/:accountId/chat-setup", channelChatSetupRoutes(db));
   app.route("/v1/channels/:accountId/page", channelPageRoutes(db));
   app.route("/v1/channels", channelRoutes(db));
+  // Watchdog (blueprint stage 1): what the hourly Meta connection check last found.
+  app.route("/v1/meta-health", metaHealthRoutes(db));
   app.route("/v1/whatsapp-profile", whatsappProfileRoutes(db));
   // WhatsApp template authoring (suite spec 06).
   app.route("/v1/templates", templateRoutes(db));
