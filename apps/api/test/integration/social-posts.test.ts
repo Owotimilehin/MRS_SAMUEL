@@ -336,6 +336,28 @@ describe("suite spec 09 — /v1/social", () => {
     }
   });
 
+  it("GET /posts?q= finds posts by their text or a per-account text (the suite's top-bar search)", async () => {
+    const mango = await draft(admin, { caption: "Fresh MANGO juice this weekend" });
+    const other = await draft(admin, { caption: "Pineapple day", targets: [{ account_id: fb, caption_override: "Mango special for Facebook" }] });
+    const plain = await draft(admin, { caption: "Orange and ginger" });
+    const ids = async (q: string) =>
+      ((await call(admin, "GET", `/posts?status=all&limit=5&q=${encodeURIComponent(q)}`)).json.data as { id: string }[]).map((p) => p.id);
+
+    const found = await ids("mango");
+    expect(found).toContain(mango.id);
+    expect(found).toContain(other.id);
+    expect(found).not.toContain(plain.id);
+    // LIKE wildcards are plain text, not "match anything".
+    expect(await ids("%")).toEqual([]);
+    expect(await ids("_")).toEqual([]);
+    // A blank search is no search.
+    expect(await ids("   ")).toContain(plain.id);
+    // Still needs social.publish.
+    expect((await call(manager, "GET", "/posts?q=mango")).status).toBe(403);
+
+    for (const d of [mango, other, plain]) await call(admin, "DELETE", `/posts/${d.id}`);
+  });
+
   it("upload token from another user is rejected", async () => {
     const photo = (media: Obj[]) => textBody({ kind: "photo", caption: "A picture", media });
 
