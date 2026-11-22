@@ -145,6 +145,33 @@ export function reportRoutes(db: DbClient) {
     return c.json({ data: rows });
   });
 
+  // Paid shop orders that were placed from a WhatsApp chat cart (suite Overview,
+  // blueprint stage 16). A chat cart becomes an ordinary channel='online' order
+  // through catalogue_chat_order.sale_order_id, so /revenue counts it under
+  // "online"; this tells the suite how much of that came from chats. Same
+  // status filter and the same created_at_local day as /revenue, so the two
+  // always add up. Read-only; reports.view like the rest of this router.
+  r.get("/chat-orders", async (c) => {
+    const from = c.req.query("from") ?? "";
+    const to = c.req.query("to") ?? "";
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    if (!day.test(from) || !day.test(to) || from > to) {
+      return c.json(
+        { error: { code: "validation_failed", message: "from and to must be YYYY-MM-DD, from on or before to" } },
+        400,
+      );
+    }
+    const rows = await db.execute<{ orders: number; gross_ngn: number }>(sql`
+      SELECT COUNT(*)::int AS orders, COALESCE(SUM(o.total_ngn), 0)::int AS gross_ngn
+      FROM catalogue_chat_order co
+      JOIN sale_order o ON o.id = co.sale_order_id
+      WHERE o.status IN ('paid','handed_over','out_for_delivery','delivered')
+        AND o.created_at_local::date BETWEEN ${from}::date AND ${to}::date
+    `);
+    const row = rows[0];
+    return c.json({ data: { orders: Number(row?.orders ?? 0), gross_ngn: Number(row?.gross_ngn ?? 0) } });
+  });
+
   r.get("/branch-stock", async (c) => {
     const rows = await db.execute<{
       branch_id: string;
