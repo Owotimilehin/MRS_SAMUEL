@@ -21,6 +21,8 @@ export const SUITE_PAGES = [
   { to: "/overview", cap: "inbox.view" },
   { to: "/inbox", cap: "inbox.view" },
   { to: "/calls", cap: "inbox.view" },
+  // Suite spec 15: reminders and snoozed chats.
+  { to: "/tasks", cap: "inbox.view" },
   { to: "/comments", cap: "social.comments" },
   { to: "/contacts", cap: "contacts.view" },
   { to: "/catalogue", cap: "catalogue.manage" },

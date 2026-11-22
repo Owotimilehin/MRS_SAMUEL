@@ -46,6 +46,7 @@ const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
 
 const OverviewPage = lazyNamed(() => import("./features/overview/OverviewPage.js"), "OverviewPage");
 const CallsPage = lazyNamed(() => import("./features/calls/CallsPage.js"), "CallsPage");
+const TasksPage = lazyNamed(() => import("./features/tasks/TasksPage.js"), "TasksPage");
 const CommentsPage = lazyNamed<{ threadId?: string }>(() => import("./features/comments/CommentsPage.js"), "CommentsPage");
 
 const TemplatesPage = lazyNamed<{ tab?: "messages" | "forms" }>(() => import("./features/templates/TemplatesPage.js"), "TemplatesPage");
@@ -228,6 +229,13 @@ const callsRoute = createRoute({
   component: () => page(<CallsPage />, "inbox.view"),
 });
 
+// Tasks (suite spec 15): reminders that are due or coming up, and snoozed chats.
+const tasksRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tasks",
+  component: () => page(<TasksPage />, "inbox.view"),
+});
+
 // Comments on Facebook and Instagram posts (suite spec 03). Open to people with social.comments, with or without the Inbox.
 const commentsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -389,6 +397,7 @@ const routeTree = rootRoute.addChildren([
   insightsRoute,
   overviewRoute,
   callsRoute,
+  tasksRoute,
   leadsRoute,
   leadRoute,
   adsRoute,

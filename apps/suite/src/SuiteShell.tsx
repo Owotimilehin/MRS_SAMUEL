@@ -19,6 +19,7 @@ import {
   LayoutDashboard,
   LayoutTemplate,
   LineChart,
+  ListTodo,
   LogOut,
   Megaphone,
   Menu,
@@ -51,7 +52,7 @@ const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(
 const CallBar = lazy(() => import("@admin/components/inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 interface NavItem {
-  to: "/overview" | "/inbox" | "/calls" | "/comments" | "/contacts" | "/catalogue" | "/posts" | "/leads" | "/ads" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
+  to: "/overview" | "/inbox" | "/calls" | "/tasks" | "/comments" | "/contacts" | "/catalogue" | "/posts" | "/leads" | "/ads" | "/insights" | "/inbox/reports" | "/inbox/settings" | "/channels" | "/templates";
   label: string;
   Icon: LucideIcon;
   cap: Capability;
@@ -65,6 +66,8 @@ const NAV: { heading: string; items: NavItem[] }[] = [
       { to: "/overview", label: "Overview", Icon: LayoutDashboard, cap: "inbox.view" },
       { to: "/inbox", label: "Inbox", Icon: MessagesSquare, cap: "inbox.view" },
       { to: "/calls", label: "Calls", Icon: Phone, cap: "inbox.view" },
+      // Suite spec 15: reminders that are due, and snoozed chats.
+      { to: "/tasks", label: "Tasks", Icon: ListTodo, cap: "inbox.view" },
       { to: "/comments", label: "Comments", Icon: MessageCircle, cap: "social.comments" },
       // Suite spec 14. Phase B adds "Broadcasts".
       { to: "/contacts", label: "Contacts", Icon: Users, cap: "contacts.view" },
@@ -147,6 +150,16 @@ export function SuiteShell({ children, title, crumb, actions, subtitle, pageName
     select: (d) => d.count,
   });
 
+  // My reminders that are due, for the Tasks badge (suite spec 15); the notifier refreshes it when one falls due.
+  const remindersDue = useQuery({
+    queryKey: inboxKeys.remindersDue,
+    enabled: can("inbox.view"),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: false,
+    queryFn: inboxApi.remindersDue,
+  });
+
   // Sound, pop-up and tab-title alerts when a customer writes, on every page.
   useInboxNotifier(can("inbox.view"));
 
@@ -223,14 +236,18 @@ export function SuiteShell({ children, title, crumb, actions, subtitle, pageName
                         ? commentsWaiting.data
                         : item.to === "/calls"
                           ? callbacksWaiting.data
-                          : undefined;
+                          : item.to === "/tasks"
+                            ? remindersDue.data
+                            : undefined;
                   const badge = (count ?? 0) > 0 ? count : null;
                   const badgeLabel =
                     item.to === "/comments"
                       ? `${badge} comments waiting`
                       : item.to === "/calls"
                         ? `${badge} missed calls to return`
-                        : `${badge} unread messages`;
+                        : item.to === "/tasks"
+                          ? `${badge} reminders due`
+                          : `${badge} unread messages`;
                   return (
                     <Link
                       key={item.to}
