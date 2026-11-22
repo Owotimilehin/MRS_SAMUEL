@@ -95,7 +95,7 @@ export function healthBanner(items: readonly MetaHealthItem[]): HealthBanner | n
   const reason = first.reason.replace(/[.\s]+$/, "");
   return {
     tone: worst === "broken" ? "danger" : "warning",
-    text: `${first.impact}: ${lowerFirst(reason)}${tail}.`,
+    text: `${first.impact.replace(/[.\s]+$/, "")}: ${lowerFirst(reason)}${tail}.`,
     signature: hit.map((i) => `${i.key}:${i.status}:${i.reason}`).join("|"),
   };
 }

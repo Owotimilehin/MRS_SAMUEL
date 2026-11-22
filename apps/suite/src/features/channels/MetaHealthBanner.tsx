@@ -5,7 +5,7 @@
  * it comes back if the problems change. Red cannot be dismissed.
  */
 import { useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, X } from "lucide-react";
 import { healthBanner } from "@ms/shared";
@@ -20,6 +20,8 @@ function readDismissed(): string | null {
 }
 
 export function MetaHealthBanner({ enabled, canOpenChannels }: { enabled: boolean; canOpenChannels: boolean }): JSX.Element | null {
+  // On the Channels page itself the link would lead nowhere new.
+  const onChannels = useRouterState({ select: (st) => st.location.pathname === "/channels" });
   const q = useQuery({
     queryKey: metaHealthKeys.all,
     queryFn: metaHealthApi.get,
@@ -48,7 +50,7 @@ export function MetaHealthBanner({ enabled, canOpenChannels }: { enabled: boolea
       <AlertTriangle size={17} aria-hidden="true" className="suite-health__icon" />
       <p className="suite-health__text">
         {banner.text}{" "}
-        {canOpenChannels ? (
+        {onChannels ? null : canOpenChannels ? (
           <Link to="/channels" className="suite-health__link">
             Open Channels
           </Link>
