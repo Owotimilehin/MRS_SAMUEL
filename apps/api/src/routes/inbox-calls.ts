@@ -1,3 +1,4 @@
+import type { Capability } from "@ms/shared";
 import { Hono } from "hono";
 import { z } from "zod";
 import { alias } from "drizzle-orm/pg-core";
@@ -64,7 +65,7 @@ function returnedAt(): SQL<string | null> {
   )`;
 }
 
-async function viewerWith(db: DbClient, userId: string, cap: string): Promise<InboxViewer> {
+async function viewerWith(db: DbClient, userId: string, cap: Capability): Promise<InboxViewer> {
   const viewer = await reloadViewer(db, userId);
   if (!viewer || !viewer.capabilities.includes(cap)) {
     throw new BusinessError("forbidden", `missing capability: ${cap}`, 403);
