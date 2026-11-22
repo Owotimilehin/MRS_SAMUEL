@@ -34,7 +34,15 @@ export const inboxKeys = {
   staff: ["inbox", "staff"] as const,
   teams: ["inbox", "teams"] as const,
   lists: ["inbox", "conversations"] as const,
+  /** The inbox's own paged list (useInfiniteQuery). Its cache holds { pages, pageParams }. */
   list: (f: ConversationFilters) => ["inbox", "conversations", f] as const,
+  /**
+   * One plain page of conversations (useQuery), for screens such as Overview and Tasks.
+   * Must never equal `list`: the two cache shapes differ, and the inbox crashed reading
+   * a plain page as a paged one ("reading 'length'"). Still under `lists`, so
+   * invalidating `lists` refreshes both.
+   */
+  listFirstPage: (f: ConversationFilters) => ["inbox", "conversations", f, "first-page"] as const,
   conversation: (id: string) => ["inbox", "conversation", id] as const,
   timeline: (id: string) => ["inbox", "timeline", id] as const,
   contact: (customerId: string) => ["inbox", "contact", customerId] as const,

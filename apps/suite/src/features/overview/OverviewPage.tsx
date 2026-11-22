@@ -154,7 +154,7 @@ export function OverviewPage(): JSX.Element {
   const remindersDue = useQuery({ queryKey: inboxKeys.remindersDue, queryFn: inboxApi.remindersDue, refetchInterval: 60_000, retry: false });
   const latestFilters = { status: "open" as const, view: "all" as const, chatsOnly: true };
   const latest = useQuery({
-    queryKey: inboxKeys.list(latestFilters),
+    queryKey: inboxKeys.listFirstPage(latestFilters),
     queryFn: () => inboxApi.conversations(latestFilters),
   });
 
