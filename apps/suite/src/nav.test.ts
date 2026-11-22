@@ -20,7 +20,7 @@ describe("suite menu", () => {
 
 describe("where a person lands", () => {
   it("goes to the first menu page they may see", () => {
-    expect(firstAllowedPage(["inbox.view", "channels.manage"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.view", "channels.manage"])).toBe("/overview");
     expect(firstAllowedPage(["inbox.reports", "inbox.settings"])).toBe("/inbox/reports");
     expect(firstAllowedPage(["channels.manage", "inbox.settings"])).toBe("/channels");
     expect(firstAllowedPage(["orders.view"])).toBeNull();
@@ -44,7 +44,7 @@ describe("where a person lands", () => {
     expect(firstAllowedPage(["contacts.view"])).toBe("/contacts");
     expect(firstAllowedPage(["contacts.view", "inbox.reports"])).toBe("/contacts");
     // With inbox access too, the inbox still comes first.
-    expect(firstAllowedPage(["contacts.view", "inbox.view"])).toBe("/inbox");
+    expect(firstAllowedPage(["contacts.view", "inbox.view"])).toBe("/overview");
   });
   it("lights Contacts on the list, a contact, the lists and the import page", () => {
     expect(activeNavTo("/contacts", LINKS)).toBe("/contacts");
@@ -60,7 +60,7 @@ describe("where a person lands", () => {
     expect(activeNavTo("/comments", LINKS)).toBe("/comments");
     expect(activeNavTo("/comments/7f3c-thread", LINKS)).toBe("/comments");
     expect(firstAllowedPage(["social.comments"])).toBe("/comments");
-    expect(firstAllowedPage(["social.comments", "inbox.view"])).toBe("/inbox");
+    expect(firstAllowedPage(["social.comments", "inbox.view"])).toBe("/overview");
     expect(firstAllowedPage(["social.comments", "inbox.reports"])).toBe("/comments");
   });
 });
@@ -73,7 +73,7 @@ describe("the Catalogue page (suite spec 08)", () => {
   it("is where someone with only the catalogue permission lands", () => {
     expect(firstAllowedPage(["catalogue.manage"])).toBe("/catalogue");
     expect(firstAllowedPage(["catalogue.manage", "inbox.reports"])).toBe("/catalogue");
-    expect(firstAllowedPage(["inbox.view", "catalogue.manage"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.view", "catalogue.manage"])).toBe("/overview");
   });
 });
 
@@ -86,7 +86,7 @@ describe("posts in the menu (suite spec 09)", () => {
   });
   it("someone who may only publish posts lands on Posts", () => {
     expect(firstAllowedPage(["social.publish"])).toBe("/posts");
-    expect(firstAllowedPage(["inbox.view", "social.publish"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.view", "social.publish"])).toBe("/overview");
     expect(firstAllowedPage(["social.publish", "inbox.reports"])).toBe("/posts");
   });
 });
@@ -101,7 +101,7 @@ describe("Insights in the menu (suite spec 11)", () => {
   it("is where someone with only insights.view lands, and sits above Reports", () => {
     expect(firstAllowedPage(["insights.view"])).toBe("/insights");
     expect(firstAllowedPage(["inbox.reports", "insights.view"])).toBe("/insights");
-    expect(firstAllowedPage(["inbox.view", "insights.view"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.view", "insights.view"])).toBe("/overview");
     expect(firstAllowedPage(["inbox.reports"])).toBe("/inbox/reports");
   });
 });

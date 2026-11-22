@@ -18,7 +18,9 @@ export function activeNavTo<T extends string>(pathname: string, links: readonly 
  * step with NAV in SuiteShell.tsx (which adds the labels and icons).
  */
 export const SUITE_PAGES = [
+  { to: "/overview", cap: "inbox.view" },
   { to: "/inbox", cap: "inbox.view" },
+  { to: "/calls", cap: "inbox.view" },
   { to: "/comments", cap: "social.comments" },
   { to: "/contacts", cap: "contacts.view" },
   { to: "/catalogue", cap: "catalogue.manage" },

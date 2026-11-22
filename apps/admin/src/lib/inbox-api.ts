@@ -57,6 +57,8 @@ export interface ConversationFilters {
   q?: string;
   /** Only chats from this channel (spec 02). */
   channel?: "whatsapp" | "messenger" | "instagram";
+  /** Only conversations with messages; call-only ones are left out (the suite keeps calls separate). */
+  chatsOnly?: boolean;
 }
 
 /**
@@ -99,7 +101,7 @@ export const inboxApi = {
 
   conversations: (f: ConversationFilters, before?: string) =>
     api<ConversationPage>(
-      `/inbox/conversations${qs({ status: f.status, view: f.view, number: f.number, label: f.label, q: f.q, channel: f.channel, before })}`,
+      `/inbox/conversations${qs({ status: f.status, view: f.view, number: f.number, label: f.label, q: f.q, channel: f.channel, chats_only: f.chatsOnly ? "1" : undefined, before })}`,
     ),
   conversation: async (id: string) => (await api<{ data: ConversationDetail }>(`/inbox/conversations/${id}`)).data,
   /**

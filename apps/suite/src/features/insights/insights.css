@@ -11,8 +11,8 @@
 .ins-link { font-weight: 700; text-decoration: underline; color: inherit; }
 
 .ins-notices { display: grid; gap: 8px; margin-bottom: 12px; }
-.ins-notice { padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.14); color: #92400e; font-size: 14px; }
-.ins-notice--bad { background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.35); color: var(--danger-ink, #b91c1c); }
+.ins-notice { padding: 10px 14px; border-radius: var(--radius-card); border: 1px solid var(--warning-soft); background: var(--warning-soft); color: var(--warning-ink); font-size: 14px; }
+.ins-notice--bad { background: var(--danger-soft); border-color: var(--danger-soft); color: var(--danger-ink); }
 .ins-first { display: grid; gap: 12px; justify-items: start; }
 .ins-first p { margin: 0; }
 
@@ -35,14 +35,14 @@
 
 .ins-h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
 .ins-wa { display: grid; gap: 20px; }
-.ins-ours { padding: 12px 14px; border-radius: 12px; background: rgba(20, 24, 31, 0.05); }
+.ins-ours { padding: 12px 14px; border-radius: var(--radius-card); background: rgba(20, 24, 31, 0.05); }
 .ins-check { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0; font-weight: 600; }
 .ins-check input { width: 20px; height: 20px; flex: none; }
 .ins-dialog__foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 
 .ins-sort { background: none; border: 0; padding: 0; font: inherit; font-weight: inherit; color: inherit; cursor: pointer; }
 .ins-net { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; border: 1px solid var(--line); color: var(--ink-soft); }
-.ins-tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: rgba(16, 185, 129, 0.12); color: #065f46; }
+.ins-tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--success-soft); color: var(--success-ink); }
 .ins-tag--muted { background: rgba(20, 24, 31, 0.07); color: var(--ink-soft); }
 .ins-page .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
 

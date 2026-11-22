@@ -6,7 +6,7 @@
 .wp-fine { font-size: 12px; color: var(--ink-soft); margin: 4px 0 0; }
 .wp-count { font-size: 12px; color: var(--ink-soft); }
 .wp-count--over { color: var(--danger); font-weight: 700; }
-.wp-strip { padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.14); color: #92400e; font-size: 14px; }
+.wp-strip { padding: 10px 14px; border-radius: var(--radius-card); border: 1px solid var(--warning-soft); background: var(--warning-soft); color: var(--warning-ink); font-size: 14px; }
 .wp-photo { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
 .wp-avatar { border-radius: 50%; object-fit: cover; flex: none; display: block; }
 .wp-avatar--blank { display: flex; align-items: center; justify-content: center; background: rgba(20, 24, 31, 0.1); color: var(--ink-soft); font-weight: 700; }
