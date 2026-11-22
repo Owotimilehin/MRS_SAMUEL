@@ -34,6 +34,7 @@ import {
   refreshContactSummaries,
   sendContactConsentConfirmations,
 } from "./jobs/contacts.js";
+import { checkBroadcastHealth, sendBroadcasts, startBroadcasts, sweepBroadcastRecipients } from "./jobs/broadcasts.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -115,6 +116,11 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "contact_consent_confirm", everyMs: 10_000, last: 0, run: () => sendContactConsentConfirmations(db, logger) },
     { name: "contact_import_apply", everyMs: 5_000, last: 0, run: () => applyContactImports(db, logger) },
     { name: "contact_import_cleanup", everyMs: 24 * 60 * 60_000, last: 0, run: () => cleanupContactImports(db, logger) },
+    // Broadcasts (suite spec 14, Phase B). The system only stops a broadcast; a person resumes it.
+    { name: "broadcast_start", everyMs: 30_000, last: 0, run: () => startBroadcasts(db, logger) },
+    { name: "broadcast_send", everyMs: 5_000, last: 0, run: () => sendBroadcasts(db, logger) },
+    { name: "broadcast_sweep", everyMs: 60_000, last: 0, run: () => sweepBroadcastRecipients(db, logger) },
+    { name: "broadcast_health", everyMs: 5 * 60_000, last: 0, run: () => checkBroadcastHealth(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {
