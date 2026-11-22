@@ -32,6 +32,8 @@ let listening: Promise<void> | null = null;
 /** Exported for tests: should this subscriber receive this signal? */
 export function shouldDeliver(viewer: InboxViewer, s: InboxSignal): boolean {
   if (s.event === "call.ringing") return !!s.userIds?.includes(viewer.userId);
+  // A reminder that fell due goes to its assignee only (suite spec 15); the worker checked they may see it.
+  if (s.event === "reminder.due") return !!s.userIds?.includes(viewer.userId);
   // Comments (suite spec 03): social.comments plus the existing per-line access, never the conversation rule.
   if (s.event.startsWith("comment.")) {
     return viewer.capabilities.includes("social.comments") && !!s.phoneNumberId && canUseNumber(viewer, s.phoneNumberId);
