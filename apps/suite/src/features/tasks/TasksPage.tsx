@@ -218,7 +218,7 @@ function ReminderTab({ view }: { view: Exclude<Tab, "snoozed"> }): JSX.Element {
 function SnoozedTab(): JSX.Element {
   const qc = useQueryClient();
   const filters: ConversationFilters = { status: "snoozed", view: "all", chatsOnly: true };
-  const q = useQuery({ queryKey: inboxKeys.list(filters), queryFn: () => inboxApi.conversations(filters), refetchInterval: 60_000 });
+  const q = useQuery({ queryKey: inboxKeys.listFirstPage(filters), queryFn: () => inboxApi.conversations(filters), refetchInterval: 60_000 });
   const rows = [...(q.data?.data ?? [])].sort((a, b) => (a.snoozed_until ?? "").localeCompare(b.snoozed_until ?? ""));
   const [busy, setBusy] = useState<string | null>(null);
 
