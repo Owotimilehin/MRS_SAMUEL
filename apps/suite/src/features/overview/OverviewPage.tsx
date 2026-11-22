@@ -36,6 +36,7 @@ import { COLOR_AXIS, COLOR_GRID, shortDate } from "@admin/lib/analytics-theme.js
 import { inboxApi, inboxKeys } from "@admin/lib/inbox-api.js";
 import { channelName, contactName, listTime } from "@admin/lib/inbox-logic.js";
 import { settingsApi } from "@admin/lib/inbox-settings-api.js";
+import { waitWords } from "@ms/shared";
 import { callKeys, callsApi } from "../calls/calls-api.js";
 import {
   PERIODS,
@@ -149,6 +150,8 @@ export function OverviewPage(): JSX.Element {
     enabled: canSales && canAds,
     retry: false,
   });
+  const replyTarget = useQuery({ queryKey: inboxKeys.replyTarget, queryFn: inboxApi.replyTarget, refetchInterval: 60_000, retry: false });
+  const remindersDue = useQuery({ queryKey: inboxKeys.remindersDue, queryFn: inboxApi.remindersDue, refetchInterval: 60_000, retry: false });
   const latestFilters = { status: "open" as const, view: "all" as const, chatsOnly: true };
   const latest = useQuery({
     queryKey: inboxKeys.list(latestFilters),
@@ -219,6 +222,27 @@ export function OverviewPage(): JSX.Element {
           {toCallBack.length} missed {toCallBack.length === 1 ? "call" : "calls"}
         </strong>{" "}
         to return. The longest has been waiting since {waitingFor(toCallBack[0]!.started_at)}.
+      </li>,
+    );
+  // Suite spec 15: chats over the reply-time target (only when the owner turned it on).
+  const late = replyTarget.data;
+  if (late?.target_minutes && late.late > 0)
+    brief.push(
+      <li key="late">
+        <strong>
+          {late.late} {late.late === 1 ? "chat has" : "chats have"}
+        </strong>{" "}
+        waited longer than your {late.target_minutes}-minute reply target.
+        {late.longest_minutes != null && <> The longest has waited {waitWords(late.longest_minutes)}.</>}
+      </li>,
+    );
+  if ((remindersDue.data ?? 0) > 0)
+    brief.push(
+      <li key="reminders">
+        <strong>
+          {remindersDue.data} {remindersDue.data === 1 ? "reminder is" : "reminders are"}
+        </strong>{" "}
+        due. <Link to="/tasks">Open Tasks</Link>.
       </li>,
     );
   if (waitingComments > 0)

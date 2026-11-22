@@ -1,0 +1,19 @@
+/* Tasks page (suite spec 15). Theme variables only. */
+.tk-page { display: flex; flex-direction: column; gap: 16px; }
+.tk-card { padding: 0; overflow: hidden; }
+.tk-table-wrap { border: 0; border-radius: 0; box-shadow: none; }
+.tk-who { display: inline-flex; flex-direction: column; }
+.tk-who a { color: var(--ink); font-weight: 600; text-decoration: none; }
+.tk-who a:hover { color: var(--accent); }
+.tk-meta { display: block; color: var(--ink-faint); font-size: 12px; font-weight: 500; margin-top: 2px; }
+.tk-note { max-width: 380px; white-space: normal; overflow-wrap: anywhere; }
+.tk-note > svg { color: var(--accent); vertical-align: -2px; margin-right: 6px; }
+.tk-actions { white-space: nowrap; }
+.tk-actions .btn + .btn { margin-left: 6px; }
+.tk-reminders { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.tk-reminders li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.tk-reminders li > span:first-child { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .tk-actions { white-space: normal; }
+  .tk-actions .btn { margin: 2px 0; }
+}

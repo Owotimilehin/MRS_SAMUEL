@@ -52,6 +52,7 @@ import { socialCommentRoutes } from "./routes/social-comments.js";
 import { inboxSettingsRoutes } from "./routes/inbox-settings.js";
 import { inboxReportRoutes } from "./routes/inbox-reports.js";
 import { inboxCallRoutes } from "./routes/inbox-calls.js";
+import { inboxTaskRoutes } from "./routes/inbox-tasks.js";
 import { channelRoutes } from "./routes/channels.js";
 import { metaHealthRoutes } from "./routes/meta-health.js";
 import { channelChatSetupRoutes } from "./routes/channel-chat-setup.js";
@@ -148,6 +149,8 @@ export function buildApp(): Hono {
   app.route("/v1/inbox/reports", inboxReportRoutes(db));
   // Calls as their own section of the suite (call log, call-backs, metrics).
   app.route("/v1/inbox/calls", inboxCallRoutes(db));
+  // Snooze, reminders and the reply-time target (suite spec 15).
+  app.route("/v1/inbox/tasks", inboxTaskRoutes(db));
   app.route("/v1/inbox/voice", voiceAppRoutes(db));
   // Carts sent from WhatsApp (suite spec 08). Mounted above /v1/inbox so its longer path wins.
   app.route("/v1/inbox/chat-orders", chatOrderRoutes(db));

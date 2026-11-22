@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { activeNavTo, firstAllowedPage } from "./nav.js";
+import { SUITE_PAGES, activeNavTo, firstAllowedPage } from "./nav.js";
+
+describe("the Tasks page (suite spec 15)", () => {
+  const WITH_TASKS = ["/overview", "/inbox", "/calls", "/tasks", "/inbox/settings"] as const;
+  it("lights Tasks on its page and nothing else", () => {
+    expect(activeNavTo("/tasks", WITH_TASKS)).toBe("/tasks");
+    expect(activeNavTo("/calls", WITH_TASKS)).toBe("/calls");
+  });
+  it("sits right after Calls in the menu, behind inbox.view", () => {
+    const order: string[] = SUITE_PAGES.map((p) => p.to);
+    expect(order.indexOf("/tasks")).toBe(order.indexOf("/calls") + 1);
+    expect(SUITE_PAGES.find((p) => p.to === "/tasks")?.cap).toBe("inbox.view");
+    // Inbox people still land on the Overview.
+    expect(firstAllowedPage(["inbox.view"])).toBe("/overview");
+  });
+});
 
 const LINKS = ["/inbox", "/comments", "/contacts", "/leads", "/inbox/reports", "/channels", "/templates", "/inbox/settings"] as const;
 

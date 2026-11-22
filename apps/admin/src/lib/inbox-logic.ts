@@ -28,12 +28,12 @@ export const INBOX_TZ = "Africa/Lagos";
 
 // ── List tabs ────────────────────────────────────────────────────────────────
 
-export type InboxTabKey = "mine" | "unassigned" | "team" | "all" | "closed";
+export type InboxTabKey = "mine" | "unassigned" | "team" | "all" | "snoozed" | "closed";
 
 export interface InboxTab {
   key: InboxTabKey;
   label: string;
-  status: "open" | "closed";
+  status: "open" | "snoozed" | "closed";
   view: "mine" | "unassigned" | "team" | "all";
 }
 
@@ -51,6 +51,8 @@ export function inboxTabsFor(caps: readonly string[], teamIds: readonly string[]
   ];
   if (wide && teamIds.length > 0) tabs.push({ key: "team", label: "Team", status: "open", view: "team" });
   if (wide) tabs.push({ key: "all", label: "All open", status: "open", view: "all" });
+  // Suite spec 15: snoozed chats leave the open lists; they wait here until they come back.
+  tabs.push({ key: "snoozed", label: "Snoozed", status: "snoozed", view: "all" });
   tabs.push({ key: "closed", label: "Closed", status: "closed", view: "all" });
   return tabs;
 }
@@ -777,6 +779,8 @@ export function emptyListText(tab: InboxTabKey, searching: boolean): { title: st
       return { title: "No open team chats", hint: "Open chats for your team show here." };
     case "closed":
       return { title: "No closed chats yet", hint: "Chats you close are kept here." };
+    case "snoozed":
+      return { title: "No snoozed chats", hint: "Snooze a chat to put it away until later. It comes back by itself." };
     default:
       return { title: "No open chats", hint: "Every open chat shows here." };
   }
@@ -1062,4 +1066,101 @@ export function parseDeliveryFee(text: string): number | null {
   if (!/^\d{1,6}$/.test(t)) return null;
   const n = Number(t);
   return n <= 100_000 ? n : null;
+}
+
+// ── Snooze and reminders (suite spec 15) ────────────────────────────────────
+
+/** Lagos is UTC+1 all year (no summer time), so a Lagos wall-clock time converts with a fixed offset. */
+const LAGOS_OFFSET = "+01:00";
+
+/** A Lagos date ("YYYY-MM-DD") and time ("HH:MM") as an instant, or null when either is missing or invalid. */
+export function lagosInputToDate(date: string, time: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+  const d = new Date(`${date}T${time}:00${LAGOS_OFFSET}`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** The Lagos date and time of an instant, for a date and a time input. */
+export function dateToLagosInput(d: Date): { date: string; time: string } {
+  return { date: lagosDayKey(d), time: timeOfDay(d.toISOString()) };
+}
+
+function lagosWeekday(key: string): number {
+  return new Date(`${key}T12:00:00Z`).getUTCDay();
+}
+
+export type SnoozePresetKey = "hour" | "later" | "tomorrow" | "monday";
+
+export interface SnoozePreset {
+  key: SnoozePresetKey;
+  label: string;
+  at: Date;
+}
+
+/**
+ * The quick choices for "Snooze until…" (and for a reminder's time), in Lagos
+ * time whatever the browser's zone:
+ *   Later today 17:00 — only while 17:00 is at least 30 minutes away
+ *   Tomorrow 09:00
+ *   Next Monday 09:00 — the Monday after today (seven days ahead on a Monday)
+ * `withHour` adds "In 1 hour" first (reminders).
+ */
+export function snoozePresets(now: Date = new Date(), opts: { withHour?: boolean | undefined } = {}): SnoozePreset[] {
+  const today = lagosDayKey(now);
+  const out: SnoozePreset[] = [];
+  if (opts.withHour) out.push({ key: "hour", label: "In 1 hour", at: new Date(now.getTime() + 3_600_000) });
+  const later = lagosInputToDate(today, "17:00")!;
+  if (later.getTime() - now.getTime() >= 30 * 60_000) out.push({ key: "later", label: "Later today, 17:00", at: later });
+  out.push({ key: "tomorrow", label: "Tomorrow, 09:00", at: lagosInputToDate(shiftDay(today, 1), "09:00")! });
+  const wd = lagosWeekday(today);
+  const toMonday = (8 - wd) % 7 || 7;
+  out.push({ key: "monday", label: "Next Monday, 09:00", at: lagosInputToDate(shiftDay(today, toMonday), "09:00")! });
+  return out;
+}
+
+/** "Today 17:00", "Tomorrow 09:00", "Mon 24 Nov, 09:00": when something comes back or falls due. */
+export function whenLabel(iso: string | Date, now: Date = new Date()): string {
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  const key = lagosDayKey(d);
+  const today = lagosDayKey(now);
+  const time = timeOfDay(d.toISOString());
+  if (key === today) return `Today ${time}`;
+  if (key === shiftDay(today, 1)) return `Tomorrow ${time}`;
+  if (key === shiftDay(today, -1)) return `Yesterday ${time}`;
+  return `${dayLabel(key, now)}, ${time}`;
+}
+
+export interface ReminderDue {
+  tone: "danger" | "warning" | "accent" | "neutral";
+  label: string;
+}
+
+/**
+ * How a reminder's due time reads in a list:
+ *   red    "Overdue 2 days"  due a day or more ago
+ *   amber  "Due 20 min ago"  due, under a day ago ("Due now" in the first minute)
+ *   accent "Today 15:00"     later today
+ *   plain  "Fri 28 Nov, 09:00"
+ */
+export function reminderDue(dueIso: string, doneAt: string | null, now: Date = new Date()): ReminderDue {
+  if (doneAt) return { tone: "neutral", label: `Done ${whenLabel(doneAt, now)}` };
+  const due = new Date(dueIso);
+  const ago = now.getTime() - due.getTime();
+  if (ago >= 86_400_000) {
+    const days = Math.floor(ago / 86_400_000);
+    return { tone: "danger", label: `Overdue ${days} ${days === 1 ? "day" : "days"}` };
+  }
+  if (ago >= 0) {
+    const min = Math.floor(ago / 60_000);
+    if (min < 1) return { tone: "warning", label: "Due now" };
+    if (min < 60) return { tone: "warning", label: `Due ${min} min ago` };
+    return { tone: "warning", label: `Due ${Math.floor(min / 60)} h ago` };
+  }
+  if (lagosDayKey(due) === lagosDayKey(now)) return { tone: "accent", label: whenLabel(due, now) };
+  return { tone: "neutral", label: whenLabel(due, now) };
+}
+
+/** Should a reminder.due event alert this person? The server already sent it only to the assignee. */
+export function shouldAlertForReminder(e: { event: string; id?: string }, level: "all" | "assigned" | "none"): boolean {
+  return e.event === "reminder.due" && !!e.id && level !== "none";
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   adminUser,
+  appSetting,
   inboxCall,
   inboxHoliday,
   inboxHoursProfile,
@@ -16,7 +17,7 @@ import {
   type DbClient,
 } from "@ms/db";
 import { getNumberInfo, numberMessagingLimit, metaConfigFromEnv, registerNumber, unparkEventsForNumber, MetaApiError } from "@ms/domain";
-import { toE164 } from "@ms/shared";
+import { REPLY_TARGET_KEY, REPLY_TARGET_MAX, REPLY_TARGET_MIN, readReplyTarget, toE164 } from "@ms/shared";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError, pgErrorCode } from "../lib/errors.js";
@@ -330,6 +331,27 @@ export function inboxSettingsRoutes(db: DbClient) {
     if (!row) throw new BusinessError("not_found", "not found", 404);
     await audit(db, c, "inbox.holiday_delete", "inbox_holiday", id, undefined, row);
     return c.json({ ok: true });
+  });
+
+  // ── Reply-time target (suite spec 15) ──
+  r.get("/reply-target", requireCapability("inbox.settings"), async (c) => {
+    const [row] = await db.select({ value: appSetting.value }).from(appSetting).where(eq(appSetting.key, REPLY_TARGET_KEY));
+    return c.json({ data: { minutes: readReplyTarget(row?.value) } });
+  });
+  r.put("/reply-target", requireCapability("inbox.settings"), async (c) => {
+    const { minutes } = z
+      .object({ minutes: z.number().int().min(REPLY_TARGET_MIN).max(REPLY_TARGET_MAX).nullable() })
+      .strict()
+      .parse(await c.req.json());
+    const [before] = await db.select({ value: appSetting.value }).from(appSetting).where(eq(appSetting.key, REPLY_TARGET_KEY));
+    const value = { minutes };
+    const userId = c.get("auth").userId;
+    await db
+      .insert(appSetting)
+      .values({ key: REPLY_TARGET_KEY, value, updatedBy: userId })
+      .onConflictDoUpdate({ target: appSetting.key, set: { value, updatedAt: new Date(), updatedBy: userId } });
+    await audit(db, c, "inbox.reply_target_update", "app_setting", REPLY_TARGET_KEY, value, { minutes: readReplyTarget(before?.value) });
+    return c.json({ data: value });
   });
 
   // ── Greeting recordings ──

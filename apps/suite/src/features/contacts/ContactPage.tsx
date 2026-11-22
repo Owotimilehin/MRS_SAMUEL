@@ -31,6 +31,7 @@ import {
   sourceText,
   whatsappPromotions,
 } from "./contacts-logic.js";
+import { ContactReminders } from "../tasks/ContactReminders.js";
 import "./contacts.css";
 
 type Dialog = "edit" | "consent" | "labels" | "add-to-list" | "history" | null;
@@ -262,6 +263,9 @@ function Loaded({ contact }: { contact: ContactDetail }): JSX.Element {
             </>
           )}
         </section>
+
+        {/* Suite spec 15: reminders need the Inbox (the reminder routes sit behind inbox.view). */}
+        {can("inbox.view") && <ContactReminders customerId={contact.id} />}
 
         <section className="card ct-card" aria-label="Labels and lists">
           <h2 className="ct-card__h">

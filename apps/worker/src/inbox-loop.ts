@@ -35,6 +35,7 @@ import {
   refreshContactSummaries,
   sendContactConsentConfirmations,
 } from "./jobs/contacts.js";
+import { alertDueReminders, wakeSnoozed } from "./jobs/inbox-tasks.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -118,6 +119,9 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "contact_consent_confirm", everyMs: 10_000, last: 0, run: () => sendContactConsentConfirmations(db, logger) },
     { name: "contact_import_apply", everyMs: 5_000, last: 0, run: () => applyContactImports(db, logger) },
     { name: "contact_import_cleanup", everyMs: 24 * 60 * 60_000, last: 0, run: () => cleanupContactImports(db, logger) },
+    // Tasks and reminders (suite spec 15). Nothing is sent to a customer.
+    { name: "inbox_snooze_wake", everyMs: 30_000, last: 0, run: () => wakeSnoozed(db, logger) },
+    { name: "inbox_reminders_due", everyMs: 30_000, last: 0, run: () => alertDueReminders(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {
