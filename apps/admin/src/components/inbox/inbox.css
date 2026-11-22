@@ -63,6 +63,8 @@
 .ibx-channel-filter .btn { display: inline-flex; align-items: center; gap: 4px; }
 @media (max-width: 480px) { .ibx-channel-filter__name { display: none; } }
 .ibx-channel-icon { vertical-align: -1px; }
+/* A brand logo on a selected (filled) button turns white so it stays readable. */
+.btn--primary .ibx-channel-icon svg path { fill: currentColor; }
 .ibx-filters .select { flex: 1; min-width: 0; font-size: 12px; height: 36px; }
 .ibx-list__body { overflow-y: auto; flex: 1; }
 .ibx-list__body > .empty { margin: 12px; padding: 32px 18px; }
