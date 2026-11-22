@@ -7,17 +7,17 @@
 .ads-fine { font-size: 12px; color: var(--ink-soft); margin: 0; }
 .ads-h { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
 .ads-card { display: grid; gap: 10px; }
-.ads-strip { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); font-size: 14px; }
-.ads-strip--warn { background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.4); color: #92400e; }
-.ads-strip--bad { background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.35); color: var(--danger-ink, #b91c1c); }
-.ads-note { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: rgba(31, 122, 68, 0.05); font-size: 13px; }
+.ads-strip { padding: 10px 14px; border-radius: var(--radius-card); border: 1px solid var(--line); font-size: 14px; }
+.ads-strip--warn { background: var(--warning-soft); border-color: var(--warning-soft); color: var(--warning-ink); }
+.ads-strip--bad { background: var(--danger-soft); border-color: var(--danger-soft); color: var(--danger-ink); }
+.ads-note { border: 1px solid var(--line); border-radius: var(--radius-card); padding: 12px 14px; background: var(--surface-soft); font-size: 13px; }
 .ads-note h3 { margin: 0 0 4px; font-size: 14px; }
 .ads-note p { margin: 0; }
 .ads-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
 .ads-tag { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 700; background: rgba(20, 24, 31, 0.07); color: var(--ink-soft); white-space: nowrap; }
-.ads-tag--good { background: rgba(31, 158, 116, 0.14); color: var(--success-ink, #116149); }
-.ads-tag--warn { background: rgba(245, 158, 11, 0.16); color: #92400e; }
-.ads-tag--bad { background: rgba(220, 38, 38, 0.12); color: var(--danger-ink, #b91c1c); }
+.ads-tag--good { background: rgba(31, 158, 116, 0.14); color: var(--success-ink); }
+.ads-tag--warn { background: var(--warning-soft); color: var(--warning-ink); }
+.ads-tag--bad { background: var(--danger-soft); color: var(--danger-ink); }
 .ads-tag--suite { background: rgba(31, 122, 68, 0.12); color: var(--accent); }
 .ads-name { font-weight: 700; overflow-wrap: anywhere; }
 .ads-sub { font-size: 12px; color: var(--ink-soft); overflow-wrap: anywhere; }

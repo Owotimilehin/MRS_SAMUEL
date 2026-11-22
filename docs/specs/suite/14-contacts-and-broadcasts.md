@@ -4,7 +4,7 @@ Read `00-foundation.md` first (section 9 overrides the rest). Size L, suggested 
 
 | | Phase A: Contacts | Phase B: Broadcasts on WhatsApp |
 |---|---|---|
-| Migration | `0082_contacts.sql` (journal `when` 1787300000000) | `0083_broadcasts.sql` (journal `when` 1787400000000) |
+| Migration | `0082_contacts.sql` (journal `when` 1787300000000) | `0086_broadcasts.sql` (journal `when` 1787700000000) |
 | Table prefix | `contact_` | `broadcast_` |
 | Permissions | `contacts.view`, `contacts.manage` | `broadcasts.send` (owner only) |
 | Needs Meta | No | Yes: spec 06 templates, and Meta unblocking the account |
@@ -305,7 +305,7 @@ Journal entry: `{ "idx": <last idx on master + 1; 74 on this branch today>, "ver
 - `contact_origin`: where a contact created here came from. `customer.source` cannot gain values (ruling 9.2.7), so a hand-added or imported contact gets the `customer_source` the person chose and this row records the truth.
 - `contact_import_row.raw` is the row as uploaded (`{ "<header>": "<cell>" }`). `filled` lists the blank fields this import filled on a matched contact, with the values, so the change can be undone by hand.
 
-### 4.3 Migration `packages/db/migrations/0083_broadcasts.sql` (Phase B)
+### 4.3 Migration `packages/db/migrations/0086_broadcasts.sql` (Phase B)
 
 ```sql
 -- Broadcasts (suite spec 14, Phase B). Additive only: new broadcast_* tables. No existing table is altered.
@@ -398,7 +398,7 @@ CREATE TABLE IF NOT EXISTS "broadcast_event" (
 CREATE INDEX IF NOT EXISTS "idx_broadcast_event" ON "broadcast_event" ("broadcast_id","at");
 ```
 
-Journal entry: `{ "idx": <last + 1>, "version": "7", "when": 1787400000000, "tag": "0083_broadcasts", "breakpoints": true }`.
+Journal entry: `{ "idx": <last + 1>, "version": "7", "when": 1787700000000, "tag": "0086_broadcasts", "breakpoints": true }`.
 
 **Column notes**
 
@@ -1233,7 +1233,7 @@ No test calls the real Meta API (rule 3). Integration tests use `setupTestDb`, `
 
 **Phase B**
 
-- [ ] Migration 0083, journal entry and schema are in.
+- [ ] Migration 0086, journal entry and schema are in.
 - [ ] `broadcasts.send` exists and is the owner's only.
 - [ ] The owner switch is off by default and nothing reaches a customer while it is off (test).
 - [ ] A broadcast cannot be confirmed without a test send and the typed count.
@@ -1276,7 +1276,7 @@ No test calls the real Meta API (rule 3). Integration tests use `setupTestDb`, `
 
 **Phase B** (a separate pull request, after Phase A is merged)
 
-15. Permission `broadcasts.send`; migration 0083, journal, schema.
+15. Permission `broadcasts.send`; migration 0086, journal, schema.
 16. `packages/shared/src/broadcasts.ts` with unit tests.
 17. `meta.ts` changes (`headerMedia.id`, `sendMessage` options, callback data) and `send.ts` (`auto: "broadcast"`); unit tests; run every existing send test unchanged.
 18. `audience.ts` (`buildAudience`, `dailyAllowance`); `meta/broadcasts.ts` (`classifyBroadcastError`, `uploadWaMedia`, `getMmStatus`); tests.
@@ -1302,7 +1302,7 @@ No test calls the real Meta API (rule 3). Integration tests use `setupTestDb`, `
 | Q-A6 | Search scans `contact_summary`. Add the `pg_trgm` extension for an indexed search? | Not now: extensions need database rights the migrations have not used before. Revisit above 100,000 contacts |
 | Q-A7 | How long are contact details kept? | No automatic deletion in this version; erase on request. The owner should set a period with legal advice **[legal check]** |
 | Q-A8 | `customer_source` has no value for "imported" or "added by hand", and ruling 9.2.7 forbids adding one | The person chooses one of the five shop values; `contact_origin` records the truth and the "Came from" filter reads both |
-| Q-A9 | The foundation's D9 menu table and section 6 reservations do not list spec 14 | This spec adds the "Customers" menu group, migrations 0082 and 0083 and the prefixes `contact_` and `broadcast_`, as instructed. The foundation should be updated in the same pull request that merges this spec |
+| Q-A9 | The foundation's D9 menu table and section 6 reservations do not list spec 14 | This spec adds the "Customers" menu group, migrations 0082 and 0086 and the prefixes `contact_` and `broadcast_`, as instructed. The foundation should be updated in the same pull request that merges this spec |
 
 **Phase B: the owner must decide these before broadcasts are used**
 
@@ -1343,3 +1343,20 @@ Departures made while building Phase A on `work/olu/suite-14-contacts` (stacked 
 16. **CSV guard.** `csvSafeCell` also guards a cell that starts with a tab or a carriage return.
 17. **Screens.** "Change rules" and "See them" open Contacts through the address (`?rules=<list>`, `?list=`, `?label=`, `?sort=added`). The **Label** button works on up to 500 ticked rows (not on "select all that match"). Labels are made and deleted in the Labels dialog; renaming a label has a route but no screen. The Lists page has "Show archived lists" and an archived list has "Bring back". Every browser write is one `fetch` with no retry. "Send a broadcast" (Phase B) is not on the list page.
 18. **Preview speed.** Each row's match runs in its own short transaction (it must take the per-number lock `matchCustomerForPhone` takes). A row whose number is new falls to the same full scan of `customer.phone` that the inbox uses on a miss, so a 5,000-row file of new numbers against a very large customer table will make the preview slow. Not measured on production-sized data.
+
+## Built differently — Phase B
+
+Departures made while finishing Phase B on `work/olu/suite-broadcasts-finish` (from `work/olu/suite-14b-broadcasts`, merged with the chocolate-orange suite line `ba8f815`), 22 Nov 2026. Work-order task 25 (the manual check and the pull request) was not done: no browser, no WhatsApp account and no Docker were available, so the database tests below were written but **not run**.
+
+1. **Where the database tests live.** As in Phase A, the domain package has no database set-up: the route tests are in `apps/api/test/integration/broadcasts.test.ts` and the engine tests (send tick, concurrency, timeouts, every R55 stop, ingest hooks) in `apps/worker/src/jobs/broadcasts.test.ts`. The pure rules are tested without a database in `packages/domain/src/meta/broadcasts.test.ts` (`classifyBroadcastError`, `safetyVerdict`, `decideAudience`, the fingerprint, the `meta.ts` changes).
+2. **Audience as facts plus a pure rule.** `buildAudience` reads each member's facts in one query; `decideAudience` applies R47. A shared number belongs to the **oldest member whatever their own reason**, so a number whose older record asked to stop is not sent to under a newer record (stricter than R47.5, which compares only members still in the running).
+3. **`confirmBroadcast`, test send, pause, resume and cancel live in `@ms/domain`** and throw `BroadcastRefusal` (status, plain words, reason); the routes turn it into the API's error. Header bytes come through a loader, so storage is read only when Meta needs the picture again (none, or older than 20 days).
+4. **Resume** also refuses while another broadcast is sending from the same line (R53 step 3 applied to resume), clears `stop_reason`, and restarts the warm-up from the latest `started` or `resumed` event.
+5. **A temporary refusal** puts the recipient back to `pending` with `message_id` cleared (the failed message stays in the thread as history), so the send gate lets the next try through. A third temporary refusal for the same person makes them `failed`. "Never reached Meta" (HTTP status 0) is temporary. A failure with no Meta code and a 5xx (including "Meta returned no message id") is treated as `unknown`, never resent.
+6. **A send refused by the gate because the broadcast was paused meanwhile** puts the person back to waiting and ends the tick; because the switch went off, it also stops the broadcast with `switched_off`.
+7. **Owner alerts** are raised from the domain by `raiseBroadcastAlert` (the same once-a-day rule as `alertOnce`, keyed on `payload.account`); the payload also carries `broadcast_id`. The status change in `stopBroadcast` is the first guard, so two stops at once raise one alert. `alertOnce`'s type list gained both types, as 5.10 says.
+8. **`R61`** is set inside `applyConsentKeyword` / `applyUserPreference` only when a withdrawal was really recorded (a repeat STOP does not count twice). The marks live in `meta/broadcast-marks.ts` so the consent code does not import the engine.
+9. **Switching off in Broadcast settings** stops every scheduled or sending broadcast at once (the same call as the `broadcast_start` job), not only on the next worker tick. The `broadcast_start` job stops every scheduled broadcast when the switch is off, not only those whose time has come.
+10. **`account_update`** stores the block under `app_settings.broadcast_account_block` keyed by WhatsApp account ID; `PUT /settings` with `clear_account_block: true` clears all of them.
+11. **Routes.** `GET /:id/recipients` returns `{ recipients, next_cursor }` (keyset on `created_at, id`). `GET /:id/audience` pages in memory (the audience is computed, not stored), with the index as the cursor. `GET /settings` and `GET /health` take an optional `line_id`; without it they use the first active WhatsApp line. `mm_status` on `GET /settings` is the value the last health check or route change read (cached in `broadcast_meta_state`).
+12. **Screens.** The menu line uses the `Send` icon, because Ads already uses the megaphone. Broadcasts sits after Contacts in the **Conversations** group (the suite line moved Contacts there; there is no "Customers" group). `/broadcasts/new` asks for sections 1 to 3 and makes the draft; the draft's page has all five. Blanks are saved with a "Save the blanks" button (each save changes the message, so a new test is needed). The List page has no "Send a broadcast" button yet.

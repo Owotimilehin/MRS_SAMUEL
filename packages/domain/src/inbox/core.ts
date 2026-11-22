@@ -528,8 +528,54 @@ export async function touchConversation(
       ...(patch.unreadIncrement ? { unreadCount: sql`${inboxConversation.unreadCount} + 1` } : {}),
       // A new inbound message on a pending/closed-but-reopened thread is open work.
       ...(patch.unreadIncrement ? { status: "open" as const } : {}),
+      // Suite spec 15: the customer writing (or a missed call or voicemail) always wakes a snoozed chat.
+      ...(patch.inboundWa || patch.unreadIncrement ? { snoozedUntil: null, snoozedBy: null } : {}),
     })
     .where(eq(inboxConversation.id, conversationId))
     .returning();
   return row!;
 }
+
+/**
+ * Suite spec 15: bring back every chat whose snooze has ended. It moves to the
+ * top of the lists (last activity = now) and is marked `woke_at`, so it looks
+ * unread until someone opens it. Returns the woken rows (signals already sent).
+ */
+export async function wakeSnoozedConversations(db: DbExecutor, now: Date = new Date()): Promise<ConversationRow[]> {
+  const rows = await db
+    .update(inboxConversation)
+    .set({
+      snoozedUntil: null,
+      snoozedBy: null,
+      wokeAt: now,
+      lastActivityAt: sql`greatest(${inboxConversation.lastActivityAt}, ${ts(now)})`,
+    })
+    .where(sql`${inboxConversation.snoozedUntil} is not null and ${inboxConversation.snoozedUntil} <= ${ts(now)}`)
+    .returning();
+  for (const row of rows) await publishInboxEvent(db, signalFor("conversation.updated", row));
+  return rows;
+}
+
+/**
+ * Suite spec 15: SQL for when the customer started waiting on a chat: their
+ * oldest message after our last reply, or null when nothing is waiting. A reply
+ * is a message a staff member sent, or one written in Meta's own app (an echo);
+ * automatic replies do not stop the clock. Reactions, system notices and advert
+ * referrals do not start it. Correlated on `inbox_conversation.id`.
+ */
+export const waitingSinceSql = sql<Date | null>`(
+  select min(m.created_at) from inbox_message m
+  where m.conversation_id = ${inboxConversation.id}
+    and m.direction = 'in'
+    and m.type not in ('reaction', 'system', 'referral')
+    and m.created_at > coalesce((
+      select max(o.created_at) from inbox_message o
+      where o.conversation_id = ${inboxConversation.id}
+        and o.direction = 'out'
+        and o.status <> 'failed'
+        and (o.sender_user_id is not null or o.payload ? 'echo')
+    ), '-infinity'::timestamptz)
+)`;
+
+/** Suite spec 15: chats in the open lists are not snoozed (a past snooze time counts as awake). */
+export const notSnoozedSql = sql`(${inboxConversation.snoozedUntil} is null or ${inboxConversation.snoozedUntil} <= now())`;

@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, UserRound } from "lucide-react";
 import type { Capability } from "@ms/shared";
-import { Frame as Shell } from "../../lib/app-frame.js";
+import { Frame as Shell, useCallsHref } from "../../lib/app-frame.js";
 import { DataState } from "../../components/DataState.js";
 import { Modal } from "../../components/Modal.js";
 import { ConversationList } from "../../components/inbox/ConversationList.js";
@@ -25,6 +25,8 @@ const TYPING_SHOW_MS = 6000;
 
 /** The unified inbox: conversation list, open chat, contact panel. */
 export function InboxPage({ conversationId }: { conversationId?: string }): JSX.Element {
+  // In the suite calls live on their own page, so the Inbox talks about chats only.
+  const callsSeparate = useCallsHref() !== null;
   const user = useAuthUser();
   const can = useCallback((c: string) => user.capabilities.includes(c as Capability), [user.capabilities]);
   const navigate = useNavigate();
@@ -249,7 +251,9 @@ export function InboxPage({ conversationId }: { conversationId?: string }): JSX.
                   <div className="ibx__empty-main" style={{ flex: 1 }}>
                     <div>
                       <div className="empty__title">Pick a conversation</div>
-                      WhatsApp chats and phone calls with each customer appear together here.
+                      {callsSeparate
+                        ? "WhatsApp, Messenger and Instagram chats with each customer appear here. Calls are under Calls."
+                        : "WhatsApp chats and phone calls with each customer appear together here."}
                     </div>
                   </div>
                 ) : conv.isLoading || (timeline.isLoading && !timeline.data) ? (

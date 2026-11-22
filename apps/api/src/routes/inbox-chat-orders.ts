@@ -24,7 +24,11 @@ import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { catalogueChatOrder, customer, inboxConversation, inboxPhoneNumber, saleOrder, type DbClient } from "@ms/db";
 import {
   InboxSendError,
+  askClaimAfter,
+  askOutcomeOf,
   backfillChatCart,
+  claimAsk,
+  releaseAsk,
   buildPayButton,
   canUseNumber,
   cartTextLines,
@@ -188,7 +192,12 @@ export function chatOrderRoutes(db: DbClient) {
     });
   });
 
-  /** Ask "delivery or pickup?" with two reply buttons (rule R24). A person clicks; the question is sent once. */
+  /**
+   * Ask "delivery or pickup?" with two reply buttons (rule R24). A person clicks; the question is sent once.
+   * It takes the same ask claim (ask_claimed_at) as the worker's automatic question, so the customer gets
+   * it at most once per cart even when both happen at the same moment. The claim is given back only when
+   * the question certainly did not go.
+   */
   r.post("/:id/ask", async (c) => {
     need(c, "inbox.reply");
     const { row, conv } = await load(c, c.req.param("id"));
@@ -196,17 +205,29 @@ export function chatOrderRoutes(db: DbClient) {
     if (row.state !== "new" && row.state !== "asked") {
       throw new BusinessError("conflict", "This cart is past the delivery-or-pickup question.", 409, { reason: "wrong_state" });
     }
+    const content = await fulfilmentQuestionFor(db, row);
+    const claimedAt = await claimAsk(db, row.id);
+    if (!claimedAt) {
+      throw new BusinessError("conflict", "The delivery-or-pickup question has already been sent for this cart.", 409, {
+        reason: "already_asked",
+      });
+    }
     let msg: SentMessage;
     try {
       msg = await sendFromConversation(db, metaConfigFromEnv(), {
         conversationId: conv.id,
         userId: c.get("inboxViewer").userId,
-        content: await fulfilmentQuestionFor(db, row),
+        content,
       });
     } catch (err) {
-      if (err instanceof InboxSendError) throw sendRefusal(err);
+      // An InboxSendError is raised before anything is sent; anything else may have gone, so the claim stays.
+      if (err instanceof InboxSendError) {
+        if (askClaimAfter("not_sent") === "release") await releaseAsk(db, row.id, claimedAt);
+        throw sendRefusal(err);
+      }
       throw err;
     }
+    if (askClaimAfter(askOutcomeOf(msg)) === "release") await releaseAsk(db, row.id, claimedAt);
     if (msg.status !== "failed") {
       await db
         .update(catalogueChatOrder)

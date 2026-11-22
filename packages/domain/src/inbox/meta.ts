@@ -205,8 +205,11 @@ export type OutboundContent =
       bodyParams?: string[];
       /** The one blank a TEXT header can have. */
       headerText?: string;
-      /** The file for an IMAGE / VIDEO / DOCUMENT header, by link (as ordinary media is sent). */
-      headerMedia?: { type: "image" | "video" | "document"; link: string; filename?: string };
+      /**
+       * The file for an IMAGE / VIDEO / DOCUMENT header: by `link` (as ordinary media is sent), or by `id`,
+       * a file already uploaded to Meta (suite spec 14: a broadcast uploads its picture once). Exactly one of the two.
+       */
+      headerMedia?: { type: "image" | "video" | "document"; link?: string; id?: string; filename?: string };
       /** The blank at the end of a link button; `index` is the button's position from 0. */
       buttonParams?: { index: number; text: string }[];
       /** A button that opens a WhatsApp form (suite spec 07): our signed token for it; `index` is the button's position from 0. */
@@ -243,6 +246,7 @@ export type OutboundContent =
  *   header  { type: "header", parameters: [{ type: "text", text }] }
  *           { type: "header", parameters: [{ type: "image", image: { link } }] }
  *           (video → video: { link }; document → document: { link, filename })
+ *           { type: "header", parameters: [{ type: "image", image: { id } }] } when the file was uploaded to Meta first
  *   body    { type: "body", parameters: [{ type: "text", text }, …] }
  *   button  { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text }] }
  *           { type: "button", sub_type: "flow", index: "1", parameters: [{ type: "action", action: { flow_token } }] }
@@ -255,7 +259,8 @@ export function buildTemplateComponents(
   const components: Record<string, unknown>[] = [];
   if (content.headerMedia) {
     const m = content.headerMedia;
-    const media: Record<string, unknown> = { link: m.link };
+    // An uploaded file's id when there is one, else the link.
+    const media: Record<string, unknown> = m.id ? { id: m.id } : { link: m.link };
     if (m.type === "document" && m.filename) media.filename = m.filename;
     components.push({ type: "header", parameters: [{ type: m.type, [m.type]: media }] });
   } else if (content.headerText) {
@@ -290,11 +295,17 @@ export function buildTemplateComponents(
  */
 export type WaRecipient = string | { bsuid: string };
 
-export function buildSendPayload(to: WaRecipient, content: OutboundContent): Record<string, unknown> {
-  const base =
-    typeof to === "string"
+/**
+ * `callbackData` (suite spec 14, R58): a short value Meta hands back on this message's delivery
+ * reports (`biz_opaque_callback_data`). Added only when given; every other send is unchanged.
+ */
+export function buildSendPayload(to: WaRecipient, content: OutboundContent, callbackData?: string): Record<string, unknown> {
+  const base = {
+    ...(typeof to === "string"
       ? { messaging_product: "whatsapp", recipient_type: "individual", to }
-      : { messaging_product: "whatsapp", recipient_type: "individual", recipient: to.bsuid };
+      : { messaging_product: "whatsapp", recipient_type: "individual", recipient: to.bsuid }),
+    ...(callbackData ? { biz_opaque_callback_data: callbackData } : {}),
+  };
   switch (content.type) {
     case "text":
       return { ...base, type: "text", text: { body: content.body, preview_url: true } };
@@ -344,18 +355,22 @@ export function buildSendPayload(to: WaRecipient, content: OutboundContent): Rec
   }
 }
 
-/** Send a message; returns Meta's message id (wamid…). */
+/**
+ * Send a message; returns Meta's message id (wamid…). `opts.endpoint` is "messages" unless a
+ * broadcast asks for Meta's marketing route ("marketing_messages", marketing templates only).
+ */
 export async function sendMessage(
   cfg: MetaConfig,
   phoneNumberId: string,
   to: WaRecipient,
   content: OutboundContent,
+  opts: { endpoint?: "messages" | "marketing_messages"; callbackData?: string } = {},
 ): Promise<string> {
   const res = await graph<{ messages?: { id: string }[] }>(
     cfg,
     "POST",
-    `${phoneNumberId}/messages`,
-    buildSendPayload(to, content),
+    `${phoneNumberId}/${opts.endpoint ?? "messages"}`,
+    buildSendPayload(to, content, opts.callbackData),
     WA,
   );
   const id = res.messages?.[0]?.id;

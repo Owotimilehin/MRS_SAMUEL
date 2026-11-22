@@ -6,9 +6,10 @@ import { ChannelIcon } from "./ChannelIcon.js";
 import { DataState } from "../DataState.js";
 import { useInboxUi } from "../../lib/inbox-ui.js";
 import { inboxApi, inboxKeys, type ConversationFilters } from "../../lib/inbox-api.js";
-import { channelName, contactName, emptyListText, listTime, staffLabel, type InboxTab, type InboxTabKey } from "../../lib/inbox-logic.js";
+import { useCallsHref } from "../../lib/app-frame.js";
+import { channelName, contactName, emptyListText, listTime, staffLabel, whenLabel, type InboxTab, type InboxTabKey } from "../../lib/inbox-logic.js";
 import type { ConversationRow, IdentityChannel, InboxMe } from "../../lib/inbox-types.js";
-import { channelForKind } from "@ms/shared";
+import { channelForKind, replyFlag } from "@ms/shared";
 
 interface Props {
   me: InboxMe;
@@ -61,6 +62,8 @@ export function ConversationList(p: Props): JSX.Element {
     return () => clearTimeout(t);
   }, [search]);
 
+  // In the suite calls have their own section, so the list shows chats only.
+  const callsHref = useCallsHref();
   const current = p.tabs.find((t) => t.key === p.tab) ?? p.tabs[0]!;
   const filters: ConversationFilters = {
     status: current.status,
@@ -69,6 +72,7 @@ export function ConversationList(p: Props): JSX.Element {
     ...(p.label ? { label: p.label } : {}),
     ...(q ? { q } : {}),
     ...(channel ? { channel } : {}),
+    ...(callsHref ? { chatsOnly: true } : {}),
   };
 
   const list = useInfiniteQuery({
@@ -78,6 +82,8 @@ export function ConversationList(p: Props): JSX.Element {
     getNextPageParam: (last) => last.next_before ?? undefined,
   });
   const rows = useMemo(() => list.data?.pages.flatMap((pg) => pg.data) ?? [], [list.data]);
+  // Suite spec 15: the reply-time target, for the "Waiting 42 min" flag.
+  const replyTarget = list.data?.pages[0]?.reply_target_minutes ?? null;
 
   // Put the list back where it was after returning from a conversation.
   const restored = useRef(false);
@@ -213,7 +219,15 @@ export function ConversationList(p: Props): JSX.Element {
           emptyHint={empty.hint}
         >
           {rows.map((r) => (
-            <ConversationRowItem key={r.id} row={r} active={r.id === p.selectedId} onSelect={p.onSelect} showNumber={showChip} callsOnly={voiceOnly.has(r.number_id)} />
+            <ConversationRowItem
+              key={r.id}
+              row={r}
+              active={r.id === p.selectedId}
+              onSelect={p.onSelect}
+              showNumber={showChip}
+              callsOnly={voiceOnly.has(r.number_id)}
+              replyTarget={replyTarget}
+            />
           ))}
           {list.hasNextPage && (
             <div style={{ padding: 12, textAlign: "center" }}>
@@ -239,6 +253,7 @@ function ConversationRowItem({
   onSelect,
   showNumber,
   callsOnly,
+  replyTarget,
 }: {
   row: ConversationRow;
   active: boolean;
@@ -246,9 +261,14 @@ function ConversationRowItem({
   showNumber: boolean;
   /** The business number takes calls only, so this isn't a WhatsApp chat. */
   callsOnly: boolean;
+  /** Reply-time target in minutes, or null when off (suite spec 15). */
+  replyTarget: number | null;
 }): JSX.Element {
   const name = contactName(row.customer_name, row.customer_phone, row.identity_name);
-  const unread = row.unread > 0;
+  const woke = !!row.woke_at;
+  const unread = row.unread > 0 || woke;
+  const flag = replyFlag(row.waiting_minutes, replyTarget);
+  const snoozed = row.snoozed_until && new Date(row.snoozed_until).getTime() > Date.now() ? row.snoozed_until : null;
   return (
     <button
       type="button"
@@ -259,8 +279,11 @@ function ConversationRowItem({
       <span className="ibx-row__name">{name}</span>
       <span className="ibx-row__time">{listTime(row.last_activity_at)}</span>
       <span className="ibx-row__preview">{row.preview ?? "No messages yet"}</span>
-      <span className="ibx-row__unread">{unread && <span className="ibx-badge" aria-label={`${row.unread} unread`}>{row.unread}</span>}</span>
+      <span className="ibx-row__unread">{row.unread > 0 && <span className="ibx-badge" aria-label={`${row.unread} unread`}>{row.unread}</span>}</span>
       <span className="ibx-row__meta">
+        {flag && <span className={`pill pill--${flag.tone} ibx-row__flag`}>{flag.text}</span>}
+        {snoozed && <span className="pill pill--accent ibx-row__flag">Until {whenLabel(snoozed)}</span>}
+        {woke && !snoozed && <span className="pill pill--accent ibx-row__flag">Back from snooze</span>}
         {showNumber && (
           <span className="ibx-chip">
             <ChannelIcon channel={row.channel} callsOnly={callsOnly} size={10} /> {row.number_label}

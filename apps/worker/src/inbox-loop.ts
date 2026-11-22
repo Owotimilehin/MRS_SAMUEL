@@ -21,6 +21,7 @@ import { processPendingRecordings, sendMissedCallFollowups } from "./jobs/inbox-
 import { claudeSummariserFromEnv } from "./jobs/inbox-summary.js";
 import { sendMessagePushes } from "./jobs/inbox-push.js";
 import { ensureMetaSubscriptions, refreshIdentityProfiles } from "./jobs/inbox-meta.js";
+import { checkMetaHealth } from "./jobs/inbox-meta-health.js";
 import { backfillComments, fillCommentDetails, pollComments } from "./jobs/social-comments.js";
 import { runCatalogueBatchCheck, runCatalogueReconcile, runCatalogueSync, runChatOrderJobs } from "./jobs/catalogue.js";
 import { publishDuePosts, reconcileUnknownTargets } from "./jobs/social-publish.js";
@@ -34,6 +35,8 @@ import {
   refreshContactSummaries,
   sendContactConsentConfirmations,
 } from "./jobs/contacts.js";
+import { alertDueReminders, wakeSnoozed } from "./jobs/inbox-tasks.js";
+import { checkBroadcastHealth, sendBroadcasts, startBroadcasts, sweepBroadcastRecipients } from "./jobs/broadcasts.js";
 
 type Logger = {
   info: (o: object, m?: string) => void;
@@ -84,6 +87,8 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "wa_flow_sync", everyMs: 60 * 60_000, last: 0, run: () => syncAllFlows(db, logger) },
     { name: "inbox_identity_profiles", everyMs: 30_000, last: 0, run: () => refreshIdentityProfiles(db, logger) },
     { name: "inbox_meta_subscriptions", everyMs: 60 * 60_000, last: 0, run: () => ensureMetaSubscriptions(db, logger) },
+    // Watchdog (blueprint stage 1): reads only. Listed after the subscription check so it reads that run's result.
+    { name: "meta_connection_health", everyMs: 60 * 60_000, last: 0, run: () => checkMetaHealth(db, logger) },
     // Comments on Facebook and Instagram posts (suite spec 03): these only read from Meta.
     { name: "social_comment_fill", everyMs: 15_000, last: 0, run: () => fillCommentDetails(db, logger) },
     { name: "social_comment_backfill", everyMs: 60_000, last: 0, run: () => backfillComments(db, logger) },
@@ -115,6 +120,14 @@ export async function runInboxLoop(db: DbClient, logger: Logger, isStopping: () 
     { name: "contact_consent_confirm", everyMs: 10_000, last: 0, run: () => sendContactConsentConfirmations(db, logger) },
     { name: "contact_import_apply", everyMs: 5_000, last: 0, run: () => applyContactImports(db, logger) },
     { name: "contact_import_cleanup", everyMs: 24 * 60 * 60_000, last: 0, run: () => cleanupContactImports(db, logger) },
+    // Tasks and reminders (suite spec 15). Nothing is sent to a customer.
+    { name: "inbox_snooze_wake", everyMs: 30_000, last: 0, run: () => wakeSnoozed(db, logger) },
+    { name: "inbox_reminders_due", everyMs: 30_000, last: 0, run: () => alertDueReminders(db, logger) },
+    // Broadcasts (suite spec 14, Phase B). The system only stops a broadcast; a person resumes it.
+    { name: "broadcast_start", everyMs: 30_000, last: 0, run: () => startBroadcasts(db, logger) },
+    { name: "broadcast_send", everyMs: 5_000, last: 0, run: () => sendBroadcasts(db, logger) },
+    { name: "broadcast_sweep", everyMs: 60_000, last: 0, run: () => sweepBroadcastRecipients(db, logger) },
+    { name: "broadcast_health", everyMs: 5 * 60_000, last: 0, run: () => checkBroadcastHealth(db, logger) },
   ];
   logger.info({ jobs: jobs.map((j) => j.name) }, "inbox loop started");
   while (!isStopping()) {

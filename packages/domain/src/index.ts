@@ -28,3 +28,4 @@ export * from "./meta/ads.js";
 export * from "./meta/ads-attribution.js";
 export * from "./meta/ads-manage.js";
 export * from "./contacts/index.js";
+export * from "./meta/broadcasts.js";

@@ -20,6 +20,7 @@ export const settingsKeys = {
   teams: ["inbox", "settings", "teams"] as const,
   access: ["inbox", "settings", "access"] as const,
   hours: ["inbox", "settings", "hours"] as const,
+  replyTarget: ["inbox", "settings", "reply-target"] as const,
   ivr: ["inbox", "settings", "ivr"] as const,
   users: ["inbox", "settings", "admin-users"] as const,
 };
@@ -71,6 +72,10 @@ export interface AdminUserLite {
 
 export const settingsApi = {
   /** Phone lines; with `all`, also the Facebook Page and Instagram accounts (for Staff access). */
+  /** Reply-time target in minutes (suite spec 15); null = off. */
+  replyTarget: async () => (await api<{ data: { minutes: number | null } }>(`${S}/reply-target`)).data.minutes,
+  setReplyTarget: async (minutes: number | null) =>
+    (await api<{ data: { minutes: number | null } }>(`${S}/reply-target`, json("PUT", { minutes }))).data.minutes,
   numbers: async (opts: { all?: boolean } = {}) =>
     (await api<{ data: PhoneNumberRow[] }>(`${S}/numbers${opts.all ? "?kind=all" : ""}`)).data,
   createNumber: (b: NumberInput) => api(`${S}/numbers`, json("POST", b)),

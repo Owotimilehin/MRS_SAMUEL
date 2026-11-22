@@ -15,7 +15,7 @@ import { NotFound } from "@admin/components/NotFound.js";
 import { RouteErrorComponent } from "@admin/components/RouteErrorComponent.js";
 import { PageLoader } from "@admin/components/Spinner.js";
 import { RequireAuth, useAuthUser } from "@admin/lib/auth.js";
-import { LoginPage, type LoginCopy } from "@admin/routes/login.js";
+import { SuiteLoginPage } from "./SuiteLogin.js";
 import type { Capability } from "@ms/shared";
 import { ADMIN_URL } from "./suite-host.js";
 import { firstAllowedPage } from "./nav.js";
@@ -44,6 +44,9 @@ const WhatsAppProfilePage = lazyNamed<{ accountId: string }>(
   "WhatsAppProfilePage",
 );
 
+const OverviewPage = lazyNamed(() => import("./features/overview/OverviewPage.js"), "OverviewPage");
+const CallsPage = lazyNamed(() => import("./features/calls/CallsPage.js"), "CallsPage");
+const TasksPage = lazyNamed(() => import("./features/tasks/TasksPage.js"), "TasksPage");
 const CommentsPage = lazyNamed<{ threadId?: string }>(() => import("./features/comments/CommentsPage.js"), "CommentsPage");
 
 const TemplatesPage = lazyNamed<{ tab?: "messages" | "forms" }>(() => import("./features/templates/TemplatesPage.js"), "TemplatesPage");
@@ -66,14 +69,10 @@ const ContactPage = lazyNamed<{ customerId: string }>(() => import("./features/c
 const ContactListsPage = lazyNamed(() => import("./features/contacts/ListsPage.js"), "ListsPage");
 const ContactListPage = lazyNamed<{ listId: string }>(() => import("./features/contacts/ListPage.js"), "ListPage");
 const ContactImportPage = lazyNamed(() => import("./features/contacts/ImportPage.js"), "ImportPage");
-
-const SUITE_LOGIN_COPY: LoginCopy = {
-  portal: "Business\u00a0Suite",
-  line1: "Every customer,",
-  line2: "one ",
-  line2Em: "place.",
-  lede: "Messages, calls and contacts for Mrs. Samuel Fruit Juice. Sign in with the same email and password you use for the shop.",
-};
+// Broadcasts (suite spec 14, Phase B).
+const BroadcastsPage = lazyNamed(() => import("./features/broadcasts/BroadcastsPage.js"), "BroadcastsPage");
+const BroadcastEditorPage = lazyNamed<{ broadcastId?: string }>(() => import("./features/broadcasts/BroadcastEditorPage.js"), "BroadcastEditorPage");
+const BroadcastResultsPage = lazyNamed<{ broadcastId: string }>(() => import("./features/broadcasts/BroadcastResultsPage.js"), "BroadcastResultsPage");
 
 /** Shown to someone who is signed in but holds no suite permission at all. */
 function NoSuiteAccess(): JSX.Element {
@@ -130,7 +129,7 @@ const rootRoute = createRootRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
-  component: () => <LoginPage defaultDest="/" copy={SUITE_LOGIN_COPY} />,
+  component: () => <SuiteLoginPage defaultDest="/" />,
 });
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -218,6 +217,27 @@ const templateEditorRoute = createRoute({
     const params = useParams({ from: "/templates/$templateId" });
     return page(<TemplateEditorPage templateId={params.templateId} />, "templates.manage");
   },
+});
+
+// Overview: the suite's home page (22 Nov 2026), laid out like the chosen design.
+const overviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/overview",
+  component: () => page(<OverviewPage />, "inbox.view"),
+});
+
+// Calls, separate from the Inbox (22 Nov 2026): call-backs, the call log and metrics.
+const callsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/calls",
+  component: () => page(<CallsPage />, "inbox.view"),
+});
+
+// Tasks (suite spec 15): reminders that are due or coming up, and snoozed chats.
+const tasksRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tasks",
+  component: () => page(<TasksPage />, "inbox.view"),
 });
 
 // Comments on Facebook and Instagram posts (suite spec 03). Open to people with social.comments, with or without the Inbox.
@@ -357,6 +377,34 @@ const contactRoute = createRoute({
   },
 });
 
+// Broadcasts (suite spec 14, Phase B). /broadcasts/new is declared before /broadcasts/$broadcastId.
+const broadcastsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/broadcasts",
+  component: () => page(<BroadcastsPage />, "contacts.view"),
+});
+const broadcastNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/broadcasts/new",
+  component: () => page(<BroadcastEditorPage />, "broadcasts.send"),
+});
+const broadcastEditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/broadcasts/$broadcastId/edit",
+  component: () => {
+    const params = useParams({ from: "/broadcasts/$broadcastId/edit" });
+    return page(<BroadcastEditorPage broadcastId={params.broadcastId} />, "broadcasts.send");
+  },
+});
+const broadcastResultsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/broadcasts/$broadcastId",
+  component: () => {
+    const params = useParams({ from: "/broadcasts/$broadcastId" });
+    return page(<BroadcastResultsPage broadcastId={params.broadcastId} />, "contacts.view");
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
@@ -379,6 +427,9 @@ const routeTree = rootRoute.addChildren([
   postEditRoute,
   postDetailRoute,
   insightsRoute,
+  overviewRoute,
+  callsRoute,
+  tasksRoute,
   leadsRoute,
   leadRoute,
   adsRoute,
@@ -390,6 +441,10 @@ const routeTree = rootRoute.addChildren([
   contactListRoute,
   contactImportRoute,
   contactRoute,
+  broadcastsRoute,
+  broadcastNewRoute,
+  broadcastEditRoute,
+  broadcastResultsRoute,
 ]);
 
 export const router = createRouter({

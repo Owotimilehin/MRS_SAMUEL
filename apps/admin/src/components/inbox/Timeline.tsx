@@ -4,7 +4,7 @@ import { ClipboardList, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Downloa
 import { ConfirmModal } from "../ConfirmModal.js";
 import { FlowResponseCardView, FlowSentRow } from "./FlowCards.js";
 import { inboxApi } from "../../lib/inbox-api.js";
-import { useCommentHref } from "../../lib/app-frame.js";
+import { useCallsHref, useCommentHref } from "../../lib/app-frame.js";
 import { humanizeError } from "../../lib/api.js";
 import { toast } from "../../lib/toast.js";
 import {
@@ -64,7 +64,12 @@ export function Timeline({
   canReply = false,
   canNote = false,
 }: TimelineProps): JSX.Element {
-  const days = useMemo(() => groupTimelineByDay(items), [items]);
+  // In the suite calls have their own section (Calls), so the chat shows messages and notes only.
+  const callsSeparate = useCallsHref() !== null;
+  const days = useMemo(
+    () => groupTimelineByDay(callsSeparate ? items.filter((it) => it.kind !== "call") : items),
+    [items, callsSeparate],
+  );
   const ref = useRef<HTMLDivElement | null>(null);
   const stick = useRef(true);
   const lastCount = useRef(0);
@@ -371,7 +376,7 @@ function CallCard({
   );
 }
 
-function RecordingBlock({
+export function RecordingBlock({
   rec,
   canDownload,
   canDelete,

@@ -66,8 +66,8 @@ import {
 import type { TimelineItem, TimelinePage } from "./inbox-types.js";
 
 describe("inboxTabsFor", () => {
-  it("gives basic staff Mine, Unassigned and Closed only", () => {
-    expect(inboxTabsFor(["inbox.view"], ["t1"]).map((t) => t.key)).toEqual(["mine", "unassigned", "closed"]);
+  it("gives basic staff Mine, Unassigned, Snoozed and Closed only", () => {
+    expect(inboxTabsFor(["inbox.view"], ["t1"]).map((t) => t.key)).toEqual(["mine", "unassigned", "snoozed", "closed"]);
   });
   it("adds Team and All open for supervisors in a team", () => {
     expect(inboxTabsFor(["inbox.view", "inbox.view_team"], ["t1"]).map((t) => t.key)).toEqual([
@@ -75,6 +75,7 @@ describe("inboxTabsFor", () => {
       "unassigned",
       "team",
       "all",
+      "snoozed",
       "closed",
     ]);
   });
@@ -83,6 +84,7 @@ describe("inboxTabsFor", () => {
       "mine",
       "unassigned",
       "all",
+      "snoozed",
       "closed",
     ]);
   });

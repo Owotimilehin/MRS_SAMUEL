@@ -506,6 +506,18 @@ export function format(event: { eventType: string; payload: Record<string, unkno
             `👉 ${SUITE_URL}/templates/forms`,
         };
       }
+      // The broadcast engine (suite spec 14, Phase B) raises it with area "whatsapp_broadcasts" when Meta
+      // refuses our access: the broadcast has already stopped itself.
+      if (p["area"] === "whatsapp_broadcasts") {
+        return {
+          chatIds: [owner],
+          text:
+            `⚠️ *WhatsApp connection problem*\n` +
+            `Meta refused a broadcast message (code ${String(p["code"] || "?")}). The broadcast stopped itself. ` +
+            `The access token or its permissions need checking. Tell Tes.\n` +
+            `👉 ${SUITE_URL}/broadcasts`,
+        };
+      }
       // The template screens (suite spec 06) raise it with area "whatsapp_templates".
       if (p["area"] === "whatsapp_templates") {
         return {
@@ -525,6 +537,47 @@ export function format(event: { eventType: string; payload: Record<string, unkno
           `Meta code ${String(p["code"] ?? "?")}. Open Channels and press Check connection.\n` +
           `👉 ${SUITE_URL}/channels`,
       };
+    case "meta.connection_broken": {
+      // The hourly Meta watchdog (blueprint stage 1): raised once when something becomes broken.
+      const items = Array.isArray(event.payload["items"])
+        ? (event.payload["items"] as Array<{ label?: unknown; reason?: unknown; impact?: unknown }>)
+        : [];
+      const first = items[0];
+      const lines = items
+        .slice(0, 5)
+        .map((i) => `• ${String(i.label ?? "A connection")}: ${String(i.reason ?? "it stopped working.")}`)
+        .join("\n");
+      return {
+        chatIds: [owner],
+        text:
+          `🚨 *Meta connection broken*\n` +
+          `${String(first?.impact ?? "Customers may not be getting replies")}.\n` +
+          (lines ? `${lines}\n` : "") +
+          (items.length > 5 ? `…and ${items.length - 5} more\n` : "") +
+          `You will not be told again while it stays broken; the suite shows a red banner until it is fixed.\n` +
+          `👉 ${SUITE_URL}/channels`,
+      };
+    }
+    // Broadcasts (suite spec 14, Phase B). Each is raised once (raiseBroadcastAlert in @ms/domain).
+    case "broadcast.stopped": {
+      const id = String(p["broadcast_id"] ?? String(p["account"] ?? "").split(":")[0] ?? "");
+      return {
+        chatIds: [owner],
+        text:
+          `⛔ *Broadcast stopped*\n“${String(p["name"] ?? "A broadcast")}”: ${String(p["reason_text"] ?? "it was stopped.")}\n` +
+          `Sent so far: ${Number(p["sent"] ?? 0)}. Still waiting: ${Number(p["waiting"] ?? 0)}. Nothing more goes out until someone presses Resume.\n` +
+          `👉 ${SUITE_URL}/broadcasts/${id}`,
+      };
+    }
+    case "broadcast.finished": {
+      const id = String(p["broadcast_id"] ?? String(p["account"] ?? "").split(":")[0] ?? "");
+      return {
+        chatIds: [owner],
+        text:
+          `📣 *Broadcast finished*\n“${String(p["name"] ?? "A broadcast")}”: sent ${Number(p["sent"] ?? 0)}, failed ${Number(p["failed"] ?? 0)}, ` +
+          `left out ${Number(p["skipped"] ?? 0)}.\n👉 ${SUITE_URL}/broadcasts/${id}`,
+      };
+    }
     case "inbox.flow_health": {
       // WhatsApp reports a problem with a form or with our data endpoint (suite spec 07).
       const lines: Record<string, string> = {

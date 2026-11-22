@@ -15,7 +15,8 @@ import { inboxKeys } from "@admin/lib/inbox-api.js";
 import { toast } from "@admin/lib/toast.js";
 import "@admin/components/inbox/inbox.css";
 import { channelKeys, channelsApi, type ChannelRow } from "./channels-api.js";
-import { secondLine, statusOf, usedForText } from "./channels-logic.js";
+import { healthDotOf, secondLine, statusOf, usedForText } from "./channels-logic.js";
+import { metaHealthApi, metaHealthKeys, type MetaHealth } from "./meta-health-api.js";
 import { ConnectDialog } from "./ConnectDialog.js";
 import { EditChannelDialog } from "./EditChannelDialog.js";
 
@@ -39,6 +40,8 @@ export function ChannelsPage(): JSX.Element {
 function ChannelsList(): JSX.Element {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: channelKeys.list, queryFn: channelsApi.list });
+  // Same key as the banner in SuiteShell, so both show the same check.
+  const health = useQuery({ queryKey: metaHealthKeys.all, queryFn: metaHealthApi.get, staleTime: 60_000, retry: false });
   const [connectOpen, setConnectOpen] = useState(false);
   const [editing, setEditing] = useState<ChannelRow | null>(null);
   const [switchingOff, setSwitchingOff] = useState<ChannelRow | null>(null);
@@ -145,7 +148,7 @@ function ChannelsList(): JSX.Element {
                       <td data-label="Team">{row.team_name ?? "No team"}</td>
                       <td data-label="Hours">{row.hours_profile_name ?? "Always open"}</td>
                       <td data-label="Status">
-                        <StatusCell row={row} />
+                        <StatusCell row={row} health={health.data} />
                       </td>
                       <td className="table__num" data-label="Open chats">
                         {row.open_conversations}
@@ -252,13 +255,27 @@ function ChannelsList(): JSX.Element {
 }
 
 /** Status column: on/off, and for a Page or Instagram account whether messages come in (spec 02, 7.6). */
-function StatusCell({ row }: { row: ChannelRow }): JSX.Element {
+function StatusCell({ row, health }: { row: ChannelRow; health: MetaHealth | undefined }): JSX.Element {
   const st = statusOf(row);
   const cls = st.tone === "off" ? "pill" : `pill pill--${st.tone}`;
+  // The dot from the hourly Meta check (Watchdog). Its reason is shown unless the row already says the same.
+  const dot = row.is_active ? healthDotOf(health?.items, row.id) : null;
+  const why = dot?.why && dot.why !== st.detail ? dot.why : null;
   return (
     <>
       <span className={cls}>{st.text}</span>
       {st.detail && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 4 }}>{st.detail}</div>}
+      {dot && (
+        <div style={{ marginTop: 6 }}>
+          <span
+            className={`health-dot health-dot--${dot.status}`}
+            title={health?.checked_at ? `Last checked ${new Date(health.checked_at).toLocaleString("en-NG")}` : undefined}
+          >
+            {dot.text}
+          </span>
+          {why && <div className="health-dot__why">{why}</div>}
+        </div>
+      )}
     </>
   );
 }

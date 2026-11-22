@@ -46,4 +46,6 @@ export const suiteHost: HostApp = {
   commentHref: (threadId) => `/comments/${encodeURIComponent(threadId)}`,
   // Leads live in the suite too (spec 13).
   LeadLink: SuiteLeadLink,
+  // Calls have their own section in the suite (22 Nov 2026): the Inbox shows chats only.
+  callsHref: (customerId) => `/calls?customer=${encodeURIComponent(customerId)}`,
 };

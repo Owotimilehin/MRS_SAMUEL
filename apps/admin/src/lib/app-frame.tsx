@@ -18,6 +18,10 @@ export interface FrameProps {
   /** Optional area label shown above the title. */
   crumb?: string;
   actions?: ReactNode;
+  /** One muted line under the page title. Shown by the suite's frame; the admin Shell ignores it. */
+  subtitle?: string;
+  /** The page's short name for the breadcrumb when the title is a sentence (e.g. a greeting). */
+  pageName?: string;
 }
 
 export interface CustomerLinkProps {
@@ -45,6 +49,13 @@ export interface HostApp {
   commentHref?: (threadId: string) => string;
   /** A link to a lead on the suite's Leads page (suite spec 13). A host without one shows no link. */
   LeadLink?: ComponentType<LeadLinkProps>;
+  /**
+   * Where a customer's calls are listed, in an app that keeps calls in their own
+   * section (the suite, 22 Nov 2026). When set, the Inbox shows chats only: no
+   * call-only conversations, no calls in the timeline, and a link to this page in
+   * the contact panel. Left out in the admin app, where calls stay in the chat.
+   */
+  callsHref?: (customerId: string) => string;
 }
 
 const HostContext = createContext<HostApp | null>(null);
@@ -70,6 +81,11 @@ export function CustomerLink(props: CustomerLinkProps): JSX.Element {
 }
 
 /** The address of a comment thread in this app, or null when the app has no Comments section. */
+/** The suite's calls page for a customer, or null where calls stay in the chat (the admin app). */
+export function useCallsHref(): ((customerId: string) => string) | null {
+  return useHost().callsHref ?? null;
+}
+
 export function useCommentHref(): ((threadId: string) => string) | null {
   return useHost().commentHref ?? null;
 }

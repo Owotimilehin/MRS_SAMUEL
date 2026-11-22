@@ -43,7 +43,11 @@ export async function alertOnce(
     // Raised by the ads sync, purchase reports, rules and the safety stop (raiseAdsAlert in @ms/domain), each with a case in outbox.ts.
     | "ads.config_error"
     | "ads.rule_fired"
-    | "ads.safety_stop",
+    | "ads.safety_stop"
+    // Suite spec 14, Phase B. Raised by the broadcast engine in @ms/domain (raiseBroadcastAlert, the same
+    // once-a-day rule keyed on payload.account = "<broadcast id>:<reason>" or "<broadcast id>:finished").
+    | "broadcast.stopped"
+    | "broadcast.finished",
   payload: Record<string, unknown> & { account: string },
 ): Promise<boolean> {
   const [recent] = await db

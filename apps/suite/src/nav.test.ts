@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { activeNavTo, firstAllowedPage } from "./nav.js";
+import { SUITE_PAGES, activeNavTo, firstAllowedPage } from "./nav.js";
+
+describe("the Tasks page (suite spec 15)", () => {
+  const WITH_TASKS = ["/overview", "/inbox", "/calls", "/tasks", "/inbox/settings"] as const;
+  it("lights Tasks on its page and nothing else", () => {
+    expect(activeNavTo("/tasks", WITH_TASKS)).toBe("/tasks");
+    expect(activeNavTo("/calls", WITH_TASKS)).toBe("/calls");
+  });
+  it("sits right after Calls in the menu, behind inbox.view", () => {
+    const order: string[] = SUITE_PAGES.map((p) => p.to);
+    expect(order.indexOf("/tasks")).toBe(order.indexOf("/calls") + 1);
+    expect(SUITE_PAGES.find((p) => p.to === "/tasks")?.cap).toBe("inbox.view");
+    // Inbox people still land on the Overview.
+    expect(firstAllowedPage(["inbox.view"])).toBe("/overview");
+  });
+});
 
 const LINKS = ["/inbox", "/comments", "/contacts", "/leads", "/inbox/reports", "/channels", "/templates", "/inbox/settings"] as const;
 
@@ -20,7 +35,7 @@ describe("suite menu", () => {
 
 describe("where a person lands", () => {
   it("goes to the first menu page they may see", () => {
-    expect(firstAllowedPage(["inbox.view", "channels.manage"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.view", "channels.manage"])).toBe("/overview");
     expect(firstAllowedPage(["inbox.reports", "inbox.settings"])).toBe("/inbox/reports");
     expect(firstAllowedPage(["channels.manage", "inbox.settings"])).toBe("/channels");
     expect(firstAllowedPage(["orders.view"])).toBeNull();
@@ -44,7 +59,7 @@ describe("where a person lands", () => {
     expect(firstAllowedPage(["contacts.view"])).toBe("/contacts");
     expect(firstAllowedPage(["contacts.view", "inbox.reports"])).toBe("/contacts");
     // With inbox access too, the inbox still comes first.
-    expect(firstAllowedPage(["contacts.view", "inbox.view"])).toBe("/inbox");
+    expect(firstAllowedPage(["contacts.view", "inbox.view"])).toBe("/overview");
   });
   it("lights Contacts on the list, a contact, the lists and the import page", () => {
     expect(activeNavTo("/contacts", LINKS)).toBe("/contacts");
@@ -53,6 +68,22 @@ describe("where a person lands", () => {
     expect(activeNavTo("/contacts/lists/7f3c-list", LINKS)).toBe("/contacts");
     expect(activeNavTo("/contacts/import", LINKS)).toBe("/contacts");
   });
+  it("lights Broadcasts on the list, a new broadcast, a draft and the results, and Contacts stays separate", () => {
+    const WITH_BROADCASTS = [...LINKS, "/broadcasts"] as const;
+    expect(activeNavTo("/broadcasts", WITH_BROADCASTS)).toBe("/broadcasts");
+    expect(activeNavTo("/broadcasts/new", WITH_BROADCASTS)).toBe("/broadcasts");
+    expect(activeNavTo("/broadcasts/7f3c-broadcast/edit", WITH_BROADCASTS)).toBe("/broadcasts");
+    expect(activeNavTo("/broadcasts/7f3c-broadcast", WITH_BROADCASTS)).toBe("/broadcasts");
+    expect(activeNavTo("/contacts", WITH_BROADCASTS)).toBe("/contacts");
+  });
+  it("Broadcasts sits right after Contacts in the menu and needs contacts.view, so Contacts stays the landing page", () => {
+    const order = SUITE_PAGES.map((p) => p.to);
+    expect(order.indexOf("/broadcasts")).toBe(order.indexOf("/contacts") + 1);
+    expect(SUITE_PAGES.find((p) => p.to === "/broadcasts")!.cap).toBe("contacts.view");
+    expect(firstAllowedPage(["contacts.view", "broadcasts.send"])).toBe("/contacts");
+    // broadcasts.send alone opens no page: reading broadcasts needs contacts.view.
+    expect(firstAllowedPage(["broadcasts.send"])).toBeNull();
+  });
   it("keeps Templates and forms lit on the Forms tab", () => {
     expect(activeNavTo("/templates/forms", LINKS)).toBe("/templates");
   });
@@ -60,7 +91,7 @@ describe("where a person lands", () => {
     expect(activeNavTo("/comments", LINKS)).toBe("/comments");
     expect(activeNavTo("/comments/7f3c-thread", LINKS)).toBe("/comments");
     expect(firstAllowedPage(["social.comments"])).toBe("/comments");
-    expect(firstAllowedPage(["social.comments", "inbox.view"])).toBe("/inbox");
+    expect(firstAllowedPage(["social.comments", "inbox.view"])).toBe("/overview");
     expect(firstAllowedPage(["social.comments", "inbox.reports"])).toBe("/comments");
   });
 });
@@ -73,7 +104,7 @@ describe("the Catalogue page (suite spec 08)", () => {
   it("is where someone with only the catalogue permission lands", () => {
     expect(firstAllowedPage(["catalogue.manage"])).toBe("/catalogue");
     expect(firstAllowedPage(["catalogue.manage", "inbox.reports"])).toBe("/catalogue");
-    expect(firstAllowedPage(["inbox.view", "catalogue.manage"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.view", "catalogue.manage"])).toBe("/overview");
   });
 });
 
@@ -86,7 +117,7 @@ describe("posts in the menu (suite spec 09)", () => {
   });
   it("someone who may only publish posts lands on Posts", () => {
     expect(firstAllowedPage(["social.publish"])).toBe("/posts");
-    expect(firstAllowedPage(["inbox.view", "social.publish"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.view", "social.publish"])).toBe("/overview");
     expect(firstAllowedPage(["social.publish", "inbox.reports"])).toBe("/posts");
   });
 });
@@ -101,7 +132,7 @@ describe("Insights in the menu (suite spec 11)", () => {
   it("is where someone with only insights.view lands, and sits above Reports", () => {
     expect(firstAllowedPage(["insights.view"])).toBe("/insights");
     expect(firstAllowedPage(["inbox.reports", "insights.view"])).toBe("/insights");
-    expect(firstAllowedPage(["inbox.view", "insights.view"])).toBe("/inbox");
+    expect(firstAllowedPage(["inbox.view", "insights.view"])).toBe("/overview");
     expect(firstAllowedPage(["inbox.reports"])).toBe("/inbox/reports");
   });
 });
