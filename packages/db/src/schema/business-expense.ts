@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import { pgTable, uuid, pgEnum, text, integer, date, timestamp, index } from "drizzle-orm/pg-core";
 import { adminUser } from "./admin-user.js";
+import { branch } from "./branch.js";
 import { vendor } from "./vendor.js";
 
 export const businessExpenseCategory = pgEnum("business_expense_category", [
@@ -18,6 +20,8 @@ export const businessExpenseCategory = pgEnum("business_expense_category", [
 /**
  * One row per money-out event. `receipt_url` stores the bare R2 object key;
  * the API converts it to a signed GET URL on read. Soft-delete via `deleted_at`.
+ * `branch_id` is the shop the money was spent at (logged from the till);
+ * null = head office (the owner's Bookkeeping entries). Migration 0089.
  */
 export const businessExpense = pgTable(
   "business_expense",
@@ -32,6 +36,7 @@ export const businessExpense = pgTable(
     reasonNote: text("reason_note"),
     receiptUrl: text("receipt_url"),
     recordedByUserId: uuid("recorded_by_user_id").references(() => adminUser.id),
+    branchId: uuid("branch_id").references(() => branch.id),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -40,5 +45,8 @@ export const businessExpense = pgTable(
     idxDate: index("idx_business_expense_date").on(t.expenseDate),
     idxCategory: index("idx_business_expense_category").on(t.categoryCode),
     idxDeleted: index("idx_business_expense_deleted").on(t.deletedAt),
+    idxBranch: index("idx_business_expense_branch")
+      .on(t.branchId, t.expenseDate)
+      .where(sql`branch_id IS NOT NULL`),
   }),
 );

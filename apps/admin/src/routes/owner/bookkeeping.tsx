@@ -33,7 +33,17 @@ interface Expense {
   description: string | null;
   reason_note: string | null;
   receipt_url: string | null;
+  /** The shop it was spent at (logged from the till); null = head office. */
+  branch_id: string | null;
+  branch_name: string | null;
   deleted_at: string | null;
+}
+
+/** "" = every branch and head office; "head_office" = owner entries only; else a branch id. */
+type BranchFilter = string;
+
+function branchQuery(filter: BranchFilter): string {
+  return filter ? `&branch=${encodeURIComponent(filter)}` : "";
 }
 
 interface Pnl {
@@ -75,6 +85,14 @@ export function BookkeepingPage(): JSX.Element {
   const [editTarget, setEditTarget] = useState<Expense | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
+  const [branchFilter, setBranchFilter] = useState<BranchFilter>("");
+  const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    void api<{ data: Array<{ id: string; name: string }> }>(`/branches`)
+      .then((res) => setBranches(res.data))
+      .catch(() => setBranches([]));
+  }, []);
 
   async function loadAll(): Promise<void> {
     setLoading(true);
@@ -82,7 +100,7 @@ export function BookkeepingPage(): JSX.Element {
       const { from, to } = monthBounds(month);
       const [ex, p] = await Promise.all([
         api<{ data: Expense[]; pagination: { total: number } }>(
-          `/expenses?from=${from}&to=${to}&page_size=200`,
+          `/expenses?from=${from}&to=${to}&page_size=200${branchQuery(branchFilter)}`,
         ),
         canFinance ? api<{ data: Pnl }>(`/reports/pnl?month=${month}`) : Promise.resolve(null),
       ]);
@@ -99,7 +117,7 @@ export function BookkeepingPage(): JSX.Element {
   useEffect(() => {
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
+  }, [month, branchFilter]);
 
   const filteredTotal = useMemo(
     () => expenses.reduce((s, e) => s + e.amount_ngn, 0),
@@ -199,6 +217,23 @@ export function BookkeepingPage(): JSX.Element {
         >
           This month
         </button>
+        {activeTab === "expenses" && (
+          <select
+            className="select"
+            aria-label="Where it was spent"
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            style={{ height: 32, width: "auto", minWidth: 160, fontSize: 13 }}
+          >
+            <option value="">All branches</option>
+            <option value="head_office">Head office</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        )}
         <div style={{ flex: "1 1 0" }} />
         {activeTab === "expenses" && (
           <button
@@ -206,7 +241,7 @@ export function BookkeepingPage(): JSX.Element {
             className="btn btn--subtle btn--sm"
             onClick={() => {
               const { from, to } = monthBounds(month);
-              window.open(`/v1/expenses?from=${from}&to=${to}&format=csv`, "_blank");
+              window.open(`/v1/expenses?from=${from}&to=${to}&format=csv${branchQuery(branchFilter)}`, "_blank");
             }}
             style={{ marginRight: 6 }}
           >
@@ -246,6 +281,7 @@ export function BookkeepingPage(): JSX.Element {
                 <tr>
                   <th>Date</th>
                   <th>Category</th>
+                  <th>Branch</th>
                   <th>Vendor</th>
                   <th>Description</th>
                   <th className="table__num">Amount</th>
@@ -256,7 +292,7 @@ export function BookkeepingPage(): JSX.Element {
               <tbody>
                 {expenses.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ color: "var(--ink-soft)", padding: 18 }}>
+                    <td colSpan={8} style={{ color: "var(--ink-soft)", padding: 18 }}>
                       No expenses in this month yet.
                     </td>
                   </tr>
@@ -265,6 +301,13 @@ export function BookkeepingPage(): JSX.Element {
                     <tr key={e.id}>
                       <td>{formatDate(e.expense_date)}</td>
                       <td>{labelFor(e.category_code)}</td>
+                      <td>
+                        {e.branch_id ? (
+                          <span className="pill pill--accent">{e.branch_name ?? "Branch"}</span>
+                        ) : (
+                          <span style={{ color: "var(--ink-soft)" }}>Head office</span>
+                        )}
+                      </td>
                       <td>{e.vendor_name ?? "—"}</td>
                       <td style={{ color: "var(--ink-soft)" }}>{e.description ?? "—"}</td>
                       <td className="table__num" style={{ fontWeight: 700 }}>

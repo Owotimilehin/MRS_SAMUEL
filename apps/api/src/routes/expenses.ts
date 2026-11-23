@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { eq, and, gte, lte, isNull, ilike, or, inArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { businessExpense, vendor, recurringExpense, type DbClient } from "@ms/db";
+import { businessExpense, vendor, recurringExpense, branch, type DbClient } from "@ms/db";
 import { desc } from "drizzle-orm";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { writeAudit } from "../middleware/audit.js";
@@ -70,6 +70,9 @@ interface RowOut {
   description: string | null;
   reason_note: string | null;
   receipt_url: string | null;
+  /** The shop the money was spent at; null = head office. */
+  branch_id: string | null;
+  branch_name: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -78,6 +81,7 @@ interface RowOut {
 async function shape(
   row: typeof businessExpense.$inferSelect,
   resolvedVendorName?: string | null,
+  branchName?: string | null,
 ): Promise<RowOut> {
   return {
     id: row.id,
@@ -91,6 +95,8 @@ async function shape(
     description: row.description,
     reason_note: row.reasonNote,
     receipt_url: await presignGet(row.receiptUrl),
+    branch_id: row.branchId ?? null,
+    branch_name: row.branchId ? (branchName ?? null) : null,
     deleted_at: row.deletedAt ? row.deletedAt.toISOString() : null,
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
@@ -236,6 +242,9 @@ export function expenseRoutes(db: DbClient) {
     const to = url.searchParams.get("to") ?? new Date().toISOString().slice(0, 10);
     const categories = url.searchParams.getAll("category").filter(Boolean);
     const q = url.searchParams.get("q")?.trim() ?? "";
+    // ?branch=head_office → only owner/head-office rows (branch_id null);
+    // ?branch=<uuid> → one shop's spending. Absent → everything.
+    const branchFilter = url.searchParams.get("branch")?.trim() ?? "";
     const format = url.searchParams.get("format");
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
     const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? 50)));
@@ -252,6 +261,11 @@ export function expenseRoutes(db: DbClient) {
       if (valid.length > 0) {
         conds.push(inArray(businessExpense.categoryCode, valid));
       }
+    }
+    if (branchFilter === "head_office") {
+      conds.push(isNull(businessExpense.branchId));
+    } else if (branchFilter && z.string().uuid().safeParse(branchFilter).success) {
+      conds.push(eq(businessExpense.branchId, branchFilter));
     }
     if (q.length > 0) {
       const like = `%${q}%`;
@@ -271,12 +285,14 @@ export function expenseRoutes(db: DbClient) {
         .select({
           expense: businessExpense,
           vendor_name: vendor.name,
+          branch_name: branch.name,
         })
         .from(businessExpense)
         .leftJoin(vendor, eq(vendor.id, businessExpense.vendorId))
+        .leftJoin(branch, eq(branch.id, businessExpense.branchId))
         .where(where)
         .orderBy(sql`${businessExpense.expenseDate} ASC, ${businessExpense.createdAt} ASC`);
-      const header = ["Date", "Category", "Vendor", "Description", "Amount (NGN)", "Notes"];
+      const header = ["Date", "Category", "Vendor", "Description", "Amount (NGN)", "Notes", "Branch"];
       const data = rows.map((r) => {
         const e = r.expense;
         const vname = e.vendorId ? r.vendor_name : e.vendorName;
@@ -287,6 +303,7 @@ export function expenseRoutes(db: DbClient) {
           e.description ?? "",
           e.amountNgn,
           e.reasonNote ?? "",
+          e.branchId ? (r.branch_name ?? "") : "Head office",
         ];
       });
       const filename = `expenses-${from}_${to}.csv`;
@@ -303,26 +320,28 @@ export function expenseRoutes(db: DbClient) {
     const total = Number(totalRow[0]?.total ?? 0);
 
     const rows = await db
-      .select({ expense: businessExpense, vendor_name: vendor.name })
+      .select({ expense: businessExpense, vendor_name: vendor.name, branch_name: branch.name })
       .from(businessExpense)
       .leftJoin(vendor, eq(vendor.id, businessExpense.vendorId))
+      .leftJoin(branch, eq(branch.id, businessExpense.branchId))
       .where(where)
       .orderBy(sql`${businessExpense.expenseDate} DESC, ${businessExpense.createdAt} DESC`)
       .limit(pageSize)
       .offset((page - 1) * pageSize);
-    const data = await Promise.all(rows.map((r) => shape(r.expense, r.vendor_name)));
+    const data = await Promise.all(rows.map((r) => shape(r.expense, r.vendor_name, r.branch_name)));
     return c.json({ data, pagination: { page, page_size: pageSize, total } });
   });
 
   r.get("/:id", requireCapability("expenses.view"), async (c) => {
     const id = c.req.param("id");
     const [row] = await db
-      .select({ expense: businessExpense, vendor_name: vendor.name })
+      .select({ expense: businessExpense, vendor_name: vendor.name, branch_name: branch.name })
       .from(businessExpense)
       .leftJoin(vendor, eq(vendor.id, businessExpense.vendorId))
+      .leftJoin(branch, eq(branch.id, businessExpense.branchId))
       .where(eq(businessExpense.id, id));
     if (!row) throw new BusinessError("not_found", "expense not found", 404);
-    return c.json({ data: await shape(row.expense, row.vendor_name) });
+    return c.json({ data: await shape(row.expense, row.vendor_name, row.branch_name) });
   });
 
   r.post("/", requireCapability("expenses.write"), async (c) => {
@@ -397,13 +416,18 @@ export function expenseRoutes(db: DbClient) {
       const [v] = await db.select({ name: vendor.name }).from(vendor).where(eq(vendor.id, row.vendorId));
       resolvedName = v?.name ?? null;
     }
+    let branchName: string | null = null;
+    if (row.branchId) {
+      const [b] = await db.select({ name: branch.name }).from(branch).where(eq(branch.id, row.branchId));
+      branchName = b?.name ?? null;
+    }
     await writeAudit(db, c, {
       action: "business_expense.update",
       entityType: "business_expense",
       entityId: id,
       after: patch,
     });
-    return c.json({ data: await shape(row, resolvedName) });
+    return c.json({ data: await shape(row, resolvedName, branchName) });
   });
 
   r.delete("/:id", requireCapability("expenses.write"), async (c) => {

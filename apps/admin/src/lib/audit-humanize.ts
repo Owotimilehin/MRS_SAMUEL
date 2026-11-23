@@ -181,6 +181,8 @@ export function humanizeAction(row: AuditRow, branches: BranchLookup[]): string 
       return `Deleted a recurring expense`;
     case "business_expense.create":
       return `Recorded expense — ${tidy(pick(after, "category_code"))} (${ngn(pick(after, "amount_ngn"))})`;
+    case "business_expense.branch_create":
+      return `Logged shop spending — ${s(pick(after, "description"))} (${ngn(pick(after, "amount_ngn"))})`;
     case "business_expense.update":
       return `Updated an expense`;
     case "business_expense.delete":
@@ -430,6 +432,7 @@ const ACTION_LABEL: Record<string, string> = {
   "recurring_expense.update": "Recurring expenses updated",
   "recurring_expense.delete": "Recurring expenses deleted",
   "business_expense.create": "Expenses recorded",
+  "business_expense.branch_create": "Shop spending logged",
   "business_expense.update": "Expenses updated",
   "business_expense.delete": "Expenses deleted",
   "packaging_material.create": "Packaging materials added",

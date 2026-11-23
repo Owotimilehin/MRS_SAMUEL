@@ -6,7 +6,7 @@ const GROUPS: { heading: string; caps: Capability[] }[] = [
   { heading: "Catalog", caps: ["products.manage", "prices.manage"] },
   { heading: "Business config", caps: ["branches.manage", "zones.manage", "settings.manage"] },
   { heading: "Content", caps: ["blog.manage", "marketing.manage"] },
-  { heading: "Bookkeeping", caps: ["expenses.view", "expenses.write", "finance.daily", "finance.view"] },
+  { heading: "Bookkeeping", caps: ["expenses.view", "expenses.write", "expenses.branch_write", "finance.daily", "finance.view"] },
   { heading: "Visibility", caps: ["reports.view", "audit.view", "devices.view", "customers.view", "orders.view", "stock.read"] },
   { heading: "Operations", caps: ["production.manage", "transfers.create", "transfers.receive", "orders.manage", "orders.accept_payment", "packaging.view", "packaging.write", "packaging.adjust"] },
   {
@@ -57,6 +57,7 @@ const LABEL: Record<Capability, string> = {
   "stock.read": "View stock & inventory",
   "expenses.write": "Record expenses",
   "expenses.view": "View bookkeeping & expenses",
+  "expenses.branch_write": "Log the shop's small spending (own branch)",
   "finance.daily": "View the day's financials (revenue, takings)",
   "finance.view": "View company P&L, cost & variance losses (owner)",
   "packaging.view": "View packaging & materials",

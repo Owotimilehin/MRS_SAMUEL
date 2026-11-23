@@ -16,6 +16,7 @@ describe("resolveCapabilities", () => {
         "transfers.receive",
         "orders.view",
         "orders.manage",
+        "expenses.branch_write",
       ].sort(),
     );
   });
@@ -196,5 +197,25 @@ describe("broadcasts.send (suite spec 14, Phase B)", () => {
   });
   it("broadcasts.send can be granted to a named person", () => {
     expect(resolveCapabilities("admin", { granted: ["broadcasts.send"], revoked: [] })).toContain("broadcasts.send");
+  });
+});
+
+describe("expenses.branch_write (branch spending)", () => {
+  it("is held by owner, manager and branch staff, not admin", () => {
+    expect(resolveCapabilities("owner")).toContain("expenses.branch_write");
+    expect(resolveCapabilities("manager")).toContain("expenses.branch_write");
+    expect(resolveCapabilities("branch_staff")).toContain("expenses.branch_write");
+    expect(resolveCapabilities("admin")).not.toContain("expenses.branch_write");
+  });
+  it("does not unlock Bookkeeping for branch staff or managers", () => {
+    for (const role of ["manager", "branch_staff"] as const) {
+      expect(resolveCapabilities(role)).not.toContain("expenses.write");
+      expect(resolveCapabilities(role)).not.toContain("expenses.view");
+    }
+  });
+  it("can be revoked from a named staff member", () => {
+    expect(
+      resolveCapabilities("branch_staff", { granted: [], revoked: ["expenses.branch_write"] }),
+    ).not.toContain("expenses.branch_write");
   });
 });
