@@ -8,7 +8,8 @@ const PATH = "/white-label";
 const DESCRIPTION =
   "Cold-pressed Nigerian fruit juice bottled under your own brand. Your recipe or ours, your label, your sizes. For cafés, hotels, gyms and shops in Lagos.";
 
-// TODO(owner): confirm minimum order quantity per white label run, the bottle
+// Owner confirmed (23 Nov 2026): minimum order is 1 bottle, no maximum.
+// TODO(owner): confirm the bottle
 // sizes/types on offer, typical lead time from sample to first delivery, and
 // production capacity before any of them are published.
 // TODO(owner): confirm NAFDAC status (ours, and whether we support clients'
@@ -26,7 +27,7 @@ const FAQS: ServiceFaq[] = [
   },
   {
     q: "What is the minimum order for white label juice?",
-    a: "Minimum order quantities depend on the blend, the bottle size and how often you want deliveries, so we quote per project. Tell us what you have in mind and we will tell you what works.",
+    a: "There is no minimum beyond one bottle, and no maximum, so you can test a small run before you scale. Pricing depends on the blend, the bottle size and how often you want deliveries, so we quote per project.",
   },
   {
     q: "How much does white label juice cost?",
@@ -150,7 +151,7 @@ function Page() {
         {
           heading: "Minimums and pricing",
           body: [
-            "Minimum order quantities and pricing depend on the blend, the bottle size and how often you want deliveries, so we quote per project rather than off a price list. Share what you have in mind, even roughly, and we will come back with what works for your volume.",
+            "The minimum order is one bottle and there is no maximum, so you can start with a small test run and scale up. Pricing depends on the blend, the bottle size and how often you want deliveries, so we quote per project rather than off a price list.",
           ],
         },
         {
@@ -182,7 +183,7 @@ function Page() {
         "Roughly how many bottles, and how often",
         "Whether you already have a label design",
       ]}
-      checklistNote="Minimum order quantities and pricing depend on the blend, bottle size and how often you want deliveries — so we quote per project rather than off a price list."
+      checklistNote="No minimum beyond one bottle and no maximum. Pricing depends on the blend, bottle size and how often you want deliveries, so we quote per project."
       enquiry={{
         type: "white_label",
         cta: "Discuss white labelling",

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { EnquiryType } from "@/lib/api/server-fns";
 import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Check, type LucideIcon } from "lucide-react";
@@ -63,7 +64,7 @@ interface Props {
   checklist: string[];
   checklistNote: string;
   enquiry: {
-    type: "white_label" | "bulk_order";
+    type: EnquiryType;
     cta: string;
     template: string;
     leadSource: string;

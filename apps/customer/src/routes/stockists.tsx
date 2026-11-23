@@ -123,7 +123,7 @@ function Page() {
             </p>
           </div>
           <EnquiryForm
-            enquiryType="bulk_order"
+            enquiryType="stockist"
             cta="Ask about stocking our juice"
             heading="Become a stockist"
             template="Hi Mrs. Samuel — I'd like to stock your juice at my business."

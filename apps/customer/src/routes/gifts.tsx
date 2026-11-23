@@ -14,6 +14,10 @@ const DESCRIPTION =
 // TODO(owner): add hamper photos (WebP, with width/height) when available.
 const FAQS: ServiceFaq[] = [
   {
+    q: "Is there a minimum order for juice gifts?",
+    a: "No. The minimum order is one bottle and there is no maximum, so you can send a single gift or a box for every client and staff member. For large orders, tell us your date early so we can plan the pressing.",
+  },
+  {
     q: "Do you make Christmas juice hampers?",
     a: "Yes. We put together fresh juice hampers and branded crates for Christmas and the end of the year, for families, clients and staff. Tell us how many you need and when, and we will send you a quote.",
   },
@@ -174,7 +178,7 @@ function Page() {
       ]}
       checklistNote="Hampers are pressed to order, so the earlier you get in touch before Christmas or Valentine's Day, the easier it is to fit your dates."
       enquiry={{
-        type: "bulk_order",
+        type: "gifts",
         cta: "Ask about gift hampers",
         heading: "Plan your gifts",
         template: "Hi Mrs. Samuel — I'd like to order juice gift hampers.",

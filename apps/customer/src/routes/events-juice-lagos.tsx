@@ -8,8 +8,7 @@ const PATH = "/events-juice-lagos";
 const DESCRIPTION =
   "Cold-pressed juice for weddings, owambes, birthdays and corporate events in Lagos. Chilled crates, no added sugar. Tell us your date for a quote.";
 
-// TODO(owner): confirm the minimum order for events (bottles or crates) so it
-// can be stated on this page and in the FAQ instead of "ask us".
+// Owner confirmed (23 Nov 2026): minimum order is 1 bottle, no maximum.
 // TODO(owner): confirm crate sizes and per-bottle event pricing tiers, if you
 // want them published; until then the page only says "Ask us for a quote".
 const FAQS: ServiceFaq[] = [
@@ -19,7 +18,7 @@ const FAQS: ServiceFaq[] = [
   },
   {
     q: "Is there a minimum order for events?",
-    a: "It depends on your date, your flavours and where the venue is, so tell us your guest count and we will confirm what works. Use the quote form on this page or WhatsApp us on 0901 951 2246.",
+    a: "No. The minimum order is one bottle and there is no maximum, so a small birthday and a 1,000-guest wedding are both welcome. For large orders, tell us your date early so we can plan the pressing. Use the quote form on this page or WhatsApp us on 0901 951 2246.",
   },
   {
     q: "How much does juice for an event cost?",
@@ -185,7 +184,7 @@ function Page() {
           heading: "Minimum order and pricing",
           body: [
             "Every event is different, so we quote per order instead of publishing a fixed price list. The quote depends on the number of bottles, the sizes and flavours you choose, and where your venue is in Lagos. Per-bottle pricing gets better as the order grows.",
-            "Not sure if your event is big enough? Ask us. Share your guest count and we will confirm the minimum for your date and suggest what makes sense.",
+            "There is no event too small or too big: the minimum order is one bottle and there is no maximum. Share your guest count and date and we will suggest what makes sense.",
           ],
         },
         {
@@ -226,7 +225,7 @@ function Page() {
       ]}
       checklistNote="Every bottle is pressed fresh for your event, so the earlier you reach out, the easier it is to plan. We are open Monday to Saturday 8am–8pm and Sunday 10am–8pm."
       enquiry={{
-        type: "bulk_order",
+        type: "events",
         cta: "Request an event quote",
         heading: "Get an event quote",
         template: "Hi Mrs. Samuel — I'd like a quote for juice for an event.",

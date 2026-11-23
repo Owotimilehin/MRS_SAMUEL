@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { MessageCircle } from "lucide-react";
-import { submitEnquiry } from "@/lib/api/server-fns";
+import { submitEnquiry, type EnquiryType } from "@/lib/api/server-fns";
 import { whatsappLink } from "@/lib/whatsapp";
 import { trackLeadOnce } from "@/lib/analytics";
 
@@ -9,7 +9,7 @@ const inputCls =
   "w-full rounded-xl border border-black/10 bg-[color:var(--cream)]/40 px-4 py-3 text-base sm:text-sm text-[color:var(--brand)] placeholder:text-[color:var(--brand)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-orange)]/40";
 
 interface Props {
-  enquiryType: "white_label" | "bulk_order";
+  enquiryType: EnquiryType;
   /** Pre-filled first WhatsApp message. */
   template: string;
   cta: string;

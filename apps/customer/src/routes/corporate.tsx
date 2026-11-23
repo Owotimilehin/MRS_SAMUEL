@@ -8,7 +8,8 @@ const PATH = "/corporate";
 const DESCRIPTION =
   "Office juice supply in Lagos: weekly or monthly fridge drops, juice for meetings, staff wellness days and corporate gifts. Cold-pressed, no added sugar.";
 
-// TODO(owner): confirm the minimum standing order for offices, any per-bottle
+// Owner confirmed (23 Nov 2026): minimum order is 1 bottle, no maximum.
+// TODO(owner): confirm any per-bottle
 // pricing tiers and payment terms (e.g. invoice net 30) before they are
 // published here. Until then the page says "Ask us for a quote".
 const FAQS: ServiceFaq[] = [
@@ -22,7 +23,7 @@ const FAQS: ServiceFaq[] = [
   },
   {
     q: "Is there a minimum order for offices?",
-    a: "It depends on how often you want deliveries and where your office is. Tell us roughly how many people you want to cater for and we will confirm what works. WhatsApp us on 0901 951 2246 or use the form on this page.",
+    a: "No. The minimum order is one bottle and there is no maximum, so a small team can start with a handful and a large office can order as much as it needs. Tell us roughly how many people you want to cater for and we will suggest a plan. WhatsApp us on 0901 951 2246 or use the form on this page.",
   },
   {
     q: "Can you supply juice for a wellness day or health week?",
@@ -166,7 +167,7 @@ function Page() {
       ]}
       checklistNote="Prefer to see us first? Visit our kitchen at 30 Asa Afariogun Street, Ajao Estate, Ikeja, Monday to Saturday 8am–8pm and Sunday 10am–8pm."
       enquiry={{
-        type: "bulk_order",
+        type: "corporate",
         cta: "Set up office juice",
         heading: "Get an office quote",
         template: "Hi Mrs. Samuel — I'd like to set up juice supply for our office.",

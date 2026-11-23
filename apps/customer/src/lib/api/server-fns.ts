@@ -226,8 +226,12 @@ export const logCheckoutAttempt = createServerFn({ method: "POST" })
  * the owner's inbox has a record. Swallows errors for the same reason the
  * checkout log does — a failed write must never block the hand-off.
  */
+/** Enquiry kinds the API accepts (apps/api/src/routes/public-enquiries.ts). */
+export const ENQUIRY_TYPES = ["white_label", "bulk_order", "events", "corporate", "gifts", "stockist"] as const;
+export type EnquiryType = (typeof ENQUIRY_TYPES)[number];
+
 export const submitEnquiry = createServerFn({ method: "POST" })
-  .validator((d: { name: string; phone: string; enquiry_type: "white_label" | "bulk_order" }) => d)
+  .validator((d: { name: string; phone: string; enquiry_type: EnquiryType }) => d)
   .handler(async ({ data }): Promise<{ ok: boolean }> => {
     try {
       await apiFetch("/v1/public/enquiries", {

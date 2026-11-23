@@ -8,8 +8,9 @@ const PATH = "/bulk-orders";
 const DESCRIPTION =
   "Cold-pressed fruit juice in quantity for events, offices, weddings and trade. Crate pricing, scheduled Lagos delivery, no added sugar or preservatives.";
 
-// TODO(owner): confirm the minimum bulk order (bottles or crates), crate sizes,
-// and the per-bottle pricing tiers if you want them published.
+// Owner confirmed (23 Nov 2026): minimum order is 1 bottle, no maximum.
+// TODO(owner): confirm crate sizes and the per-bottle pricing tiers if you
+// want them published.
 // TODO(owner): confirm daily pressing capacity (largest single order you can
 // take, and how much notice it needs).
 // TODO(owner): confirm NAFDAC registration status/number before it is mentioned.
@@ -18,7 +19,7 @@ const DESCRIPTION =
 const FAQS: ServiceFaq[] = [
   {
     q: "What is the minimum for a bulk order?",
-    a: "It depends on your date, the sizes and flavours you choose and where we are delivering, so we confirm it with your quote. Tell us roughly how many bottles or guests you are planning for and we will tell you what works.",
+    a: "There is no minimum beyond one bottle, and no maximum. Tell us roughly how many bottles or guests you are planning for and your date, and we will quote and plan the pressing.",
   },
   {
     q: "How is bulk juice priced?",
@@ -166,7 +167,7 @@ function Page() {
           heading: "Pricing and minimum order",
           body: [
             "We do not publish a fixed bulk price list, because every order is different. Your quote depends on the number of bottles, the sizes and flavours you pick, and where in Lagos we are delivering. What does not change: per-bottle pricing gets better as quantity goes up.",
-            "The minimum order also depends on your date and delivery address. Ask us for a quote with your rough numbers and we will confirm the minimum and the options that make sense for you.",
+            "The minimum order is one bottle and there is no maximum. Ask us for a quote with your rough numbers and date, and we will confirm the options that make sense for you.",
           ],
         },
         {
