@@ -4,7 +4,8 @@ Every Lagos area you deliver to can have its own page, like
 `mrssamuel.com/juice-delivery-lagos/lekki`. These pages rank for searches such as
 "fresh juice Lekki" and "juice delivery Yaba".
 
-All 14 pages are live, each written for its own area. **What will push them above
+All 14 pages are live, each written for its own area with 600+ words: places we deliver,
+the route from the kitchen, what people order for, and local questions. **What will push them above
 competitors is real facts only Mrs. Samuel knows about each area.** Never let two
 pages read the same: Google penalises copy-paste pages, and that can hurt the whole site.
 
@@ -27,7 +28,27 @@ pages read the same: Google penalises copy-paste pages, and that can hurt the wh
 | Ogba, Omole & Berger | Ogba, Agidingbi, Omole Phase 1 & 2, Ojodu Berger |
 | Festac & Amuwo Odofin | Festac Town, Amuwo Odofin, Mile 2 |
 
-Add any areas that are missing (for example Ikorodu, Ikotun, Ketu or Ojota).
+## Draft area pages: waiting for your yes
+
+These eight pages are written but **not live**. They return 404 and are left out
+of the sitemap and the hub page until you confirm we deliver there. Then a developer
+sets `published: true` for that area in `apps/customer/src/lib/areas.ts`.
+
+| Area | Covers |
+|---|---|
+| Ikorodu | Ikorodu town, Igbogbo, Ijede, Agric, Owutu, Ogolonto, Odogunyan |
+| Sangotedo | Monastery Road, Ogombo Road, Abijo, Awoyaya, Lakowe |
+| Chevron & Ikota | Chevron Drive, Ikota, VGC, Orchid Road, Lafiaji, Igbo Efon, Alpha Beach Road |
+| Oniru | Oniru Estate, Water Corporation Drive, Palace Road, Akiogun Road, Landmark Beach |
+| Ilupeju | Industrial Estate, Town Planning Way, Palmgrove, Onipanu, Ilupeju Bypass |
+| Ojota & Ogudu | Ojota, Ogudu, Ogudu GRA, Ketu, Alapere, Mile 12 |
+| Apapa | Apapa GRA, Wharf Road, Liverpool Road, Creek Road, Ijora |
+| Agege | Dopemu, Orile Agege, Pen Cinema, Iju Road, Abule Egba |
+
+Sangotedo, Chevron and Oniru are also mentioned on the live Ajah, Lekki and
+Victoria Island pages. Each new page is written differently, so they don't compete.
+
+Add any other areas that are missing (for example Ikotun or Ikeja GRA).
 
 ## For each area, answer these (a voice note is fine)
 
