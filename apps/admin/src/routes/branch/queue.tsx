@@ -6,6 +6,15 @@ import type { StatChip } from "../../components/StatHero.js";
 import { local, type OutboxRow } from "../../db/local.js";
 import { flushOutbox } from "../../sync/engine.js";
 import { BranchTabs } from "../../components/BranchTabs.js";
+import { plainFailureReason, saleIdForOutboxRow } from "../../lib/sale-failure.js";
+import { receiptCodeFromSaleId } from "../../lib/receipt-code.js";
+import { ngn } from "../../lib/format.js";
+
+interface SaleDetail {
+  items: string;
+  totalNgn: number | null;
+  receiptNo: string;
+}
 
 function age(ms: number): string {
   const s = Math.floor((Date.now() - ms) / 1000);
@@ -90,6 +99,7 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
         row.attempt_count = 0;
         row.next_attempt_at = Date.now();
         delete row.last_error;
+        delete row.last_error_status;
       });
     void flushOutbox();
     setActing(null);
@@ -104,6 +114,45 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
     await local.outbox.delete(id);
     setActing(null);
   }
+
+  // For each failed sale: what was in it, the total and its receipt code, so
+  // the cashier can tell which customer it was. Built from the sale's Confirm
+  // row (items), the local sale row (total + code) and the catalog (names).
+  const deadKey = rows
+    .filter((r) => r.status === "dead")
+    .map((r) => r.id)
+    .join(",");
+  const saleDetails = useLiveQuery(
+    async () => {
+      const out: Record<string, SaleDetail> = {};
+      const deadRows = await local.outbox.where("status").equals("dead").toArray();
+      for (const r of deadRows) {
+        const saleId = saleIdForOutboxRow(r);
+        if (!saleId || out[saleId]) continue;
+        const [confirm, sale] = await Promise.all([local.outbox.get(saleId), local.sales.get(saleId)]);
+        const items = ((confirm?.payload as { items?: Array<{ product_id?: string; variant_id?: string; quantity?: number }> } | null)
+          ?.items ?? []);
+        const lines = await Promise.all(
+          items.map(async (it) => {
+            const [product, variant] = await Promise.all([
+              it.product_id ? local.products.get(it.product_id) : undefined,
+              it.variant_id ? local.variants.get(it.variant_id) : undefined,
+            ]);
+            const size = variant ? (variant.size_ml >= 1000 ? `${variant.size_ml / 1000}L` : `${variant.size_ml}ml`) : "";
+            return `${it.quantity ?? 1} × ${product?.name ?? "Item"}${size ? ` ${size}` : ""}`;
+          }),
+        );
+        out[saleId] = {
+          items: lines.join(", "),
+          totalNgn: sale?.total_ngn ?? null,
+          receiptNo: sale?.order_number ?? receiptCodeFromSaleId(saleId),
+        };
+      }
+      return out;
+    },
+    [deadKey],
+    {} as Record<string, SaleDetail>,
+  );
 
   const pendingRows = rows.filter((r) => r.status === "pending");
   const inFlightRows = rows.filter((r) => r.status === "in_flight");
@@ -160,11 +209,12 @@ export function BranchQueuePage({ branchId }: { branchId: string }): JSX.Element
                   Failed ({dead.length})
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--ink-soft)" }}>
-                  These reached the server but were turned down. Tap Retry once the cause is fixed.
-                  Only tap Drop if it should never be sent.
+                  The system turned these down. For a sale, the customer has already paid, so fix the
+                  cause (for example, record the missing stock or open the shift) and tap Retry. Only
+                  tap Drop if it should never be sent, and tell a manager.
                 </p>
               </header>
-              <QueueTable rows={dead} acting={acting} onRetry={retry} onDrop={drop} />
+              <QueueTable rows={dead} acting={acting} onRetry={retry} onDrop={drop} saleDetails={saleDetails} />
             </section>
           )}
           {pending.length > 0 && (
@@ -199,12 +249,14 @@ function QueueTable({
   onRetry,
   onDrop,
   compact,
+  saleDetails,
 }: {
   rows: OutboxRow[];
   acting: string | null;
   onRetry: (id: string) => void;
   onDrop: (id: string) => void;
   compact?: boolean;
+  saleDetails?: Record<string, SaleDetail>;
 }): JSX.Element {
   return (
     <div className="table-wrap" style={{ border: 0 }}>
@@ -222,6 +274,9 @@ function QueueTable({
         <tbody>
           {rows.map((r) => {
             const op = describeOperation(r);
+            const saleId = saleIdForOutboxRow(r);
+            const sale = saleId ? saleDetails?.[saleId] : undefined;
+            const isDead = r.status === "dead";
             return (
             <tr key={r.id}>
               <td>
@@ -229,13 +284,33 @@ function QueueTable({
                 {op.detail && (
                   <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{op.detail}</div>
                 )}
+                {sale && (
+                  <div style={{ fontSize: 13, marginTop: 4 }}>
+                    <span className="tabular-nums" style={{ fontWeight: 700 }}>
+                      {sale.receiptNo}
+                      {sale.totalNgn != null ? ` · ${ngn(sale.totalNgn)}` : ""}
+                    </span>
+                    {sale.items && <div style={{ color: "var(--ink-soft)" }}>{sale.items}</div>}
+                  </div>
+                )}
               </td>
               <td>{statusPill(r.status)}</td>
               {!compact && <td className="table__num">{r.attempt_count}</td>}
               <td style={{ color: "var(--ink-soft)" }}>{age(r.created_at_local)}</td>
               {!compact && (
-                <td style={{ fontSize: 12, color: "var(--danger)", maxWidth: 320 }}>
-                  {r.last_error ?? ""}
+                <td style={{ fontSize: 13, color: "var(--danger)", maxWidth: 320 }}>
+                  {isDead ? (
+                    <>
+                      <div style={{ fontWeight: 700 }}>{plainFailureReason(r.last_error, r.last_error_status)}</div>
+                      {r.last_error && (
+                        <div style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 400 }}>
+                          System said: {r.last_error}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    r.last_error ?? ""
+                  )}
                 </td>
               )}
               {!compact && (

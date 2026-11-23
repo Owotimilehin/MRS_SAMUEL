@@ -1,4 +1,5 @@
 import { local } from "../db/local.js";
+import { receiptCodeFromSaleId } from "../lib/receipt-code.js";
 
 interface CreateLocalSaleInput {
   branchId: string;
@@ -58,7 +59,11 @@ export async function createLocalSale(
     0,
   );
   const saleId = crypto.randomUUID();
-  const localOrderNumber = `LOCAL-${Date.now().toString(36)}`;
+  // Until the server assigns its SO-… number, the sale is known by a short
+  // code made from its id (which IS the server sale id), so a customer can
+  // quote it and staff can find it on the Sales screen later. The pull
+  // overwrites this row with the real order number once the sale syncs.
+  const localOrderNumber = receiptCodeFromSaleId(saleId);
   const idempotencyKey = saleId;
   const nowIso = new Date().toISOString();
   const nowEpoch = Date.now();

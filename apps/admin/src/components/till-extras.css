@@ -1,0 +1,138 @@
+/* ── Till extras: failed-sale banner, quick picks, keyboard hint ──────────────
+   Colours come only from index.css tokens (and color-mix over them) so these
+   follow a future dark theme; no hard-coded white backgrounds. */
+
+.failed-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 2px solid var(--danger);
+  background: color-mix(in oklab, var(--danger) 10%, var(--shell));
+  color: var(--ink);
+}
+.failed-banner__icon {
+  flex: none;
+  font-size: 24px;
+  line-height: 1;
+}
+.failed-banner__text {
+  flex: 1 1 240px;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.failed-banner__text strong {
+  display: block;
+  color: var(--danger);
+  font-size: 16px;
+}
+.failed-banner__cta {
+  flex: none;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border-radius: 12px;
+  background: var(--danger);
+  color: var(--shell);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.quick-picks {
+  margin-bottom: 14px;
+}
+.quick-picks__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+.quick-picks__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+.quick-pick {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 8px 12px 8px 34px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--fl-accent, var(--accent));
+  background: var(--surface-soft);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.quick-pick:active {
+  transform: scale(0.98);
+}
+.quick-pick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.quick-pick__key {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+.quick-pick__name {
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.quick-pick__meta {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* Keyboard shortcut hint: only useful with a real keyboard on a wide screen. */
+.till-keys-hint {
+  display: none;
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.till-keys-hint kbd {
+  font: inherit;
+  font-weight: 700;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+@media (min-width: 1100px) and (hover: hover) and (pointer: fine) {
+  .till-keys-hint {
+    display: block;
+  }
+}
+/* Number badges on quick picks only mean something with a keyboard. */
+@media not all and (min-width: 1100px) {
+  .quick-pick__key {
+    display: none;
+  }
+  .quick-pick {
+    padding-left: 12px;
+  }
+}

@@ -109,6 +109,9 @@ export interface OutboxRow {
   attempt_count: number;
   next_attempt_at: number;
   last_error?: string;
+  // HTTP status of the server's rejection, kept so the queue can explain a
+  // failed sale in plain English. Not indexed, so no schema bump is needed.
+  last_error_status?: number;
   status: OutboxStatus;
   created_at_local: number;
   acknowledged_at?: number;

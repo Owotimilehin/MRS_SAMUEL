@@ -21,6 +21,9 @@ import { getReceiptStyle } from "../../lib/receipt-settings.js";
 import { getFlavourVisual } from "../../lib/flavour-visuals.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
 import { buildSellables, type Sellable } from "../../lib/sellables.js";
+import { FailedSalesBanner } from "../../components/FailedSalesBanner.js";
+import { QUICK_PICK_DAYS, QUICK_PICK_LIMIT, rankQuickPicks } from "../../lib/quick-picks.js";
+import "../../components/till-extras.css";
 
 interface BagMaterial {
   id: string;
@@ -57,6 +60,25 @@ interface Flavour {
 }
 
 const sizeLabel = (ml: number): string => (ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`);
+
+// Most of one flavour + size a single cart line can hold. Stops a slipped
+// finger (or a held-down key) turning 2 into 222.
+const MAX_LINE_QTY = 99;
+
+/** True when focus sits in something that takes typing (so shortcuts stay off). */
+function isTypingTarget(el: Element | null): boolean {
+  if (!el || !(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+// Only autofocus the search on devices with a real pointer (mouse/trackpad,
+// which usually means a keyboard too). On a tablet or phone, focusing an input
+// pops the on-screen keyboard over half the till.
+function hasFinePointer(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: fine)").matches;
+}
 
 // Below this width the till stacks into one column (the same 860px breakpoint
 // `.l-split--pos` uses in index.css), so the cart sits under every product.
@@ -114,9 +136,9 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   const [preorderChoice, setPreorderChoice] = useState(false);
 
   // The just-completed sale, surfaced as a success modal with a Print option.
-  const [successSale, setSuccessSale] = useState<{ receipt: ReceiptData; itemCount: number } | null>(
-    null,
-  );
+  const [successSale, setSuccessSale] = useState<
+    { receipt: ReceiptData; itemCount: number; saleId: string } | null
+  >(null);
   // Who is serving (for "Served by" on the receipt). admin_user has no name
   // field yet, so fall back to the email prefix then the role.
   const authUser = useAuthUser();
@@ -302,7 +324,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       const existing = c.find((l) => l.variant_id === s.variant.id);
       if (existing) {
         return c.map((l) =>
-          l.variant_id === s.variant.id ? { ...l, quantity: l.quantity + 1 } : l,
+          l.variant_id === s.variant.id ? { ...l, quantity: Math.min(MAX_LINE_QTY, l.quantity + 1) } : l,
         );
       }
       return [
@@ -318,11 +340,15 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
       ];
     });
   }
+  // An explicit 0 (typed, or − from 1) removes the line. Callers never pass a
+  // cleared box here: QtyInput holds an empty draft without touching the cart.
   function updateQty(variantId: string, qty: number): void {
+    if (!Number.isFinite(qty)) return;
+    const next = Math.min(MAX_LINE_QTY, Math.floor(qty));
     setCart((c) =>
-      qty <= 0
+      next <= 0
         ? c.filter((l) => l.variant_id !== variantId)
-        : c.map((l) => (l.variant_id === variantId ? { ...l, quantity: qty } : l)),
+        : c.map((l) => (l.variant_id === variantId ? { ...l, quantity: next } : l)),
     );
   }
   function removeLine(variantId: string): void {
@@ -374,8 +400,12 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     !canSellStock || cart.some((l) => (availByVariant[l.variant_id] ?? Infinity) < l.quantity);
   const orderIsPreorder = forcedPreorder || preorderChoice;
 
+  // Synchronous guard against a double charge (e.g. Enter pressed twice before
+  // React re-renders with submitting=true).
+  const submittingRef = useRef(false);
   async function checkout(): Promise<void> {
-    if (cart.length === 0 || submitting) return;
+    if (cart.length === 0 || submitting || submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -453,7 +483,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           ? { isPreorder: true, fulfilIso: new Date(`${fulfillBy}T12:00:00`).toISOString() }
           : {}),
       });
-      setSuccessSale({ receipt, itemCount });
+      setSuccessSale({ receipt, itemCount, saleId: sale.saleId });
       setCart([]);
       setBagCart({});
       setStrawCart({});
@@ -489,9 +519,77 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
     } catch (err) {
       setError(humanizeError(err));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
+
+  // ── Quick picks: this device's best sellers over the last week ──
+  // Read from the local outbox (every till sale's Confirm row keeps its items),
+  // so it works offline and needs no server call. Empty on a fresh device.
+  const quickPickIds = useLiveQuery(
+    async () => {
+      const since = Date.now() - QUICK_PICK_DAYS * 86_400_000;
+      const rows = await local.outbox.where("created_at_local").aboveOrEqual(since).toArray();
+      return rankQuickPicks(rows, { branchId, sinceMs: since });
+    },
+    [branchId],
+    [] as string[],
+  );
+  const quickPicks = useMemo<Sellable[]>(() => {
+    const byVariant = new Map(sellables.map((s) => [s.variant.id, s]));
+    return (quickPickIds ?? [])
+      .map((id) => byVariant.get(id))
+      .filter((s): s is Sellable => s != null)
+      .slice(0, QUICK_PICK_LIMIT);
+  }, [quickPickIds, sellables]);
+
+  // ── Keyboard (USB / Bluetooth keyboard at the counter) ──
+  //   Enter  → Charge, when the cart has items and nothing that takes typing
+  //            (or a button, which Enter already presses) has focus
+  //   1–8    → add quick pick N, when no input has focus
+  //   Escape → closes the success modal (Modal handles that itself)
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const keyState = useRef({ checkout, addToCart, quickPicks, cartLength: cart.length, blocked: false });
+  keyState.current = {
+    checkout,
+    addToCart,
+    // Quick picks are hidden while a search is typed, so their keys are too.
+    quickPicks: search ? [] : quickPicks,
+    cartLength: cart.length,
+    blocked: picking != null || successSale != null || checkoutDisabled || hasShift !== true,
+  };
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+      const k = keyState.current;
+      // Any open dialog (size picker, success modal, confirm) owns the keyboard.
+      if (k.blocked || document.querySelector("[role='dialog']")) return;
+      const active = document.activeElement;
+      if (isTypingTarget(active)) return;
+      if (e.key === "Enter") {
+        // A focused button/link already acts on Enter; don't charge on top.
+        if (active instanceof HTMLButtonElement || active instanceof HTMLAnchorElement) return;
+        if (k.cartLength === 0) return;
+        e.preventDefault();
+        void k.checkout();
+        return;
+      }
+      if (/^[1-8]$/.test(e.key)) {
+        const pick = k.quickPicks[Number(e.key) - 1];
+        if (!pick) return;
+        e.preventDefault();
+        k.addToCart(pick);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  // Put the cursor in the flavour search once the till is ready, on keyboard
+  // devices only (see hasFinePointer).
+  useEffect(() => {
+    if (hasShift === true && hasFinePointer()) searchRef.current?.focus();
+  }, [hasShift]);
 
   function ConsumableSection(props: {
     title: string;
@@ -552,6 +650,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
   if (hasShift !== true) {
     return (
       <BranchShell branchId={branchId} title="Sell">
+        <FailedSalesBanner />
         <section className="card" style={{ textAlign: "center", padding: 32 }}>
           <span className="empty__icon" aria-hidden>
             <Sunrise />
@@ -576,6 +675,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
 
   return (
     <BranchShell branchId={branchId} title="Sell">
+      <FailedSalesBanner />
       {flash && (
         <div
           className="card"
@@ -594,14 +694,70 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
           <div className="toolbar__search" style={{ marginBottom: 14 }}>
             <Search aria-hidden />
             <input
+              ref={searchRef}
               className="input"
               type="search"
               aria-label="Search products"
               placeholder="Search products…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                // Keyboard flow from the search box: Enter picks the only
+                // matching flavour (or charges when the box is empty and the
+                // cart isn't); Escape clears and leaves the box so 1–8 work.
+                if (e.key === "Enter") {
+                  if (search && filtered.length === 1) {
+                    e.preventDefault();
+                    pickFlavour(filtered[0]!);
+                    setSearch("");
+                  } else if (!search && cart.length > 0 && !checkoutDisabled) {
+                    e.preventDefault();
+                    void checkout();
+                  }
+                } else if (e.key === "Escape") {
+                  setSearch("");
+                  e.currentTarget.blur();
+                }
+              }}
             />
           </div>
+          <p className="till-keys-hint">
+            Keyboard: <kbd>Enter</kbd> charge · <kbd>1</kbd>–<kbd>8</kbd> quick picks · <kbd>Esc</kbd> leave
+            the search box or close the receipt
+          </p>
+          {quickPicks.length > 0 && !search && (
+            <div className="quick-picks">
+              <div className="quick-picks__label">Quick picks · your best sellers this week</div>
+              <div className="quick-picks__row">
+                {quickPicks.map((s, i) => {
+                  const vis = getFlavourVisual({ slug: s.product.slug, image_url: s.product.image_url });
+                  return (
+                    <button
+                      key={s.variant.id}
+                      type="button"
+                      className="quick-pick"
+                      style={{ ["--fl-accent" as string]: vis.accent } as React.CSSProperties}
+                      aria-label={`Add one ${s.product.name} ${sizeLabel(s.variant.size_ml)}`}
+                      onClick={(e) => {
+                        // A tap/click shouldn't leave focus here, or the next
+                        // Enter would add another instead of charging.
+                        if (e.detail > 0) e.currentTarget.blur();
+                        addToCart(s);
+                      }}
+                    >
+                      <span className="quick-pick__key" aria-hidden>
+                        {i + 1}
+                      </span>
+                      <span className="quick-pick__name">{s.product.name}</span>
+                      <span className="quick-pick__meta tabular-nums">
+                        {sizeLabel(s.variant.size_ml)} · {ngn(s.price)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {filtered.length === 0 ? (
             <div className="empty">
               <div className="empty__title">No products in catalog</div>
@@ -620,7 +776,12 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                   key={f.product.id}
                   flavour={f}
                   branchId={branchId}
-                  onPick={() => pickFlavour(f)}
+                  onPick={(e) => {
+                    // Don't leave focus on a tapped tile: the next Enter should
+                    // charge, not add the same flavour again.
+                    if (e.detail > 0) e.currentTarget.blur();
+                    pickFlavour(f);
+                  }}
                 />
               ))}
             </div>
@@ -684,13 +845,9 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
                     <div className="till-line__controls">
                       <div className="qty-step">
                         <button type="button" aria-label="Decrease" style={{ width: 40, height: 40 }} onClick={() => updateQty(l.variant_id, l.quantity - 1)}>−</button>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          value={l.quantity}
-                          onChange={(e) => updateQty(l.variant_id, Number(e.target.value))}
-                          aria-label="Quantity"
-                          style={{ height: 40, width: 48 }}
+                        <QtyInput
+                          quantity={l.quantity}
+                          onCommit={(q) => updateQty(l.variant_id, q)}
                         />
                         <button type="button" aria-label="Increase" style={{ width: 40, height: 40 }} onClick={() => updateQty(l.variant_id, l.quantity + 1)}>+</button>
                       </div>
@@ -956,10 +1113,43 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
         <SaleSuccessModal
           receipt={successSale.receipt}
           itemCount={successSale.itemCount}
+          saleId={successSale.saleId}
           onNewSale={() => setSuccessSale(null)}
         />
       )}
     </BranchShell>
+  );
+}
+
+// Cart-line quantity box. Clearing it (to type a new number) keeps the line:
+// the empty box is held as a draft and snaps back to the current quantity if
+// left empty. Only an explicit 0 removes the line; anything above 99 is capped.
+function QtyInput({ quantity, onCommit }: { quantity: number; onCommit: (q: number) => void }): JSX.Element {
+  const [draft, setDraft] = useState(String(quantity));
+  useEffect(() => setDraft(String(quantity)), [quantity]);
+  return (
+    <input
+      type="number"
+      inputMode="numeric"
+      min={0}
+      max={MAX_LINE_QTY}
+      value={draft}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/[^0-9]/g, "");
+        if (raw === "") {
+          setDraft("");
+          return;
+        }
+        const n = Math.min(MAX_LINE_QTY, parseInt(raw, 10));
+        setDraft(String(n));
+        onCommit(n);
+      }}
+      onBlur={() => {
+        if (draft === "") setDraft(String(quantity));
+      }}
+      aria-label="Quantity"
+      style={{ height: 40, width: 48 }}
+    />
   );
 }
 
@@ -1106,7 +1296,7 @@ function FlavourTile({
 }: {
   flavour: Flavour;
   branchId: string;
-  onPick: () => void;
+  onPick: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }): JSX.Element {
   const { product, sizes } = flavour;
   // Bottle + palette for this flavour: the assigned image wins, else a slug-mapped
