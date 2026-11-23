@@ -51,7 +51,7 @@ The small 330ml bottles work best for parties, because each guest gets their own
 
 There is **no maximum order**, and the minimum is just one bottle, so you can order for a quiet family dinner or for a hall full of guests.
 
-TODO(owner): add 330ml and 650ml Christmas prices in ₦ so readers can estimate a party budget.
+There is no Christmas price rise. Our prices stay the same affordable prices as the rest of the year, so you can plan your party budget with no December surprises. See every bottle and its current price on the [shop page](/shop).
 
 ## Juice hampers and Christmas gift ideas in Lagos
 
@@ -61,7 +61,7 @@ A juice gift says something different. It feels personal, it is something the wh
 
 You can see our gift options on the [gifts page](/gifts).
 
-TODO(owner): describe what is inside each Christmas juice hamper (number of bottles, sizes, any packaging or card) and the price of each.
+TODO(owner): describe what is inside each Christmas juice hamper (number of bottles, sizes, any packaging or card). Prices: same affordable bottle prices as the rest of the year.
 
 TODO(owner): confirm whether customers can choose their own juices for a hamper and whether a gift message can be included.
 
@@ -152,7 +152,9 @@ As a guide, plan about one 330ml bottle per guest for a short visit and two 330m
 
 Yes, juice gifts are available. See the [gifts page](/gifts) for current options, and the [corporate page](/corporate) for staff and client gifts.
 
-TODO(owner): confirm hamper contents and prices before publishing this answer.
+Hampers are priced at our usual affordable bottle prices, with no Christmas mark-up.
+
+TODO(owner): confirm hamper contents before publishing this answer.
 
 ### When should I order juice for Christmas?
 

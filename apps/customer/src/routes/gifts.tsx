@@ -27,7 +27,7 @@ const FAQS: ServiceFaq[] = [
   },
   {
     q: "How much does a juice hamper cost?",
-    a: "It depends on how many bottles go in, which sizes and flavours you choose and how many hampers you need. Ask us for a quote and we will come back with options.",
+    a: "Our prices stay the same affordable prices all year, Christmas included: a hamper costs the bottles that go in it, with no holiday mark-up. Tell us how many bottles, which sizes and flavours, and how many hampers, and we will send the total. You can see every bottle's price on the shop page.",
   },
   {
     q: "How long does the juice in a hamper last?",
