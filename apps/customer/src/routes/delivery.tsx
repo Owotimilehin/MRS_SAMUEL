@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PolicyPage, type PolicySection } from "@/components/PolicyPage";
-import clusterTropical from "@/assets/decor/cluster-tropical.png";
+import clusterTropical from "@/assets/decor/cluster-tropical.webp";
 import { seo, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/delivery")({

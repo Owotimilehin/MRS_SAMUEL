@@ -7,6 +7,7 @@ import { renderMarkdown } from "@/lib/markdown";
 import { SiteShell } from "@/components/SiteShell";
 import { CLUSTERS, HARD_EDGED_DECOR } from "@/lib/visuals";
 import { seo, articleLd, breadcrumbLd, faqPageLd } from "@/lib/seo";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 export const Route = createFileRoute("/blog/$slug")({
   loader: async ({ params }) => {
@@ -87,6 +88,8 @@ function Page() {
             src={CLUSTERS[p.cover as keyof typeof CLUSTERS]}
             alt=""
             aria-hidden
+            width={IMG_SIZE.cluster.width}
+            height={IMG_SIZE.cluster.height}
             className={
               HARD_EDGED_DECOR.has(CLUSTERS[p.cover as keyof typeof CLUSTERS])
                 ? "absolute inset-0 h-full w-full object-cover"
@@ -119,7 +122,14 @@ function Page() {
             {products.map((r) => (
               <Link key={r.id} to="/juices/$id" params={{ id: r.id }} className="group rounded-2xl bg-white ring-1 ring-black/5 overflow-hidden hover:shadow-lg transition">
                 <div className="relative h-44" style={{ background: r.palette.surface }}>
-                  <img src={r.image} alt={r.name} loading="lazy" className="absolute inset-0 m-auto h-[100%] w-auto object-contain" />
+                  <img
+                    src={webpSrc(r.image)}
+                    alt={r.name}
+                    width={IMG_SIZE.bottle.width}
+                    height={IMG_SIZE.bottle.height}
+                    loading="lazy"
+                    className="absolute inset-0 m-auto h-[100%] w-auto object-contain"
+                  />
                 </div>
                 <div className="p-4">
                   <h3 className="font-display text-lg text-[color:var(--brand)]">{r.name}</h3>

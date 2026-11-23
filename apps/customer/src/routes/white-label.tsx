@@ -5,7 +5,7 @@ import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { EnquiryForm } from "@/components/EnquiryForm";
 import { seo, breadcrumbLd } from "@/lib/seo";
-import clusterGreen from "@/assets/decor/cluster-green.png";
+import clusterGreen from "@/assets/decor/cluster-green.webp";
 
 export const Route = createFileRoute("/white-label")({
   head: () =>

@@ -14,9 +14,10 @@ import {
 } from "lucide-react";
 import type { Product } from "@/lib/api/mappers";
 import { ProductDetail } from "@/components/ProductDetail";
-import splashBurst from "@/assets/decor/splash-burst.png";
-import leafMint from "@/assets/decor/leaf-mint.png";
+import splashBurst from "@/assets/decor/splash-burst.webp";
+import leafMint from "@/assets/decor/leaf-mint.webp";
 import heroVideo from "@/assets/hero-video.mp4.asset.json";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 const features = [
   { Icon: Leaf, title: "100% Natural", sub: "Real ingredients" },
@@ -264,6 +265,9 @@ export function Hero({ products }: { products: Product[] }) {
             src={splashBurst}
             alt=""
             aria-hidden
+            width={IMG_SIZE.splash.width}
+            height={IMG_SIZE.splash.height}
+            fetchPriority="low"
             className="absolute inset-0 m-auto h-[86%] w-[92%] object-contain opacity-50 mix-blend-multiply pointer-events-none"
             style={{
               WebkitMaskImage:
@@ -278,6 +282,9 @@ export function Hero({ products }: { products: Product[] }) {
             src={leafMint}
             alt=""
             aria-hidden
+            width={IMG_SIZE.leaf.width}
+            height={IMG_SIZE.leaf.height}
+            fetchPriority="low"
             className="absolute left-[8%] top-[2%] z-30 w-12 sm:w-16 opacity-90 pointer-events-none"
             animate={{ rotate: [0, 6, 0] }}
             transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
@@ -286,6 +293,9 @@ export function Hero({ products }: { products: Product[] }) {
             src={leafMint}
             alt=""
             aria-hidden
+            width={IMG_SIZE.leaf.width}
+            height={IMG_SIZE.leaf.height}
+            fetchPriority="low"
             className="absolute right-[7%] top-0 z-30 w-10 sm:w-14 opacity-80 -scale-x-100 pointer-events-none"
             animate={{ rotate: [0, -7, 0] }}
             transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
@@ -303,9 +313,12 @@ export function Hero({ products }: { products: Product[] }) {
               className="absolute inset-0 z-0 flex items-end justify-start pl-[2%] pb-10 pointer-events-none"
             >
               <motion.img
-                src={leftProduct.image}
+                src={webpSrc(leftProduct.image)}
                 alt=""
                 aria-hidden
+                width={IMG_SIZE.bottle.width}
+                height={IMG_SIZE.bottle.height}
+                fetchPriority="low"
                 animate={{ y: [0, -8, 0] }}
                 transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut" }}
                 className="h-[68%] w-auto object-contain drop-shadow-[0_18px_22px_rgba(80,40,10,0.16)]"
@@ -325,9 +338,12 @@ export function Hero({ products }: { products: Product[] }) {
               className="absolute inset-0 z-0 flex items-end justify-end pr-[2%] pb-10 pointer-events-none"
             >
               <motion.img
-                src={rightProduct.image}
+                src={webpSrc(rightProduct.image)}
                 alt=""
                 aria-hidden
+                width={IMG_SIZE.bottle.width}
+                height={IMG_SIZE.bottle.height}
+                fetchPriority="low"
                 animate={{ y: [0, -8, 0] }}
                 transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
                 className="h-[68%] w-auto object-contain drop-shadow-[0_18px_22px_rgba(80,40,10,0.16)]"
@@ -347,8 +363,11 @@ export function Hero({ products }: { products: Product[] }) {
               className="absolute inset-0 z-20 flex items-end justify-center pb-1"
             >
               <motion.img
-                src={centerProduct.image}
+                src={webpSrc(centerProduct.image)}
                 alt={centerProduct.name}
+                width={IMG_SIZE.bottle.width}
+                height={IMG_SIZE.bottle.height}
+                fetchPriority="high"
                 animate={{ y: [0, -10, 0] }}
                 transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
                 className="h-[94%] w-auto object-contain drop-shadow-[0_30px_38px_rgba(80,40,10,0.28)]"

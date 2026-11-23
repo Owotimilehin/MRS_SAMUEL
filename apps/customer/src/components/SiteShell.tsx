@@ -5,7 +5,8 @@ import { AnimatedBackground } from "@/components/AnimatedBackground";
 import { Nav } from "@/components/Nav";
 import { CartDrawer } from "@/components/CartDrawer";
 import { FloatingCart } from "@/components/FloatingCart";
-import logoWhite from "@/assets/logo-white.png";
+import logoWhite from "@/assets/logo-white.webp";
+import { IMG_SIZE } from "@/lib/media";
 
 export function SiteShell({ children, topBar }: { children: ReactNode; topBar?: ReactNode }) {
   return (
@@ -74,7 +75,7 @@ function Footer() {
     <footer id="contact" className="bg-[color:var(--brand)] text-white/85 px-5 sm:px-10 py-16 mt-6">
       <div className="mx-auto max-w-7xl grid grid-cols-1 md:grid-cols-4 gap-10 items-start">
         <div>
-          <img src={logoWhite} alt="Mrs. Samuel Fruit Juice" className="h-14 w-auto object-contain" />
+          <img src={logoWhite} alt="Mrs. Samuel Fruit Juice" width={IMG_SIZE.logo.width} height={IMG_SIZE.logo.height} loading="lazy" className="h-14 w-auto object-contain" />
           <p className="mt-4 text-sm max-w-xs text-white/70">
             Pure. Fresh. Real. Cold-pressed Nigerian fruit juice, pressed every morning in Lagos.
           </p>

@@ -5,7 +5,7 @@ import { LocalLanding, type LocalFaq } from "@/components/LocalLanding";
 import { SiteShell } from "@/components/SiteShell";
 import { findArea, type DeliveryArea } from "@/lib/areas";
 import { seo, breadcrumbLd, faqPageLd } from "@/lib/seo";
-import clusterCitrus from "@/assets/decor/cluster-citrus.png";
+import clusterCitrus from "@/assets/decor/cluster-citrus.webp";
 
 function areaFaqs(a: DeliveryArea): LocalFaq[] {
   return [

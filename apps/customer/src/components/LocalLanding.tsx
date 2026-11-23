@@ -7,6 +7,7 @@ import { PageHero } from "@/components/PageHero";
 import { formatNaira } from "@/lib/cart";
 import { whatsappLink } from "@/lib/whatsapp";
 import { LinkedText } from "@/components/LinkedText";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 export interface LocalFaq {
   q: string;
@@ -79,7 +80,7 @@ export function LocalLanding({
                   params={{ id: p.id }}
                   className="flex h-full flex-col items-center rounded-2xl bg-white p-4 text-center ring-1 ring-black/5 hover:shadow-lg transition"
                 >
-                  <img src={p.image} alt={`${p.name} fresh juice bottle`} loading="lazy" className="h-32 w-auto object-contain" />
+                  <img src={webpSrc(p.image)} alt={`${p.name} fresh juice bottle`} width={IMG_SIZE.bottle.width} height={IMG_SIZE.bottle.height} loading="lazy" className="h-32 w-auto object-contain" />
                   <span className="mt-3 font-semibold text-[color:var(--brand)]">{p.name}</span>
                   {p.prices["330ml"] > 0 && (
                     <span className="text-xs text-[color:var(--brand)]/60">from {formatNaira(p.prices["330ml"])}</span>

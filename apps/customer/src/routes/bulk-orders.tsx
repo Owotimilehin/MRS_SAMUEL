@@ -5,7 +5,7 @@ import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { EnquiryForm } from "@/components/EnquiryForm";
 import { seo, breadcrumbLd } from "@/lib/seo";
-import clusterWatermelon from "@/assets/decor/cluster-watermelon.png";
+import clusterWatermelon from "@/assets/decor/cluster-watermelon.webp";
 
 export const Route = createFileRoute("/bulk-orders")({
   head: () =>
