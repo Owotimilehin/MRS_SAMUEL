@@ -18,9 +18,9 @@ export function deliveryAdminRoutes(db: DbClient) {
   r.use("*", requireAuth(), requireBranchScope());
 
   // Resolve the order + its pickup branch + customer contact, or throw.
-  async function load(saleId: string) {
+  async function load(saleId: string, branchId: string | undefined) {
     const [o] = await db.select().from(saleOrder).where(eq(saleOrder.id, saleId));
-    if (!o) throw new BusinessError("not_found", "order not found", 404);
+    if (!o || o.branchId !== branchId) throw new BusinessError("not_found", "order not found", 404);
     if (o.channel === "walkup") {
       throw new BusinessError("conflict", "delivery is only for online orders", 409);
     }
@@ -53,7 +53,7 @@ export function deliveryAdminRoutes(db: DbClient) {
   r.get("/options", requireCapability("sales.view"), async (c) => {
     const saleId = c.req.param("saleId");
     if (!saleId) throw new BusinessError("validation_failed", "saleId required", 400);
-    const { b, dropoff } = await load(saleId);
+    const { b, dropoff } = await load(saleId, c.req.param("branchId"));
     const provider = getDeliveryProvider();
     const q = await provider.quoteOptions({
       pickupAddress: b.address as string,
@@ -87,7 +87,7 @@ export function deliveryAdminRoutes(db: DbClient) {
     if (!body.option_id) throw new BusinessError("validation_failed", "option_id required", 400);
     const feeNgn = Number.isFinite(body.fee_ngn) ? Math.round(body.fee_ngn as number) : 0;
 
-    const { o, b, custName, custPhone, dropoff } = await load(saleId);
+    const { o, b, custName, custPhone, dropoff } = await load(saleId, c.req.param("branchId"));
 
     // Idempotency: refuse if a live (non-cancelled) delivery already exists.
     const [existing] = await db
@@ -148,7 +148,7 @@ export function deliveryAdminRoutes(db: DbClient) {
     if (!saleId) throw new BusinessError("validation_failed", "saleId required", 400);
     // Enforce the same guards as /options and /book: order must exist and must
     // be an online order (not a walk-up till sale).
-    const { o } = await load(saleId);
+    const { o } = await load(saleId, c.req.param("branchId"));
     const [row] = await db
       .select()
       .from(deliveryOrder)
