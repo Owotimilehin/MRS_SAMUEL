@@ -295,6 +295,32 @@ export function closedSince(
   return new Date(now.getTime() - maxDaysBack * 86_400_000);
 }
 
+/**
+ * Suite spec 15: when this line closes for the day, for "Later today" on
+ * snooze: the end of today's last opening window, or null when that has
+ * already passed, today is a holiday, or the line does not open today.
+ * Same rules as isOpenNow (no overnight windows).
+ */
+export function closingTimeToday(
+  rules: readonly HoursRule[],
+  holidays: readonly string[],
+  now: Date = new Date(),
+  timeZone = "Africa/Lagos",
+): Date | null {
+  const { date, weekday, minutes } = localParts(now, timeZone);
+  if (holidays.includes(date)) return null;
+  let latest = -1;
+  for (const r of rules) {
+    if (r.weekday !== weekday) continue;
+    const open = toMinutes(r.openTime);
+    const close = toMinutes(r.closeTime);
+    if (close > open) latest = Math.max(latest, close);
+  }
+  if (latest < 0 || latest <= minutes) return null;
+  const startOfLocalDay = now.getTime() - (now.getTime() % 60_000) - minutes * 60_000;
+  return new Date(startOfLocalDay + latest * 60_000);
+}
+
 /** Message types staff can send inside the window. */
 export const INBOX_SEND_TYPES = ["text", "image", "document", "audio", "video"] as const;
 export type InboxSendType = (typeof INBOX_SEND_TYPES)[number];
@@ -351,5 +377,8 @@ export const INBOX_EVENTS = [
   "comment.updated",
   // Suite spec 15: a reminder fell due. Delivered only to `userIds` (its assignee); `id` is the reminder.
   "reminder.due",
+  // Suite spec 15: a snoozed chat's time came and it is back in the open lists (the owner chose a sound for this).
+  // Sent alongside conversation.updated, only when the timer wakes it (a customer writing makes message.created instead).
+  "conversation.woke",
 ] as const;
 export type InboxEventName = (typeof INBOX_EVENTS)[number];

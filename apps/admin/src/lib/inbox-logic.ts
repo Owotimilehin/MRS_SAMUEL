@@ -827,6 +827,22 @@ export function shouldAlertForEvent(
   return true;
 }
 
+/**
+ * Suite spec 15: should "a snoozed chat is back" make a sound for this person?
+ * Same choice as messages (all / mine and unassigned / none), and never for
+ * the chat they are reading.
+ */
+export function shouldAlertForWake(
+  e: { event: string; conversationId?: string; assigneeId?: string | null },
+  ctx: AlertContext,
+): boolean {
+  if (e.event !== "conversation.woke" || !e.conversationId) return false;
+  if (ctx.level === "none") return false;
+  if (ctx.level === "assigned" && e.assigneeId && e.assigneeId !== ctx.userId) return false;
+  if (ctx.tabActive && ctx.openConversationId === e.conversationId) return false;
+  return true;
+}
+
 /** Tab title while messages are waiting: "(3) Inbox" style, so a pinned tab still shows it. */
 export function titleWithCount(baseTitle: string, waiting: number): string {
   const clean = baseTitle.replace(/^\(\d+\+?\)\s+/, "");
@@ -1100,17 +1116,27 @@ export interface SnoozePreset {
 /**
  * The quick choices for "Snooze until…" (and for a reminder's time), in Lagos
  * time whatever the browser's zone:
- *   Later today 17:00 — only while 17:00 is at least 30 minutes away
+ *   Later today — the chat's line's closing time (owner's choice, 22 Nov 2026),
+ *                 or 17:00 when the line has no hours set; only while it is at
+ *                 least 30 minutes away, and not at all once the line has
+ *                 closed or on a day it does not open (`closesAt` null)
  *   Tomorrow 09:00
  *   Next Monday 09:00 — the Monday after today (seven days ahead on a Monday)
  * `withHour` adds "In 1 hour" first (reminders).
  */
-export function snoozePresets(now: Date = new Date(), opts: { withHour?: boolean | undefined } = {}): SnoozePreset[] {
+export function snoozePresets(
+  now: Date = new Date(),
+  opts: { withHour?: boolean | undefined; closesAt?: Date | string | null | undefined } = {},
+): SnoozePreset[] {
   const today = lagosDayKey(now);
   const out: SnoozePreset[] = [];
   if (opts.withHour) out.push({ key: "hour", label: "In 1 hour", at: new Date(now.getTime() + 3_600_000) });
-  const later = lagosInputToDate(today, "17:00")!;
-  if (later.getTime() - now.getTime() >= 30 * 60_000) out.push({ key: "later", label: "Later today, 17:00", at: later });
+  const later =
+    opts.closesAt === undefined ? lagosInputToDate(today, "17:00")! : opts.closesAt === null ? null : new Date(opts.closesAt);
+  if (later && later.getTime() - now.getTime() >= 30 * 60_000) {
+    const label = opts.closesAt === undefined ? "Later today, 17:00" : `Later today, ${timeOfDay(later.toISOString())} (closing)`;
+    out.push({ key: "later", label, at: later });
+  }
   out.push({ key: "tomorrow", label: "Tomorrow, 09:00", at: lagosInputToDate(shiftDay(today, 1), "09:00")! });
   const wd = lagosWeekday(today);
   const toMonday = (8 - wd) % 7 || 7;

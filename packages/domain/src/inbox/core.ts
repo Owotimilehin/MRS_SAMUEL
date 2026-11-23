@@ -552,7 +552,11 @@ export async function wakeSnoozedConversations(db: DbExecutor, now: Date = new D
     })
     .where(sql`${inboxConversation.snoozedUntil} is not null and ${inboxConversation.snoozedUntil} <= ${ts(now)}`)
     .returning();
-  for (const row of rows) await publishInboxEvent(db, signalFor("conversation.updated", row));
+  for (const row of rows) {
+    await publishInboxEvent(db, signalFor("conversation.updated", row));
+    // The staff apps play a sound for this one (owner's choice, 22 Nov 2026).
+    await publishInboxEvent(db, signalFor("conversation.woke", row));
+  }
   return rows;
 }
 

@@ -16,14 +16,16 @@ import type { ReminderRow, StaffMember } from "../../lib/inbox-types.js";
 /** Quick choices plus "Pick a date and time"; reports the chosen instant (or null while incomplete). */
 function WhenPicker({
   withHour,
+  closesAt,
   initial,
   onChange,
 }: {
   withHour?: boolean | undefined;
+  closesAt?: string | null | undefined;
   initial?: Date | undefined;
   onChange: (at: Date | null) => void;
 }): JSX.Element {
-  const presets = useMemo(() => snoozePresets(new Date(), { withHour }), [withHour]);
+  const presets = useMemo(() => snoozePresets(new Date(), { withHour, closesAt }), [withHour, closesAt]);
   const [choice, setChoice] = useState<string>(initial ? "custom" : (presets[0]?.key ?? "custom"));
   const start = dateToLagosInput(initial ?? presets[presets.length - 1]!.at);
   const [date, setDate] = useState(start.date);
@@ -92,8 +94,19 @@ function WhenPicker({
   );
 }
 
-export function SnoozeDialog({ conversationId, onClose, onDone }: { conversationId: string; onClose: () => void; onDone: () => void }): JSX.Element {
-  const first = useMemo(() => snoozePresets()[0]?.at ?? null, []);
+export function SnoozeDialog({
+  conversationId,
+  closesAt,
+  onClose,
+  onDone,
+}: {
+  conversationId: string;
+  /** The line's closing time today, for "Later today" (see snoozePresets). */
+  closesAt?: string | null | undefined;
+  onClose: () => void;
+  onDone: () => void;
+}): JSX.Element {
+  const first = useMemo(() => snoozePresets(new Date(), { closesAt })[0]?.at ?? null, [closesAt]);
   const [at, setAt] = useState<Date | null>(first);
   const [busy, setBusy] = useState(false);
   const problem = at ? snoozeTimeProblem(at) : "Pick a date and time.";
@@ -115,7 +128,7 @@ export function SnoozeDialog({ conversationId, onClose, onDone }: { conversation
   return (
     <Modal title="Snooze this chat" onClose={onClose} maxWidth={520}>
       <p className="ibx-when__help">The chat leaves your open lists and comes back to the top at the time you pick.</p>
-      <WhenPicker onChange={setAt} />
+      <WhenPicker closesAt={closesAt} onChange={setAt} />
       <p className="ibx-when__result" aria-live="polite">
         {problem ? <span className="ibx-when__problem">{problem}</span> : <>Comes back {whenLabel(at!)}</>}
       </p>
