@@ -142,7 +142,7 @@ export function productionRunRoutes(db: DbClient) {
     let completed;
     try {
       completed = await db.transaction(async (tx) => {
-      const [run] = await tx.select().from(productionRun).where(eq(productionRun.id, id));
+      const [run] = await tx.select().from(productionRun).where(eq(productionRun.id, id)).for("update");
       if (!run) throw new BusinessError("not_found", "production_run not found", 404);
       if (run.status !== "draft") {
         throw new BusinessError("conflict", `cannot complete from status ${run.status}`, 409);

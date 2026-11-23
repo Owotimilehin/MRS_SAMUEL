@@ -359,7 +359,7 @@ export function transferRoutes(db: DbClient) {
     const auth = c.get("auth");
 
     const updated = await db.transaction(async (tx) => {
-      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id));
+      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id)).for("update");
       if (!t) throw new BusinessError("not_found", "transfer not found", 404);
       if (!actsOnAnyBranch(auth.role) && t.branchId !== auth.branchId) {
         throw new BusinessError("forbidden", "wrong branch", 403);
@@ -397,7 +397,7 @@ export function transferRoutes(db: DbClient) {
     const body = ReceiveBody.parse(await c.req.json());
 
     const updated = await db.transaction(async (tx) => {
-      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id));
+      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id)).for("update");
       if (!t) throw new BusinessError("not_found", "transfer not found", 404);
       if (!actsOnAnyBranch(auth.role) && t.branchId !== auth.branchId) {
         throw new BusinessError("forbidden", "wrong branch", 403);
@@ -417,6 +417,11 @@ export function transferRoutes(db: DbClient) {
       // credited nowhere and never settled — a silent stock leak. Reject the
       // whole receipt so the branch resubmits a complete count.
       const submittedIds = new Set(body.items.map((i) => i.item_id));
+      // The same line twice would credit the branch twice while the record
+      // shows only one count.
+      if (submittedIds.size !== body.items.length) {
+        throw new BusinessError("validation_failed", "each transfer line can only be counted once", 422);
+      }
       const missing = items.filter((it) => !submittedIds.has(it.id)).map((it) => it.id);
       if (missing.length > 0) {
         throw new BusinessError(
@@ -553,7 +558,7 @@ export function transferRoutes(db: DbClient) {
     const settleByItem = new Map(body.settlements.map((s) => [s.item_id, s.settle]));
 
     const updated = await db.transaction(async (tx) => {
-      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id));
+      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id)).for("update");
       if (!t) throw new BusinessError("not_found", "transfer not found", 404);
       if (t.status !== "received_with_variance") {
         throw new BusinessError("conflict", `cannot approve from ${t.status}`, 409);
@@ -697,7 +702,7 @@ export function transferRoutes(db: DbClient) {
     const { reason } = RejectBody.parse(await c.req.json());
 
     const updated = await db.transaction(async (tx) => {
-      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id));
+      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id)).for("update");
       if (!t) throw new BusinessError("not_found", "transfer not found", 404);
       if (t.status !== "arrived") {
         throw new BusinessError("conflict", `cannot reject from ${t.status}`, 409);
@@ -789,13 +794,31 @@ export function transferRoutes(db: DbClient) {
       .parse(await c.req.json());
 
     const result = await db.transaction(async (tx) => {
-      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id));
+      const [t] = await tx.select().from(stockTransfer).where(eq(stockTransfer.id, id)).for("update");
       if (!t) throw new BusinessError("not_found", "transfer not found", 404);
       const [it] = await tx
         .select()
         .from(stockTransferItem)
         .where(and(eq(stockTransferItem.id, itemId), eq(stockTransferItem.stockTransferId, id)));
       if (!it) throw new BusinessError("not_found", "transfer item not found", 404);
+      // Corrections are for counts already taken. Before receipt, the receive
+      // step itself would credit the branch a second time.
+      if (!["received", "received_with_variance", "completed"].includes(t.status)) {
+        throw new BusinessError("conflict", `cannot adjust a transfer that is ${t.status}`, 409);
+      }
+      // Once the owner has settled a short/over line, its difference is already
+      // in the ledger. Changing either count now would count it twice.
+      if (
+        t.status === "completed" &&
+        it.quantityReceived !== null &&
+        it.quantityReceived !== it.quantitySent
+      ) {
+        throw new BusinessError(
+          "conflict",
+          "this line's difference was already settled — record a stock adjustment instead",
+          409,
+        );
+      }
       // Bags are tracked-only; after-the-fact count corrections on bag lines
       // aren't supported yet (would need a packaging count_correction source).
       if (it.packagingMaterialId) {

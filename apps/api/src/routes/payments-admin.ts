@@ -275,8 +275,13 @@ export function paymentsAdminRoutes(db: DbClient) {
 
     const updated = await db.transaction(async (tx) => {
       // Re-read inside tx for concurrency safety.
-      const [fresh] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
+      const [fresh] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id)).for("update");
       if (!fresh) throw new BusinessError("not_found", "order not found", 404);
+      // A second click waits on the lock above, then sees the order already
+      // cancelled. Without this it would put the stock back a second time.
+      if ((TERMINAL_STATUSES as readonly string[]).includes(fresh.status)) {
+        throw new BusinessError("conflict", `order is already ${fresh.status}`, 409);
+      }
 
       // Compensating ledger entries if stock was already deducted (status=paid).
       if (fresh.status === "paid") {
