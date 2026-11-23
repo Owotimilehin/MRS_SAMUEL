@@ -97,6 +97,10 @@ const sideVariants = {
   }),
 };
 
+
+/** Visible keyword line under the "Real Fruit. Real Good." headline (SEO F6). */
+const HERO_KEYWORD_LINE = "Fresh cold-pressed juice delivered across Lagos";
+
 export function Hero({ products }: { products: Product[] }) {
   const [videoOpen, setVideoOpen] = useState(false);
 
@@ -148,11 +152,17 @@ export function Hero({ products }: { products: Product[] }) {
       id="top"
       className="relative pt-32 sm:pt-36 pb-20 sm:pb-24 px-5 sm:px-10 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-12 items-center"
     >
+      {/* SEO roadmap F6: the main search phrase, visible in the first screen.
+          Phones show the carousel first, so they get this line above it. */}
+      <p className="lg:hidden order-first flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand)]/75">
+        <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--brand-orange)]" />
+        {HERO_KEYWORD_LINE}
+      </p>
       <div className="relative z-10 max-w-xl order-2 lg:order-1">
-        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand)]/75">
+        <p className="hidden lg:flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand)]/75">
           <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--brand-orange)]" />
-          Fresh Fruit Juice · Made in Lagos
-        </div>
+          {HERO_KEYWORD_LINE}
+        </p>
         <motion.h1
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}

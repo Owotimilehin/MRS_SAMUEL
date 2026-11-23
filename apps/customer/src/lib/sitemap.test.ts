@@ -65,3 +65,16 @@ describe("sitemap", () => {
     expect(calls).toBe(2); // one build = products + blog
   });
 });
+
+describe("sitemap lastmod (F3)", () => {
+  it("gives every URL a lastmod, falling back to the deploy date", () => {
+    const xml = buildSitemapXml(
+      [{ path: "/" }, { path: "/blog/x", lastmod: "2026-10-01T09:00:00Z" }, { path: "/y", lastmod: "nonsense" }],
+      "2026-11-23T08:00:00Z",
+    );
+    expect(xml).toContain("<loc>https://mrssamuel.com/</loc><lastmod>2026-11-23</lastmod>");
+    expect(xml).toContain("<loc>https://mrssamuel.com/blog/x</loc><lastmod>2026-10-01</lastmod>");
+    expect(xml).toContain("<loc>https://mrssamuel.com/y</loc><lastmod>2026-11-23</lastmod>");
+    expect(xml.match(/<url>/g)!.length).toBe(xml.match(/<lastmod>/g)!.length);
+  });
+});

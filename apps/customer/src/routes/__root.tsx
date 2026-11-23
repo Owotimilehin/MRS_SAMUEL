@@ -7,7 +7,8 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
+import { gaHeadScripts, installContactClickTracking } from "../lib/analytics";
 
 import appCss from "../styles.css?url";
 import { CartProvider } from "../lib/cart";
@@ -83,6 +84,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     scripts: [
       { type: "application/ld+json", children: JSON.stringify(organizationLd()) },
       { type: "application/ld+json", children: JSON.stringify(websiteLd()) },
+      // GA4 (SEO F5): empty until GA_MEASUREMENT_ID is set in lib/analytics.ts.
+      ...gaHeadScripts(),
     ],
   }),
   shellComponent: RootShell,
@@ -107,6 +110,8 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  // GA4: count WhatsApp and phone taps anywhere on the site (no-op without an ID).
+  useEffect(() => installContactClickTracking(), []);
 
   return (
     <QueryClientProvider client={queryClient}>

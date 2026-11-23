@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { track, CURRENCY } from "@/lib/analytics";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -92,6 +93,17 @@ function Page() {
   const { branches, cart } = Route.useLoaderData();
   const search = Route.useSearch();
   const { items, subtotal, clear } = useCart();
+  // GA4 begin_checkout (SEO F5): once per visit to this page, once the basket is known.
+  const checkoutTracked = useRef(false);
+  useEffect(() => {
+    if (checkoutTracked.current || items.length === 0) return;
+    checkoutTracked.current = true;
+    track("begin_checkout", {
+      currency: CURRENCY,
+      value: subtotal,
+      items: items.map((i) => ({ item_id: i.product.id, item_name: i.product.name, item_variant: i.size, price: i.unitPrice, quantity: i.qty })),
+    });
+  }, [items, subtotal]);
   // Route to the owner-selected online-fulfilment branch; fall back to the first
   // active branch when none is flagged (preserves prior behaviour).
   const branchId = (branches.find((b) => b.is_online_default) ?? branches[0])?.id ?? null;
