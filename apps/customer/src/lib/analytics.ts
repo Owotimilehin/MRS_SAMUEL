@@ -4,7 +4,8 @@
  * Nothing loads and nothing is sent until GA_MEASUREMENT_ID is set. The ID is
  * public (it appears in every page's HTML), so it lives here, not in a secret.
  *
- * Events: add_to_cart, begin_checkout, purchase, whatsapp_click, phone_click.
+ * Events: add_to_cart, begin_checkout, purchase, whatsapp_click, phone_click,
+ * generate_lead (quote/enquiry forms).
  * Privacy: params carry only product ids/names, sizes, amounts in NGN, the
  * order number and the page path. Never a phone number, name, email or address.
  */
@@ -96,4 +97,33 @@ export function trackPurchaseOnce(
     // Storage blocked: still send; GA dedupes purchases by transaction_id.
   }
   track("purchase", { transaction_id: orderNumber, value: valueNgn, currency: CURRENCY, items });
+}
+
+/** Params for `generate_lead`: which form and which page. Never the name or phone typed in. */
+export function leadParams(
+  enquiryType: string,
+  leadSource: string,
+  pagePath: string,
+): { enquiry_type: string; lead_source: string; page_path: string } {
+  return { enquiry_type: enquiryType, lead_source: leadSource, page_path: pagePath };
+}
+
+const leadsSent = new Set<string>();
+
+/**
+ * Fire `generate_lead` at most once per form per page load, after the
+ * enquiry was recorded. Returns true when the event was sent (or would have
+ * been, with analytics off), false for a repeat.
+ */
+export function trackLeadOnce(enquiryType: string, leadSource: string, pagePath: string): boolean {
+  const key = `${leadSource}|${pagePath}`;
+  if (leadsSent.has(key)) return false;
+  leadsSent.add(key);
+  track("generate_lead", leadParams(enquiryType, leadSource, pagePath));
+  return true;
+}
+
+/** Test hook. */
+export function resetLeadTracking(): void {
+  leadsSent.clear();
 }

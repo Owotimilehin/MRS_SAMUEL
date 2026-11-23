@@ -228,15 +228,16 @@ export const logCheckoutAttempt = createServerFn({ method: "POST" })
  */
 export const submitEnquiry = createServerFn({ method: "POST" })
   .validator((d: { name: string; phone: string; enquiry_type: "white_label" | "bulk_order" }) => d)
-  .handler(async ({ data }): Promise<{ ok: true }> => {
+  .handler(async ({ data }): Promise<{ ok: boolean }> => {
     try {
       await apiFetch("/v1/public/enquiries", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(data),
       });
+      return { ok: true };
     } catch {
       /* the WhatsApp hand-off is the real path; never block it */
+      return { ok: false };
     }
-    return { ok: true };
   });

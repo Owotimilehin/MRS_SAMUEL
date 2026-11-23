@@ -12,13 +12,17 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WhiteLabelRouteImport } from './routes/white-label'
 import { Route as TrackRouteImport } from './routes/track'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as StockistsRouteImport } from './routes/stockists'
 import { Route as ShopRouteImport } from './routes/shop'
 import { Route as ReturnsRouteImport } from './routes/returns'
 import { Route as QrRouteImport } from './routes/qr'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as JuicesRouteImport } from './routes/juices'
 import { Route as IgRouteImport } from './routes/ig'
+import { Route as GiftsRouteImport } from './routes/gifts'
+import { Route as EventsJuiceLagosRouteImport } from './routes/events-juice-lagos'
 import { Route as DeliveryRouteImport } from './routes/delivery'
+import { Route as CorporateRouteImport } from './routes/corporate'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as BulkOrdersRouteImport } from './routes/bulk-orders'
@@ -46,6 +50,11 @@ const TrackRoute = TrackRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StockistsRoute = StockistsRouteImport.update({
+  id: '/stockists',
+  path: '/stockists',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ShopRoute = ShopRouteImport.update({
@@ -78,9 +87,24 @@ const IgRoute = IgRouteImport.update({
   path: '/ig',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GiftsRoute = GiftsRouteImport.update({
+  id: '/gifts',
+  path: '/gifts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EventsJuiceLagosRoute = EventsJuiceLagosRouteImport.update({
+  id: '/events-juice-lagos',
+  path: '/events-juice-lagos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DeliveryRoute = DeliveryRouteImport.update({
   id: '/delivery',
   path: '/delivery',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CorporateRoute = CorporateRouteImport.update({
+  id: '/corporate',
+  path: '/corporate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ContactRoute = ContactRouteImport.update({
@@ -156,13 +180,17 @@ export interface FileRoutesByFullPath {
   '/bulk-orders': typeof BulkOrdersRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
+  '/corporate': typeof CorporateRoute
   '/delivery': typeof DeliveryRoute
+  '/events-juice-lagos': typeof EventsJuiceLagosRoute
+  '/gifts': typeof GiftsRoute
   '/ig': typeof IgRoute
   '/juices': typeof JuicesRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/qr': typeof QrRoute
   '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
+  '/stockists': typeof StockistsRoute
   '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
   '/white-label': typeof WhiteLabelRoute
@@ -180,12 +208,16 @@ export interface FileRoutesByTo {
   '/bulk-orders': typeof BulkOrdersRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
+  '/corporate': typeof CorporateRoute
   '/delivery': typeof DeliveryRoute
+  '/events-juice-lagos': typeof EventsJuiceLagosRoute
+  '/gifts': typeof GiftsRoute
   '/ig': typeof IgRoute
   '/privacy': typeof PrivacyRoute
   '/qr': typeof QrRoute
   '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
+  '/stockists': typeof StockistsRoute
   '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
   '/white-label': typeof WhiteLabelRoute
@@ -205,13 +237,17 @@ export interface FileRoutesById {
   '/bulk-orders': typeof BulkOrdersRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
+  '/corporate': typeof CorporateRoute
   '/delivery': typeof DeliveryRoute
+  '/events-juice-lagos': typeof EventsJuiceLagosRoute
+  '/gifts': typeof GiftsRoute
   '/ig': typeof IgRoute
   '/juices': typeof JuicesRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/qr': typeof QrRoute
   '/returns': typeof ReturnsRoute
   '/shop': typeof ShopRoute
+  '/stockists': typeof StockistsRoute
   '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
   '/white-label': typeof WhiteLabelRoute
@@ -232,13 +268,17 @@ export interface FileRouteTypes {
     | '/bulk-orders'
     | '/checkout'
     | '/contact'
+    | '/corporate'
     | '/delivery'
+    | '/events-juice-lagos'
+    | '/gifts'
     | '/ig'
     | '/juices'
     | '/privacy'
     | '/qr'
     | '/returns'
     | '/shop'
+    | '/stockists'
     | '/terms'
     | '/track'
     | '/white-label'
@@ -256,12 +296,16 @@ export interface FileRouteTypes {
     | '/bulk-orders'
     | '/checkout'
     | '/contact'
+    | '/corporate'
     | '/delivery'
+    | '/events-juice-lagos'
+    | '/gifts'
     | '/ig'
     | '/privacy'
     | '/qr'
     | '/returns'
     | '/shop'
+    | '/stockists'
     | '/terms'
     | '/track'
     | '/white-label'
@@ -280,13 +324,17 @@ export interface FileRouteTypes {
     | '/bulk-orders'
     | '/checkout'
     | '/contact'
+    | '/corporate'
     | '/delivery'
+    | '/events-juice-lagos'
+    | '/gifts'
     | '/ig'
     | '/juices'
     | '/privacy'
     | '/qr'
     | '/returns'
     | '/shop'
+    | '/stockists'
     | '/terms'
     | '/track'
     | '/white-label'
@@ -306,13 +354,17 @@ export interface RootRouteChildren {
   BulkOrdersRoute: typeof BulkOrdersRoute
   CheckoutRoute: typeof CheckoutRoute
   ContactRoute: typeof ContactRoute
+  CorporateRoute: typeof CorporateRoute
   DeliveryRoute: typeof DeliveryRoute
+  EventsJuiceLagosRoute: typeof EventsJuiceLagosRoute
+  GiftsRoute: typeof GiftsRoute
   IgRoute: typeof IgRoute
   JuicesRoute: typeof JuicesRouteWithChildren
   PrivacyRoute: typeof PrivacyRoute
   QrRoute: typeof QrRoute
   ReturnsRoute: typeof ReturnsRoute
   ShopRoute: typeof ShopRoute
+  StockistsRoute: typeof StockistsRoute
   TermsRoute: typeof TermsRoute
   TrackRoute: typeof TrackRoute
   WhiteLabelRoute: typeof WhiteLabelRoute
@@ -342,6 +394,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stockists': {
+      id: '/stockists'
+      path: '/stockists'
+      fullPath: '/stockists'
+      preLoaderRoute: typeof StockistsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/shop': {
@@ -386,11 +445,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IgRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gifts': {
+      id: '/gifts'
+      path: '/gifts'
+      fullPath: '/gifts'
+      preLoaderRoute: typeof GiftsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/events-juice-lagos': {
+      id: '/events-juice-lagos'
+      path: '/events-juice-lagos'
+      fullPath: '/events-juice-lagos'
+      preLoaderRoute: typeof EventsJuiceLagosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/delivery': {
       id: '/delivery'
       path: '/delivery'
       fullPath: '/delivery'
       preLoaderRoute: typeof DeliveryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/corporate': {
+      id: '/corporate'
+      path: '/corporate'
+      fullPath: '/corporate'
+      preLoaderRoute: typeof CorporateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contact': {
@@ -519,13 +599,17 @@ const rootRouteChildren: RootRouteChildren = {
   BulkOrdersRoute: BulkOrdersRoute,
   CheckoutRoute: CheckoutRoute,
   ContactRoute: ContactRoute,
+  CorporateRoute: CorporateRoute,
   DeliveryRoute: DeliveryRoute,
+  EventsJuiceLagosRoute: EventsJuiceLagosRoute,
+  GiftsRoute: GiftsRoute,
   IgRoute: IgRoute,
   JuicesRoute: JuicesRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
   QrRoute: QrRoute,
   ReturnsRoute: ReturnsRoute,
   ShopRoute: ShopRoute,
+  StockistsRoute: StockistsRoute,
   TermsRoute: TermsRoute,
   TrackRoute: TrackRoute,
   WhiteLabelRoute: WhiteLabelRoute,

@@ -1,0 +1,4 @@
+{
+  "_readme": "Places that stock Mrs. Samuel juice, shown on mrssamuel.com/stockists. Add one block per place inside \"stockists\". Required: name, type, area, address. Optional: url (their website or Instagram), phone, mapsUrl. type is one of: gym, salon, office, hotel, cafe, restaurant, shop, spa, other. The page joins the sitemap as soon as this list has one valid entry. Example: {\"name\": \"Example Gym\", \"type\": \"gym\", \"area\": \"Lekki Phase 1\", \"address\": \"1 Example Street, Lekki Phase 1, Lagos\", \"url\": \"https://instagram.com/examplegym\"}",
+  "stockists": []
+}
