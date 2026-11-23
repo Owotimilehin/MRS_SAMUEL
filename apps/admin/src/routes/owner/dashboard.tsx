@@ -82,7 +82,7 @@ interface RevenueBySize {
 interface PackagingLine {
   material_id: string;
   name: string;
-  kind: "bottle" | "bag";
+  kind: "bottle" | "bag" | "straw";
   units: number;
   unit_cost_ngn: number;
   cost_ngn: number;
@@ -466,32 +466,6 @@ export function DashboardPage(): JSX.Element {
                     </div>
                     {daily.caveats.length > 0 && <div className="ov-caveat">{daily.caveats.join(" · ")}</div>}
                     <details className="ov-details">
-                      <summary>Breakdown by size and packaging</summary>
-                      {daily.revenue_by_size.map((s) => (
-                        <div key={s.size_ml} className="ov-bd">
-                          <ReconLine label={`${s.size_ml}ml`} value={ngn(s.revenue_ngn)} strong />
-                          {s.rows.map((r) => (
-                            <ReconLine key={r.category} label={`${CATEGORY_LABEL[r.category] ?? r.category} · ${r.units} × ${ngn(r.avg_unit_price_ngn)} avg`} value={ngn(r.revenue_ngn)} />
-                          ))}
-                        </div>
-                      ))}
-                      {(["bottle", "bag"] as const).map((kind) => {
-                        const lines = daily.packaging_breakdown.filter((p) => p.kind === kind);
-                        if (lines.length === 0) return null;
-                        return (
-                          <div key={kind} className="ov-bd">
-                            <ReconLine label={kind === "bottle" ? "Bottles used" : "Bags used"} value={ngn(lines.reduce((s, p) => s + p.cost_ngn, 0))} strong />
-                            {lines.map((p) => <ReconLine key={p.material_id} label={`${p.name} · ${p.units} × ${ngn(p.unit_cost_ngn)}`} value={ngn(p.cost_ngn)} />)}
-                          </div>
-                        );
-                      })}
-                      <div className="ov-bd">
-                        <ReconLine label="Product sales" value={ngn(daily.product_sales_ngn)} />
-                        {daily.other_adjustments_ngn !== 0 && <ReconLine label="+ Other adjustments" value={ngn(daily.other_adjustments_ngn)} />}
-                        <ReconLine label="= Net revenue" value={ngn(daily.net_revenue_ngn)} strong />
-                      </div>
-                    </details>
-                    <details className="ov-details">
                       <summary>Which expenses count?</summary>
                       <div className="ov-cats">
                         {DAILY_EXPENSE_CATEGORIES.map((cat) => (
@@ -507,6 +481,105 @@ export function DashboardPage(): JSX.Element {
                 )}
               </section>
             </div>
+
+            {/* ═════════ Financials: the full breakdown, always open ═════════ */}
+            {daily && (
+              <>
+                <div className="ov-sh">
+                  <h2>Financials</h2>
+                  <p>{rangeLabel(daily.from, daily.to)}</p>
+                </div>
+                <div className="ov-fin">
+                  <section className="card ov-card ov-fin__card">
+                    <div className="ov-fin__head">
+                      <span>Net revenue</span>
+                      <b className="tabular-nums">{ngn(daily.net_revenue_ngn)}</b>
+                    </div>
+                    {daily.revenue_by_size.length === 0 ? (
+                      <div className="ov-muted">No sales recorded.</div>
+                    ) : (
+                      <>
+                        {daily.revenue_by_size.map((s) => (
+                          <div key={s.size_ml} className="ov-fin__grp">
+                            <ReconLine label={`${s.size_ml}ml`} value={ngn(s.revenue_ngn)} strong />
+                            {s.rows.map((r) => (
+                              <ReconLine
+                                key={r.category}
+                                label={`${CATEGORY_LABEL[r.category] ?? r.category} · ${r.units} × ${ngn(r.avg_unit_price_ngn)} avg`}
+                                value={ngn(r.revenue_ngn)}
+                              />
+                            ))}
+                          </div>
+                        ))}
+                        <div className="ov-fin__sum">
+                          <ReconLine label="Product sales" value={ngn(daily.product_sales_ngn)} />
+                          {daily.delivery_fees_ngn > 0 && <ReconLine label="+ Delivery fees" value={ngn(daily.delivery_fees_ngn)} />}
+                          {daily.other_adjustments_ngn !== 0 && <ReconLine label="+ Other adjustments" value={ngn(daily.other_adjustments_ngn)} />}
+                          {daily.refunds_ngn > 0 && <ReconLine label="− Refunds" value={ngn(daily.refunds_ngn)} />}
+                          <ReconLine label="= Net revenue" value={ngn(daily.net_revenue_ngn)} strong />
+                        </div>
+                      </>
+                    )}
+                  </section>
+
+                  <section className="card ov-card ov-fin__card">
+                    <div className="ov-fin__head">
+                      <span>Packaging cost</span>
+                      <b className="tabular-nums">{ngn(daily.packaging_cost_ngn)}</b>
+                    </div>
+                    {daily.packaging_breakdown.length === 0 ? (
+                      <div className="ov-muted">No packaging used.</div>
+                    ) : (
+                      (["bottle", "bag", "straw"] as const).map((kind) => {
+                        const lines = daily.packaging_breakdown.filter((p) => p.kind === kind);
+                        if (lines.length === 0) return null;
+                        return (
+                          <div key={kind} className="ov-fin__grp">
+                            <ReconLine
+                              label={kind === "bottle" ? "Bottles" : kind === "bag" ? "Bags" : "Straws"}
+                              value={ngn(lines.reduce((t, p) => t + p.cost_ngn, 0))}
+                              strong
+                            />
+                            {lines.map((p) => (
+                              <ReconLine key={p.material_id} label={`${p.name} · ${p.units} × ${ngn(p.unit_cost_ngn)}`} value={ngn(p.cost_ngn)} />
+                            ))}
+                          </div>
+                        );
+                      })
+                    )}
+                    {(() => {
+                      // Anything in the total that no line explains, shown so the card adds up.
+                      const gap = daily.packaging_cost_ngn - daily.packaging_breakdown.reduce((t, p) => t + p.cost_ngn, 0);
+                      return gap !== 0 ? (
+                        <div className="ov-fin__grp"><ReconLine label="Other packaging (not itemised)" value={ngn(gap)} /></div>
+                      ) : null;
+                    })()}
+                    {daily.caveats.length > 0 && <div className="ov-caveat ov-caveat--in">{daily.caveats.join(" · ")}</div>}
+                  </section>
+
+                  <section className="card ov-card ov-fin__card">
+                    <div className="ov-fin__head">
+                      <span>Profit</span>
+                      <b className={`tabular-nums${daily.daily_profit_ngn < 0 ? " neg" : " pos"}`}>{ngn(daily.daily_profit_ngn)}</b>
+                    </div>
+                    <div className="ov-fin__grp">
+                      <ReconLine label="Net revenue" value={ngn(daily.net_revenue_ngn)} />
+                      <ReconLine label="− Packaging cost" value={ngn(daily.packaging_cost_ngn)} />
+                      <ReconLine label="− Expenses" value={ngn(daily.expenses_ngn)} />
+                    </div>
+                    <div className="ov-fin__sum">
+                      <ReconLine label="= Profit" value={ngn(daily.daily_profit_ngn)} strong />
+                      <ReconLine label="Margin" value={daily.margin_pct == null ? "—" : `${daily.margin_pct}%`} />
+                    </div>
+                    {daily.expenses_ngn > daily.net_revenue_ngn && (
+                      <div className="ov-caveat ov-caveat--in">
+                        Expenses are more than today's takings. If rent or salaries are counted here, untick them under "Which expenses count?".
+                      </div>
+                    )}
+                  </section>
+                </div>
+              </>
+            )}
 
             {/* ═════════ On the shelf ═════════ */}
             <div className="ov-sh">

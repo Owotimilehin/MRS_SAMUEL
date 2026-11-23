@@ -363,3 +363,17 @@ body {
   .ov-wr { grid-template-columns: 100px 1fr 90px; }
   .ov-periods { width: 100%; justify-content: space-between; }
 }
+
+/* Financials breakdown (always open) */
+.ov-fin { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.ov-fin__card { padding: 18px 20px; }
+.ov-fin__head { display: flex; flex-direction: column; gap: 2px; padding-bottom: 10px; }
+.ov-fin__head span { font-size: 12px; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .08em; }
+.ov-fin__head b { font-size: 26px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); }
+.ov-fin__head b.pos { color: var(--good); }
+.ov-fin__head b.neg { color: var(--bad); }
+.ov-fin__grp { padding: 8px 0; border-top: 1px solid var(--line); }
+.ov-fin__grp .ov-recon:not(.ov-recon--strong) { padding-left: 12px; }
+.ov-fin__sum { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--line-2); }
+.ov-caveat--in { margin: 8px 0 0; }
+@media (max-width: 1120px) { .ov-fin { grid-template-columns: 1fr; } }
