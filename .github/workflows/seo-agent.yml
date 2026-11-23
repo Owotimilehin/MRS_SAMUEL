@@ -1,0 +1,73 @@
+# Runs the Claude Code SEO dev agent. It opens at most one PR per run; the owner reviews and merges.
+#
+# Manual only for now: Actions → "SEO agent" → Run workflow (optionally with a task id like Q3).
+# To run it on a schedule later, uncomment the `schedule` block below.
+#
+# Setup (owner):
+#   1. Repository secret ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`,
+#      and switch the commented line in the action step).
+#   2. Install the Claude GitHub app on the repo (`/install-github-app` in Claude Code).
+#   3. Create the labels `seo` and `needs-owner-review`.
+name: SEO agent
+
+on:
+  # schedule:
+  #   # Mondays and Thursdays 10:00 Lagos time (09:00 UTC)
+  #   - cron: "0 9 * * 1,4"
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task id to work on (blank = next in the roadmap)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: seo-agent
+  cancel-in-progress: false
+
+jobs:
+  next-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @ms/shared build
+
+      - name: Skip if 3 or more SEO PRs are waiting for review
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          open=$(gh pr list --label seo --state open --json number --jq 'length')
+          echo "open=$open" >> "$GITHUB_OUTPUT"
+          if [ "$open" -ge 3 ]; then echo "3+ SEO PRs open, skipping this run."; fi
+
+      - uses: anthropics/claude-code-action@v1
+        if: steps.gate.outputs.open < 3
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: "/seo-next ${{ github.event.inputs.task }}"
+          claude_args: >-
+            --max-turns 80
+            --allowedTools "Read,Write,Edit,Glob,Grep,Bash(pnpm *),Bash(npx vitest *),Bash(npx eslint *),Bash(npx prettier *),Bash(npx vite build*),Bash(node *),Bash(git *),Bash(gh pr *),Bash(gh label *),Bash(ls *),Bash(cat *),Bash(grep *),Bash(find *),Bash(curl -s*)"
