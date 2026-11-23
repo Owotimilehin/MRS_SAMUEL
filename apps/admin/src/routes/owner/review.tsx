@@ -77,10 +77,10 @@ export function ReviewPage(): JSX.Element {
     void load();
   }, []);
 
-  async function approveReturn(id: string): Promise<void> {
+  async function approveReturn(id: string, branchId: string): Promise<void> {
     setActing(id);
     try {
-      await api(`/returns/${id}/approve`, { method: "PATCH" });
+      await api(`/branches/${branchId}/returns/${id}/approve`, { method: "PATCH" });
       await load();
     } catch (err) {
       toast.error(humanizeError(err));
@@ -89,12 +89,12 @@ export function ReviewPage(): JSX.Element {
     }
   }
 
-  async function rejectReturn(id: string): Promise<void> {
+  async function rejectReturn(id: string, branchId: string): Promise<void> {
     const reason = window.prompt("Reason for rejection?");
     if (!reason) return;
     setActing(id);
     try {
-      await api(`/returns/${id}/reject`, {
+      await api(`/branches/${branchId}/returns/${id}/reject`, {
         method: "PATCH",
         body: JSON.stringify({ reason }),
       });
@@ -372,7 +372,7 @@ export function ReviewPage(): JSX.Element {
                         className="btn btn--subtle btn--sm"
                         style={{ marginRight: 8 }}
                         disabled={acting === r.id}
-                        onClick={() => void rejectReturn(r.id)}
+                        onClick={() => void rejectReturn(r.id, r.branchId)}
                       >
                         Reject
                       </button>
@@ -380,7 +380,7 @@ export function ReviewPage(): JSX.Element {
                         type="button"
                         className="btn btn--primary btn--sm"
                         disabled={acting === r.id}
-                        onClick={() => void approveReturn(r.id)}
+                        onClick={() => void approveReturn(r.id, r.branchId)}
                       >
                         {acting === r.id ? "…" : "Approve refund"}
                       </button>

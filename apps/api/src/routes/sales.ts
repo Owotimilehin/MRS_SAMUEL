@@ -474,7 +474,7 @@ export function saleRoutes(db: DbClient) {
 
     const updated = await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
-      if (!o) throw new BusinessError("not_found", "sale not found", 404);
+      if (!o || o.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "sale not found", 404);
       // Preorder-only roles may only pay preorders, never stock-consuming sales.
       if (!auth.capabilities.includes("pos.sell") && !o.isPreorder) {
         throw new BusinessError("forbidden", "this role may only pay preorders", 403);
@@ -593,7 +593,7 @@ export function saleRoutes(db: DbClient) {
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const updated = await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
-      if (!o) throw new BusinessError("not_found", "sale not found", 404);
+      if (!o || o.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "sale not found", 404);
       if (o.status !== "paid") {
         throw new BusinessError("conflict", `cannot hand over from ${o.status}`, 409);
       }
@@ -623,7 +623,7 @@ export function saleRoutes(db: DbClient) {
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const updated = await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
-      if (!o) throw new BusinessError("not_found", "sale not found", 404);
+      if (!o || o.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "sale not found", 404);
       if (o.status !== "paid") {
         throw new BusinessError("conflict", `cannot deliver from ${o.status}`, 409);
       }
@@ -657,7 +657,7 @@ export function saleRoutes(db: DbClient) {
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const updated = await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
-      if (!o) throw new BusinessError("not_found", "sale not found", 404);
+      if (!o || o.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "sale not found", 404);
       if (!["online", "phone"].includes(o.channel)) {
         throw new BusinessError("conflict", `not an online order: ${o.channel}`, 409);
       }
@@ -829,7 +829,7 @@ export function saleRoutes(db: DbClient) {
 
       const { before, after } = await db.transaction(async (tx) => {
         const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
-        if (!o) throw new BusinessError("not_found", "sale not found", 404);
+        if (!o || o.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "sale not found", 404);
         if (o.channel === "walkup") {
           throw new BusinessError("conflict", "walk-up orders have no delivery address", 409);
         }
@@ -1173,7 +1173,7 @@ export function saleRoutes(db: DbClient) {
 
     const { row: updated, wasPaid } = await db.transaction(async (tx) => {
       const [o] = await tx.select().from(saleOrder).where(eq(saleOrder.id, id));
-      if (!o) throw new BusinessError("not_found", "sale not found", 404);
+      if (!o || o.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "sale not found", 404);
       if (["handed_over", "delivered", "cancelled", "failed"].includes(o.status)) {
         throw new BusinessError("conflict", `cannot cancel from ${o.status}`, 409);
       }
@@ -1272,7 +1272,7 @@ export function saleRoutes(db: DbClient) {
     const id = c.req.param("id");
     if (!id) throw new BusinessError("validation_failed", "id required", 400);
     const [o] = await db.select().from(saleOrder).where(eq(saleOrder.id, id));
-    if (!o) throw new BusinessError("not_found", "sale not found", 404);
+    if (!o || o.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "sale not found", 404);
     // Join the variant so each item carries its bottle size (sizeMl). Staff
     // packing an online order need the size, and the printed receipt uses it.
     const itemRows = await db

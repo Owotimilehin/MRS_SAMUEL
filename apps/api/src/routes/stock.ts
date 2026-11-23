@@ -3,6 +3,7 @@ import { inArray } from "drizzle-orm";
 import { productVariant, type DbClient } from "@ms/db";
 import { balanceByVariantAt } from "@ms/domain";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
+import { requireBranchScope } from "../middleware/scope.js";
 
 export function stockRoutes(db: DbClient) {
   const r = new Hono();
@@ -39,7 +40,7 @@ export function stockRoutes(db: DbClient) {
     return c.json({ data: await withSize(rows) });
   });
 
-  r.get("/branch/:branchId", async (c) => {
+  r.get("/branch/:branchId", requireBranchScope(), async (c) => {
     const rows = await balanceByVariantAt(db, {
       locationType: "branch",
       locationId: c.req.param("branchId"),

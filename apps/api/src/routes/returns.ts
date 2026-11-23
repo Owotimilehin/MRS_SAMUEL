@@ -232,7 +232,7 @@ export function returnRoutes(db: DbClient) {
 
     const updated = await db.transaction(async (tx) => {
       const [ret] = await tx.select().from(saleReturn).where(eq(saleReturn.id, id));
-      if (!ret) throw new BusinessError("not_found", "return not found", 404);
+      if (!ret || ret.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "return not found", 404);
       if (ret.status !== "pending_approval") {
         throw new BusinessError("conflict", `cannot approve from ${ret.status}`, 409);
       }
@@ -244,9 +244,10 @@ export function returnRoutes(db: DbClient) {
           approvedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(saleReturn.id, id))
+        .where(and(eq(saleReturn.id, id), eq(saleReturn.status, "pending_approval")))
         .returning();
-      if (!u) throw new BusinessError("internal_error", "update failed", 500);
+      // Someone else approved it a moment ago: don't apply its effects twice.
+      if (!u) throw new BusinessError("conflict", "return was already handled", 409);
       await applyReturnEffects(tx, id, auth.userId);
       return u;
     });
@@ -260,6 +261,45 @@ export function returnRoutes(db: DbClient) {
     return c.json({ data: updated });
   });
 
+  // ============ Reject (owner) ============
+  // There is no "rejected" status, so a rejected return is cancelled with the
+  // owner's reason kept in notes and in the audit log. Nothing is refunded or
+  // put back into stock, because a pending return has no effects yet.
+  const RejectBody = z.object({ reason: z.string().trim().min(1).max(500) });
+  r.patch("/:id/reject", requireCapability("returns.approve"), async (c) => {
+    const id = c.req.param("id");
+    if (!id) throw new BusinessError("validation_failed", "id required", 400);
+    const { reason } = RejectBody.parse(await c.req.json());
+
+    const updated = await db.transaction(async (tx) => {
+      const [ret] = await tx.select().from(saleReturn).where(eq(saleReturn.id, id));
+      if (!ret || ret.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "return not found", 404);
+      if (ret.status !== "pending_approval") {
+        throw new BusinessError("conflict", `cannot reject from ${ret.status}`, 409);
+      }
+      const note = `Rejected by owner: ${reason}`;
+      const [u] = await tx
+        .update(saleReturn)
+        .set({
+          status: "cancelled",
+          notes: ret.notes ? `${ret.notes}\n${note}` : note,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(saleReturn.id, id), eq(saleReturn.status, "pending_approval")))
+        .returning();
+      if (!u) throw new BusinessError("conflict", "return was already handled", 409);
+      return u;
+    });
+
+    await writeAudit(db, c, {
+      action: "sale_return.reject",
+      entityType: "sale_return",
+      entityId: id,
+      after: { ...updated, reason },
+    });
+    return c.json({ data: updated });
+  });
+
   // ============ Cancel (draft/pending only) ============
   r.patch("/:id/cancel", requireCapability("returns.create"), async (c) => {
     const id = c.req.param("id");
@@ -267,7 +307,7 @@ export function returnRoutes(db: DbClient) {
 
     const updated = await db.transaction(async (tx) => {
       const [ret] = await tx.select().from(saleReturn).where(eq(saleReturn.id, id));
-      if (!ret) throw new BusinessError("not_found", "return not found", 404);
+      if (!ret || ret.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "return not found", 404);
       if (ret.status !== "draft" && ret.status !== "pending_approval") {
         throw new BusinessError("conflict", `cannot cancel from ${ret.status}`, 409);
       }
@@ -307,7 +347,7 @@ export function returnRoutes(db: DbClient) {
       .from(saleReturn)
       .leftJoin(saleOrder, eq(saleOrder.id, saleReturn.originalSaleOrderId))
       .where(eq(saleReturn.id, id));
-    if (!row) throw new BusinessError("not_found", "return not found", 404);
+    if (!row || row.ret.branchId !== c.req.param("branchId")) throw new BusinessError("not_found", "return not found", 404);
     const items = await db
       .select()
       .from(saleReturnItem)

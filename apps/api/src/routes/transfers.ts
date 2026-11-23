@@ -204,6 +204,11 @@ export function transferRoutes(db: DbClient) {
     const id = c.req.param("id");
     const [t] = await db.select().from(stockTransfer).where(eq(stockTransfer.id, id));
     if (!t) throw new BusinessError("not_found", "transfer not found", 404);
+    const auth = c.get("auth");
+    // Branch staff see only their own branch's transfers (same rule as the list).
+    if (!actsOnAnyBranch(auth.role) && t.branchId !== auth.branchId) {
+      throw new BusinessError("not_found", "transfer not found", 404);
+    }
     const items = await db
       .select({
         id: stockTransferItem.id,

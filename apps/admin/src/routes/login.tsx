@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import { api, ApiError } from "../lib/api.js";
 import { Spinner } from "../components/Spinner.js";
+import { safeNext } from "../lib/safe-next.js";
 
 interface LoginResponse {
   data: {
@@ -99,7 +100,7 @@ export function LoginPage({ defaultDest, copy = ADMIN_COPY }: LoginPageProps = {
         body: JSON.stringify({ email, password }),
       });
       const params = new URLSearchParams(window.location.search);
-      const next = params.get("next");
+      const next = safeNext(params.get("next"));
       const dest = next ?? defaultDest ?? defaultDestination(res.data.user.role, res.data.user.branch_id);
       // Brief success beat before the redirect so the state change is felt.
       setDone(true);

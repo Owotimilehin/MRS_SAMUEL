@@ -431,4 +431,67 @@ describe("Phase 4 returns flow", () => {
     expect(credits.length).toBe(1);
     expect(credits[0]!.amountNgn).toBe(2500);
   });
+  async function pendingReturn(): Promise<{ sale: SaleOrderDetail; ret: ReturnRow }> {
+    const sale = await buildPaidSale({ quantity: 1, paymentMethod: "cash" });
+    const res = await call<{ data: ReturnRow }>("POST", `/v1/branches/${branch.id}/returns`, {
+      original_sale_order_id: sale.id,
+      reason_category: "quality_issue",
+      refund_method: "cash",
+      items: [{ sale_order_item_id: sale.items[0]!.id, quantity_returned: 1, disposition: "wasted" }],
+    });
+    expect(res.body.data.status).toBe("pending_approval");
+    return { sale, ret: res.body.data };
+  }
+
+  it("a sale or return is not reachable through another branch's address", async () => {
+    const other = await call<{ data: Branch }>("POST", "/v1/branches", {
+      name: "Other Branch",
+      code: "OTB",
+      delivery_zones: [],
+    });
+    const otherId = other.body.data.id;
+    const { sale, ret } = await pendingReturn();
+
+    const view = await call("GET", `/v1/branches/${otherId}/sales/${sale.id}`);
+    expect(view.status).toBe(404);
+    const cancel = await call("PATCH", `/v1/branches/${otherId}/sales/${sale.id}/cancel`, { reason: "customer_changed_mind" });
+    expect(cancel.status).toBe(404);
+    const approve = await call("PATCH", `/v1/branches/${otherId}/returns/${ret.id}/approve`);
+    expect(approve.status).toBe(404);
+
+    // The sale is untouched and still reachable through its own branch.
+    const own = await call<{ data: SaleOrderRow }>("GET", `/v1/branches/${branch.id}/sales/${sale.id}`);
+    expect(own.status).toBe(200);
+    expect(own.body.data.status).toBe("paid");
+  });
+
+  it("approving twice applies the return once", async () => {
+    const { ret } = await pendingReturn();
+    const path = `/v1/branches/${branch.id}/returns/${ret.id}/approve`;
+    const [a, b] = await Promise.all([call("PATCH", path), call("PATCH", path)]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    const ledgerRows = await db.select().from(stockLedger).where(eq(stockLedger.sourceId, ret.id));
+    expect(ledgerRows.length).toBe(2);
+  });
+
+  it("owner can reject a pending return; nothing is refunded or restocked", async () => {
+    const { ret } = await pendingReturn();
+    const noReason = await call("PATCH", `/v1/branches/${branch.id}/returns/${ret.id}/reject`, { reason: "" });
+    expect(noReason.status).toBe(400);
+
+    const rej = await call<{ data: ReturnRow & { notes: string | null } }>(
+      "PATCH",
+      `/v1/branches/${branch.id}/returns/${ret.id}/reject`,
+      { reason: "Bottle was fine on inspection" },
+    );
+    expect(rej.status).toBe(200);
+    expect(rej.body.data.status).toBe("cancelled");
+    expect(rej.body.data.notes).toContain("Bottle was fine on inspection");
+
+    const ledgerRows = await db.select().from(stockLedger).where(eq(stockLedger.sourceId, ret.id));
+    expect(ledgerRows.length).toBe(0);
+
+    const again = await call("PATCH", `/v1/branches/${branch.id}/returns/${ret.id}/approve`);
+    expect(again.status).toBe(409);
+  });
 });
