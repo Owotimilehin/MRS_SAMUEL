@@ -19,7 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useAuthUser } from "../lib/auth.js";
 import { inboxApi, inboxKeys } from "../lib/inbox-api.js";
-import { channelName, conversationIdFromPath, identityName, shouldAlertForEvent, shouldAlertForReminder, titleWithCount } from "../lib/inbox-logic.js";
+import { channelName, conversationIdFromPath, identityName, shouldAlertForEvent, shouldAlertForReminder, shouldAlertForWake, titleWithCount } from "../lib/inbox-logic.js";
 import {
   desktopEnabled,
   playMessageSound,
@@ -40,6 +40,8 @@ const QUIET_MS = 3_000;
 let waiting = 0;
 /** When each conversation last alerted. */
 const lastAlert = new Map<string, number>();
+/** When a "back from snooze" sound last played (the worker wakes due chats in one batch). */
+let lastWakeSound = 0;
 
 function tabActive(): boolean {
   return document.visibilityState === "visible" && document.hasFocus();
@@ -106,6 +108,38 @@ export function useInboxNotifier(enabled: boolean): void {
                 id.startsWith("reminder-")
                   ? void navigate({ to: "/inbox" })
                   : void navigate({ to: "/inbox/$conversationId", params: { conversationId: id } }),
+              );
+          });
+        return;
+      }
+      // Suite spec 15: a snoozed chat's time came. One sound for a batch waking together.
+      if (e.event === "conversation.woke") {
+        const ctx = {
+          userId: user.id,
+          level: levelRef.current ?? "assigned",
+          openConversationId: conversationIdFromPath(pathRef.current),
+          tabActive: active,
+        } as const;
+        if (!shouldAlertForWake(e, ctx)) return;
+        const convId = e.conversationId!;
+        const now = Date.now();
+        if (now - lastWakeSound >= QUIET_MS) {
+          lastWakeSound = now;
+          if (soundEnabled()) playMessageSound();
+        }
+        if (!active) {
+          waiting += 1;
+          document.title = titleWithCount(document.title, waiting);
+        }
+        void inboxApi
+          .conversation(convId)
+          .then((c) => c.customer?.name || c.customer?.phone || identityName(c.identity) || "A chat")
+          .catch(() => "A chat")
+          .then((who) => {
+            if (active) toast.info(`Back from snooze: ${who}`);
+            else if (desktopEnabled())
+              showDesktopAlert({ conversationId: convId, title: "Back from snooze", body: who }, (id) =>
+                void navigate({ to: "/inbox/$conversationId", params: { conversationId: id } }),
               );
           });
         return;

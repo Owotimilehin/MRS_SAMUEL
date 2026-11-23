@@ -39,6 +39,14 @@
 .ibx-notify__choice input { margin-top: 3px; flex: none; }
 .ibx-notify__choice span { display: grid; gap: 2px; }
 .ibx-notify__choice small, .ibx-notify__note { font-size: 12.5px; line-height: 1.4; opacity: 0.75; margin: 0; }
+/* Sounds (inside the notifications dialog) */
+.ibx-sounds { justify-items: stretch; }
+.ibx-sounds__row { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+.ibx-sounds__controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.ibx-sounds__controls select { flex: 1 1 160px; min-width: 0; }
+.ibx-sounds__volume { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.ibx-sounds__volume input { flex: 1; min-width: 0; }
+.ibx-sounds__error { margin: 0; font-size: 13px; color: var(--danger-ink, var(--danger)); }
 .ibx-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth; }
 .ibx-tabs::-webkit-scrollbar { display: none; }
 /* A fade on whichever side has more tabs to scroll to (set in ConversationList). */

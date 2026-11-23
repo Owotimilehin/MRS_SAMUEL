@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS "inbox_reminder" (
 - `snoozed_until` null = not snoozed. A value in the past means "due to wake"; lists treat it as awake even before the worker clears it.
 - `woke_at` is set when a snooze ends by time; it makes the row look unread until someone opens the chat (`POST /read` clears it).
 - A reminder always has a `customer_id`; `conversation_id` is set when it was added from a chat. A contact-only reminder has `conversation_id` null.
-- Journal: `idx` 83, `when` 1787700000000, tag `0087_tasks_reminders`. Ruling 9.2.1 applies: whoever merges sets `when` later than every entry on `master`.
+- Journal: `idx` 84, `when` 1787800000000, tag `0087_tasks_reminders` (after `0086_broadcasts` at idx 83). Ruling 9.2.1 applies: whoever merges sets `when` later than every entry on `master`.
 - Drizzle: three columns on `inboxConversation`, new `inboxReminder` in `packages/db/src/schema/inbox.ts`.
 - Reply-time target: no column. Stored in `app_settings` under key `inbox_reply_target` as `{ "minutes": number | null }`. Missing row = off.
 
@@ -155,7 +155,7 @@ All wording plain English. Colours only from CSS variables. Segmented controls a
 ## 8. Rules and edge cases
 
 1. Snooze presets are in Lagos time whatever the browser's zone.
-2. *Later today* is offered only while 17:00 Lagos is at least 30 minutes away.
+2. *Later today* is the chat's line's closing time today (17:00 when the line has no hours set), offered only while it is at least 30 minutes away, and not at all once the line has closed or on a day it does not open (Q4).
 3. *Next Monday* is the Monday after today; on a Monday it is seven days ahead.
 4. A custom time in the past or under a minute ahead is refused (screen and server). More than 90 days ahead is refused.
 5. A customer message (or a missed call or voicemail, which also count as unread) wakes a snoozed chat at once.
@@ -213,9 +213,9 @@ Recurring reminders, reminders by email or WhatsApp to staff, SLA reports over t
 
 ## 14. Open questions
 
-| # | Question | Default |
+| # | Question | Answer |
 |---|---|---|
-| Q1 | Should a chat coming back from snooze make a sound? | No: it shows at the top, bold. A reminder is the tool for "tell me" |
+| Q1 | Should a chat coming back from snooze make a sound? | **Yes** (owner, 22 Nov 2026). The worker sends `conversation.woke` with `conversation.updated` when the timer wakes a chat; `useInboxNotifier` plays the message sound (one per batch), shows "Back from snooze: {name}", or a desktop pop-up when the tab is away. Follows the person's alert level; never for the chat they are reading. No phone push |
 | Q2 | Should staff see each other's reminders? | Only with `inbox.assign` (the *Everyone's* tab), and always within the chat-visibility rule |
-| Q3 | Should the reply target differ per line or per channel? | One target for the whole business for now |
-| Q4 | Should the "Later today" time (17:00) follow each line's closing time? | Fixed 17:00 as asked |
+| Q3 | Should the reply target differ per line or per channel? | **One target for the whole business for now** (owner, 22 Nov 2026) |
+| Q4 | Should the "Later today" time follow each line's closing time? | **Yes** (owner, 22 Nov 2026). Conversation detail returns `number.closes_today_at` (`closingTimeToday` in `@ms/shared`): the end of today's last window for the chat's line. Label *Later today, 18:30 (closing)*. Null (already closed, holiday, not open today) hides the choice; a line with no hours set keeps 17:00 |

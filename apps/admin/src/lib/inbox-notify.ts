@@ -11,6 +11,8 @@
  * asked for from the settings dialog (a button press), never on page load.
  */
 
+import { audioContext, playMessageAlert } from "./sounds/player.js";
+
 const LS_SOUND = "ms_inbox_sound";
 const LS_DESKTOP = "ms_inbox_desktop";
 
@@ -39,23 +41,6 @@ export const setDesktopEnabled = (on: boolean): void => writeFlag(LS_DESKTOP, on
 
 // ── Sound ────────────────────────────────────────────────────────────────────
 
-let audio: AudioContext | null = null;
-
-function audioContext(): AudioContext | null {
-  if (audio) return audio;
-  const Ctor =
-    typeof window === "undefined"
-      ? undefined
-      : (window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext);
-  if (!Ctor) return null;
-  try {
-    audio = new Ctor();
-  } catch {
-    audio = null;
-  }
-  return audio;
-}
-
 /**
  * Call once at start-up. The first click or key press anywhere wakes the audio
  * engine, so a later alert can be heard even when the tab is in the background.
@@ -82,36 +67,13 @@ export function soundReady(): boolean {
 }
 
 /**
- * Two rising notes, about half a second. Made in the browser, so there is no
- * sound file to load. Different from the single falling note of a new online
- * order, so staff can tell them apart by ear.
+ * The new-message sound: the one this person chose for this device (see
+ * Sounds in the notification settings), at their volume. The default is two
+ * rising notes, about half a second, made in the browser. Different from the
+ * single falling note of a new online order, so staff can tell them apart by ear.
  */
 export function playMessageSound(): boolean {
-  const ctx = audioContext();
-  if (!ctx) return false;
-  if (ctx.state === "suspended") void ctx.resume().catch(() => undefined);
-  try {
-    const now = ctx.currentTime;
-    for (const [freq, at] of [
-      [660, 0],
-      [880, 0.16],
-    ] as const) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, now + at);
-      gain.gain.setValueAtTime(0.0001, now + at);
-      gain.gain.exponentialRampToValueAtTime(0.3, now + at + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.3);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + at);
-      osc.stop(now + at + 0.32);
-    }
-    return true;
-  } catch {
-    return false;
-  }
+  return playMessageAlert();
 }
 
 // ── Desktop pop-ups ──────────────────────────────────────────────────────────

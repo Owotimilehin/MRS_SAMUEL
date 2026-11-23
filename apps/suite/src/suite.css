@@ -369,6 +369,8 @@ body { background: var(--surface-sunken); color: var(--ink); font-size: 14px; }
   border-bottom: 1px solid var(--line); overflow-x: auto;
 }
 .suite-shell .ibx-tabs--fit { display: flex; width: 100%; }
+/* Snooze and reminder quick choices wrap instead of hiding "Pick a date and time" off the edge. */
+.suite-shell .ibx-when__choices { display: flex; flex-wrap: wrap; width: auto; overflow: visible; }
 .suite-shell .ibx-tab,
 .suite-shell .po-tab,
 .suite-shell .cmt-tabs button,

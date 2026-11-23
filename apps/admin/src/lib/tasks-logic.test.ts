@@ -7,6 +7,7 @@ import {
   lagosInputToDate,
   reminderDue,
   shouldAlertForReminder,
+  shouldAlertForWake,
   snoozePresets,
   whenLabel,
 } from "./inbox-logic.js";
@@ -36,6 +37,16 @@ describe("snooze presets (Lagos time)", () => {
   it("next Monday from a Sunday is the day after; from a Monday it is a week ahead", () => {
     expect(iso(snoozePresets(lagos("2026-11-22T10:00")).find((x) => x.key === "monday")!.at)).toBe(iso(lagos("2026-11-23T09:00")));
     expect(iso(snoozePresets(lagos("2026-11-16T08:00")).find((x) => x.key === "monday")!.at)).toBe(iso(lagos("2026-11-23T09:00")));
+  });
+  it("Later today is the line's closing time when the line has hours", () => {
+    const now = lagos("2026-11-18T10:00");
+    const p = snoozePresets(now, { closesAt: lagos("2026-11-18T18:30").toISOString() });
+    expect(p[0]).toMatchObject({ key: "later", label: "Later today, 18:30 (closing)" });
+    expect(iso(p[0]!.at)).toBe(iso(lagos("2026-11-18T18:30")));
+  });
+  it("no Later today once the line has closed, or under 30 minutes before it closes", () => {
+    expect(snoozePresets(lagos("2026-11-18T10:00"), { closesAt: null }).map((x) => x.key)).toEqual(["tomorrow", "monday"]);
+    expect(snoozePresets(lagos("2026-11-18T18:10"), { closesAt: lagos("2026-11-18T18:30") }).map((x) => x.key)).not.toContain("later");
   });
   it("reminders also get 'In 1 hour'", () => {
     const now = lagos("2026-11-18T10:00");
@@ -91,5 +102,16 @@ describe("the Snoozed list and reminder alerts", () => {
     expect(shouldAlertForReminder({ event: "reminder.due", id: "R1" }, "assigned")).toBe(true);
     expect(shouldAlertForReminder({ event: "reminder.due", id: "R1" }, "none")).toBe(false);
     expect(shouldAlertForReminder({ event: "message.created", id: "R1" }, "all")).toBe(false);
+  });
+  it("a chat back from snooze makes a sound, following the person's alert choice", () => {
+    const ctx = { userId: "U1", level: "assigned" as const, openConversationId: null, tabActive: true };
+    const woke = { event: "conversation.woke", conversationId: "C1", assigneeId: null };
+    expect(shouldAlertForWake(woke, ctx)).toBe(true);
+    expect(shouldAlertForWake({ ...woke, assigneeId: "U1" }, ctx)).toBe(true);
+    expect(shouldAlertForWake({ ...woke, assigneeId: "U2" }, ctx)).toBe(false);
+    expect(shouldAlertForWake({ ...woke, assigneeId: "U2" }, { ...ctx, level: "all" })).toBe(true);
+    expect(shouldAlertForWake(woke, { ...ctx, level: "none" })).toBe(false);
+    expect(shouldAlertForWake(woke, { ...ctx, openConversationId: "C1" })).toBe(false);
+    expect(shouldAlertForWake({ ...woke, event: "conversation.updated" }, ctx)).toBe(false);
   });
 });

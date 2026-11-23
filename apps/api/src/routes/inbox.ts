@@ -57,6 +57,7 @@ import {
   IDENTITY_CHANNELS,
   FLOW_MESSAGE_LIMITS,
   WA_FLOWS,
+  closingTimeToday,
   describeChatSetupPayload,
   flowAddressLine,
   flowDef,
@@ -584,6 +585,9 @@ export function inboxRoutes(db: DbClient) {
       : [];
     const [team] = conv.teamId ? await db.select().from(inboxTeam).where(eq(inboxTeam.id, conv.teamId)) : [];
     const [ident] = conv.identityId ? await db.select().from(inboxIdentity).where(eq(inboxIdentity.id, conv.identityId)) : [];
+    // Suite spec 15: "Later today" on snooze is this line's closing time. Left out when the line has no hours set.
+    const lineHours = num?.hoursProfileId ? ((await loadLineHours(db)).get(num.id) ?? null) : null;
+    const closesToday = lineHours ? closingTimeToday(lineHours.rules, lineHours.holidays, new Date(), lineHours.timeZone) : undefined;
     return c.json({
       data: {
         ...conv,
@@ -598,6 +602,7 @@ export function inboxRoutes(db: DbClient) {
               external_name: num.externalName,
               is_active: num.isActive,
               problem_text: num.problemText,
+              ...(closesToday !== undefined ? { closes_today_at: closesToday?.toISOString() ?? null } : {}),
             }
           : null,
         identity: ident

@@ -386,11 +386,12 @@ export async function collectMetaHealth(
 // ── Merge with what was stored; the alert rule (pure) ─────────────────────────
 
 /**
- * Kinds whose "became broken" raises our owner alert. A Page or Instagram
- * problem is already alerted by ensureMetaSubscriptions (inbox.meta_config,
- * once a day), so it is shown here but not alerted twice.
+ * Kinds whose "became broken" raises our owner alert. Facebook Pages and
+ * Instagram accounts are included (owner's choice, 22 Nov 2026), on top of the
+ * daily inbox.meta_config notice from ensureMetaSubscriptions: this one comes
+ * within the hour, once per break.
  */
-const ALERT_KINDS: readonly MetaHealthKind[] = ["token", "whatsapp_number", "whatsapp_account"];
+const ALERT_KINDS: readonly MetaHealthKind[] = ["token", "whatsapp_number", "whatsapp_account", "page"];
 
 /**
  * Combine this run's outcomes with the stored value.
