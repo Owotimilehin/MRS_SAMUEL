@@ -9,6 +9,7 @@ import { ngn, formatDate } from "../../lib/format.js";
 import { InlineLoader } from "../../components/Spinner.js";
 import { FlavourMedia } from "../../components/FlavourMedia.js";
 import { getFlavourVisual } from "../../lib/flavour-visuals.js";
+import { DEFAULT_LOW_STOCK_LEVEL, parseLowStockLevel } from "../../lib/staff-stock.js";
 import {
   PalettePicker,
   AssetPicker,
@@ -26,6 +27,8 @@ interface Variant {
   sku: string;
   is_active: boolean;
   current_price_ngn: number | null;
+  /** Stock at or below this counts as "running low". Null = default of 10. */
+  low_stock_level?: number | null;
 }
 
 // Sizes we have a bottle/packaging material for. The "Add a size" form only
@@ -66,6 +69,8 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [retiringId, setRetiringId] = useState<string | null>(null);
+  const [levelDrafts, setLevelDrafts] = useState<Record<string, string>>({});
+  const [savingLevelId, setSavingLevelId] = useState<string | null>(null);
   const [newSize, setNewSize] = useState<number | "">("");
   const [newSizePrice, setNewSizePrice] = useState("");
   const [addingSize, setAddingSize] = useState(false);
@@ -88,6 +93,11 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
             v.id,
             v.current_price_ngn != null ? String(v.current_price_ngn) : "",
           ]),
+        ),
+      );
+      setLevelDrafts(
+        Object.fromEntries(
+          res.data.variants.map((v) => [v.id, v.low_stock_level != null ? String(v.low_stock_level) : ""]),
         ),
       );
       setError(null);
@@ -174,6 +184,33 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
       setError(humanizeError(err));
     } finally {
       setRetiringId(null);
+    }
+  }
+
+  async function saveLowStockLevel(variant: Variant, e: FormEvent): Promise<void> {
+    e.preventDefault();
+    const parsed = parseLowStockLevel(levelDrafts[variant.id] ?? "");
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+    setSavingLevelId(variant.id);
+    setError(null);
+    try {
+      await api(`/products/${productId}/variants/${variant.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ low_stock_level: parsed.value }),
+      });
+      showFlash(
+        parsed.value === null
+          ? `${variant.size_ml}ml uses the default alert level of ${DEFAULT_LOW_STOCK_LEVEL}`
+          : `${variant.size_ml}ml alerts at ${parsed.value} bottles or fewer`,
+      );
+      await load();
+    } catch (err) {
+      setError(humanizeError(err));
+    } finally {
+      setSavingLevelId(null);
     }
   }
 
@@ -519,6 +556,39 @@ export function ProductDetailPage({ productId }: { productId: string }): JSX.Ele
                         {v.current_price_ngn != null ? `Current price: ${ngn(v.current_price_ngn)}` : "No price set"}
                       </div>
                     )}
+                    {v.is_active && (() => {
+                      const saved = v.low_stock_level != null ? String(v.low_stock_level) : "";
+                      const draft = levelDrafts[v.id] ?? "";
+                      return (
+                        <form
+                          onSubmit={(e) => saveLowStockLevel(v, e)}
+                          style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end", marginTop: 10 }}
+                        >
+                          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--ink-soft)" }}>
+                            Running-low alert (bottles per shop)
+                            <input
+                              className="input"
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              step={1}
+                              value={draft}
+                              onChange={(e) => setLevelDrafts((d) => ({ ...d, [v.id]: e.target.value }))}
+                              placeholder={`Default ${DEFAULT_LOW_STOCK_LEVEL}`}
+                              aria-label={`Running-low alert level for ${v.size_ml}ml`}
+                            />
+                          </label>
+                          <button
+                            type="submit"
+                            className="btn btn--subtle btn--sm"
+                            disabled={savingLevelId === v.id || draft.trim() === saved}
+                            title={draft.trim() === saved ? "Change the level first" : undefined}
+                          >
+                            {savingLevelId === v.id ? "…" : "Save"}
+                          </button>
+                        </form>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>

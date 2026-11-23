@@ -71,9 +71,40 @@ const sizeLabel = (ml: number): string => (ml >= 1000 ? `${ml / 1000}L` : `${ml}
 const heatKey = (locId: string, productId: string, variantId: string | null): string =>
   `${locId}|${productId}|${variantId ?? "null"}`;
 
+/** One "running low" shelf from /reports/overview (lowest stock first). */
+interface LowStockItem {
+  location_type: "factory" | "branch";
+  location_id: string;
+  location_name: string;
+  variant_id: string;
+  product_name: string;
+  size_ml: number;
+  balance: number;
+  level: number;
+}
+
 export function InventoryPage(): JSX.Element {
   const user = useAuthUser();
   const isOwner = user.role === "owner";
+  const canReports = user.capabilities.includes("reports.view");
+  const [lowItems, setLowItems] = useState<LowStockItem[] | null>(null);
+
+  // Best-effort: the "Running low" list comes from the dashboard overview,
+  // which needs reports.view. Skip the call for anyone without it.
+  useEffect(() => {
+    if (!canReports) return;
+    let cancelled = false;
+    void api<{ data: { stock: { low_stock_items?: LowStockItem[] } } }>(`/reports/overview`)
+      .then((r) => {
+        if (!cancelled) setLowItems(r.data.stock.low_stock_items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setLowItems(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canReports]);
 
   const [branchStock, setBranchStock] = useState<BranchStockRow[]>([]);
   const [factoryStock, setFactoryStock] = useState<Record<string, StockRow[]>>({});
@@ -506,6 +537,52 @@ export function InventoryPage(): JSX.Element {
         >
           {error}
         </div>
+      )}
+
+      {lowItems && lowItems.length > 0 && (
+        <section className="card" style={{ marginBottom: 16 }}>
+          <div className="card__head">
+            <h2 className="t-h2">Running low</h2>
+          </div>
+          <p style={{ fontSize: 12, color: "var(--ink-soft)", margin: "0 0 10px" }}>
+            Sizes at or below their alert level in each shop or factory, emptiest first. Set a size&apos;s alert level
+            on its product page (default 10).
+          </p>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Flavour</th>
+                  <th>Size</th>
+                  <th>Where</th>
+                  <th style={{ textAlign: "right" }}>In stock</th>
+                  <th style={{ textAlign: "right" }}>Alert level</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lowItems.map((i) => (
+                  <tr key={`${i.location_type}|${i.location_id}|${i.variant_id}`}>
+                    <td style={{ fontWeight: 600 }}>{i.product_name}</td>
+                    <td>{sizeLabel(i.size_ml)}</td>
+                    <td>
+                      {i.location_name}
+                      {i.location_type === "factory" && (
+                        <span style={{ color: "var(--ink-soft)", fontSize: 12 }}> · factory</span>
+                      )}
+                    </td>
+                    <td
+                      className="tabular-nums"
+                      style={{ textAlign: "right", fontWeight: 700, color: i.balance === 0 ? "var(--danger)" : "var(--ink)" }}
+                    >
+                      {i.balance === 0 ? "Out" : i.balance}
+                    </td>
+                    <td className="tabular-nums" style={{ textAlign: "right", color: "var(--ink-soft)" }}>{i.level}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {!loading && (
