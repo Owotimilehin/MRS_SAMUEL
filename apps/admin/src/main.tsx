@@ -10,7 +10,11 @@ import { adminHost } from "./lib/admin-host.js";
 import { installTelemetry } from "./lib/telemetry.js";
 import { browserReloadEnv, reloadOnceForStaleChunk } from "./lib/chunk-reload.js";
 import "./index.css";
+// Shop + till look (light/dark). Admin only: the suite imports index.css too.
+import "./shop-theme.css";
+import { applyTheme, readTheme } from "./lib/theme.js";
 
+applyTheme(readTheme());
 installTelemetry("admin");
 
 // A lazy route's dynamic import can 404 after a deploy replaces hashed chunks

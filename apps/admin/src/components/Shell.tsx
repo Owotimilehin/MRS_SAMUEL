@@ -41,6 +41,7 @@ import {
 import { useAuthUser } from "../lib/auth.js";
 import { useRailOpen } from "../lib/rail.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
+import { ThemeToggle } from "./ThemeToggle.js";
 import { api } from "../lib/api.js";
 import { suiteUrl } from "../lib/suite-url.js";
 import type { Capability } from "@ms/shared";
@@ -204,22 +205,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
               </span>
               <span style={{ flex: 1 }}>{item.label}</span>
               {badge != null && (
-                <span
-                  style={{
-                    background: "var(--danger)",
-                    color: "#fff",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    borderRadius: 999,
-                    minWidth: 18,
-                    height: 18,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: "0 5px",
-                    lineHeight: 1,
-                  }}
-                >
+                <span className="nav-badge">
                   {badge}
                 </span>
               )}
@@ -345,6 +331,7 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
             <Search />
             <input className="input" type="search" placeholder="Search…" aria-label="Search" />
           </label>
+          <ThemeToggle />
           <RefreshAppButton />
           {actions}
           <div className="app-head__user">

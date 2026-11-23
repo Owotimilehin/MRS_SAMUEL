@@ -8,6 +8,7 @@ import { startSyncLoop } from "../sync/engine.js";
 import { useAuthUser } from "../lib/auth.js";
 import { useRailOpen } from "../lib/rail.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
+import { ThemeToggle } from "./ThemeToggle.js";
 import { BRANCH_NAV, parentVisible, activeParent } from "./branch-nav.js";
 
 function dropStyle(left: string, s: string, d: string, delay: string): CSSProperties {
@@ -232,6 +233,7 @@ export function BranchShell({
             dead={sync.dead}
             lastPullAt={sync.lastPullAt}
           />
+          <ThemeToggle />
           <RefreshAppButton />
           {actions}
         </header>

@@ -390,7 +390,7 @@ function ReceiptStyleCard(): JSX.Element {
           <div
             style={{
               width: 302,
-              background: "#fff",
+              background: "var(--card)",
               borderRadius: 6,
               boxShadow: "0 6px 24px rgba(0,0,0,0.12)",
               border: "1px solid var(--line)",

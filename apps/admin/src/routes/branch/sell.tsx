@@ -85,7 +85,7 @@ const STEP_BTN: React.CSSProperties = {
   fontSize: 20,
   flex: "none",
   borderRadius: 12,
-  background: "#fff",
+  background: "var(--card)",
   border: "1px solid var(--line)",
 };
 
@@ -909,7 +909,7 @@ export function SellPage({ branchId }: { branchId: string }): JSX.Element {
               alignItems: "center",
               gap: 12,
               padding: "10px 14px calc(10px + env(safe-area-inset-bottom, 0px))",
-              background: "#fff",
+              background: "var(--card)",
               borderTop: "1px solid var(--line)",
               boxShadow: "0 -8px 24px -14px rgba(20,24,31,0.28)",
             }}
