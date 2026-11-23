@@ -1,8 +1,6 @@
-import { type CSSProperties, type ReactNode, lazy, Suspense, useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useOnlineOrderSignal } from "../hooks/useOnlineOrderSignal.js";
-import { useInboxNotifier } from "../hooks/useInboxNotifier.js";
 import {
   Menu,
   ChevronsLeft,
@@ -36,9 +34,7 @@ import {
   Inbox,
   Hourglass,
   ShoppingBag,
-  MessagesSquare,
-  BarChart3,
-  SlidersHorizontal,
+  ExternalLink,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -46,12 +42,8 @@ import { useAuthUser } from "../lib/auth.js";
 import { useRailOpen } from "../lib/rail.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
 import { api } from "../lib/api.js";
-import { inboxApi, inboxKeys } from "../lib/inbox-api.js";
+import { suiteUrl } from "../lib/suite-url.js";
 import type { Capability } from "@ms/shared";
-
-// The phone bar (and the Twilio SDK behind it) only loads for people who take
-// or make calls.
-const CallBar = lazy(() => import("./inbox/CallBar.js").then((m) => ({ default: m.CallBar })));
 
 // One falling droplet's CSS vars, typed for the custom properties the
 // .water-field__drop rule reads.
@@ -73,11 +65,6 @@ const NAV_OVERVIEW: NavLink[] = [
   { to: "/owner/dashboard", label: "Dashboard", Icon: LayoutDashboard, cap: "reports.view" },
   { to: "/owner/analytics", label: "Analytics", Icon: TrendingUp, cap: "reports.view" },
   { to: "/owner/review", label: "Needs review", Icon: Bell, cap: "orders.manage" },
-];
-const NAV_INBOX: NavLink[] = [
-  { to: "/inbox", label: "Inbox", Icon: MessagesSquare, cap: "inbox.view" },
-  { to: "/inbox/reports", label: "Inbox reports", Icon: BarChart3, cap: "inbox.reports" },
-  { to: "/inbox/settings", label: "Inbox settings", Icon: SlidersHorizontal, cap: "inbox.settings" },
 ];
 const NAV_SALES: NavLink[] = [
   { to: "/owner/orders", label: "Orders", Icon: ReceiptText, cap: "sales.view" },
@@ -118,7 +105,6 @@ const NAV_ADMIN: NavLink[] = [
 
 const ALL_NAV: NavLink[] = [
   ...NAV_OVERVIEW,
-  ...NAV_INBOX,
   ...NAV_SALES,
   ...NAV_PRODUCTS,
   ...NAV_FINANCE,
@@ -128,8 +114,8 @@ const ALL_NAV: NavLink[] = [
 
 /**
  * The single menu item to highlight for a path: the one whose route is the
- * longest prefix of it. So /inbox/reports lights "Inbox reports" only, while
- * /inbox/<conversation> still lights "Inbox".
+ * longest prefix of it. So /owner/orders/123 still lights "Orders", while
+ * a longer link of its own wins over it.
  */
 function activeNavTo(pathname: string): string | undefined {
   let best: string | undefined;
@@ -188,20 +174,6 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Unread WhatsApp chats for the Inbox badge. Cached across pages and polled
-  // gently; the inbox page itself refreshes it live.
-  const inboxUnread = useQuery({
-    queryKey: inboxKeys.unread,
-    enabled: can("inbox.view"),
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-    retry: false,
-    queryFn: async () => (await inboxApi.unread()).messages,
-  });
-
-  // Sound, pop-up and tab-title alerts when a customer writes, on every page.
-  useInboxNotifier(can("inbox.view"));
-
   // Live online-order signal — drives nav badge + new-order banner.
   const signal = useOnlineOrderSignal({ enabled: can("sales.view") });
 
@@ -214,14 +186,11 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
         {visible.map((item) => {
           const isReview = item.to === "/owner/review";
           const isOnlineOrders = item.to === "/owner/online-orders";
-          const isInbox = item.to === "/inbox";
           const badge = (isReview && reviewCount != null && reviewCount > 0)
             ? reviewCount
             : (isOnlineOrders && signal.count > 0)
               ? signal.count
-              : (isInbox && (inboxUnread.data ?? 0) > 0)
-                ? inboxUnread.data
-                : null;
+              : null;
           return (
             <Link
               key={item.to}
@@ -298,7 +267,18 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
 
         <nav className="app-nav">
           {renderSection("Overview", NAV_OVERVIEW)}
-          {renderSection("Customer messages", NAV_INBOX)}
+          {/* Customer messages and calls live in the Business Suite. */}
+          {can("inbox.view") && (
+            <>
+              <div className="app-nav__section">Customer messages</div>
+              <a href={suiteUrl()} target="_blank" rel="noreferrer" title="Open the Business Suite" className="app-nav__link">
+                <span className="app-nav__icon">
+                  <ExternalLink strokeWidth={1.9} />
+                </span>
+                <span style={{ flex: 1 }}>Open the Business Suite</span>
+              </a>
+            </>
+          )}
           {renderSection("Sales & customers", NAV_SALES)}
           {renderSection("Products & stock", NAV_PRODUCTS)}
           {renderSection("Finance", NAV_FINANCE)}
@@ -417,11 +397,6 @@ export function Shell({ children, title, crumb, actions }: ShellProps): JSX.Elem
         )}
         <div className="app-body">{children}</div>
       </main>
-      {(can("calls.answer") || can("calls.outbound")) && (
-        <Suspense fallback={null}>
-          <CallBar />
-        </Suspense>
-      )}
     </div>
   );
 }
