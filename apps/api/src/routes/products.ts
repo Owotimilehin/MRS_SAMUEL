@@ -109,7 +109,16 @@ function contentToColumns(b: Record<string, unknown>): Record<string, unknown> {
   return cols;
 }
 
-const RetireVariant = z.object({ is_active: z.boolean() });
+// PATCH /:id/variants/:variantId: retire/restore a size and/or set its
+// "running low" level. low_stock_level null = use the default of 10.
+const PatchVariant = z
+  .object({
+    is_active: z.boolean().optional(),
+    low_stock_level: z.number().int().min(0).max(100_000).nullable().optional(),
+  })
+  .refine((b) => b.is_active !== undefined || b.low_stock_level !== undefined, {
+    message: "send is_active and/or low_stock_level",
+  });
 
 const PublishPrice = z.object({
   // Preferred: target a specific can size. Omitted = the smallest variant
@@ -125,6 +134,7 @@ interface VariantWithPrice {
   is_active: boolean;
   current_price_ngn: number | null;
   bottle_material_id: string | null;
+  low_stock_level: number | null;
 }
 
 async function loadVariantsForProduct(
@@ -152,6 +162,7 @@ async function loadVariantsForProduct(
       is_active: v.isActive,
       current_price_ngn: price?.priceNgn ?? null,
       bottle_material_id: v.bottleMaterialId ?? null,
+      low_stock_level: v.lowStockLevel ?? null,
     });
   }
   return out;
@@ -531,11 +542,15 @@ export function productRoutes(db: DbClient) {
    * size from the storefront at once; the POS sync filters only deleted_at, so
    * the till can still ring it up (customer-only scope, by design). Reversible:
    * the size stays in the admin "Cans & prices" list, marked Retired.
+   *
+   * Also sets the size's "running low" level (low_stock_level; null = the
+   * default of 10), used by /reports/overview per location. Either field or
+   * both may be sent; each change is audited separately.
    */
   r.patch("/:id/variants/:variantId", requireCapability("products.manage"), async (c) => {
     const id = c.req.param("id");
     const variantId = c.req.param("variantId");
-    const body = RetireVariant.parse(await c.req.json());
+    const body = PatchVariant.parse(await c.req.json());
 
     const [existingProduct] = await db
       .select()
@@ -588,23 +603,46 @@ export function productRoutes(db: DbClient) {
 
       const [row] = await tx
         .update(productVariant)
-        .set({ isActive: body.is_active, updatedAt: new Date() })
+        .set({
+          ...(body.is_active !== undefined ? { isActive: body.is_active } : {}),
+          ...(body.low_stock_level !== undefined ? { lowStockLevel: body.low_stock_level } : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(productVariant.id, variantId))
         .returning();
       if (!row) throw new BusinessError("internal_error", "variant update failed", 500);
-      await requestCatalogueSync(tx, "variant_visibility");
+      // Only visibility changes reach the WhatsApp catalogue; an alert level is internal.
+      if (body.is_active !== undefined) await requestCatalogueSync(tx, "variant_visibility");
       return row;
     });
 
-    await writeAudit(db, c, {
-      action: body.is_active ? "product_variant.restore" : "product_variant.retire",
-      entityType: "product_variant",
-      entityId: variantId,
-      before: { is_active: variant.isActive },
-      after: { is_active: body.is_active },
-    });
+    if (body.is_active !== undefined) {
+      await writeAudit(db, c, {
+        action: body.is_active ? "product_variant.restore" : "product_variant.retire",
+        entityType: "product_variant",
+        entityId: variantId,
+        before: { is_active: variant.isActive },
+        after: { is_active: body.is_active },
+      });
+    }
+    if (body.low_stock_level !== undefined) {
+      await writeAudit(db, c, {
+        action: "product_variant.low_stock_level",
+        entityType: "product_variant",
+        entityId: variantId,
+        before: { low_stock_level: variant.lowStockLevel ?? null },
+        after: { low_stock_level: body.low_stock_level },
+      });
+    }
 
-    return c.json({ data: { id: updated.id, size_ml: updated.sizeMl, is_active: updated.isActive } });
+    return c.json({
+      data: {
+        id: updated.id,
+        size_ml: updated.sizeMl,
+        is_active: updated.isActive,
+        low_stock_level: updated.lowStockLevel ?? null,
+      },
+    });
   });
 
   return r;

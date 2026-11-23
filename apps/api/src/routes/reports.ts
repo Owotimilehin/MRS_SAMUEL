@@ -4,6 +4,22 @@ import { checkoutAttemptLog, type DbClient } from "@ms/db";
 import { requireAuth, requireCapability } from "../middleware/auth.js";
 import { toCsv } from "../lib/csv.js";
 import { allocateFifo, type CostLayer } from "../lib/packaging-cost.js";
+import {
+  buildStaffReport,
+  staffReportTotals,
+  summariseLowStock,
+  DEFAULT_LOW_STOCK_LEVEL,
+  type LowStockRow,
+  type StaffSalesRow,
+  type StaffRefundRow,
+  type StaffCloseRow,
+  type StaffUserInfo,
+} from "../lib/staff-report.js";
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Today's Lagos (UTC+1, no DST) business date. */
+const lagosToday = (): string => new Date(Date.now() + 3_600_000).toISOString().slice(0, 10);
 
 export function reportRoutes(db: DbClient) {
   const r = new Hono();
@@ -384,6 +400,91 @@ export function reportRoutes(db: DbClient) {
     });
   });
 
+  // Sales per staff member: who rang each counted sale (sale_order.created_by_user_id),
+  // per branch, over a range of Lagos business days. Same counted statuses as
+  // /revenue. Net = gross minus completed refunds dated in the range on that
+  // person's sales (refund-date basis, like /revenue). Shift-end differences
+  // come from the daily_close rows they submitted (variance < 0 = short).
+  // Orders with no staff user are grouped as "Online (no staff)".
+  // Gated like /revenue: router-level reports.view.
+  r.get("/staff", async (c) => {
+    const today = lagosToday();
+    const from = c.req.query("from") ?? today;
+    const to = c.req.query("to") ?? today;
+    const branchId = c.req.query("branch_id") || null;
+    if (!DAY_RE.test(from) || !DAY_RE.test(to) || from > to) {
+      return c.json(
+        { error: { code: "validation_failed", message: "from and to must be YYYY-MM-DD, from on or before to" } },
+        400,
+      );
+    }
+    if (branchId && !UUID_RE.test(branchId)) {
+      return c.json({ error: { code: "validation_failed", message: "branch_id must be a branch id" } }, 400);
+    }
+    const saleBranch = branchId ? sql`AND o.branch_id = ${branchId}::uuid` : sql``;
+    const closeBranch = branchId ? sql`AND d.branch_id = ${branchId}::uuid` : sql``;
+
+    const [sales, refunds, closes, users, branches] = await Promise.all([
+      db.execute<StaffSalesRow>(sql`
+        SELECT o.created_by_user_id::text AS user_id, o.branch_id::text AS branch_id,
+               COUNT(*)::int AS orders,
+               COALESCE(SUM(it.bottles), 0)::int AS bottles,
+               COALESCE(SUM(o.total_ngn), 0)::bigint AS gross_ngn
+        FROM sale_order o
+        LEFT JOIN LATERAL (
+          SELECT SUM(i.quantity) AS bottles FROM sale_order_item i WHERE i.sale_order_id = o.id
+        ) it ON true
+        WHERE o.status IN ('paid','handed_over','out_for_delivery','delivered')
+          AND (o.created_at_local AT TIME ZONE 'Africa/Lagos')::date BETWEEN ${from}::date AND ${to}::date
+          ${saleBranch}
+        GROUP BY o.created_by_user_id, o.branch_id
+      `),
+      db.execute<StaffRefundRow>(sql`
+        SELECT o.created_by_user_id::text AS user_id, o.branch_id::text AS branch_id,
+               COALESCE(SUM(sr.refund_amount_ngn), 0)::bigint AS refunds_ngn
+        FROM sale_return sr
+        JOIN sale_order o ON o.id = sr.original_sale_order_id
+        WHERE sr.status = 'completed'
+          AND (sr.created_at AT TIME ZONE 'Africa/Lagos')::date BETWEEN ${from}::date AND ${to}::date
+          ${saleBranch}
+        GROUP BY o.created_by_user_id, o.branch_id
+      `),
+      db.execute<StaffCloseRow>(sql`
+        SELECT d.submitted_by_user_id::text AS user_id, d.branch_id::text AS branch_id,
+               COUNT(*)::int AS closes,
+               COUNT(*) FILTER (WHERE d.variance_ngn < 0)::int AS short_count,
+               COALESCE(SUM(-d.variance_ngn) FILTER (WHERE d.variance_ngn < 0), 0)::bigint AS short_total_ngn
+        FROM daily_close d
+        WHERE d.status <> 'draft'
+          AND d.submitted_by_user_id IS NOT NULL
+          AND d.business_date BETWEEN ${from}::date AND ${to}::date
+          ${closeBranch}
+        GROUP BY d.submitted_by_user_id, d.branch_id
+      `),
+      db.execute<StaffUserInfo>(sql`
+        SELECT id::text AS id, name, email, role::text AS role FROM admin_user
+      `),
+      db.execute<{ id: string; name: string }>(sql`SELECT id::text AS id, name FROM branch`),
+    ]);
+
+    const rows = buildStaffReport({
+      sales: [...sales],
+      refunds: [...refunds],
+      closes: [...closes],
+      users: [...users],
+      branches: [...branches],
+    });
+    return c.json({
+      data: {
+        from,
+        to,
+        branch_id: branchId,
+        rows,
+        totals: staffReportTotals(rows),
+      },
+    });
+  });
+
   // Command-center snapshot: all counters needed for the stat-banner strips.
   // Each sub-query is wrapped in `block()` so a single failure yields 0s instead
   // of a 500. month_profit_ngn is computed in JS (spec requirement).
@@ -398,29 +499,39 @@ export function reportRoutes(db: DbClient) {
     }
 
     const [stockBlock, fulfilmentBlock, todayBlock] = await Promise.all([
+      // "Running low" is judged per shelf: each (location, size) balance is
+      // compared with that size's own low_stock_level (default 10). Sizes at 0
+      // count too (an empty shelf is the most urgent kind of low). Only live
+      // flavours/sizes at live branches/factories; legacy ledger rows with no
+      // size (variant_id NULL) are left out because they have no level.
       block("stock", async () => {
-        const [factory, branch] = await Promise.all([
-          db.execute<{ n: number }>(sql`
-            SELECT COUNT(*)::int AS n FROM (
-              SELECT product_id, variant_id, COALESCE(SUM(delta),0) AS balance
-              FROM stock_ledger WHERE location_type = 'factory'
-              GROUP BY product_id, variant_id
-            ) t WHERE balance BETWEEN 1 AND 10
-          `),
-          db.execute<{ n: number }>(sql`
-            SELECT COUNT(*)::int AS n FROM (
-              SELECT product_id, variant_id, COALESCE(SUM(delta),0) AS balance
-              FROM stock_ledger WHERE location_type = 'branch'
-              GROUP BY product_id, variant_id
-            ) t WHERE balance BETWEEN 1 AND 10
-          `),
-        ]);
-        return {
-          low_stock_factory: Number(factory[0]?.n ?? 0),
-          low_stock_branch: Number(branch[0]?.n ?? 0),
-          expiring_48h: 0,
-        };
-      }, { low_stock_factory: 0, low_stock_branch: 0, expiring_48h: 0 }),
+        const rows = await db.execute<LowStockRow>(sql`
+          WITH bal AS (
+            SELECT location_type::text AS location_type, location_id, variant_id,
+                   COALESCE(SUM(delta), 0)::int AS balance
+            FROM stock_ledger
+            WHERE variant_id IS NOT NULL
+            GROUP BY location_type, location_id, variant_id
+          )
+          SELECT b.location_type, b.location_id::text AS location_id,
+                 COALESCE(br.name, f.name) AS location_name,
+                 b.variant_id::text AS variant_id, p.name AS product_name, pv.size_ml,
+                 b.balance, COALESCE(pv.low_stock_level, ${DEFAULT_LOW_STOCK_LEVEL})::int AS level
+          FROM bal b
+          JOIN product_variant pv ON pv.id = b.variant_id
+            AND pv.deleted_at IS NULL AND pv.is_active = true
+          JOIN product p ON p.id = pv.product_id
+            AND p.deleted_at IS NULL AND p.is_active = true
+          LEFT JOIN branch br ON b.location_type = 'branch' AND br.id = b.location_id
+          LEFT JOIN factory f ON b.location_type = 'factory' AND f.id = b.location_id
+          WHERE b.balance <= COALESCE(pv.low_stock_level, ${DEFAULT_LOW_STOCK_LEVEL})
+            AND (
+              (b.location_type = 'branch' AND br.id IS NOT NULL AND br.deleted_at IS NULL AND br.is_active = true)
+              OR (b.location_type = 'factory' AND f.id IS NOT NULL AND f.is_active = true)
+            )
+        `);
+        return { ...summariseLowStock([...rows]), expiring_48h: 0 };
+      }, { low_stock_factory: 0, low_stock_branch: 0, expiring_48h: 0, low_stock_items: [] as LowStockRow[] }),
 
       block("fulfilment", async () => {
         // "Orders pending" used to count every non-preorder sale in

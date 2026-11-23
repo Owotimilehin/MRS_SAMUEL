@@ -22,6 +22,9 @@ export const productVariant = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     bottleMaterialId: uuid("bottle_material_id").references(() => packagingMaterial.id),
+    // Per-size "running low" level (migration 0090). Stock at a location at or
+    // below this counts as low. Null = the default of 10. CHECK >= 0 in SQL.
+    lowStockLevel: integer("low_stock_level"),
   },
   (t) => ({
     idxProduct: index("idx_product_variant_product").on(t.productId),

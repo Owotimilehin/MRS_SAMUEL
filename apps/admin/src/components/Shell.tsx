@@ -7,6 +7,7 @@ import {
   ChevronsRight,
   LayoutDashboard,
   TrendingUp,
+  UserCheck,
   Bell,
   ReceiptText,
   CupSoda,
@@ -64,6 +65,7 @@ interface NavLink {
 const NAV_OVERVIEW: NavLink[] = [
   { to: "/owner/dashboard", label: "Dashboard", Icon: LayoutDashboard, cap: "reports.view" },
   { to: "/owner/analytics", label: "Analytics", Icon: TrendingUp, cap: "reports.view" },
+  { to: "/owner/staff", label: "Staff sales", Icon: UserCheck, cap: "reports.view" },
   { to: "/owner/review", label: "Needs review", Icon: Bell, cap: "orders.manage" },
 ];
 const NAV_SALES: NavLink[] = [
