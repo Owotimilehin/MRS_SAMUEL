@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { TreePine, HeartHandshake, Building2, Sparkles } from "lucide-react";
 import { ServiceLanding, type ServiceFaq } from "@/components/ServiceLanding";
 import { seo, breadcrumbLd, faqPageLd, serviceLd } from "@/lib/seo";
-import clusterBerry from "@/assets/decor/cluster-berry.png";
+import clusterBerry from "@/assets/decor/cluster-berry.webp";
 
 const PATH = "/gifts";
 const DESCRIPTION =

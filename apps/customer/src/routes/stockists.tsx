@@ -5,7 +5,7 @@ import { PageHero } from "@/components/PageHero";
 import { EnquiryForm } from "@/components/EnquiryForm";
 import { seo, breadcrumbLd } from "@/lib/seo";
 import { STOCKISTS, STOCKISTS_PATH, STOCKIST_LABEL, stockistsLd } from "@/lib/stockists";
-import clusterCitrus from "@/assets/decor/cluster-citrus.png";
+import clusterCitrus from "@/assets/decor/cluster-citrus.webp";
 
 // TODO(owner): add the gyms, salons, offices and hotels that stock us to
 // src/lib/stockists.json (instructions are inside the file). The page joins

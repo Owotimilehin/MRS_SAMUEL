@@ -13,6 +13,7 @@ import { sortByStock650 } from "@/lib/stock-summary";
 import { productCopy } from "@/lib/product-copy";
 import { productOffer } from "@/lib/product-offer";
 import { AboutJuice } from "@/components/AboutJuice";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 function StockLabel({ size, available }: { size: Size; available: number | undefined }) {
   const n = available ?? 0;
@@ -108,16 +109,27 @@ function Page() {
       <section className="px-5 sm:px-10 max-w-7xl mx-auto pt-10 pb-16">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <motion.div
-            initial={{ opacity: 0, scale: 0.94 }}
+            initial={false} /* LCP image: paint immediately, no fade-in (SEO F8) */
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8 }}
             className="relative h-[420px] sm:h-[560px] rounded-[2rem] overflow-hidden"
             style={{ background: p.palette.surface }}
           >
-            <img src={clusterImg} alt="" aria-hidden className="absolute -bottom-6 -right-6 w-[55%] opacity-90" />
+            <img
+              src={clusterImg}
+              alt=""
+              aria-hidden
+              width={IMG_SIZE.cluster.width}
+              height={IMG_SIZE.cluster.height}
+              fetchPriority="low"
+              className="absolute -bottom-6 -right-6 w-[55%] opacity-90"
+            />
             <motion.img
-              src={p.image}
+              src={webpSrc(p.image)}
               alt={p.name}
+              width={IMG_SIZE.bottle.width}
+              height={IMG_SIZE.bottle.height}
+              fetchPriority="high"
               className="absolute inset-0 m-auto h-[88%] w-auto object-contain drop-shadow-[0_28px_36px_rgba(80,40,10,0.28)]"
               animate={{ y: [0, -10, 0] }}
               transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
@@ -233,7 +245,14 @@ function Page() {
             {related.map((r) => (
               <Link key={r.id} to="/juices/$id" params={{ id: r.id }} className="group rounded-2xl bg-white ring-1 ring-black/5 overflow-hidden hover:shadow-lg transition">
                 <div className="relative h-52" style={{ background: r.palette.surface }}>
-                  <img src={r.image} alt={r.name} className="absolute inset-0 m-auto h-[105%] w-auto object-contain" />
+                  <img
+                    src={webpSrc(r.image)}
+                    alt={r.name}
+                    width={IMG_SIZE.bottle.width}
+                    height={IMG_SIZE.bottle.height}
+                    loading="lazy"
+                    className="absolute inset-0 m-auto h-[105%] w-auto object-contain"
+                  />
                 </div>
                 <div className="p-4">
                   <h3 className="font-display text-lg text-[color:var(--brand)]">{r.name}</h3>

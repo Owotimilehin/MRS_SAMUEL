@@ -150,7 +150,9 @@
         "Lighthouse mobile performance >= 85 on /, /juices and one product page (report in PR)",
         "LCP image is not lazy-loaded and has fetchpriority=high"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "Images to WebP (35 MB -> 1.5 MB in src/assets), width/height, LCP fetchpriority=high, no fade on hero/product bottle, fonts non-blocking, compressed JS/CSS. Local Lighthouse mobile: /juices 91-96, product 86-93, home 54-68 before the hero fade fix. Re-measure / on PageSpeed Insights after deploy."
     },
     {
       "id": "Q1",

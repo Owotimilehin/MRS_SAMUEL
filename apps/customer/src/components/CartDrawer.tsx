@@ -3,6 +3,7 @@ import { Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useCart, formatNaira } from "@/lib/cart";
 import { deliveryPromise } from "@/lib/availability-label";
+import { webpSrc } from "@/lib/media";
 
 export function CartDrawer() {
   const { items, open, setOpen, setQty, remove, subtotal } = useCart();
@@ -59,7 +60,7 @@ export function CartDrawer() {
                     style={{ background: item.product.palette.surface }}
                   >
                     <img
-                      src={item.product.image}
+                      src={webpSrc(item.product.image)}
                       alt=""
                       className="h-14 w-14 object-contain drop-shadow"
                     />

@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Heart, PartyPopper, Cake, Briefcase, Instagram } from "lucide-react";
 import { ServiceLanding, type ServiceFaq } from "@/components/ServiceLanding";
 import { seo, breadcrumbLd, faqPageLd, serviceLd } from "@/lib/seo";
-import clusterWatermelon from "@/assets/decor/cluster-watermelon.png";
+import clusterWatermelon from "@/assets/decor/cluster-watermelon.webp";
 
 const PATH = "/events-juice-lagos";
 const DESCRIPTION =

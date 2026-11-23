@@ -3,6 +3,7 @@ import { ArrowUpRight, Clock } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import type { BlogPostSummary } from "@/lib/api/mappers";
 import { CLUSTERS, HARD_EDGED_DECOR } from "@/lib/visuals";
+import { IMG_SIZE } from "@/lib/media";
 
 export function Blog({ posts }: { posts: BlogPostSummary[] }) {
   const featured = posts.slice(0, 3);
@@ -19,7 +20,10 @@ export function Blog({ posts }: { posts: BlogPostSummary[] }) {
             Stories from the Kitchen
           </h2>
         </div>
-        <Link to="/blog" className="hidden sm:inline-flex text-sm font-semibold text-[color:var(--brand-orange)]">
+        <Link
+          to="/blog"
+          className="hidden sm:inline-flex text-sm font-semibold text-[color:var(--brand-orange)]"
+        >
           Read All →
         </Link>
       </div>
@@ -40,6 +44,9 @@ export function Blog({ posts }: { posts: BlogPostSummary[] }) {
                   src={CLUSTERS[p.cover]}
                   alt=""
                   aria-hidden
+                  width={IMG_SIZE.cluster.width}
+                  height={IMG_SIZE.cluster.height}
+                  loading="lazy"
                   className={`absolute inset-0 transition duration-500 group-hover:scale-105 ${
                     HARD_EDGED_DECOR.has(CLUSTERS[p.cover])
                       ? "h-full w-full object-cover"

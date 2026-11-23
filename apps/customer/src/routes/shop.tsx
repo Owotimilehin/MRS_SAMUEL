@@ -7,8 +7,9 @@ import { sortByStock650 } from "@/lib/stock-summary";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { formatNaira, quickAddSize, useCart } from "@/lib/cart";
-import bottleSunrise from "@/assets/bottle-sunrise.png";
+import bottleSunrise from "@/assets/bottle-sunrise.webp";
 import { seo, breadcrumbLd } from "@/lib/seo";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 export const Route = createFileRoute("/shop")({
   head: () =>
@@ -74,8 +75,8 @@ function Page() {
                     className="pointer-events-none absolute inset-0 z-0"
                     style={{ background: `radial-gradient(120% 80% at 50% 100%, ${p.palette.accent}22 0%, transparent 60%)` }}
                   />
-                  <img src={p.image} alt={p.name} loading="lazy" className="absolute left-3 sm:left-4 bottom-3 h-[92%] w-auto object-contain object-bottom drop-shadow-[0_18px_22px_rgba(40,20,10,0.22)] z-10 transition-transform group-hover:scale-105" />
-                  <img src={getFruitFor(p.id, p.cluster)} alt="" aria-hidden loading="lazy" className="absolute right-3 bottom-3 w-[48%] max-w-[150px] object-contain object-bottom drop-shadow-[0_14px_18px_rgba(40,20,10,0.20)] z-[5] pointer-events-none transition-transform duration-500 group-hover:translate-y-[-4px]" />
+                  <img src={webpSrc(p.image)} alt={p.name} width={IMG_SIZE.bottle.width} height={IMG_SIZE.bottle.height} loading="lazy" className="absolute left-3 sm:left-4 bottom-3 h-[92%] w-auto object-contain object-bottom drop-shadow-[0_18px_22px_rgba(40,20,10,0.22)] z-10 transition-transform group-hover:scale-105" />
+                  <img src={getFruitFor(p.id, p.cluster)} alt="" aria-hidden width={IMG_SIZE.fruit.width} height={IMG_SIZE.fruit.height} loading="lazy" className="absolute right-3 bottom-3 w-[48%] max-w-[150px] object-contain object-bottom drop-shadow-[0_14px_18px_rgba(40,20,10,0.20)] z-[5] pointer-events-none transition-transform duration-500 group-hover:translate-y-[-4px]" />
                 </div>
                 <div className="flex flex-col gap-3 p-5">
                   <div>

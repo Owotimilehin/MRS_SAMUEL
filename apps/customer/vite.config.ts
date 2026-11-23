@@ -6,13 +6,18 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// Self-hosted on the DO droplet (Docker / Cloudflare Tunnel), not Vercel.
+// node-server emits a standalone Node bundle at .output/server/index.mjs.
+// compressPublicAssets: ship .gz/.br copies of JS, CSS and other static files so the
+// Node server sends them compressed (SEO F8, mobile speed). It is a real nitro option
+// that the Lovable wrapper forwards but doesn't list in its types, hence the variable.
+const nitroOptions = { preset: "node-server", compressPublicAssets: true };
+
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
   },
-  // Self-hosted on the DO droplet (Docker / Cloudflare Tunnel), not Vercel.
-  // node-server emits a standalone Node bundle at .output/server/index.mjs.
-  nitro: { preset: "node-server" },
+  nitro: nitroOptions,
 });

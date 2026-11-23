@@ -3,7 +3,8 @@ import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import { ShoppingCart, ArrowRight, Menu, X } from "lucide-react";
 import { useCart } from "@/lib/cart";
-import logoDark from "@/assets/logo-dark.png";
+import logoDark from "@/assets/logo-dark.webp";
+import { IMG_SIZE } from "@/lib/media";
 
 const links = [
   { label: "Home", to: "/" as const },
@@ -28,6 +29,8 @@ export function Nav() {
           <img
             src={logoDark}
             alt="Mrs. Samuel Fruit Juice"
+            width={IMG_SIZE.logo.width}
+            height={IMG_SIZE.logo.height}
             className="h-12 sm:h-14 w-auto object-contain"
           />
         </Link>
@@ -82,7 +85,13 @@ export function Nav() {
       {mobile && (
         <div className="fixed inset-0 z-50 bg-[color:var(--cream)] lg:hidden">
           <div className="flex items-center justify-between px-5 py-5">
-            <img src={logoDark} alt="" className="h-12 w-auto" />
+            <img
+              src={logoDark}
+              alt=""
+              width={IMG_SIZE.logo.width}
+              height={IMG_SIZE.logo.height}
+              className="h-12 w-auto"
+            />
             <button
               onClick={() => setMobile(false)}
               className="grid h-10 w-10 place-items-center rounded-full hover:bg-black/5"

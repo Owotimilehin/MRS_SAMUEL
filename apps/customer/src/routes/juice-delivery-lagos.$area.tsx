@@ -14,7 +14,7 @@ import {
   nearbyAreas,
 } from "@/lib/area-page";
 import { seo, breadcrumbLd, faqPageLd } from "@/lib/seo";
-import clusterCitrus from "@/assets/decor/cluster-citrus.png";
+import clusterCitrus from "@/assets/decor/cluster-citrus.webp";
 
 export const Route = createFileRoute("/juice-delivery-lagos/$area")({
   loader: async ({ params }) => {

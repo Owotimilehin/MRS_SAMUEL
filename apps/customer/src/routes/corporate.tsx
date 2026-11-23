@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Refrigerator, Presentation, HeartPulse, Gift } from "lucide-react";
 import { ServiceLanding, type ServiceFaq } from "@/components/ServiceLanding";
 import { seo, breadcrumbLd, faqPageLd, serviceLd } from "@/lib/seo";
-import clusterGreen from "@/assets/decor/cluster-green.png";
+import clusterGreen from "@/assets/decor/cluster-green.webp";
 
 const PATH = "/corporate";
 const DESCRIPTION =

@@ -8,6 +8,7 @@ import { formatNaira } from "@/lib/cart";
 import { whatsappLink } from "@/lib/whatsapp";
 import { LinkedText } from "@/components/LinkedText";
 import { LOCAL_BADGES } from "@/lib/area-page";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 export interface LocalFaq {
   q: string;
@@ -114,8 +115,10 @@ export function LocalLanding({
                   className="flex h-full flex-col items-center rounded-2xl bg-white p-4 text-center ring-1 ring-black/5 hover:shadow-lg transition"
                 >
                   <img
-                    src={p.image}
+                    src={webpSrc(p.image)}
                     alt={`${p.name} fresh juice bottle`}
+                    width={IMG_SIZE.bottle.width}
+                    height={IMG_SIZE.bottle.height}
                     loading="lazy"
                     className="h-32 w-auto object-contain"
                   />
