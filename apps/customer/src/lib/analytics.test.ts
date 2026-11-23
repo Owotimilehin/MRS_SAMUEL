@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { analyticsEnabled, contactKind, gaHeadScripts } from "./analytics";
+import {
+  analyticsEnabled,
+  contactKind,
+  gaHeadScripts,
+  leadParams,
+  resetLeadTracking,
+  trackLeadOnce,
+} from "./analytics";
 
 describe("analytics (F5)", () => {
   it("stays off until a real Measurement ID is set", () => {
@@ -22,5 +29,20 @@ describe("analytics (F5)", () => {
     expect(contactKind("/juices")).toBeNull();
     expect(contactKind("https://example.com/wa.me/")).toBeNull();
     expect(contactKind(null)).toBeNull();
+  });
+
+  it("generate_lead params name the form and page, never what was typed", () => {
+    expect(leadParams("bulk_order", "events", "/events-juice-lagos")).toEqual({
+      enquiry_type: "bulk_order",
+      lead_source: "events",
+      page_path: "/events-juice-lagos",
+    });
+  });
+
+  it("counts a lead once per form per page", () => {
+    resetLeadTracking();
+    expect(trackLeadOnce("bulk_order", "events", "/events-juice-lagos")).toBe(true);
+    expect(trackLeadOnce("bulk_order", "events", "/events-juice-lagos")).toBe(false);
+    expect(trackLeadOnce("bulk_order", "gifts", "/gifts")).toBe(true);
   });
 });

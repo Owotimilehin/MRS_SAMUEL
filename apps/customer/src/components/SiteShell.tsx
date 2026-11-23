@@ -6,6 +6,7 @@ import { Nav } from "@/components/Nav";
 import { CartDrawer } from "@/components/CartDrawer";
 import { FloatingCart } from "@/components/FloatingCart";
 import logoWhite from "@/assets/logo-white.png";
+import { STOCKISTS } from "@/lib/stockists";
 
 export function SiteShell({ children, topBar }: { children: ReactNode; topBar?: ReactNode }) {
   return (
@@ -90,6 +91,12 @@ function Footer() {
             <li><Link to="/shop" className="hover:text-white">Shop</Link></li>
             <li><Link to="/white-label" className="hover:text-white">White Label</Link></li>
             <li><Link to="/bulk-orders" className="hover:text-white">Bulk Orders</Link></li>
+            <li><Link to="/events-juice-lagos" className="hover:text-white">Juice for Events</Link></li>
+            <li><Link to="/corporate" className="hover:text-white">Corporate & Offices</Link></li>
+            <li><Link to="/gifts" className="hover:text-white">Gifts & Hampers</Link></li>
+            {STOCKISTS.length > 0 && (
+              <li><Link to="/stockists" className="hover:text-white">Stockists</Link></li>
+            )}
             <li><Link to="/blog" className="hover:text-white">Blog</Link></li>
             <li><Link to="/track" className="hover:text-white">Track Order</Link></li>
           </ul>

@@ -239,6 +239,26 @@ export function articleLd(a: {
   };
 }
 
+/** Service offered by the business (events, office supply, gifting, white label).
+ *  No price: quotes are per order, and we never publish invented prices. */
+export function serviceLd(sv: {
+  name: string;
+  serviceType: string;
+  description: string;
+  path: string;
+}): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: sv.name,
+    serviceType: sv.serviceType,
+    description: sv.description,
+    url: `${SITE_URL}${sv.path}`,
+    provider: { "@id": `${SITE_URL}/#organization` },
+    areaServed: { "@type": "City", name: "Lagos" },
+  };
+}
+
 /** FAQPage — only for Q&As that are visibly rendered on the same page. */
 export function faqPageLd(faqs: { q: string; a: string }[]): object {
   return {

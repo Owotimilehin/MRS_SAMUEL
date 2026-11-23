@@ -8,6 +8,7 @@
  */
 import { SITE_URL } from "./seo";
 import { PUBLISHED_AREAS } from "./areas";
+import { stockistEntries } from "./stockists";
 
 export interface SitemapEntry {
   path: string;
@@ -24,6 +25,9 @@ export const STATIC_ENTRIES: SitemapEntry[] = [
   { path: "/juice-delivery-lagos", changefreq: "monthly", priority: 0.9 },
   { path: "/bulk-orders", changefreq: "monthly", priority: 0.8 },
   { path: "/white-label", changefreq: "monthly", priority: 0.7 },
+  { path: "/events-juice-lagos", changefreq: "monthly", priority: 0.8 },
+  { path: "/corporate", changefreq: "monthly", priority: 0.7 },
+  { path: "/gifts", changefreq: "monthly", priority: 0.7 },
   { path: "/blog", changefreq: "weekly", priority: 0.7 },
   { path: "/about", changefreq: "monthly", priority: 0.6 },
   { path: "/delivery", changefreq: "monthly", priority: 0.6 },
@@ -86,6 +90,7 @@ export async function collectSitemapEntries(fetchJson: Fetcher): Promise<Sitemap
   return [
     ...STATIC_ENTRIES,
     ...areaEntries(),
+    ...stockistEntries(),
     ...products
       .filter((p) => p?.slug)
       .map((p) => ({ path: `/juices/${encodeURIComponent(p.slug)}`, changefreq: "weekly" as const, priority: 0.8 })),
