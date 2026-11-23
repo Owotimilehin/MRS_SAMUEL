@@ -14,9 +14,9 @@ import { seo, breadcrumbLd } from "@/lib/seo";
 export const Route = createFileRoute("/juices/")({
   head: () =>
     seo({
-      title: "Fresh Juice Menu — Zobo, Pineapple, Green Juice | Mrs. Samuel",
+      title: "Fresh Juice Menu — Pineapple, Ginger, Green Juice | Mrs. Samuel",
       description:
-        "Browse every cold-pressed Mrs. Samuel juice — zobo, tigernut, pineapple-ginger and more. Filter by ingredient or category. Pressed fresh daily in Lagos, no added sugar.",
+        "Every cold-pressed Mrs. Samuel juice: pineapple-ginger, orange, guava, green juice and more. Pressed fresh in Lagos, no added sugar.",
       path: "/juices",
       jsonLd: [breadcrumbLd([{ name: "Home", path: "/" }, { name: "Our Juices", path: "/juices" }])],
     }),

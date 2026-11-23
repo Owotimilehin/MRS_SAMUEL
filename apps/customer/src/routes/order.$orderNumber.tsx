@@ -13,7 +13,13 @@ import { OrderSummaryCard } from "@/components/OrderSummaryCard";
 import { PaymentHoldBanner } from "@/components/PaymentHoldBanner";
 
 export const Route = createFileRoute("/order/$orderNumber")({
-  head: () => ({ meta: [{ title: "Your order — Mrs. Samuel Fruit Juice" }] }),
+  // Private order status: keep it out of search results.
+  head: () => ({
+    meta: [
+      { title: "Your order — Mrs. Samuel Fruit Juice" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: OrderPage,
 });
 

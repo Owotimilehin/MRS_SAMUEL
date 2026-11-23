@@ -29,6 +29,8 @@ export const Route = createFileRoute("/checkout")({
   head: () => ({
     meta: [
       { title: "Checkout — Mrs. Samuel Fruit Juice" },
+      // Utility page: keep it out of search results.
+      { name: "robots", content: "noindex, nofollow" },
       { name: "description", content: "Complete your Mrs. Samuel juice order. Lagos delivery now or scheduled; nationwide arranged separately. Pay securely online." },
     ],
   }),
