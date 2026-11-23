@@ -10,6 +10,9 @@ import { useCart, formatNaira, quickAddSize } from "@/lib/cart";
 import { seo, productLd, breadcrumbLd } from "@/lib/seo";
 import { deliveryPromise } from "@/lib/availability-label";
 import { sortByStock650 } from "@/lib/stock-summary";
+import { productCopy } from "@/lib/product-copy";
+import { productOffer } from "@/lib/product-offer";
+import { AboutJuice } from "@/components/AboutJuice";
 
 function StockLabel({ size, available }: { size: Size; available: number | undefined }) {
   const n = available ?? 0;
@@ -39,8 +42,9 @@ export const Route = createFileRoute("/juices/$id")({
     }
     const path = `/juices/${p.id}`;
     const description =
+      productCopy(p.id)?.metaDescription ??
       `${p.tagline} Cold-pressed ${p.name} made fresh in Lagos with ${p.ingredients.slice(0, 4).join(", ")} — no added sugar, no preservatives.`.trim();
-    const fromPrice = p.prices["330ml"] || p.prices["650ml"];
+    const offer = productOffer(p);
     return seo({
       title: `${p.name} — Fresh Cold-Pressed Juice in Lagos | Mrs. Samuel`,
       description,
@@ -48,7 +52,14 @@ export const Route = createFileRoute("/juices/$id")({
       image: p.image,
       type: "product",
       jsonLd: [
-        productLd({ name: p.name, description, image: p.image, path, priceNgn: fromPrice }),
+        productLd({
+          name: p.name,
+          description,
+          image: p.image,
+          path,
+          priceNgn: offer?.priceNgn,
+          availability: offer?.availability,
+        }),
         breadcrumbLd([
           { name: "Home", path: "/" },
           { name: "Our Juices", path: "/juices" },
@@ -197,6 +208,8 @@ function Page() {
           ))}
         </div>
       </section>
+
+      <AboutJuice p={p} sizes={sizes} />
 
       {/* Story */}
       <section className="px-5 sm:px-10 pb-20">

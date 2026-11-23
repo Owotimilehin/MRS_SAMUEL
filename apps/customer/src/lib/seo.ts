@@ -188,7 +188,12 @@ export function productLd(p: {
   image: string;
   path: string;
   priceNgn?: number;
+  /** schema.org ItemAvailability short name. Defaults to InStock. */
+  availability?: "InStock" | "OutOfStock" | "PreOrder";
 }): object {
+  // TODO(owner): no nutrition facts, reviews or ratings are added here on
+  // purpose. Add `nutrition`, `review` or `aggregateRating` only once real,
+  // verified values exist (lab-tested nutrition, genuine customer reviews).
   return {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -203,7 +208,7 @@ export function productLd(p: {
             "@type": "Offer",
             priceCurrency: "NGN",
             price: p.priceNgn,
-            availability: "https://schema.org/InStock",
+            availability: `https://schema.org/${p.availability ?? "InStock"}`,
             url: `${SITE_URL}${p.path}`,
           },
         }
