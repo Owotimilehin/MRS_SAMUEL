@@ -9,7 +9,7 @@ const DESCRIPTION =
   "Fresh juice gift hampers in Lagos for Christmas, Valentine's Day, clients and staff. Cold-pressed, no added sugar, delivered chilled. Ask us for a quote.";
 
 // TODO(owner): confirm hamper contents (bottles per box, extras), any set
-// hamper prices, the Christmas and Valentine's order cut-off dates, and
+// hamper prices, the Valentine's order cut-off date (owner: no Christmas cut-off), and
 // whether custom labels/messages are offered. Until then: "Ask us".
 // TODO(owner): add hamper photos (WebP, with width/height) when available.
 const FAQS: ServiceFaq[] = [

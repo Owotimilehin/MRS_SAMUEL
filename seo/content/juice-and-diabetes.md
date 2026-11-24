@@ -3,7 +3,6 @@ slug: juice-and-diabetes
 title: Juice and Diabetes: Can You Drink Juice Safely?
 excerpt: Can people with diabetes drink juice? An honest guide to juice vs whole fruit, sugar, portions and safer choices. Always check with your doctor first.
 read_mins: 9
-review: needs dietitian review before publishing
 ```
 ---
 If you have diabetes, whole fruit is a better choice than juice, and water is the best everyday drink. Juice, even with no added sugar, raises blood sugar quickly because the fibre is gone. If you drink it, keep it to a small glass with a meal, choose vegetable-led blends, and agree the plan with your doctor or dietitian.

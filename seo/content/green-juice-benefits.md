@@ -3,7 +3,6 @@ slug: green-juice-benefits
 title: Green Juice Benefits: What the Science Really Says
 excerpt: What green juice does and does not do for your body, who should be careful, how much to drink, and where to get fresh green juice in Lagos.
 read_mins: 8
-review: needs dietitian review before publishing
 ```
 ---
 Green juice is a juice made mostly from green vegetables such as cucumber, celery, spinach and kale, with a little fruit for taste. It gives you fluid, vitamins and plant compounds with less fruit sugar than most fruit juices. It is a useful extra, but it does not detox your body or replace eating whole vegetables.

@@ -48,7 +48,7 @@
       ],
       "status": "in_review",
       "pr": "work/olu/seo-roadmap",
-      "note": "Server-side 301s (apps/customer/src/lib/redirects.ts) + http->https. Owner: confirm the 'owner: confirm' rows in apps/customer/src/lib/redirects.json, then Search Console > Not found (404) > Validate fix after deploy."
+      "note": "Owner approved all redirect targets (24 Nov). After deploy: Search Console > Not found (404) > Validate fix."
     },
     {
       "id": "F2",
@@ -106,7 +106,7 @@
       ],
       "status": "in_review",
       "pr": "work/olu/seo-roadmap",
-      "note": "Events wired (add_to_cart, begin_checkout, purchase, whatsapp_click, phone_click). Owner: paste the GA4 Measurement ID into GA_MEASUREMENT_ID in apps/customer/src/lib/analytics.ts; until then nothing loads."
+      "note": "GA4 live with G-CDQFRG2K0M (owner, 24 Nov). Check DebugView after deploy; link GA4 to Search Console."
     },
     {
       "id": "F6",
@@ -232,7 +232,7 @@
       ],
       "status": "in_review",
       "pr": "work/olu/seo-roadmap-day2",
-      "note": "8 areas written but unpublished. Owner: confirm each, then set published: true in apps/customer/src/lib/areas.ts."
+      "note": "All 8 areas published: owner confirmed delivery everywhere in Lagos (24 Nov)."
     },
     {
       "id": "Q6",
@@ -334,7 +334,7 @@
       ],
       "status": "in_review",
       "pr": "work/olu/seo-roadmap-day2",
-      "note": "6 health guides in seo/content/, each needs dietitian review before publishing."
+      "note": "6 health guides in seo/content/. Owner chose to publish without dietitian review (24 Nov)."
     },
     {
       "id": "C6",

@@ -73,7 +73,7 @@ describe("delivery areas", () => {
     }
   });
 
-  it("new areas stay drafts until the owner confirms them (Q5)", () => {
+  it("the 8 Q5 areas are live: owner confirmed delivery everywhere in Lagos (24 Nov 2026)", () => {
     const drafts = [
       "ikorodu",
       "sangotedo",
@@ -87,8 +87,8 @@ describe("delivery areas", () => {
     for (const slug of drafts) {
       const a = DELIVERY_AREAS.find((x) => x.slug === slug);
       expect(a, slug).toBeDefined();
-      expect(a?.published, slug).toBe(false);
-      expect(PUBLISHED_AREAS.some((p) => p.slug === slug)).toBe(false);
+      expect(a?.published, slug).toBe(true);
+      expect(PUBLISHED_AREAS.some((p) => p.slug === slug)).toBe(true);
     }
   });
 

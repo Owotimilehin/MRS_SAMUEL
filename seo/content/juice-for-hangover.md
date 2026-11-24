@@ -3,7 +3,6 @@ slug: juice-for-hangover
 title: Best Juice for a Hangover: What Helps and What Doesn't
 excerpt: Is juice good for a hangover? What research says about hangover cures, fluids, ginger and nausea, what to avoid, and fresh juice delivered in Lagos.
 read_mins: 8
-review: needs dietitian review before publishing
 ```
 ---
 No juice cures a hangover. US health authorities say time is the only cure. But alcohol makes you lose fluid, so drinking water and a small glass of juice can help you feel more comfortable, and ginger may settle a queasy stomach. The best protection is drinking less alcohol in the first place.

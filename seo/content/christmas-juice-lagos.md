@@ -105,7 +105,7 @@ Every December, the same thing happens. Everybody remembers drinks on the 23rd. 
 
 Our juices are pressed in our kitchen at Ajao Estate, Ikeja, and we deliver across Lagos. To get the juices and the delivery day you want, place Christmas and party orders well ahead, especially for large events and corporate gifts.
 
-TODO(owner): add the last order date for delivery before Christmas Day and before New Year's Eve, and how many days' notice large orders need.
+There is **no Christmas cut-off**: you can order right up to Christmas Day and New Year's Eve, and we deliver everywhere in Lagos. For big parties and corporate gifts, a few days' notice still helps us press enough for everyone.
 
 TODO(owner): add delivery fees or delivery fee ranges for December, and any holiday delivery days the kitchen will be closed.
 
@@ -158,9 +158,9 @@ TODO(owner): confirm hamper contents before publishing this answer.
 
 ### When should I order juice for Christmas?
 
-As early as you can. December is the busiest month in Lagos for parties, gifts and deliveries, so order well ahead for large events and corporate gifts.
+Whenever suits you. December is the busiest month in Lagos for parties, gifts and deliveries, so ordering a few days ahead helps for large events and corporate gifts.
 
-TODO(owner): add the Christmas order cut-off date.
+There is no cut-off date. You can order right up to the day, anywhere in Lagos.
 
 ### How do I keep juice fresh for a Christmas party?
 
