@@ -177,7 +177,6 @@ function Page() {
       related={[
         { to: "/events-juice-lagos", label: "Juice for events" },
         { to: "/gifts", label: "Juice gifts and hampers" },
-        { to: "/bulk-orders", label: "Bulk orders" },
       ]}
     />
   );

@@ -260,7 +260,7 @@ export const PRODUCT_COPY: Record<string, ProductCopy> = {
       },
       {
         heading: "Delivered across Lagos",
-        body: `Order Pineapple Juice for delivery anywhere we cover in Lagos; [juice delivery in Lagos](${DELIVERY}) has the details. For party or office quantities, see [bulk orders](/bulk-orders). To learn more about this fruit, read [pineapple and ginger for everyday wellness](/blog/pineapple-ginger-immunity).`,
+        body: `Order Pineapple Juice for delivery anywhere we cover in Lagos; [juice delivery in Lagos](${DELIVERY}) has the details. For party or office quantities, see [bulk orders](/events-juice-lagos). To learn more about this fruit, read [pineapple and ginger for everyday wellness](/blog/pineapple-ginger-immunity).`,
       },
     ],
   },
@@ -405,7 +405,7 @@ export const PRODUCT_COPY: Record<string, ProductCopy> = {
       },
       {
         heading: "Delivered across Lagos",
-        body: `Order Zesty Sunrise for delivery across Lagos. Visit [juice delivery in Lagos](${DELIVERY}) to see the areas we cover and how ordering works. Stock up for the family or the office with a [bulk order](/bulk-orders).`,
+        body: `Order Zesty Sunrise for delivery across Lagos. Visit [juice delivery in Lagos](${DELIVERY}) to see the areas we cover and how ordering works. Stock up for the family or the office with a [bulk order](/events-juice-lagos).`,
       },
     ],
   },
@@ -524,7 +524,7 @@ export const PRODUCT_COPY: Record<string, ProductCopy> = {
       },
       {
         heading: "Delivered across Lagos",
-        body: `We deliver Melongrape across Lagos; see [juice delivery in Lagos](${DELIVERY}) for areas. For events, ask about [bulk orders](/bulk-orders). Read [why cold-pressed juices beat the Lagos heat](/blog/cold-pressed-juices-beat-lagos-heat) for more hot-weather ideas.`,
+        body: `We deliver Melongrape across Lagos; see [juice delivery in Lagos](${DELIVERY}) for areas. For events, ask about [bulk orders](/events-juice-lagos). Read [why cold-pressed juices beat the Lagos heat](/blog/cold-pressed-juices-beat-lagos-heat) for more hot-weather ideas.`,
       },
     ],
   },

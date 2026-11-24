@@ -9,7 +9,6 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WhiteLabelRouteImport } from './routes/white-label'
 import { Route as TrackRouteImport } from './routes/track'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as StockistsRouteImport } from './routes/stockists'
@@ -25,7 +24,6 @@ import { Route as DeliveryRouteImport } from './routes/delivery'
 import { Route as CorporateRouteImport } from './routes/corporate'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as CheckoutRouteImport } from './routes/checkout'
-import { Route as BulkOrdersRouteImport } from './routes/bulk-orders'
 import { Route as BlogRouteImport } from './routes/blog'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
@@ -37,11 +35,6 @@ import { Route as JuicesIdRouteImport } from './routes/juices.$id'
 import { Route as JuiceDeliveryLagosAreaRouteImport } from './routes/juice-delivery-lagos.$area'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 
-const WhiteLabelRoute = WhiteLabelRouteImport.update({
-  id: '/white-label',
-  path: '/white-label',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const TrackRoute = TrackRouteImport.update({
   id: '/track',
   path: '/track',
@@ -117,11 +110,6 @@ const CheckoutRoute = CheckoutRouteImport.update({
   path: '/checkout',
   getParentRoute: () => rootRouteImport,
 } as any)
-const BulkOrdersRoute = BulkOrdersRouteImport.update({
-  id: '/bulk-orders',
-  path: '/bulk-orders',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const BlogRoute = BlogRouteImport.update({
   id: '/blog',
   path: '/blog',
@@ -177,7 +165,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/blog': typeof BlogRouteWithChildren
-  '/bulk-orders': typeof BulkOrdersRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
   '/corporate': typeof CorporateRoute
@@ -193,7 +180,6 @@ export interface FileRoutesByFullPath {
   '/stockists': typeof StockistsRoute
   '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
-  '/white-label': typeof WhiteLabelRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juice-delivery-lagos/$area': typeof JuiceDeliveryLagosAreaRoute
   '/juices/$id': typeof JuicesIdRoute
@@ -205,7 +191,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
-  '/bulk-orders': typeof BulkOrdersRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
   '/corporate': typeof CorporateRoute
@@ -220,7 +205,6 @@ export interface FileRoutesByTo {
   '/stockists': typeof StockistsRoute
   '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
-  '/white-label': typeof WhiteLabelRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juice-delivery-lagos/$area': typeof JuiceDeliveryLagosAreaRoute
   '/juices/$id': typeof JuicesIdRoute
@@ -234,7 +218,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/blog': typeof BlogRouteWithChildren
-  '/bulk-orders': typeof BulkOrdersRoute
   '/checkout': typeof CheckoutRoute
   '/contact': typeof ContactRoute
   '/corporate': typeof CorporateRoute
@@ -250,7 +233,6 @@ export interface FileRoutesById {
   '/stockists': typeof StockistsRoute
   '/terms': typeof TermsRoute
   '/track': typeof TrackRoute
-  '/white-label': typeof WhiteLabelRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/juice-delivery-lagos/$area': typeof JuiceDeliveryLagosAreaRoute
   '/juices/$id': typeof JuicesIdRoute
@@ -265,7 +247,6 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/blog'
-    | '/bulk-orders'
     | '/checkout'
     | '/contact'
     | '/corporate'
@@ -281,7 +262,6 @@ export interface FileRouteTypes {
     | '/stockists'
     | '/terms'
     | '/track'
-    | '/white-label'
     | '/blog/$slug'
     | '/juice-delivery-lagos/$area'
     | '/juices/$id'
@@ -293,7 +273,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/about'
-    | '/bulk-orders'
     | '/checkout'
     | '/contact'
     | '/corporate'
@@ -308,7 +287,6 @@ export interface FileRouteTypes {
     | '/stockists'
     | '/terms'
     | '/track'
-    | '/white-label'
     | '/blog/$slug'
     | '/juice-delivery-lagos/$area'
     | '/juices/$id'
@@ -321,7 +299,6 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/blog'
-    | '/bulk-orders'
     | '/checkout'
     | '/contact'
     | '/corporate'
@@ -337,7 +314,6 @@ export interface FileRouteTypes {
     | '/stockists'
     | '/terms'
     | '/track'
-    | '/white-label'
     | '/blog/$slug'
     | '/juice-delivery-lagos/$area'
     | '/juices/$id'
@@ -351,7 +327,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   BlogRoute: typeof BlogRouteWithChildren
-  BulkOrdersRoute: typeof BulkOrdersRoute
   CheckoutRoute: typeof CheckoutRoute
   ContactRoute: typeof ContactRoute
   CorporateRoute: typeof CorporateRoute
@@ -367,7 +342,6 @@ export interface RootRouteChildren {
   StockistsRoute: typeof StockistsRoute
   TermsRoute: typeof TermsRoute
   TrackRoute: typeof TrackRoute
-  WhiteLabelRoute: typeof WhiteLabelRoute
   JuiceDeliveryLagosAreaRoute: typeof JuiceDeliveryLagosAreaRoute
   OrderOrderNumberRoute: typeof OrderOrderNumberRoute
   JuiceDeliveryLagosIndexRoute: typeof JuiceDeliveryLagosIndexRoute
@@ -375,13 +349,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/white-label': {
-      id: '/white-label'
-      path: '/white-label'
-      fullPath: '/white-label'
-      preLoaderRoute: typeof WhiteLabelRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/track': {
       id: '/track'
       path: '/track'
@@ -487,13 +454,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CheckoutRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/bulk-orders': {
-      id: '/bulk-orders'
-      path: '/bulk-orders'
-      fullPath: '/bulk-orders'
-      preLoaderRoute: typeof BulkOrdersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/blog': {
       id: '/blog'
       path: '/blog'
@@ -596,7 +556,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   BlogRoute: BlogRouteWithChildren,
-  BulkOrdersRoute: BulkOrdersRoute,
   CheckoutRoute: CheckoutRoute,
   ContactRoute: ContactRoute,
   CorporateRoute: CorporateRoute,
@@ -612,7 +571,6 @@ const rootRouteChildren: RootRouteChildren = {
   StockistsRoute: StockistsRoute,
   TermsRoute: TermsRoute,
   TrackRoute: TrackRoute,
-  WhiteLabelRoute: WhiteLabelRoute,
   JuiceDeliveryLagosAreaRoute: JuiceDeliveryLagosAreaRoute,
   OrderOrderNumberRoute: OrderOrderNumberRoute,
   JuiceDeliveryLagosIndexRoute: JuiceDeliveryLagosIndexRoute,

@@ -27,7 +27,7 @@ const FAQS: LocalFaq[] = [
   },
   {
     q: "Can I order juice in bulk for an office or event?",
-    a: "Yes. We supply offices, parties, weddings and corporate events across Lagos. Request a quote on our bulk orders page.",
+    a: "Yes. We supply offices, parties, weddings and corporate events across Lagos. Request a quote on our events page or our office orders page.",
   },
 ];
 
@@ -68,7 +68,7 @@ function Page() {
       notes={[
         "The delivery fee is calculated from your address and shown at checkout before you pay.",
         "Not sure if we reach you? Send us a WhatsApp message with your area and we'll confirm before you order.",
-        "Ordering for an office, wedding or event? Request a quote on our bulk orders page.",
+        "Ordering for an office, wedding or event? Request a quote on our office orders page.",
       ]}
       products={products}
       faqs={FAQS}

@@ -126,7 +126,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     occasions: [
       {
         title: "Meetings and training days",
-        text: "Firms on Allen Avenue, Opebi and around Alausa order 330ml bottles for meetings, workshops and visitors. For a standing weekly order, request a quote on our bulk orders page.",
+        text: "Firms on Allen Avenue, Opebi and around Alausa order 330ml bottles for meetings, workshops and visitors. For a standing weekly order, request a quote on our office orders page.",
       },
       {
         title: "Before and after a flight",
@@ -140,7 +140,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     localNotes: [
       "Closest to our kitchen, so this is our fastest delivery area. In-stock orders arrive the same morning or the next morning, depending on when you order.",
       "Prefer to collect? Walk in at Asa Afariogun Street, Ajao Estate. We're open Monday to Saturday 8am–8pm and Sunday 10am–8pm.",
-      "Offices around Ikeja can order in bulk for staff, meetings and events. Request a quote on our bulk orders page.",
+      "Offices around Ikeja can order in bulk for staff, meetings and events. Request a quote on our office orders page.",
     ],
     faqs: [
       {
@@ -157,7 +157,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can offices at Alausa order juice in bulk?",
-        a: "Yes. Tell us the number of bottles and the date on our bulk orders page and we will send a quote.",
+        a: "Yes. Tell us the number of bottles and the date on our events page and we will send a quote.",
       },
     ],
     nearby: ["isolo-okota", "maryland", "ogba-omole", "agege", "ilupeju"],
@@ -230,7 +230,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can I order juice for a thanksgiving or naming ceremony in Isolo?",
-        a: "Yes. For crates, mixed flavours or a fixed delivery date, request a quote on our bulk orders page and tell us roughly how many guests you expect.",
+        a: "Yes. For crates, mixed flavours or a fixed delivery date, request a quote on our events page and tell us roughly how many guests you expect.",
       },
       {
         q: "What does delivery to Isolo cost?",
@@ -394,7 +394,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         title: "Children's birthdays",
-        text: "Juice instead of fizzy drinks at a child's party is an easy win with parents. Order crates in advance on our bulk orders page.",
+        text: "Juice instead of fizzy drinks at a child's party is an easy win with parents. Order crates in advance on our events page.",
       },
       {
         title: "Sunday lunch and visitors",
@@ -485,7 +485,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         title: "Client and staff gifts",
-        text: "Gift boxes are popular with VI firms at the end of the year, for birthdays, and when a deal closes. Request a quote on our bulk orders page for larger numbers.",
+        text: "Gift boxes are popular with VI firms at the end of the year, for birthdays, and when a deal closes. Request a quote on our office orders page for larger numbers.",
       },
       {
         title: "Desk drinks for long days",
@@ -494,7 +494,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     ],
     localNotes: [
       "For office deliveries, add the company name, floor and a phone number that the front desk can call.",
-      "Planning juice for a staff event or end-of-year gifts? Request a quote on our bulk orders page.",
+      "Planning juice for a staff event or end-of-year gifts? Request a quote on our office orders page.",
     ],
     faqs: [
       {
@@ -503,7 +503,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Do you supply juice for corporate events in Victoria Island?",
-        a: "Yes. For meetings, product launches and end-of-year parties, send the date and numbers through our bulk orders page and we will quote.",
+        a: "Yes. For meetings, product launches and end-of-year parties, send the date and numbers through our office orders page and we will quote.",
       },
       {
         q: "How is the delivery fee to VI worked out?",
@@ -666,7 +666,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         title: "Meetings in old offices",
-        text: "Boardrooms along Broad Street serve chilled 330ml bottles to visitors. Request a quote on our bulk orders page for a standing order.",
+        text: "Boardrooms along Broad Street serve chilled 330ml bottles to visitors. Request a quote on our office orders page for a standing order.",
       },
     ],
     localNotes: [
@@ -680,7 +680,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can my office on the Marina order every week?",
-        a: "Yes. Request a quote on our bulk orders page for a regular delivery to your office.",
+        a: "Yes. Request a quote on our office orders page for a regular delivery to your office.",
       },
       {
         q: "What is the delivery fee to Lagos Island?",
@@ -751,7 +751,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     ],
     localNotes: [
       "On the UNILAG campus, give the faculty, hostel or building name and meet the rider at a known point.",
-      "Ordering for a team? Request a quote on our bulk orders page so we can bring everything at once.",
+      "Ordering for a team? Request a quote on our office orders page so we can bring everything at once.",
     ],
     faqs: [
       {
@@ -760,7 +760,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can a startup order juice for an event in Yaba?",
-        a: "Yes. Send the date and the number of guests on our bulk orders page and we will quote for crates.",
+        a: "Yes. Send the date and the number of guests on our events page and we will quote for crates.",
       },
       {
         q: "How much is delivery to Yaba?",
@@ -823,7 +823,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     occasions: [
       {
         title: "Owambes and birthdays",
-        text: "Crates of zobo, pineapple and orange sit next to the drinks table at Surulere parties. Order early on our bulk orders page so we can plan stock.",
+        text: "Crates of zobo, pineapple and orange sit next to the drinks table at Surulere parties. Order early on our events page so we can plan stock.",
       },
       {
         title: "Naming ceremonies",
@@ -836,12 +836,12 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     ],
     localNotes: [
       "For party deliveries, add the venue name and a contact person who will be at the venue when the juice arrives.",
-      "Bulk orders for events need notice so we have enough fruit. Send the date on our bulk orders page as early as you can.",
+      "Bulk orders for events need notice so we have enough fruit. Send the date on our events page as early as you can.",
     ],
     faqs: [
       {
         q: "Can you supply juice for a party in Surulere?",
-        a: "Yes. We deliver chilled crates for owambes, birthdays and weddings. Send the date and guest numbers on our bulk orders page for a quote.",
+        a: "Yes. We deliver chilled crates for owambes, birthdays and weddings. Send the date and guest numbers on our events page for a quote.",
       },
       {
         q: "Do you deliver to Bode Thomas and Ogunlana Drive?",
@@ -857,7 +857,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can I mix flavours in one event order?",
-        a: "Yes. Most Surulere parties take a mix: zobo for the elders, pineapple and orange for the children, and something with ginger for those who like a kick. Tell us the split on the bulk orders page and we will quote for it.",
+        a: "Yes. Most Surulere parties take a mix: zobo for the elders, pineapple and orange for the children, and something with ginger for those who like a kick. Tell us the split on the events page and we will quote for it.",
       },
     ],
     nearby: ["yaba", "isolo-okota", "ilupeju", "apapa"],
@@ -935,7 +935,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can churches in Gbagada order in bulk?",
-        a: "Yes. For programmes and conventions, request a quote on our bulk orders page with the date and numbers.",
+        a: "Yes. For programmes and conventions, request a quote on our events page with the date and numbers.",
       },
       {
         q: "Can I get one delivery a week instead of ordering every day?",
@@ -1031,7 +1031,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can I order for an office on Ikorodu Road?",
-        a: "Yes. Add the company name and floor. For regular orders, request a quote on our bulk orders page.",
+        a: "Yes. Add the company name and floor. For regular orders, request a quote on our office orders page.",
       },
       {
         q: "Is it quicker to collect from Ajao Estate?",
@@ -1091,7 +1091,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         title: "Birthdays in the compound",
-        text: "For celebrations at home, request a quote on our bulk orders page for crates in mixed flavours.",
+        text: "For celebrations at home, request a quote on our events page for crates in mixed flavours.",
       },
     ],
     localNotes: [
@@ -1113,7 +1113,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can I order for a party at home in Magodo?",
-        a: "Yes. Send the date and guest numbers on our bulk orders page for a quote.",
+        a: "Yes. Send the date and guest numbers on our events page for a quote.",
       },
       {
         q: "Is your juice suitable for young children?",
@@ -1121,7 +1121,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Do you deliver to offices on CMD Road?",
-        a: "Yes. Add the company name and a contact at reception. For a regular office order, request a quote on our bulk orders page.",
+        a: "Yes. Add the company name and a contact at reception. For a regular office order, request a quote on our office orders page.",
       },
     ],
     nearby: ["ojota", "ogba-omole", "gbagada", "ikorodu"],
@@ -1179,7 +1179,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         title: "Celebrations and church groups",
-        text: "Omole homes host birthdays, anniversaries and fellowship meetings. Request a quote on our bulk orders page.",
+        text: "Omole homes host birthdays, anniversaries and fellowship meetings. Request a quote on our office orders page.",
       },
     ],
     localNotes: [
@@ -1193,7 +1193,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can you deliver to a factory in Ogba?",
-        a: "Yes. Add the company name and a phone number for the gate. For regular team orders, request a quote on our bulk orders page.",
+        a: "Yes. Add the company name and a phone number for the gate. For regular team orders, request a quote on our office orders page.",
       },
       {
         q: "How much is delivery to Ogba and Berger?",
@@ -1205,7 +1205,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can I order juice for staff on a fixed day each week?",
-        a: "Yes. Tell us the day, the number of bottles and the flavours through our bulk orders page, and we will quote for a regular delivery to your office or factory.",
+        a: "Yes. Tell us the day, the number of bottles and the flavours through our office orders page, and we will quote for a regular delivery to your office or factory.",
       },
     ],
     nearby: ["ikeja", "magodo", "agege", "ojota"],
@@ -1247,7 +1247,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     occasions: [
       {
         title: "Weddings and birthdays",
-        text: "Event halls in Festac stay busy all year. Order crates early on our bulk orders page so the fruit is bought for your date.",
+        text: "Event halls in Festac stay busy all year. Order crates early on our events page so the fruit is bought for your date.",
       },
       {
         title: "Family fridges",
@@ -1269,7 +1269,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can you supply juice for a wedding in Festac?",
-        a: "Yes. Request a quote on our bulk orders page with the date and number of guests.",
+        a: "Yes. Request a quote on our events page with the date and number of guests.",
       },
       {
         q: "How much is delivery to Festac?",
@@ -1281,7 +1281,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "How early should I order for an event in Festac?",
-        a: "As early as you can. Crates for a party need fruit bought and pressed for that day, so send your date on our bulk orders page once it is fixed and we will confirm what we can supply.",
+        a: "As early as you can. Crates for a party need fruit bought and pressed for that day, so send your date on our office orders page once it is fixed and we will confirm what we can supply.",
       },
       {
         q: "Do you deliver to Satellite Town and the Trade Fair end?",
@@ -1339,7 +1339,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         title: "Church and school events",
-        text: "Harvests, prize-giving days and youth programmes call for crates. Request a quote on our bulk orders page.",
+        text: "Harvests, prize-giving days and youth programmes call for crates. Request a quote on our events page.",
       },
       {
         title: "Students and staff on campus",
@@ -1365,7 +1365,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can I order for a church harvest or school event in Ikorodu?",
-        a: "Yes. Send the date, the venue and the number of guests on our bulk orders page and we will reply with a quote.",
+        a: "Yes. Send the date, the venue and the number of guests on our events page and we will reply with a quote.",
       },
       {
         q: "Can I order juice to be delivered to Ebute or near the jetty?",
@@ -1417,7 +1417,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         title: "House-warmings and children's parties",
-        text: "New neighbours, new homes, lots of parties. Order crates ahead on our bulk orders page.",
+        text: "New neighbours, new homes, lots of parties. Order crates ahead on our events page.",
       },
       {
         title: "Weekend golf and lakeside outings",
@@ -1443,7 +1443,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can you supply juice for a children's party in my estate?",
-        a: "Yes. Tell us the date, the estate and the number of children on our bulk orders page, and we will send a quote.",
+        a: "Yes. Tell us the date, the estate and the number of children on our events page, and we will send a quote.",
       },
       {
         q: "Do you deliver to Awoyaya and Lakowe?",
@@ -1510,7 +1510,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         title: "Office teams on Chevron Drive",
-        text: "Bottles for meetings and staff. For regular deliveries, request a quote on our bulk orders page.",
+        text: "Bottles for meetings and staff. For regular deliveries, request a quote on our office orders page.",
       },
       {
         title: "Beach days and outings",
@@ -1532,7 +1532,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can an office on Chevron Drive order juice every week?",
-        a: "Yes. Request a quote on our bulk orders page with the number of bottles and the day you would like them.",
+        a: "Yes. Request a quote on our events page with the number of bottles and the day you would like them.",
       },
       {
         q: "Is the juice still fresh after the trip from Ikeja?",
@@ -1596,7 +1596,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     occasions: [
       {
         title: "Conferences and exhibitions",
-        text: "Event spaces in Oniru host business and trade events. Chilled bottles for guests and staff can be quoted on our bulk orders page.",
+        text: "Event spaces in Oniru host business and trade events. Chilled bottles for guests and staff can be quoted on our office orders page.",
       },
       {
         title: "Beach weekends",
@@ -1618,7 +1618,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can you deliver juice to an event at Landmark Beach or on Water Corporation Drive?",
-        a: "Yes, with notice. Send the date, the venue and guest numbers on our bulk orders page so we can plan stock and the drop-off.",
+        a: "Yes, with notice. Send the date, the venue and guest numbers on our events page so we can plan stock and the drop-off.",
       },
       {
         q: "How much is delivery to Oniru?",
@@ -1698,7 +1698,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     faqs: [
       {
         q: "Can you deliver to a factory in Ilupeju Industrial Estate?",
-        a: "Enter the factory address at checkout to confirm delivery. Add the company name and a phone number for the gate. For a regular staff order, request a quote on our bulk orders page.",
+        a: "Enter the factory address at checkout to confirm delivery. Add the company name and a phone number for the gate. For a regular staff order, request a quote on our office orders page.",
       },
       {
         q: "How much is delivery to Ilupeju?",
@@ -1718,7 +1718,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can a factory order on the same day every week?",
-        a: "Yes. Tell us the day, the number of bottles and the flavours through our bulk orders page, and we will reply with a quote for a standing order to your gate.",
+        a: "Yes. Tell us the day, the number of bottles and the flavours through our office orders page, and we will reply with a quote for a standing order to your gate.",
       },
     ],
     nearby: ["maryland", "ikeja", "surulere", "yaba"],
@@ -1769,7 +1769,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         title: "Offices around the interchange",
-        text: "Staff orders for meetings and long days. Request a quote on our bulk orders page.",
+        text: "Staff orders for meetings and long days. Request a quote on our office orders page.",
       },
       {
         title: "Travellers and visitors",
@@ -1791,7 +1791,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can I order for a family event in Ogudu?",
-        a: "Yes. Tell us the date and the number of guests on our bulk orders page and we will quote.",
+        a: "Yes. Tell us the date and the number of guests on our events page and we will quote.",
       },
       {
         q: "Will the juice be cold when it arrives?",
@@ -1844,7 +1844,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
     occasions: [
       {
         title: "Port and clearing offices",
-        text: "Bottles for staff who rarely get to leave their desks. Request a quote on our bulk orders page for regular orders.",
+        text: "Bottles for staff who rarely get to leave their desks. Request a quote on our office orders page for regular orders.",
       },
       {
         title: "Banks and logistics firms",
@@ -1933,7 +1933,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         title: "Celebrations and religious events",
-        text: "Weddings, naming ceremonies and festivals. Request a quote for crates on our bulk orders page.",
+        text: "Weddings, naming ceremonies and festivals. Request a quote for crates on our events page.",
       },
     ],
     localNotes: [
@@ -1955,7 +1955,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
       },
       {
         q: "Can I order juice for a wedding or naming ceremony in Agege?",
-        a: "Yes. Send the date, the venue and the number of guests on our bulk orders page and we will reply with a quote.",
+        a: "Yes. Send the date, the venue and the number of guests on our events page and we will reply with a quote.",
       },
       {
         q: "Do you deliver as far as Abule Egba and Iju?",

@@ -4,13 +4,14 @@ import { Link } from "@tanstack/react-router";
 /**
  * Turns a few known phrases inside plain copy into real links, so page text
  * can stay a plain string (it is also used for FAQ structured data) while a
- * mention like "our bulk orders page" is still something a customer can tap.
+ * mention like "our events page" is still something a customer can tap.
  */
 const PATTERN =
-  /(bulk orders page|Delivery Information page|Returns & Refunds page|0901 951 2246|info@mrssamuel\.com)/g;
+  /(events page|office orders page|Delivery Information page|Returns & Refunds page|0901 951 2246|info@mrssamuel\.com)/g;
 
-const INTERNAL: Record<string, "/bulk-orders" | "/delivery" | "/returns"> = {
-  "bulk orders page": "/bulk-orders",
+const INTERNAL: Record<string, "/events-juice-lagos" | "/corporate" | "/delivery" | "/returns"> = {
+  "events page": "/events-juice-lagos",
+  "office orders page": "/corporate",
   "Delivery Information page": "/delivery",
   "Returns & Refunds page": "/returns",
 };

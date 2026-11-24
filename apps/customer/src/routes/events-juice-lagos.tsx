@@ -235,7 +235,6 @@ function Page() {
       related={[
         { to: "/corporate", label: "Office juice supply" },
         { to: "/gifts", label: "Juice gifts and hampers" },
-        { to: "/bulk-orders", label: "Bulk orders" },
       ]}
     >
       <Gallery />

@@ -19,7 +19,7 @@ export const Route = createFileRoute("/ig")({
   head: () =>
     seo({
       title: "Mrs. Samuel Fruit Juice — Order Fresh Juice in Lagos",
-      description: "Order fresh, cold-pressed juice delivered across Lagos. Shop, bulk orders, WhatsApp and more.",
+      description: "Order fresh, cold-pressed juice delivered across Lagos. Shop, events, WhatsApp and more.",
       path: "/ig",
       noIndex: true,
     }),
@@ -32,7 +32,7 @@ function Page() {
   const items: Item[] = [
     { label: "Order fresh juice", sub: "Every flavour, delivered cold", icon: ShoppingBag, to: "/shop" },
     { label: "Delivery across Lagos", sub: "Lekki, VI, Ikeja, Yaba and more", icon: Truck, to: "/juice-delivery-lagos" },
-    { label: "Parties, weddings & offices", sub: "Request a quote for bulk orders", icon: Users, to: "/bulk-orders" },
+    { label: "Parties, weddings & offices", sub: "Request a quote for your event", icon: Users, to: "/events-juice-lagos" },
     { label: "Chat on WhatsApp", sub: "Questions, custom orders", icon: MessageCircle, href: whatsappLink("Hi Mrs. Samuel! I found you on Instagram.") },
     ...(GOOGLE_REVIEW_URL
       ? [{ label: "Leave us a Google review", sub: "It really helps a Lagos small business", icon: Star, href: GOOGLE_REVIEW_URL } as Item]

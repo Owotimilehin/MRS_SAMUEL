@@ -220,7 +220,7 @@ export const logCheckoutAttempt = createServerFn({ method: "POST" })
   });
 
 /**
- * Record a white-label / bulk-order enquiry.
+ * Record an enquiry from a service page or the stockists form.
  *
  * The page sends the visitor to WhatsApp regardless; this only writes the row so
  * the owner's inbox has a record. Swallows errors for the same reason the

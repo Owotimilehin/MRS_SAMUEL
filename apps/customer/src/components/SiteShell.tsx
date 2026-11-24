@@ -90,8 +90,6 @@ function Footer() {
             <li><Link to="/" className="hover:text-white">Home</Link></li>
             <li><Link to="/juices" className="hover:text-white">Our Juices</Link></li>
             <li><Link to="/shop" className="hover:text-white">Shop</Link></li>
-            <li><Link to="/white-label" className="hover:text-white">White Label</Link></li>
-            <li><Link to="/bulk-orders" className="hover:text-white">Bulk Orders</Link></li>
             <li><Link to="/events-juice-lagos" className="hover:text-white">Juice for Events</Link></li>
             <li><Link to="/corporate" className="hover:text-white">Corporate & Offices</Link></li>
             <li><Link to="/gifts" className="hover:text-white">Gifts & Hampers</Link></li>

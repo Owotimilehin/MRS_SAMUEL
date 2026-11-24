@@ -188,7 +188,6 @@ function Page() {
       related={[
         { to: "/corporate", label: "Office juice supply" },
         { to: "/events-juice-lagos", label: "Juice for events" },
-        { to: "/bulk-orders", label: "Bulk orders" },
       ]}
     />
   );
