@@ -131,6 +131,7 @@ async function sendOne(row: OutboxRow): Promise<void> {
     await local.outbox.update(row.id, {
       status: "dead",
       last_error: body.error?.message ?? `HTTP ${res.status}`,
+      last_error_status: res.status,
     });
     return;
   }

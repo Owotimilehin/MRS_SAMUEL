@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, desc, asc, isNull, inArray, notInArray, sql } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, inArray, notInArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import {
   saleOrder,
@@ -23,6 +23,7 @@ import { requireAuth, requireCapability, requireAnyCapability } from "../middlew
 import { requireBranchScope } from "../middleware/scope.js";
 import { writeAudit } from "../middleware/audit.js";
 import { BusinessError } from "../lib/errors.js";
+import { parseSalesSearch } from "../lib/receipt-code.js";
 import { resolveCustomer } from "../lib/customers.js";
 import { enqueueOutbox } from "../lib/notify.js";
 
@@ -1239,10 +1240,30 @@ export function saleRoutes(db: DbClient) {
   r.get("/", requireCapability("sales.view"), async (c) => {
     const branchId = c.req.param("branchId");
     if (!branchId) throw new BusinessError("validation_failed", "branchId required", 400);
+    // Optional search: an order number (or its tail, e.g. "00123") or the short
+    // receipt code a till prints before a sale syncs ("R-1A2B3C4D" = the first
+    // 8 hex of the sale id). Validated strictly and always bound as a parameter;
+    // the branch scope below still applies.
+    const rawQ = c.req.query("q")?.trim() ?? "";
+    let searchFilter: SQL | undefined;
+    if (rawQ) {
+      const search = parseSalesSearch(rawQ);
+      if (!search) {
+        throw new BusinessError(
+          "validation_failed",
+          "Search by order number (SO-…) or receipt code (R- and 8 letters/numbers)",
+          400,
+        );
+      }
+      searchFilter =
+        search.kind === "receipt"
+          ? sql`${saleOrder.id}::text ILIKE ${`${search.idPrefix}%`}`
+          : sql`${saleOrder.orderNumber} ILIKE ${`%${search.term}%`}`;
+    }
     const rows = await db
       .select()
       .from(saleOrder)
-      .where(eq(saleOrder.branchId, branchId))
+      .where(searchFilter ? and(eq(saleOrder.branchId, branchId), searchFilter) : eq(saleOrder.branchId, branchId))
       .orderBy(desc(saleOrder.createdAtLocal))
       .limit(200);
     // Attach customer name + phone so the Orders / Sales lists can show who

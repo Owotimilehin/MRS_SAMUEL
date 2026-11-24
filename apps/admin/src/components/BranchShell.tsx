@@ -9,6 +9,7 @@ import { useAuthUser } from "../lib/auth.js";
 import { useRailOpen } from "../lib/rail.js";
 import { RefreshAppButton } from "./RefreshAppButton.js";
 import { BRANCH_NAV, parentVisible, activeParent } from "./branch-nav.js";
+import { useFailedOutbox } from "./FailedSalesBanner.js";
 
 function dropStyle(left: string, s: string, d: string, delay: string): CSSProperties {
   return { left, ["--s" as string]: s, ["--d" as string]: d, ["--delay" as string]: delay };
@@ -29,6 +30,9 @@ export function BranchShell({
   children,
 }: BranchShellProps): JSX.Element {
   const sync = useSyncState();
+  // Sales/changes the server turned down. Badged on Device (the Sync queue's
+  // parent in the nav) so a stuck paid sale is visible from every screen.
+  const failed = useFailedOutbox();
   const user = useAuthUser();
   const [branchName, setBranchName] = useState<string | null>(null);
   const [preorderCount, setPreorderCount] = useState(0);
@@ -166,13 +170,16 @@ export function BranchShell({
             const badge =
               item.to === "/branch/online-orders" ? (signal.count + preorderCount) || null :
               item.to === "/branch/stock" ? (incomingCount || null) :
+              item.to === "/branch/device" ? (failed.total || null) :
               null;
             const badgeLabel =
               item.to === "/branch/online-orders" && badge != null
                 ? `${badge} orders awaiting attention`
                 : item.to === "/branch/stock" && badge != null
                   ? `${badge} transfers to receive`
-                  : undefined;
+                  : item.to === "/branch/device" && badge != null
+                    ? `${badge} failed in the sync queue`
+                    : undefined;
             return (
               <Link
                 key={item.to}
