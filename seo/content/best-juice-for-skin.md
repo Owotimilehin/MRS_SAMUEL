@@ -3,7 +3,6 @@ slug: best-juice-for-skin
 title: Best Juice for Skin: What Fruit and Veg Can Really Do
 excerpt: Can juice give you glowing skin? What research says about vitamin C, carotenoids and skin, which juices fit, and what juice cannot do. Fresh in Lagos.
 read_mins: 8
-review: needs dietitian review before publishing
 ```
 ---
 No juice will clear acne or erase wrinkles. But your skin needs vitamin C to make collagen, and studies link eating more fruit and vegetables with healthier-looking skin colour. Juices made from orange, carrot, pawpaw and guava supply vitamin C and carotenoids. Sunscreen, sleep and a balanced diet still matter most.

@@ -10,8 +10,8 @@
  * order number and the page path. Never a phone number, name, email or address.
  */
 
-/** TODO(owner): GA4 Admin → Data streams → Web → "Measurement ID" (G-XXXXXXXXXX). */
-export const GA_MEASUREMENT_ID = "";
+/** GA4 web stream "Mrs Samuel's Kitchen website" (owner, 24 Nov 2026). */
+export const GA_MEASUREMENT_ID = "G-CDQFRG2K0M";
 
 export const CURRENCY = "NGN";
 

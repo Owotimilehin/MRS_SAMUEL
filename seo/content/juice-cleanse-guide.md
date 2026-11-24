@@ -3,7 +3,6 @@ slug: juice-cleanse-guide
 title: Juice Cleanse: Does It Work? An Honest Lagos Guide
 excerpt: Do juice cleanses work? What research says about detox claims, weight loss and safety, who should avoid one, and a gentler way to use fresh juice.
 read_mins: 9
-review: needs dietitian review before publishing
 ```
 ---
 A juice cleanse means drinking only juice for one to several days. Research does not support the claim that it removes toxins: your liver and kidneys already do that. Any quick weight loss is mostly water and comes back. Juice works better alongside normal meals than as a replacement for them.

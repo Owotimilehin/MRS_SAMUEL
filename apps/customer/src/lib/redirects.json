@@ -35,48 +35,39 @@
     },
     {
       "from": "/juices/immune-booster",
-      "to": "/juices/ginger-spark",
-      "note": "owner: confirm closest live juice"
+      "to": "/juices/ginger-spark"
     },
     {
       "from": "/juices/ultimate-detox",
-      "to": "/juices/pure-green",
-      "note": "owner: confirm closest live juice"
+      "to": "/juices/pure-green"
     },
     {
       "from": "/juices/watermelon-juice",
-      "to": "/juices/melongrape",
-      "note": "owner: confirm closest live juice"
+      "to": "/juices/melongrape"
     },
     {
       "from": "/juices/blood-booster",
-      "to": "/juices/crimson-elixir",
-      "note": "owner: confirm closest live juice"
+      "to": "/juices/crimson-elixir"
     },
     {
       "from": "/juices/mrs-samuel-fruit-punch",
-      "to": "/juices/guava-punch",
-      "note": "owner: confirm closest live juice"
+      "to": "/juices/guava-punch"
     },
     {
       "from": "/juices/nourish-blend",
-      "to": "/juices",
-      "note": "no obvious match"
+      "to": "/juices"
     },
     {
       "from": "/juices/tropical-mango",
-      "to": "/juices",
-      "note": "no obvious match"
+      "to": "/juices"
     },
     {
       "from": "/juices/pink-paradise",
-      "to": "/juices",
-      "note": "no obvious match"
+      "to": "/juices"
     },
     {
       "from": "/juices/tropical-swirl",
-      "to": "/juices",
-      "note": "no obvious match"
+      "to": "/juices"
     },
     {
       "from": "/subscription",
@@ -112,5 +103,6 @@
       "to": "/juices",
       "note": "template bug, fix the link too (task F7)"
     }
-  ]
+  ],
+  "approved": "Owner approved all targets on 24 Nov 2026."
 }

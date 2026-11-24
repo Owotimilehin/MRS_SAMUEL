@@ -3,7 +3,6 @@ slug: juice-for-immunity
 title: Juice for Immunity: What Really Supports Your Immune System
 excerpt: Can juice boost your immune system? What research says about vitamin C, ginger, turmeric and colds, how much to drink, and fresh juice in Lagos.
 read_mins: 8
-review: needs dietitian review before publishing
 ```
 ---
 No juice "boosts" your immune system on its own. Your immune cells need nutrients such as vitamin C, and juices made from orange, guava, pineapple and lemon are easy sources. A large review found vitamin C may slightly shorten colds but does not stop most people catching them. Sleep, a varied diet and vaccines matter more.

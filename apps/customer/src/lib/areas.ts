@@ -1297,7 +1297,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
   {
     slug: "ikorodu",
     name: "Ikorodu",
-    published: false,
+    published: true,
     neighbourhoods: ["Ikorodu", "Igbogbo", "Ijede", "Agric", "Owutu", "Ogolonto", "Odogunyan"],
     description:
       "Fresh cold-pressed juice delivered to Ikorodu: Agric, Owutu, Ogolonto, Igbogbo, Ijede and Odogunyan. 100% fruit, no added sugar.",
@@ -1378,7 +1378,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
   {
     slug: "sangotedo",
     name: "Sangotedo",
-    published: false,
+    published: true,
     neighbourhoods: ["Sangotedo", "Monastery Road", "Ogombo Road", "Abijo", "Awoyaya", "Lakowe"],
     description:
       "Fresh juice delivered to Sangotedo, Monastery Road, Ogombo Road, Abijo, Awoyaya and Lakowe. Cold-pressed in Lagos, delivered cold.",
@@ -1456,7 +1456,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
   {
     slug: "chevron",
     name: "Chevron & Ikota",
-    published: false,
+    published: true,
     neighbourhoods: [
       "Chevron Drive",
       "Ikota",
@@ -1549,7 +1549,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
   {
     slug: "oniru",
     name: "Oniru",
-    published: false,
+    published: true,
     neighbourhoods: [
       "Oniru Estate",
       "Water Corporation Drive",
@@ -1639,7 +1639,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
   {
     slug: "ilupeju",
     name: "Ilupeju",
-    published: false,
+    published: true,
     neighbourhoods: [
       "Ilupeju",
       "Ilupeju Industrial Estate",
@@ -1727,7 +1727,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
   {
     slug: "ojota",
     name: "Ojota & Ogudu",
-    published: false,
+    published: true,
     neighbourhoods: ["Ojota", "Ogudu", "Ogudu GRA", "Ketu", "Alapere", "Mile 12"],
     description:
       "Fresh juice delivered to Ojota, Ogudu, Ogudu GRA, Ketu, Alapere and Mile 12. Cold-pressed in our Ikeja kitchen and delivered cold.",
@@ -1808,7 +1808,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
   {
     slug: "apapa",
     name: "Apapa",
-    published: false,
+    published: true,
     neighbourhoods: ["Apapa", "Apapa GRA", "Wharf Road", "Liverpool Road", "Creek Road", "Ijora"],
     description:
       "Fresh juice delivered to offices, homes and port businesses in Apapa: Apapa GRA, Wharf Road, Liverpool Road, Creek Road and Ijora.",
@@ -1887,7 +1887,7 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
   {
     slug: "agege",
     name: "Agege",
-    published: false,
+    published: true,
     neighbourhoods: ["Agege", "Dopemu", "Orile Agege", "Pen Cinema", "Iju Road", "Abule Egba"],
     description:
       "Fresh juice delivered in Agege, Dopemu, Orile Agege, Pen Cinema, Iju Road and Abule Egba. Cold-pressed in Ikeja, close by.",
