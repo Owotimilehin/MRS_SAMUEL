@@ -8,6 +8,7 @@
  */
 import { SITE_URL } from "./seo";
 import { PUBLISHED_AREAS } from "./areas";
+import { stockistEntries } from "./stockists";
 
 export interface SitemapEntry {
   path: string;
@@ -24,6 +25,9 @@ export const STATIC_ENTRIES: SitemapEntry[] = [
   { path: "/juice-delivery-lagos", changefreq: "monthly", priority: 0.9 },
   { path: "/bulk-orders", changefreq: "monthly", priority: 0.8 },
   { path: "/white-label", changefreq: "monthly", priority: 0.7 },
+  { path: "/events-juice-lagos", changefreq: "monthly", priority: 0.8 },
+  { path: "/corporate", changefreq: "monthly", priority: 0.7 },
+  { path: "/gifts", changefreq: "monthly", priority: 0.7 },
   { path: "/blog", changefreq: "weekly", priority: 0.7 },
   { path: "/about", changefreq: "monthly", priority: 0.6 },
   { path: "/delivery", changefreq: "monthly", priority: 0.6 },
@@ -50,18 +54,22 @@ function esc(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
-/** Pure XML builder — dedupes by path, keeps first occurrence. */
-export function buildSitemapXml(entries: SitemapEntry[]): string {
+/** When this server started, i.e. the last deploy. Pages without their own
+ *  date (static pages, juices) report it as <lastmod>, so every URL has one. */
+export const DEPLOYED_AT = new Date().toISOString();
+
+/** Pure XML builder — dedupes by path, keeps first occurrence. Entries
+ *  without a valid lastmod get `fallbackLastmod`. */
+export function buildSitemapXml(entries: SitemapEntry[], fallbackLastmod: string = DEPLOYED_AT): string {
   const seen = new Set<string>();
   const rows: string[] = [];
   for (const e of entries) {
     if (seen.has(e.path)) continue;
     seen.add(e.path);
     const parts = [`<loc>${esc(`${SITE_URL}${e.path}`)}</loc>`];
-    if (e.lastmod) {
-      const d = new Date(e.lastmod);
-      if (!Number.isNaN(d.getTime())) parts.push(`<lastmod>${d.toISOString().slice(0, 10)}</lastmod>`);
-    }
+    const own = e.lastmod ? new Date(e.lastmod) : null;
+    const d = own && !Number.isNaN(own.getTime()) ? own : new Date(fallbackLastmod);
+    if (!Number.isNaN(d.getTime())) parts.push(`<lastmod>${d.toISOString().slice(0, 10)}</lastmod>`);
     if (e.changefreq) parts.push(`<changefreq>${e.changefreq}</changefreq>`);
     if (e.priority != null) parts.push(`<priority>${e.priority.toFixed(1)}</priority>`);
     rows.push(`  <url>${parts.join("")}</url>`);
@@ -82,6 +90,7 @@ export async function collectSitemapEntries(fetchJson: Fetcher): Promise<Sitemap
   return [
     ...STATIC_ENTRIES,
     ...areaEntries(),
+    ...stockistEntries(),
     ...products
       .filter((p) => p?.slug)
       .map((p) => ({ path: `/juices/${encodeURIComponent(p.slug)}`, changefreq: "weekly" as const, priority: 0.8 })),

@@ -1,17 +1,22 @@
 import { useState } from "react";
 import { MessageCircle } from "lucide-react";
-import { submitEnquiry } from "@/lib/api/server-fns";
+import { submitEnquiry, type EnquiryType } from "@/lib/api/server-fns";
 import { whatsappLink } from "@/lib/whatsapp";
+import { trackLeadOnce } from "@/lib/analytics";
 
 // Same field look as the Contact page form.
 const inputCls =
   "w-full rounded-xl border border-black/10 bg-[color:var(--cream)]/40 px-4 py-3 text-base sm:text-sm text-[color:var(--brand)] placeholder:text-[color:var(--brand)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-orange)]/40";
 
 interface Props {
-  enquiryType: "white_label" | "bulk_order";
+  enquiryType: EnquiryType;
   /** Pre-filled first WhatsApp message. */
   template: string;
   cta: string;
+  /** Which page/form this is, for the GA4 `generate_lead` event (e.g. "events"). */
+  leadSource?: string;
+  /** Override the "Let's talk" heading. */
+  heading?: string;
 }
 
 /**
@@ -26,7 +31,7 @@ interface Props {
  * record even if the visitor never sends the message, then continue to
  * WhatsApp. The recording is best-effort and never blocks the hand-off.
  */
-export function EnquiryForm({ enquiryType, template, cta }: Props) {
+export function EnquiryForm({ enquiryType, template, cta, leadSource, heading }: Props) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [sending, setSending] = useState(false);
@@ -40,7 +45,12 @@ export function EnquiryForm({ enquiryType, template, cta }: Props) {
     e.preventDefault();
     setSending(true);
     try {
-      await submitEnquiry({ data: { name: name.trim(), phone: phone.trim(), enquiry_type: enquiryType } });
+      const res = await submitEnquiry({
+        data: { name: name.trim(), phone: phone.trim(), enquiry_type: enquiryType },
+      });
+      // Count the lead only once the enquiry is actually recorded. Params say
+      // which form it was, never what the visitor typed.
+      if (res?.ok) trackLeadOnce(enquiryType, leadSource ?? enquiryType, window.location.pathname);
     } catch {
       /* never block the hand-off */
     }
@@ -50,7 +60,7 @@ export function EnquiryForm({ enquiryType, template, cta }: Props) {
 
   return (
     <div className="rounded-[1.5rem] bg-white ring-1 ring-black/5 p-6 sm:p-8">
-      <h2 className="font-display text-3xl text-[color:var(--brand)]">Let's talk</h2>
+      <h2 className="font-display text-3xl text-[color:var(--brand)]">{heading ?? "Let's talk"}</h2>
       <p className="mt-2 text-sm text-[color:var(--brand)]/70">
         Leave your name and number and we'll pick it up on WhatsApp — usually within the hour.
       </p>

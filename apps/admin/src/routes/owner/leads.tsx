@@ -27,6 +27,10 @@ interface ContactMsg {
 const ENQUIRY_LABEL: Record<string, string> = {
   white_label: "White label",
   bulk_order: "Bulk order",
+  events: "Events",
+  corporate: "Corporate",
+  gifts: "Gifts & hampers",
+  stockist: "Stockist",
   legacy_subscription: "Subscription (retired)",
 };
 

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { track, CURRENCY } from "./analytics";
 import type { Product } from "@/lib/api/mappers";
 import type { Size } from "@/lib/visuals";
 import { serializeCartCookie } from "@/lib/cart-cookie";
@@ -121,6 +122,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
         );
       }
       return [...prev, { id, product, size, variantId, unitPrice, qty: 1, preorder: isPreorderLine(product, size, 1) }];
+    });
+    track("add_to_cart", {
+      currency: CURRENCY,
+      value: unitPrice,
+      items: [{ item_id: product.id, item_name: product.name, item_variant: size, price: unitPrice, quantity: 1 }],
     });
     setOpen(true);
   };

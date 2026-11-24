@@ -1,20 +1,27 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Clock } from "lucide-react";
-import { fetchBlogPost, fetchBlogPosts } from "@/lib/api/server-fns";
+import { fetchBlogPost, fetchBlogPosts, fetchProducts } from "@/lib/api/server-fns";
+import { extractFaqs, pickRelatedProducts } from "@/lib/blog-seo";
+import { sortByStock650 } from "@/lib/stock-summary";
 import { renderMarkdown } from "@/lib/markdown";
 import { SiteShell } from "@/components/SiteShell";
 import { CLUSTERS, HARD_EDGED_DECOR } from "@/lib/visuals";
-import { seo, articleLd, breadcrumbLd } from "@/lib/seo";
+import { seo, articleLd, breadcrumbLd, faqPageLd } from "@/lib/seo";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 export const Route = createFileRoute("/blog/$slug")({
   loader: async ({ params }) => {
-    const [post, all] = await Promise.all([
+    const [post, all, products] = await Promise.all([
       fetchBlogPost({ data: params.slug }),
       fetchBlogPosts(),
+      // A post still renders if the catalogue is unreachable; it just loses the juice links.
+      fetchProducts().catch(() => []),
     ]);
     return {
       post,
       related: all.filter((x) => x.slug !== post.slug && x.category === post.category).slice(0, 2),
+      // Q7: every post links to the juices it talks about (2+ products) and to /juice-delivery-lagos.
+      products: pickRelatedProducts(`${post.title} ${post.bodyMd}`, sortByStock650(products), 3),
     };
   },
   head: ({ loaderData }) => {
@@ -35,6 +42,11 @@ export const Route = createFileRoute("/blog/$slug")({
           { name: "Journal", path: "/blog" },
           { name: post.title, path },
         ]),
+        // FAQPage only when the post has a visible "## Frequently asked questions" section.
+        ...(() => {
+          const faqs = extractFaqs(post.bodyMd);
+          return faqs.length > 0 ? [faqPageLd(faqs)] : [];
+        })(),
       ],
     });
   },
@@ -50,7 +62,7 @@ export const Route = createFileRoute("/blog/$slug")({
 });
 
 function Page() {
-  const { post: p, related } = Route.useLoaderData();
+  const { post: p, related, products } = Route.useLoaderData();
 
   return (
     <SiteShell>
@@ -76,6 +88,8 @@ function Page() {
             src={CLUSTERS[p.cover as keyof typeof CLUSTERS]}
             alt=""
             aria-hidden
+            width={IMG_SIZE.cluster.width}
+            height={IMG_SIZE.cluster.height}
             className={
               HARD_EDGED_DECOR.has(CLUSTERS[p.cover as keyof typeof CLUSTERS])
                 ? "absolute inset-0 h-full w-full object-cover"
@@ -93,6 +107,39 @@ function Page() {
           <p className="mt-2 font-display text-2xl text-[color:var(--brand)]">{p.author}</p>
         </div>
       </article>
+
+      {products.length > 0 && (
+        <section className="px-5 sm:px-10 max-w-5xl mx-auto pb-16" aria-labelledby="post-juices">
+          <h2 id="post-juices" className="font-display text-3xl text-[color:var(--brand)]">Try it fresh</h2>
+          <p className="mt-2 text-[color:var(--brand)]/70">
+            Pressed every morning and{" "}
+            <Link to="/juice-delivery-lagos" className="font-semibold text-[color:var(--brand-orange)] underline underline-offset-2">
+              delivered cold across Lagos
+            </Link>
+            .
+          </p>
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-5">
+            {products.map((r) => (
+              <Link key={r.id} to="/juices/$id" params={{ id: r.id }} className="group rounded-2xl bg-white ring-1 ring-black/5 overflow-hidden hover:shadow-lg transition">
+                <div className="relative h-44" style={{ background: r.palette.surface }}>
+                  <img
+                    src={webpSrc(r.image)}
+                    alt={r.name}
+                    width={IMG_SIZE.bottle.width}
+                    height={IMG_SIZE.bottle.height}
+                    loading="lazy"
+                    className="absolute inset-0 m-auto h-[100%] w-auto object-contain"
+                  />
+                </div>
+                <div className="p-4">
+                  <h3 className="font-display text-lg text-[color:var(--brand)]">{r.name}</h3>
+                  <p className="text-xs text-[color:var(--brand)]/60 mt-1 line-clamp-2">{r.tagline}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {related.length > 0 && (
         <section className="px-5 sm:px-10 max-w-5xl mx-auto pb-20">

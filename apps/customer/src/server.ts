@@ -4,6 +4,7 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { handleCheckoutPost } from "./lib/checkout-server";
 import { handleSitemapRequest } from "./lib/sitemap";
+import { handleRedirect } from "./lib/redirects";
 import { apiFetch, setApiHeaderSource } from "./lib/api/client";
 import { withShopper, currentShopperHeaders } from "./lib/api/shopper.server";
 
@@ -54,6 +55,10 @@ export default {
 const ssrEntry = {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      // Retired URLs (Search Console 404s) and plain-http visits: one 301 hop.
+      const redirect = handleRedirect(request);
+      if (redirect) return redirect;
+
       // No-JS checkout submit: create the order + redirect to payment before
       // TanStack ever sees the request. Returns null for everything else.
       const checkoutRedirect = await handleCheckoutPost(request);

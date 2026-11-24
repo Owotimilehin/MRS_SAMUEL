@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
-import clusterRoot from "@/assets/decor/cluster-root.png";
+import clusterRoot from "@/assets/decor/cluster-root.webp";
 import { seo, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/about")({

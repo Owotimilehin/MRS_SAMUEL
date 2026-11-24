@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { trackPurchaseOnce } from "@/lib/analytics";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { Loader2, AlertCircle } from "lucide-react";
 import { SiteShell } from "@/components/SiteShell";
@@ -12,7 +13,13 @@ import { OrderSummaryCard } from "@/components/OrderSummaryCard";
 import { PaymentHoldBanner } from "@/components/PaymentHoldBanner";
 
 export const Route = createFileRoute("/order/$orderNumber")({
-  head: () => ({ meta: [{ title: "Your order — Mrs. Samuel Fruit Juice" }] }),
+  // Private order status: keep it out of search results.
+  head: () => ({
+    meta: [
+      { title: "Your order — Mrs. Samuel Fruit Juice" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   component: OrderPage,
 });
 
@@ -88,6 +95,11 @@ function OrderPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone, load]);
+
+  // GA4 purchase (SEO F5): once per order per browser, when payment is confirmed.
+  useEffect(() => {
+    if (order?.payment_status === "paid") trackPurchaseOnce(orderNumber, order.total_ngn);
+  }, [order?.payment_status, order?.total_ngn, orderNumber]);
 
   const journey = order ? deriveJourney(order) : null;
 

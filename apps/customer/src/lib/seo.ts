@@ -53,13 +53,45 @@ export interface SeoInput {
   jsonLd?: object[];
 }
 
+/** Google shows about 60 characters of a title and 155 of a description. */
+export const MAX_TITLE = 60;
+export const MAX_DESCRIPTION = 155;
+
+/** Cut at the last word boundary that fits, without a dangling separator. */
+function cutAtWord(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max + 1);
+  const space = cut.lastIndexOf(" ");
+  return (space > max * 0.6 ? cut.slice(0, space) : s.slice(0, max)).replace(/[\s,:;|—–-]+$/, "");
+}
+
+/** Keep a <title> within MAX_TITLE: first drop the brand suffix
+ *  ("| Mrs. Samuel", "— Mrs. Samuel Journal"), then trim at a word. */
+export function fitTitle(title: string): string {
+  const t = title.trim();
+  if (t.length <= MAX_TITLE) return t;
+  const noBrand = t.replace(/\s+[|—–-]\s+Mrs\. Samuel[^|—–]*$/, "").trim();
+  return cutAtWord(noBrand, MAX_TITLE);
+}
+
+/** Keep a meta description within MAX_DESCRIPTION: end on a full sentence
+ *  when one fits, otherwise trim at a word and add an ellipsis. */
+export function fitDescription(description: string): string {
+  const d = description.replace(/\s+/g, " ").trim();
+  if (d.length <= MAX_DESCRIPTION) return d;
+  const head = d.slice(0, MAX_DESCRIPTION);
+  const end = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "));
+  if (end >= 80) return head.slice(0, end + 1);
+  return `${cutAtWord(d, MAX_DESCRIPTION - 1)}…`;
+}
+
 /** Build the full {meta, links, scripts} head payload for a page. */
 export function seo(input: SeoInput): { meta: MetaTag[]; links: LinkTag[]; scripts: ScriptTag[] } {
   const url = `${SITE_URL}${input.path}`;
-  const description = input.description?.trim() || DEFAULT_DESCRIPTION;
+  const description = fitDescription(input.description?.trim() || DEFAULT_DESCRIPTION);
   const image = absUrl(input.image);
   const meta: MetaTag[] = [
-    { title: input.title },
+    { title: fitTitle(input.title) },
     { name: "description", content: description },
     { name: "robots", content: input.noIndex ? "noindex, nofollow" : "index, follow" },
     { property: "og:site_name", content: SITE_NAME },
@@ -156,7 +188,12 @@ export function productLd(p: {
   image: string;
   path: string;
   priceNgn?: number;
+  /** schema.org ItemAvailability short name. Defaults to InStock. */
+  availability?: "InStock" | "OutOfStock" | "PreOrder";
 }): object {
+  // TODO(owner): no nutrition facts, reviews or ratings are added here on
+  // purpose. Add `nutrition`, `review` or `aggregateRating` only once real,
+  // verified values exist (lab-tested nutrition, genuine customer reviews).
   return {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -171,7 +208,7 @@ export function productLd(p: {
             "@type": "Offer",
             priceCurrency: "NGN",
             price: p.priceNgn,
-            availability: "https://schema.org/InStock",
+            availability: `https://schema.org/${p.availability ?? "InStock"}`,
             url: `${SITE_URL}${p.path}`,
           },
         }
@@ -199,6 +236,26 @@ export function articleLd(a: {
     author: { "@type": "Organization", name: a.author || SITE_NAME },
     publisher: { "@id": `${SITE_URL}/#organization` },
     ...(a.datePublished ? { datePublished: a.datePublished } : {}),
+  };
+}
+
+/** Service offered by the business (events, office supply, gifting, white label).
+ *  No price: quotes are per order, and we never publish invented prices. */
+export function serviceLd(sv: {
+  name: string;
+  serviceType: string;
+  description: string;
+  path: string;
+}): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: sv.name,
+    serviceType: sv.serviceType,
+    description: sv.description,
+    url: `${SITE_URL}${sv.path}`,
+    provider: { "@id": `${SITE_URL}/#organization` },
+    areaServed: { "@type": "City", name: "Lagos" },
   };
 }
 

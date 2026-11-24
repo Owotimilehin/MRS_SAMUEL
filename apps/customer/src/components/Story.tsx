@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
-import bottleSunrise from "@/assets/bottle-sunrise.png";
-import bottleGolden from "@/assets/bottle-golden.png";
-import bottleRuby from "@/assets/bottle-ruby.png";
-import clusterCitrus from "@/assets/decor/cluster-citrus.png";
+import bottleSunrise from "@/assets/bottle-sunrise.webp";
+import bottleGolden from "@/assets/bottle-golden.webp";
+import bottleRuby from "@/assets/bottle-ruby.webp";
+import clusterCitrus from "@/assets/decor/cluster-citrus.webp";
+import { IMG_SIZE } from "@/lib/media";
 
 const paragraphs = [
   "Mrs. Samuel Fruit Juice began in September 2024 — in a small Lagos kitchen, with one cold press, two believers, and the quiet conviction that Nigerians deserved juice they could actually trust.",
@@ -26,25 +27,25 @@ export function Story() {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.3fr] gap-12 lg:gap-16 items-center">
           {/* Bottle composition */}
           <div className="relative h-[460px] sm:h-[560px] w-full order-2 lg:order-1">
-            <img src={clusterCitrus} alt="" aria-hidden className="absolute left-0 sm:-left-6 bottom-2 w-[55%] opacity-80" />
+            <img src={clusterCitrus} alt="" aria-hidden width={IMG_SIZE.cluster.width} height={IMG_SIZE.cluster.height} loading="lazy" className="absolute left-0 sm:-left-6 bottom-2 w-[55%] opacity-80" />
             <div
               className="absolute inset-0 m-auto h-[78%] w-[78%] rounded-full blur-3xl opacity-70"
               style={{ background: "radial-gradient(circle, #ffd071 0%, transparent 65%)" }}
             />
             <motion.img
-              src={bottleGolden} alt="" aria-hidden
+              src={bottleGolden} alt="" aria-hidden width={IMG_SIZE.bottle.width} height={IMG_SIZE.bottle.height} loading="lazy"
               animate={{ y: [0, -10, 0] }} transition={{ duration: 7, repeat: Infinity }}
-              className="absolute left-[2%] bottom-12 h-[68%] drop-shadow-2xl"
+              className="absolute left-[2%] bottom-12 h-[68%] w-auto drop-shadow-2xl"
             />
             <motion.img
-              src={bottleSunrise} alt="" aria-hidden
+              src={bottleSunrise} alt="" aria-hidden width={IMG_SIZE.bottle.width} height={IMG_SIZE.bottle.height} loading="lazy"
               animate={{ y: [0, -14, 0] }} transition={{ duration: 6, repeat: Infinity }}
-              className="absolute left-1/2 -translate-x-1/2 bottom-0 h-[90%] drop-shadow-2xl z-10"
+              className="absolute left-1/2 -translate-x-1/2 bottom-0 h-[90%] w-auto drop-shadow-2xl z-10"
             />
             <motion.img
-              src={bottleRuby} alt="" aria-hidden
+              src={bottleRuby} alt="" aria-hidden width={IMG_SIZE.bottle.width} height={IMG_SIZE.bottle.height} loading="lazy"
               animate={{ y: [0, -10, 0] }} transition={{ duration: 7.5, repeat: Infinity, delay: 0.4 }}
-              className="absolute right-[2%] bottom-12 h-[68%] drop-shadow-2xl"
+              className="absolute right-[2%] bottom-12 h-[68%] w-auto drop-shadow-2xl"
             />
           </div>
 

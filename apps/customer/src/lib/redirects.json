@@ -1,0 +1,116 @@
+{
+  "source": "Google Search Console > Page indexing > Not found (404), read 23 Nov 2026. 54 URLs = these paths across http/https/www/non-www.",
+  "status": 301,
+  "ignore": [
+    "/cdn-cgi/l/email-protection (Cloudflare email obfuscation, harmless)"
+  ],
+  "redirects": [
+    {
+      "from": "/juices/pinecado-bliss",
+      "to": "/juices/pinecado"
+    },
+    {
+      "from": "/juices/guyabano-delight",
+      "to": "/juices/guyabano"
+    },
+    {
+      "from": "/juices/pineapple-juice",
+      "to": "/juices/pineapple"
+    },
+    {
+      "from": "/juices/orange-juice",
+      "to": "/juices/orange"
+    },
+    {
+      "from": "/juices/sunrise-blend",
+      "to": "/juices/sunrise"
+    },
+    {
+      "from": "/juices/crimson-garden-glow",
+      "to": "/juices/crimson-garden"
+    },
+    {
+      "from": "/juices/ginger-fireball",
+      "to": "/juices/ginger-spark"
+    },
+    {
+      "from": "/juices/immune-booster",
+      "to": "/juices/ginger-spark",
+      "note": "owner: confirm closest live juice"
+    },
+    {
+      "from": "/juices/ultimate-detox",
+      "to": "/juices/pure-green",
+      "note": "owner: confirm closest live juice"
+    },
+    {
+      "from": "/juices/watermelon-juice",
+      "to": "/juices/melongrape",
+      "note": "owner: confirm closest live juice"
+    },
+    {
+      "from": "/juices/blood-booster",
+      "to": "/juices/crimson-elixir",
+      "note": "owner: confirm closest live juice"
+    },
+    {
+      "from": "/juices/mrs-samuel-fruit-punch",
+      "to": "/juices/guava-punch",
+      "note": "owner: confirm closest live juice"
+    },
+    {
+      "from": "/juices/nourish-blend",
+      "to": "/juices",
+      "note": "no obvious match"
+    },
+    {
+      "from": "/juices/tropical-mango",
+      "to": "/juices",
+      "note": "no obvious match"
+    },
+    {
+      "from": "/juices/pink-paradise",
+      "to": "/juices",
+      "note": "no obvious match"
+    },
+    {
+      "from": "/juices/tropical-swirl",
+      "to": "/juices",
+      "note": "no obvious match"
+    },
+    {
+      "from": "/subscription",
+      "to": "/shop",
+      "note": "point to a subscription page instead if it is relaunched"
+    },
+    {
+      "from": "/specials",
+      "to": "/shop"
+    },
+    {
+      "from": "/cart",
+      "to": "/shop",
+      "note": "the real cart route should also be noindex"
+    },
+    {
+      "from": "/month",
+      "to": "/shop",
+      "note": "also fix the links that produce this (task F7)"
+    },
+    {
+      "from": "/week",
+      "to": "/shop",
+      "note": "also fix the links that produce this (task F7)"
+    },
+    {
+      "from": "/blog/$slug",
+      "to": "/blog",
+      "note": "template bug, fix the link too (task F7)"
+    },
+    {
+      "from": "/juices/$id",
+      "to": "/juices",
+      "note": "template bug, fix the link too (task F7)"
+    }
+  ]
+}

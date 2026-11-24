@@ -14,9 +14,10 @@ import {
 } from "lucide-react";
 import type { Product } from "@/lib/api/mappers";
 import { ProductDetail } from "@/components/ProductDetail";
-import splashBurst from "@/assets/decor/splash-burst.png";
-import leafMint from "@/assets/decor/leaf-mint.png";
+import splashBurst from "@/assets/decor/splash-burst.webp";
+import leafMint from "@/assets/decor/leaf-mint.webp";
 import heroVideo from "@/assets/hero-video.mp4.asset.json";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 const features = [
   { Icon: Leaf, title: "100% Natural", sub: "Real ingredients" },
@@ -97,6 +98,10 @@ const sideVariants = {
   }),
 };
 
+
+/** Visible keyword line under the "Real Fruit. Real Good." headline (SEO F6). */
+const HERO_KEYWORD_LINE = "Fresh cold-pressed juice delivered across Lagos";
+
 export function Hero({ products }: { products: Product[] }) {
   const [videoOpen, setVideoOpen] = useState(false);
 
@@ -148,11 +153,17 @@ export function Hero({ products }: { products: Product[] }) {
       id="top"
       className="relative pt-32 sm:pt-36 pb-20 sm:pb-24 px-5 sm:px-10 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-12 items-center"
     >
+      {/* SEO roadmap F6: the main search phrase, visible in the first screen.
+          Phones show the carousel first, so they get this line above it. */}
+      <p className="lg:hidden order-first flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand)]/75">
+        <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--brand-orange)]" />
+        {HERO_KEYWORD_LINE}
+      </p>
       <div className="relative z-10 max-w-xl order-2 lg:order-1">
-        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand)]/75">
+        <p className="hidden lg:flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand)]/75">
           <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--brand-orange)]" />
-          Fresh Fruit Juice · Made in Lagos
-        </div>
+          {HERO_KEYWORD_LINE}
+        </p>
         <motion.h1
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
@@ -223,7 +234,7 @@ export function Hero({ products }: { products: Product[] }) {
 
       {/* 3-bottle flavour carousel */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.94 }}
+        initial={false} /* LCP image: paint immediately, no fade-in (SEO F8) */
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.9, delay: 0.1, ease: "easeOut" }}
         className="relative w-full flex flex-col items-center order-1 lg:order-2"
@@ -254,6 +265,9 @@ export function Hero({ products }: { products: Product[] }) {
             src={splashBurst}
             alt=""
             aria-hidden
+            width={IMG_SIZE.splash.width}
+            height={IMG_SIZE.splash.height}
+            fetchPriority="low"
             className="absolute inset-0 m-auto h-[86%] w-[92%] object-contain opacity-50 mix-blend-multiply pointer-events-none"
             style={{
               WebkitMaskImage:
@@ -268,6 +282,9 @@ export function Hero({ products }: { products: Product[] }) {
             src={leafMint}
             alt=""
             aria-hidden
+            width={IMG_SIZE.leaf.width}
+            height={IMG_SIZE.leaf.height}
+            fetchPriority="low"
             className="absolute left-[8%] top-[2%] z-30 w-12 sm:w-16 opacity-90 pointer-events-none"
             animate={{ rotate: [0, 6, 0] }}
             transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
@@ -276,6 +293,9 @@ export function Hero({ products }: { products: Product[] }) {
             src={leafMint}
             alt=""
             aria-hidden
+            width={IMG_SIZE.leaf.width}
+            height={IMG_SIZE.leaf.height}
+            fetchPriority="low"
             className="absolute right-[7%] top-0 z-30 w-10 sm:w-14 opacity-80 -scale-x-100 pointer-events-none"
             animate={{ rotate: [0, -7, 0] }}
             transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
@@ -293,9 +313,12 @@ export function Hero({ products }: { products: Product[] }) {
               className="absolute inset-0 z-0 flex items-end justify-start pl-[2%] pb-10 pointer-events-none"
             >
               <motion.img
-                src={leftProduct.image}
+                src={webpSrc(leftProduct.image)}
                 alt=""
                 aria-hidden
+                width={IMG_SIZE.bottle.width}
+                height={IMG_SIZE.bottle.height}
+                fetchPriority="low"
                 animate={{ y: [0, -8, 0] }}
                 transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut" }}
                 className="h-[68%] w-auto object-contain drop-shadow-[0_18px_22px_rgba(80,40,10,0.16)]"
@@ -315,9 +338,12 @@ export function Hero({ products }: { products: Product[] }) {
               className="absolute inset-0 z-0 flex items-end justify-end pr-[2%] pb-10 pointer-events-none"
             >
               <motion.img
-                src={rightProduct.image}
+                src={webpSrc(rightProduct.image)}
                 alt=""
                 aria-hidden
+                width={IMG_SIZE.bottle.width}
+                height={IMG_SIZE.bottle.height}
+                fetchPriority="low"
                 animate={{ y: [0, -8, 0] }}
                 transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
                 className="h-[68%] w-auto object-contain drop-shadow-[0_18px_22px_rgba(80,40,10,0.16)]"
@@ -337,8 +363,11 @@ export function Hero({ products }: { products: Product[] }) {
               className="absolute inset-0 z-20 flex items-end justify-center pb-1"
             >
               <motion.img
-                src={centerProduct.image}
+                src={webpSrc(centerProduct.image)}
                 alt={centerProduct.name}
+                width={IMG_SIZE.bottle.width}
+                height={IMG_SIZE.bottle.height}
+                fetchPriority="high"
                 animate={{ y: [0, -10, 0] }}
                 transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
                 className="h-[94%] w-auto object-contain drop-shadow-[0_30px_38px_rgba(80,40,10,0.28)]"

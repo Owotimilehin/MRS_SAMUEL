@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { track, CURRENCY } from "@/lib/analytics";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -23,11 +24,14 @@ import { scheduledIso, orderSchedule, type DeliveryWindow } from "@/lib/schedule
 import { deliveryPromise, isImmediateSchedule } from "@/lib/availability-label";
 import { LIVE_COURIER_QUOTES } from "@/lib/flags";
 import type { Size } from "@/lib/visuals";
+import { webpSrc } from "@/lib/media";
 
 export const Route = createFileRoute("/checkout")({
   head: () => ({
     meta: [
       { title: "Checkout — Mrs. Samuel Fruit Juice" },
+      // Utility page: keep it out of search results.
+      { name: "robots", content: "noindex, nofollow" },
       { name: "description", content: "Complete your Mrs. Samuel juice order. Lagos delivery now or scheduled; nationwide arranged separately. Pay securely online." },
     ],
   }),
@@ -92,6 +96,17 @@ function Page() {
   const { branches, cart } = Route.useLoaderData();
   const search = Route.useSearch();
   const { items, subtotal, clear } = useCart();
+  // GA4 begin_checkout (SEO F5): once per visit to this page, once the basket is known.
+  const checkoutTracked = useRef(false);
+  useEffect(() => {
+    if (checkoutTracked.current || items.length === 0) return;
+    checkoutTracked.current = true;
+    track("begin_checkout", {
+      currency: CURRENCY,
+      value: subtotal,
+      items: items.map((i) => ({ item_id: i.product.id, item_name: i.product.name, item_variant: i.size, price: i.unitPrice, quantity: i.qty })),
+    });
+  }, [items, subtotal]);
   // Route to the owner-selected online-fulfilment branch; fall back to the first
   // active branch when none is flagged (preserves prior behaviour).
   const branchId = (branches.find((b) => b.is_online_default) ?? branches[0])?.id ?? null;
@@ -674,7 +689,7 @@ function Page() {
               <div className="mt-5 space-y-3">
                 {lines.map((it) => (
                   <div key={it.key} className="flex items-start gap-3 text-sm">
-                    <div className="grid h-12 w-12 place-items-center rounded-lg shrink-0 bg-white/10">{it.image ? <img src={it.image} alt="" className="h-10 w-10 object-contain" /> : <span aria-hidden>🧃</span>}</div>
+                    <div className="grid h-12 w-12 place-items-center rounded-lg shrink-0 bg-white/10">{it.image ? <img src={webpSrc(it.image)} alt="" className="h-10 w-10 object-contain" /> : <span aria-hidden>🧃</span>}</div>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold truncate">{it.name}</div>
                       <div className="text-xs text-white/60">{it.size} · ×{it.qty}</div>

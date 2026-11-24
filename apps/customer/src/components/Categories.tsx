@@ -1,9 +1,10 @@
 import { motion } from "framer-motion";
-import bottleSunrise from "@/assets/bottle-sunrise.png";
-import bottleRuby from "@/assets/bottle-ruby.png";
-import bottleYellow from "@/assets/bottle-yellow.png";
-import bottleGreen from "@/assets/bottle-green.png";
-import bottlePink from "@/assets/bottle-pink.png";
+import bottleSunrise from "@/assets/bottle-sunrise.webp";
+import bottleRuby from "@/assets/bottle-ruby.webp";
+import bottleYellow from "@/assets/bottle-yellow.webp";
+import bottleGreen from "@/assets/bottle-green.webp";
+import bottlePink from "@/assets/bottle-pink.webp";
+import { IMG_SIZE } from "@/lib/media";
 
 const cats = [
   { name: "Citrus", img: bottleSunrise, bg: "#fdecd2" },
@@ -26,7 +27,10 @@ export function Categories() {
               Find Your Perfect Juice
             </h2>
           </div>
-          <a href="#products" className="hidden sm:inline-flex text-sm font-semibold text-[color:var(--brand-orange)]">
+          <a
+            href="#products"
+            className="hidden sm:inline-flex text-sm font-semibold text-[color:var(--brand-orange)]"
+          >
             View All →
           </a>
         </div>
@@ -46,7 +50,14 @@ export function Categories() {
                 className="grid h-36 w-36 place-items-center rounded-full overflow-hidden shadow-md transition group-hover:scale-105 group-hover:shadow-lg"
                 style={{ background: c.bg }}
               >
-                <img src={c.img} alt={c.name} className="h-[115%] w-auto object-contain" />
+                <img
+                  src={c.img}
+                  alt={c.name}
+                  width={IMG_SIZE.bottle.width}
+                  height={IMG_SIZE.bottle.height}
+                  loading="lazy"
+                  className="h-[115%] w-auto object-contain"
+                />
               </span>
               <div className="mt-3 text-[14px] font-bold text-[color:var(--brand)]">{c.name}</div>
             </motion.a>

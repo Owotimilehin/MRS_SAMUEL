@@ -8,15 +8,16 @@ import { PageHero } from "@/components/PageHero";
 import { ShoppingCart } from "lucide-react";
 import { motion } from "framer-motion";
 import { useCart, quickAddSize } from "@/lib/cart";
-import clusterTropical from "@/assets/decor/cluster-tropical.png";
+import clusterTropical from "@/assets/decor/cluster-tropical.webp";
 import { seo, breadcrumbLd } from "@/lib/seo";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 export const Route = createFileRoute("/juices/")({
   head: () =>
     seo({
-      title: "Fresh Juice Menu — Zobo, Pineapple, Green Juice | Mrs. Samuel",
+      title: "Fresh Juice Menu — Pineapple, Ginger, Green Juice | Mrs. Samuel",
       description:
-        "Browse every cold-pressed Mrs. Samuel juice — zobo, tigernut, pineapple-ginger and more. Filter by ingredient or category. Pressed fresh daily in Lagos, no added sugar.",
+        "Every cold-pressed Mrs. Samuel juice: pineapple-ginger, orange, guava, green juice and more. Pressed fresh in Lagos, no added sugar.",
       path: "/juices",
       jsonLd: [breadcrumbLd([{ name: "Home", path: "/" }, { name: "Our Juices", path: "/juices" }])],
     }),
@@ -127,8 +128,8 @@ function Page() {
                     className="pointer-events-none absolute inset-0 z-0"
                     style={{ background: `radial-gradient(120% 80% at 50% 100%, ${p.palette.accent}22 0%, transparent 60%)` }}
                   />
-                  <img src={p.image} alt={p.name} loading="lazy" className="absolute left-3 sm:left-4 bottom-3 h-[92%] w-auto object-contain object-bottom drop-shadow-[0_18px_22px_rgba(40,20,10,0.22)] z-10 transition-transform group-hover:scale-105" />
-                  <img src={getFruitFor(p.id, p.cluster)} alt="" aria-hidden loading="lazy" className="absolute right-3 bottom-3 w-[48%] max-w-[150px] object-contain object-bottom drop-shadow-[0_14px_18px_rgba(40,20,10,0.20)] z-[5] pointer-events-none transition-transform duration-500 group-hover:translate-y-[-4px]" />
+                  <img src={webpSrc(p.image)} alt={p.name} width={IMG_SIZE.bottle.width} height={IMG_SIZE.bottle.height} loading="lazy" className="absolute left-3 sm:left-4 bottom-3 h-[92%] w-auto object-contain object-bottom drop-shadow-[0_18px_22px_rgba(40,20,10,0.22)] z-10 transition-transform group-hover:scale-105" />
+                  <img src={getFruitFor(p.id, p.cluster)} alt="" aria-hidden width={IMG_SIZE.fruit.width} height={IMG_SIZE.fruit.height} loading="lazy" className="absolute right-3 bottom-3 w-[48%] max-w-[150px] object-contain object-bottom drop-shadow-[0_14px_18px_rgba(40,20,10,0.20)] z-[5] pointer-events-none transition-transform duration-500 group-hover:translate-y-[-4px]" />
                 </div>
                 <div className="flex flex-col gap-3 p-5">
                   <div>
