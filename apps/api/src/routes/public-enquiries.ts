@@ -7,7 +7,16 @@ import { BusinessError } from "../lib/errors.js";
 import { env } from "../env.js";
 
 /** The two business enquiries the site captures. */
-export const ENQUIRY_TYPES = ["white_label", "bulk_order"] as const;
+// Keep in step with ENQUIRY_TYPES in apps/customer/src/lib/api/server-fns.ts and
+// ENQUIRY_LABEL in apps/admin/src/routes/owner/leads.tsx. Stored as plain text.
+export const ENQUIRY_TYPES = [
+  "white_label",
+  "bulk_order",
+  "events",
+  "corporate",
+  "gifts",
+  "stockist",
+] as const;
 
 const EnquiryBody = z.object({
   name: z.string().min(1).max(120),

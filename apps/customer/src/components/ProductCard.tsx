@@ -4,6 +4,7 @@ import type { Product } from "@/lib/api/mappers";
 import { getFruitFor } from "@/lib/visuals";
 import { quickAddSize } from "@/lib/cart";
 import { deliveryPromise } from "@/lib/availability-label";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 interface Props {
   product: Product;
@@ -47,8 +48,10 @@ export function ProductCard({ product, onClick, index }: Props) {
           }}
         />
         <motion.img
-          src={product.image}
+          src={webpSrc(product.image)}
           alt={product.name}
+          width={IMG_SIZE.bottle.width}
+          height={IMG_SIZE.bottle.height}
           loading="lazy"
           className="absolute left-2 sm:left-4 bottom-3 h-[92%] w-auto object-contain object-bottom drop-shadow-[0_18px_22px_rgba(40,20,10,0.22)] z-10"
           animate={{ y: [0, -6, 0] }}
@@ -58,6 +61,8 @@ export function ProductCard({ product, onClick, index }: Props) {
           src={fruit}
           alt=""
           aria-hidden
+          width={IMG_SIZE.fruit.width}
+          height={IMG_SIZE.fruit.height}
           loading="lazy"
           className="absolute right-2 sm:right-3 bottom-3 w-[48%] max-w-[150px] object-contain object-bottom drop-shadow-[0_14px_18px_rgba(40,20,10,0.20)] z-[5] pointer-events-none transition-transform duration-500 group-hover:translate-y-[-4px] group-hover:scale-[1.04]"
         />

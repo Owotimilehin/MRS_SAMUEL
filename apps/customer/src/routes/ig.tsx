@@ -3,7 +3,7 @@ import { ShoppingBag, Truck, Users, BookOpen, MessageCircle, Instagram, Star } f
 import { seo } from "@/lib/seo";
 import { whatsappLink } from "@/lib/whatsapp";
 import { INSTAGRAM_PROFILE } from "@/lib/instagram-fallback";
-import logoDark from "@/assets/logo-dark.png";
+import logoDark from "@/assets/logo-dark.webp";
 
 /**
  * Instagram bio link: mrssamuel.com/ig. Replaces Linktree-style tools so

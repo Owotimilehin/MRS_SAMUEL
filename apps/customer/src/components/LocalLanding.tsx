@@ -7,6 +7,8 @@ import { PageHero } from "@/components/PageHero";
 import { formatNaira } from "@/lib/cart";
 import { whatsappLink } from "@/lib/whatsapp";
 import { LinkedText } from "@/components/LinkedText";
+import { LOCAL_BADGES } from "@/lib/area-page";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 export interface LocalFaq {
   q: string;
@@ -24,6 +26,8 @@ interface Props {
   products: Product[];
   faqs: LocalFaq[];
   whatsappMessage: string;
+  /** Page-specific sections rendered after the trust badges, before "Good to know". */
+  details?: ReactNode;
   /** Extra section rendered after the juice grid (e.g. the list of areas). */
   children?: ReactNode;
 }
@@ -34,35 +38,64 @@ interface Props {
  * FAQ answers included — so Google can read the whole page.
  */
 export function LocalLanding({
-  eyebrow, title, subtitle, decor, intro, notes, products, faqs, whatsappMessage, children,
+  eyebrow,
+  title,
+  subtitle,
+  decor,
+  intro,
+  notes,
+  products,
+  faqs,
+  whatsappMessage,
+  details,
+  children,
 }: Props) {
   return (
     <SiteShell>
-      <PageHero eyebrow={eyebrow} title={title} subtitle={subtitle} decor={decor} accent="#fdc651" />
+      <PageHero
+        eyebrow={eyebrow}
+        title={title}
+        subtitle={subtitle}
+        decor={decor}
+        accent="#fdc651"
+      />
 
       <section className="px-5 sm:px-10 max-w-5xl mx-auto pb-12">
         <div className="space-y-4 text-[16px] leading-relaxed text-[color:var(--brand)]/80">
-          {intro.map((p, i) => <p key={i}>{p}</p>)}
+          {intro.map((p, i) => (
+            <p key={i}>{p}</p>
+          ))}
         </div>
 
         <ul className="mt-8 grid gap-4 sm:grid-cols-3">
           {[
-            { icon: Leaf, text: "100% fruit. No added sugar, no water, no preservatives." },
-            { icon: Clock, text: "Pressed in the morning, delivered cold." },
-            { icon: MapPin, text: "Made in our kitchen at Ajao Estate, Ikeja." },
+            { icon: Leaf, text: LOCAL_BADGES[0] },
+            { icon: Clock, text: LOCAL_BADGES[1] },
+            { icon: MapPin, text: LOCAL_BADGES[2] },
           ].map(({ icon: Icon, text }) => (
-            <li key={text} className="flex gap-3 rounded-2xl bg-white p-4 ring-1 ring-black/5 text-sm text-[color:var(--brand)]">
+            <li
+              key={text}
+              className="flex gap-3 rounded-2xl bg-white p-4 ring-1 ring-black/5 text-sm text-[color:var(--brand)]"
+            >
               <Icon className="h-5 w-5 shrink-0 text-[color:var(--brand-orange)]" aria-hidden />
               {text}
             </li>
           ))}
         </ul>
 
+        {details}
+
         {notes.length > 0 && (
           <>
-            <h2 className="mt-12 font-display text-3xl font-semibold text-[color:var(--brand)]">Good to know</h2>
+            <h2 className="mt-12 font-display text-3xl font-semibold text-[color:var(--brand)]">
+              Good to know
+            </h2>
             <ul className="mt-4 list-disc pl-5 space-y-2 text-[15px] leading-relaxed text-[color:var(--brand)]/80">
-              {notes.map((n, i) => <li key={i}><LinkedText text={n} /></li>)}
+              {notes.map((n, i) => (
+                <li key={i}>
+                  <LinkedText text={n} />
+                </li>
+              ))}
             </ul>
           </>
         )}
@@ -70,7 +103,9 @@ export function LocalLanding({
 
       {products.length > 0 && (
         <section className="px-5 sm:px-10 max-w-5xl mx-auto pb-12">
-          <h2 className="font-display text-3xl font-semibold text-[color:var(--brand)]">Popular fresh juices</h2>
+          <h2 className="font-display text-3xl font-semibold text-[color:var(--brand)]">
+            Popular fresh juices
+          </h2>
           <ul className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {products.map((p) => (
               <li key={p.id}>
@@ -79,10 +114,19 @@ export function LocalLanding({
                   params={{ id: p.id }}
                   className="flex h-full flex-col items-center rounded-2xl bg-white p-4 text-center ring-1 ring-black/5 hover:shadow-lg transition"
                 >
-                  <img src={p.image} alt={`${p.name} fresh juice bottle`} loading="lazy" className="h-32 w-auto object-contain" />
+                  <img
+                    src={webpSrc(p.image)}
+                    alt={`${p.name} fresh juice bottle`}
+                    width={IMG_SIZE.bottle.width}
+                    height={IMG_SIZE.bottle.height}
+                    loading="lazy"
+                    className="h-32 w-auto object-contain"
+                  />
                   <span className="mt-3 font-semibold text-[color:var(--brand)]">{p.name}</span>
                   {p.prices["330ml"] > 0 && (
-                    <span className="text-xs text-[color:var(--brand)]/60">from {formatNaira(p.prices["330ml"])}</span>
+                    <span className="text-xs text-[color:var(--brand)]/60">
+                      from {formatNaira(p.prices["330ml"])}
+                    </span>
                   )}
                 </Link>
               </li>
@@ -95,12 +139,16 @@ export function LocalLanding({
 
       {faqs.length > 0 && (
         <section className="px-5 sm:px-10 max-w-5xl mx-auto pb-12">
-          <h2 className="font-display text-3xl font-semibold text-[color:var(--brand)]">Questions</h2>
+          <h2 className="font-display text-3xl font-semibold text-[color:var(--brand)]">
+            Questions
+          </h2>
           <dl className="mt-6 divide-y divide-black/10 rounded-2xl bg-white ring-1 ring-black/5">
             {faqs.map((f) => (
               <div key={f.q} className="px-5 py-4">
                 <dt className="font-semibold text-[color:var(--brand)]">{f.q}</dt>
-                <dd className="mt-1 text-[15px] leading-relaxed text-[color:var(--brand)]/75"><LinkedText text={f.a} /></dd>
+                <dd className="mt-1 text-[15px] leading-relaxed text-[color:var(--brand)]/75">
+                  <LinkedText text={f.a} />
+                </dd>
               </div>
             ))}
           </dl>

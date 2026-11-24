@@ -6,8 +6,9 @@ import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { CLUSTERS, HARD_EDGED_DECOR } from "@/lib/visuals";
 import { useState } from "react";
-import clusterBerry from "@/assets/decor/cluster-berry.png";
+import clusterBerry from "@/assets/decor/cluster-berry.webp";
 import { seo, breadcrumbLd } from "@/lib/seo";
+import { IMG_SIZE } from "@/lib/media";
 
 export const Route = createFileRoute("/blog/")({
   loader: async () => ({ posts: await fetchBlogPosts() }),
@@ -71,7 +72,7 @@ function Page() {
         <section className="px-5 sm:px-10 max-w-7xl mx-auto pb-10">
           <Link to="/blog/$slug" params={{ slug: featured.slug }} className="group grid grid-cols-1 lg:grid-cols-2 gap-8 rounded-[2rem] overflow-hidden bg-white ring-1 ring-black/5 hover:shadow-lg transition">
             <div className="relative h-72 lg:h-auto min-h-[300px] bg-[color:var(--cream)]">
-              <img src={CLUSTERS[featured.cover as keyof typeof CLUSTERS]} alt="" aria-hidden className={coverCls(CLUSTERS[featured.cover as keyof typeof CLUSTERS], "h-[88%]")} />
+              <img src={CLUSTERS[featured.cover as keyof typeof CLUSTERS]} alt="" aria-hidden width={IMG_SIZE.cluster.width} height={IMG_SIZE.cluster.height} className={coverCls(CLUSTERS[featured.cover as keyof typeof CLUSTERS], "h-[88%]")} />
             </div>
             <div className="p-8 sm:p-12 flex flex-col justify-center">
               <div className="text-xs font-bold uppercase tracking-[0.22em] text-[color:var(--brand-orange)]">FEATURED · {featured.category}</div>
@@ -101,7 +102,7 @@ function Page() {
             >
               <Link to="/blog/$slug" params={{ slug: p.slug }} className="flex flex-1 flex-col">
                 <div className="relative h-52 shrink-0 bg-[color:var(--cream)]">
-                  <img src={CLUSTERS[p.cover as keyof typeof CLUSTERS]} alt="" aria-hidden className={coverCls(CLUSTERS[p.cover as keyof typeof CLUSTERS], "h-[85%]")} />
+                  <img src={CLUSTERS[p.cover as keyof typeof CLUSTERS]} alt="" aria-hidden width={IMG_SIZE.cluster.width} height={IMG_SIZE.cluster.height} loading="lazy" className={coverCls(CLUSTERS[p.cover as keyof typeof CLUSTERS], "h-[85%]")} />
                 </div>
                 <div className="flex flex-1 flex-col p-5">
                   <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[color:var(--brand-orange)]">{p.category}</div>

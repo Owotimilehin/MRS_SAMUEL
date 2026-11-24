@@ -188,7 +188,12 @@ export function productLd(p: {
   image: string;
   path: string;
   priceNgn?: number;
+  /** schema.org ItemAvailability short name. Defaults to InStock. */
+  availability?: "InStock" | "OutOfStock" | "PreOrder";
 }): object {
+  // TODO(owner): no nutrition facts, reviews or ratings are added here on
+  // purpose. Add `nutrition`, `review` or `aggregateRating` only once real,
+  // verified values exist (lab-tested nutrition, genuine customer reviews).
   return {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -203,7 +208,7 @@ export function productLd(p: {
             "@type": "Offer",
             priceCurrency: "NGN",
             price: p.priceNgn,
-            availability: "https://schema.org/InStock",
+            availability: `https://schema.org/${p.availability ?? "InStock"}`,
             url: `${SITE_URL}${p.path}`,
           },
         }
@@ -231,6 +236,26 @@ export function articleLd(a: {
     author: { "@type": "Organization", name: a.author || SITE_NAME },
     publisher: { "@id": `${SITE_URL}/#organization` },
     ...(a.datePublished ? { datePublished: a.datePublished } : {}),
+  };
+}
+
+/** Service offered by the business (events, office supply, gifting, white label).
+ *  No price: quotes are per order, and we never publish invented prices. */
+export function serviceLd(sv: {
+  name: string;
+  serviceType: string;
+  description: string;
+  path: string;
+}): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: sv.name,
+    serviceType: sv.serviceType,
+    description: sv.description,
+    url: `${SITE_URL}${sv.path}`,
+    provider: { "@id": `${SITE_URL}/#organization` },
+    areaServed: { "@type": "City", name: "Lagos" },
   };
 }
 

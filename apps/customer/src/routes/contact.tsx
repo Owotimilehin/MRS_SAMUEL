@@ -5,7 +5,7 @@ import { Phone, Mail, MapPin, Clock, Instagram, MessageCircle, Send, ChevronDown
 import { SiteShell } from "@/components/SiteShell";
 import { PageHero } from "@/components/PageHero";
 import { sendContactMessage } from "@/lib/api/server-fns";
-import leafMint from "@/assets/decor/leaf-mint.png";
+import leafMint from "@/assets/decor/leaf-mint.webp";
 import { seo, breadcrumbLd, EMAIL } from "@/lib/seo";
 
 export const Route = createFileRoute("/contact")({

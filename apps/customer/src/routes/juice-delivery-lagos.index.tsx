@@ -4,7 +4,7 @@ import { sortByStock650 } from "@/lib/stock-summary";
 import { LocalLanding, type LocalFaq } from "@/components/LocalLanding";
 import { PUBLISHED_AREAS } from "@/lib/areas";
 import { seo, breadcrumbLd, faqPageLd } from "@/lib/seo";
-import clusterTropical from "@/assets/decor/cluster-tropical.png";
+import clusterTropical from "@/assets/decor/cluster-tropical.webp";
 
 const PATH = "/juice-delivery-lagos";
 

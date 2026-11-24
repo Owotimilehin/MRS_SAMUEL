@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildSitemapXml, collectSitemapEntries, handleSitemapRequest, resetSitemapCache, STATIC_ENTRIES } from "./sitemap";
 import { PUBLISHED_AREAS } from "./areas";
+import { stockistEntries } from "./stockists";
 
 const fakeApi = (data: Record<string, unknown>) =>
   (async <T,>(path: string): Promise<T> => {
@@ -23,6 +24,9 @@ describe("sitemap", () => {
     expect(xml).toContain("<loc>https://mrssamuel.com/juices/zobo</loc>");
     expect(xml).toContain("<loc>https://mrssamuel.com/blog/zobo-benefits</loc><lastmod>2026-10-01</lastmod>");
     expect(xml).toContain("<loc>https://mrssamuel.com/delivery</loc>");
+    for (const p of ["/events-juice-lagos", "/corporate", "/gifts"]) {
+      expect(xml).toContain(`<loc>https://mrssamuel.com${p}</loc>`);
+    }
     for (const a of PUBLISHED_AREAS) {
       expect(xml).toContain(`<loc>https://mrssamuel.com/juice-delivery-lagos/${a.slug}</loc>`);
     }
@@ -34,7 +38,7 @@ describe("sitemap", () => {
     const entries = await collectSitemapEntries(
       fakeApi({ "/v1/public/catalog/products": new Error("down"), "/v1/public/blog": new Error("down") }),
     );
-    expect(entries.length).toBe(STATIC_ENTRIES.length + PUBLISHED_AREAS.length);
+    expect(entries.length).toBe(STATIC_ENTRIES.length + PUBLISHED_AREAS.length + stockistEntries().length);
   });
 
   it("dedupes and escapes", () => {

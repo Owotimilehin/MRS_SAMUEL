@@ -150,7 +150,9 @@
         "Lighthouse mobile performance >= 85 on /, /juices and one product page (report in PR)",
         "LCP image is not lazy-loaded and has fetchpriority=high"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "Images to WebP (35 MB -> 1.5 MB in src/assets), width/height, LCP fetchpriority=high, no fade on hero/product bottle, fonts non-blocking, compressed JS/CSS. Local Lighthouse mobile: /juices 91-96, product 86-93, home 54-68 before the hero fade fix. Re-measure / on PageSpeed Insights after deploy."
     },
     {
       "id": "Q1",
@@ -197,7 +199,9 @@
         "Product schema with name, image, description, offers.price, offers.priceCurrency=NGN, availability",
         "No duplicate meta descriptions across products"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "Copy for all 19 juices in apps/customer/src/lib/product-copy.ts (450–544 words on page), unique descriptions, Offer schema with NGN price and stock-based availability. Owner: shelf life in days, nutrition."
     },
     {
       "id": "Q4",
@@ -210,7 +214,9 @@
         "Each /juice-delivery-lagos/* page has 600+ words and <30% text overlap with any other area page",
         "LocalBusiness/Service schema with areaServed"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "14 area pages at 600–680 own words, max overlap ~15% (test enforces <30%). Service schema with areaServed. Owner: delivery windows, fees, reviews."
     },
     {
       "id": "Q5",
@@ -224,7 +230,9 @@
         "Hub page /juice-delivery-lagos links to every area",
         "PR is labelled needs-owner-review for the area list"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "8 areas written but unpublished. Owner: confirm each, then set published: true in apps/customer/src/lib/areas.ts."
     },
     {
       "id": "Q6",
@@ -237,7 +245,9 @@
         "/juices/zobo (or the real product slug) meets Q3 acceptance",
         "/blog/zobo-hibiscus-health-benefits expanded to 1,200+ words with FAQ schema, linked both ways"
       ],
-      "status": "todo"
+      "status": "blocked",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "Blocked on a zobo product. Zobo post rewrite ready: seo/content/zobo-hibiscus-health-benefits.md."
     },
     {
       "id": "Q7",
@@ -263,7 +273,9 @@
       "acceptance": [
         "Page live with Service schema, quote form tracked as GA4 event generate_lead"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "/events-juice-lagos live in code with Service + FAQ schema and generate_lead."
     },
     {
       "id": "C2",
@@ -275,7 +287,9 @@
       "acceptance": [
         "Both pages live, in sitemap, linked from the main nav or footer"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "/corporate and /gifts in code, sitemap and footer."
     },
     {
       "id": "C3",
@@ -288,7 +302,9 @@
         "Each page 800+ words with FAQ schema",
         "Owner-supplied facts only; placeholders flagged in PR"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "/bulk-orders and /white-label ~1,000 words each with FAQ schema. Minimum order 1 bottle, no maximum (owner, 23 Nov)."
     },
     {
       "id": "C4",
@@ -300,7 +316,9 @@
       "acceptance": [
         "One guide per PR, 1,200+ words, Article + FAQ schema, author byline, internal links"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "8 guides in seo/content/ ready to paste into admin."
     },
     {
       "id": "C5",
@@ -314,7 +332,9 @@
         "No cure or treatment claims",
         "PR labelled needs-owner-review"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "6 health guides in seo/content/, each needs dietitian review before publishing."
     },
     {
       "id": "C6",
@@ -326,7 +346,9 @@
       "acceptance": [
         "Comparison table, methodology section, no false claims about competitors"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "seo/content/best-juice-brands-nigeria.md, needs owner review."
     },
     {
       "id": "C7",
@@ -339,7 +361,9 @@
         "BreadcrumbList on all non-home pages",
         "No schema validation errors in a sample of 10 pages"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "BreadcrumbList on every indexable non-home page; test scans routes."
     },
     {
       "id": "A1",
@@ -391,7 +415,9 @@
       "acceptance": [
         "/stockists live with LocalBusiness entries; data in a JSON file the owner can edit"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "/stockists built; stays noindex and out of sitemap until apps/customer/src/lib/stockists.json has an entry."
     },
     {
       "id": "A6",
@@ -435,7 +461,9 @@
       "acceptance": [
         "Top 10 pages by impressions each open with a 40–60 word direct answer"
       ],
-      "status": "todo"
+      "status": "in_review",
+      "pr": "work/olu/seo-roadmap-day2",
+      "note": "seo/content/answer-first-openings.md: openings for 10 pages to paste in."
     },
     {
       "id": "N4",

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { SiteShell } from "@/components/SiteShell";
-import { seo } from "@/lib/seo";
+import { seo, breadcrumbLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/track")({
   head: () =>
@@ -10,6 +10,12 @@ export const Route = createFileRoute("/track")({
       description:
         "Check the status of your Mrs. Samuel order. Enter your order number and the phone number you used at checkout to see live progress.",
       path: "/track",
+      jsonLd: [
+        breadcrumbLd([
+          { name: "Home", path: "/" },
+          { name: "Track your order", path: "/track" },
+        ]),
+      ],
     }),
   component: TrackPage,
 });

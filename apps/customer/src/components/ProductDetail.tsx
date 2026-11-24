@@ -6,6 +6,7 @@ import type { Size } from "@/lib/visuals";
 import { getFruitFor } from "@/lib/visuals";
 import { useCart, formatNaira, quickAddSize } from "@/lib/cart";
 import { deliveryPromise } from "@/lib/availability-label";
+import { IMG_SIZE, webpSrc } from "@/lib/media";
 
 /** Real branch count inside the size selector (promise lives below the selector). */
 function StockLabel({ available }: { available: number }) {
@@ -82,8 +83,10 @@ export function ProductDetail({ product, onClose }: Props) {
                 }}
               />
               <motion.img
-                src={product.image}
+                src={webpSrc(product.image)}
                 alt={product.name}
+                width={IMG_SIZE.bottle.width}
+                height={IMG_SIZE.bottle.height}
                 className="absolute inset-0 m-auto h-[105%] w-auto object-contain drop-shadow-[0_24px_30px_rgba(40,20,10,0.25)] z-10"
                 animate={{ y: [0, -8, 0] }}
                 transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
@@ -92,6 +95,8 @@ export function ProductDetail({ product, onClose }: Props) {
                 src={getFruitFor(product.id, product.cluster)}
                 alt=""
                 aria-hidden
+                width={IMG_SIZE.fruit.width}
+                height={IMG_SIZE.fruit.height}
                 className="absolute right-3 bottom-3 w-[42%] max-w-[140px] object-contain object-bottom drop-shadow-[0_14px_18px_rgba(40,20,10,0.20)] z-[5] pointer-events-none"
               />
             </div>

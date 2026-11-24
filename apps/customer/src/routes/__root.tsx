@@ -1,4 +1,4 @@
-import type { QueryClient} from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -22,6 +22,15 @@ import {
   organizationLd,
   websiteLd,
 } from "../lib/seo";
+
+// Brand fonts (Fraunces + Plus Jakarta Sans) for every page, not just home.
+const FONTS_CSS =
+  "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,300..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap";
+
+/** Inline script that attaches a stylesheet without holding up the first paint (SEO F8). */
+function loadStylesheetScript(href: string): string {
+  return `(function(){var l=document.createElement("link");l.rel="stylesheet";l.href=${JSON.stringify(href)};document.head.appendChild(l)})()`;
+}
 
 function NotFoundComponent() {
   return (
@@ -73,17 +82,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
       { rel: "apple-touch-icon", href: "/favicon.png" },
-      // Brand fonts (Fraunces + Plus Jakarta Sans) for every page, not just home.
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,300..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
-      },
+      // Fonts are fetched early but no longer block the first paint: the inline
+      // script in `scripts` attaches the stylesheet. Text shows in the fallback
+      // font and swaps in (display=swap), as before.
+      { rel: "preload", as: "style", href: FONTS_CSS },
     ],
     scripts: [
       { type: "application/ld+json", children: JSON.stringify(organizationLd()) },
       { type: "application/ld+json", children: JSON.stringify(websiteLd()) },
+      { children: loadStylesheetScript(FONTS_CSS) },
       // GA4 (SEO F5): empty until GA_MEASUREMENT_ID is set in lib/analytics.ts.
       ...gaHeadScripts(),
     ],
