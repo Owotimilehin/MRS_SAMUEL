@@ -114,13 +114,6 @@ function Page() {
               with no added sugar and no preservatives. We deliver chilled on a schedule that suits
               you, and you get a listing on this page with a link back to your business.
             </p>
-            <p className="mt-4 text-sm text-white/70 leading-relaxed">
-              Prefer your own label on the bottle? See{" "}
-              <Link to="/white-label" className="underline underline-offset-2">
-                white label juice
-              </Link>
-              .
-            </p>
           </div>
           <EnquiryForm
             enquiryType="stockist"

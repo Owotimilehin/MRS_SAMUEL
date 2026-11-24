@@ -302,9 +302,9 @@
         "Each page 800+ words with FAQ schema",
         "Owner-supplied facts only; placeholders flagged in PR"
       ],
-      "status": "in_review",
+      "status": "dropped",
       "pr": "work/olu/seo-roadmap-day2",
-      "note": "/bulk-orders and /white-label ~1,000 words each with FAQ schema. Minimum order 1 bottle, no maximum (owner, 23 Nov)."
+      "note": "Owner removed /bulk-orders and /white-label (24 Nov 2026). They 301 to /events-juice-lagos and /corporate."
     },
     {
       "id": "C4",

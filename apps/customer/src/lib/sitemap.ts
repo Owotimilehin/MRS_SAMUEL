@@ -23,8 +23,6 @@ export const STATIC_ENTRIES: SitemapEntry[] = [
   { path: "/juices", changefreq: "weekly", priority: 0.9 },
   { path: "/shop", changefreq: "weekly", priority: 0.9 },
   { path: "/juice-delivery-lagos", changefreq: "monthly", priority: 0.9 },
-  { path: "/bulk-orders", changefreq: "monthly", priority: 0.8 },
-  { path: "/white-label", changefreq: "monthly", priority: 0.7 },
   { path: "/events-juice-lagos", changefreq: "monthly", priority: 0.8 },
   { path: "/corporate", changefreq: "monthly", priority: 0.7 },
   { path: "/gifts", changefreq: "monthly", priority: 0.7 },

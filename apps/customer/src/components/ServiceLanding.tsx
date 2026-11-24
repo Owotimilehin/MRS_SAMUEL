@@ -29,8 +29,6 @@ export interface ServiceSection {
 type InternalPath =
   | "/juices"
   | "/juice-delivery-lagos"
-  | "/bulk-orders"
-  | "/white-label"
   | "/events-juice-lagos"
   | "/corporate"
   | "/gifts"
@@ -80,8 +78,7 @@ const h2 = "font-display text-3xl font-semibold text-[color:var(--brand)]";
 const prose = "space-y-4 text-[16px] leading-relaxed text-[color:var(--brand)]/80";
 
 /**
- * Shared layout for service pages (events, corporate, gifts, bulk orders,
- * white label). All copy, FAQ answers included, is plain server-rendered
+ * Shared layout for service pages (events, corporate, gifts). All copy, FAQ answers included, is plain server-rendered
  * HTML, so it matches the FAQPage JSON-LD each route emits.
  */
 export function ServiceLanding({

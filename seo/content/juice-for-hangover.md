@@ -83,7 +83,7 @@ The most reliable "hangover juice" is the one you drink at the party, between al
 4. **Drink water before bed.**
 5. **Plan your ride home** so nobody drives after drinking.
 
-Hosting? Fresh juices make good mocktails for guests who are not drinking or are pacing themselves. See our [juice for parties and events](/bulk-orders) options.
+Hosting? Fresh juices make good mocktails for guests who are not drinking or are pacing themselves. See our [juice for parties and events](/events-juice-lagos) options.
 
 ## Our juices for the morning after
 

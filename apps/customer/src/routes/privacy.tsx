@@ -31,7 +31,7 @@ const sections: PolicySection[] = [
       "Order details: what you ordered, when, how much you paid and whether it was delivered.",
       "Messages: what you send us on WhatsApp, Instagram or Facebook Messenger, and what we reply, including photos, voice notes and documents you choose to send.",
       "Phone calls: the number you call from, the time and length of the call, voicemails you leave, and a recording of the call where we tell you it is being recorded.",
-      "Enquiries: what you tell us in our contact, bulk-order and white-label forms.",
+      "Enquiries: what you tell us in our contact, events, corporate, gifts and stockist forms.",
       "Basic technical information: your basket and your order lookups are remembered on your own device so the site works, and our hosting provider records standard details such as IP address to keep the site secure.",
     ],
   },

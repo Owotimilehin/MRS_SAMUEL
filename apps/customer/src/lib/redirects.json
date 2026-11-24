@@ -102,6 +102,16 @@
       "from": "/juices/$id",
       "to": "/juices",
       "note": "template bug, fix the link too (task F7)"
+    },
+    {
+      "from": "/bulk-orders",
+      "to": "/events-juice-lagos",
+      "note": "page removed by owner, 24 Nov 2026"
+    },
+    {
+      "from": "/white-label",
+      "to": "/corporate",
+      "note": "page removed by owner, 24 Nov 2026"
     }
   ],
   "approved": "Owner approved all targets on 24 Nov 2026."
