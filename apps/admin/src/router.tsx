@@ -195,6 +195,10 @@ const BranchDevicePage = lazyNamed<{ branchId: string }>(
   () => import("./routes/branch/device.js"),
   "BranchDevicePage",
 );
+const BranchExpensesPage = lazyNamed<{ branchId: string }>(
+  () => import("./routes/branch/expenses.js"),
+  "BranchExpensesPage",
+);
 const BranchPreordersPage = lazyNamed<{ branchId: string }>(
   () => import("./routes/branch/preorders.js"),
   "BranchPreordersPage",
@@ -631,6 +635,12 @@ const branchReturnsRoute = createRoute({
   component: () =>
     guarded(<L><WithBranchId render={(id) => <BranchReturnsPage branchId={id} />} /></L>),
 });
+const branchExpensesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/branch/expenses",
+  component: () =>
+    guarded(<L><WithBranchId render={(id) => <BranchExpensesPage branchId={id} />} /></L>),
+});
 const branchReturnDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/branch/returns/$returnId",
@@ -761,6 +771,7 @@ const routeTree = rootRoute.addChildren([
   branchPreordersRoute,
   branchReturnsRoute,
   branchReturnDetailRoute,
+  branchExpensesRoute,
   branchShiftStartRoute,
   branchShiftRoute,
   branchCloseRoute,

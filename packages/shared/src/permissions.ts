@@ -47,6 +47,11 @@ export const CAPABILITIES = [
   "stock.read",
   "expenses.write",
   "expenses.view",
+  // Log small spending at a shop (ice, fuel, a delivery rider, cleaning) from
+  // the till: POST/GET /v1/branches/:branchId/expenses. Limited to the user's own
+  // branch by requireBranchScope, capped in amount and date (branch-expenses.ts).
+  // Does NOT unlock Bookkeeping (expenses.view / expenses.write stay owner-side).
+  "expenses.branch_write",
   "packaging.view",
   "packaging.write",
   // Owner-only by default: manual stock corrections (set new on-hand count).
@@ -200,6 +205,7 @@ const MANAGER_CAPS: Capability[] = [
   "stock.read",
   "stock.adjust",
   "packaging.view",
+  "expenses.branch_write",
   // Supervisor in the inbox: their teams' conversations.
   "inbox.view",
   "inbox.view_team",
@@ -231,6 +237,8 @@ const BRANCH_STAFF_CAPS: Capability[] = [
   // accepting a MISMATCHED OPay amount stays owner-only (orders.accept_payment).
   "orders.view",
   "orders.manage",
+  // Log the shop's small spending (ice, fuel, a rider) for their own branch.
+  "expenses.branch_write",
 ];
 
 export const ROLE_DEFAULTS: Record<AdminRole, readonly Capability[]> = {

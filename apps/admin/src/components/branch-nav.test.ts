@@ -49,3 +49,18 @@ describe("activeParent (most specific wins)", () => {
     expect(activeParent(BRANCH_NAV, "/branch/preorders")?.label).toBe("Orders");
   });
 });
+
+describe("Spending (branch expenses)", () => {
+  const spending = BRANCH_NAV.find((i) => i.to === "/branch/expenses");
+  it("is in the branch nav, gated on expenses.branch_write", () => {
+    expect(spending?.label).toBe("Spending");
+    expect(spending?.cap).toBe("expenses.branch_write");
+  });
+  it("shows to users with expenses.branch_write and hides from those without", () => {
+    expect(parentVisible(spending!, ["sales.view", "expenses.branch_write"])).toBe(true);
+    expect(parentVisible(spending!, ["sales.view", "pos.sell"])).toBe(false);
+  });
+  it("/branch/expenses → Spending, not Today", () => {
+    expect(activeParent(BRANCH_NAV, "/branch/expenses")?.label).toBe("Spending");
+  });
+});

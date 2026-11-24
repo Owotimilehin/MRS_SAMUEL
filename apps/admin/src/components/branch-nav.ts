@@ -80,6 +80,13 @@ export const BRANCH_NAV: BranchNavItem[] = [
     group: ["/branch/returns"],
   },
   {
+    to: "/branch/expenses",
+    label: "Spending",
+    icon: "💸",
+    cap: "expenses.branch_write",
+    group: ["/branch/expenses"],
+  },
+  {
     to: "/branch/shift",
     label: "Shift",
     icon: "🗂️",
